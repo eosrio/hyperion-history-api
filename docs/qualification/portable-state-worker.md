@@ -359,6 +359,49 @@ An observed block-33 recovery case remains separate from the full replay result.
 A later replay failure is still a failed run. This case does not qualify parent
 restart, broker/server restart, forks, launch pins or the complete release.
 
+## Reader handover during canonical RPC
+
+On native Linux, use `--reader-recovery` with `--native --authority-rpc URL`.
+This mode requires the original Wire 1..1480 source and excludes CPU capture and
+the other fault modes. It is an opt-in engineering fixture; ordinary launches
+load no reader-fault controller.
+
+The original block-33 handoff/end reaches the actual master's canonical callback.
+The fixture holds its real RPC result, retains the source-checked node response
+bytes, and captures the current native reader's IPC, PID, Linux birth, command,
+role, executable, working directory and parent. Only that captured child receives
+the deliberate SIGKILL. The same master stays running and uses its normal reader
+disconnect, source revocation, relaunch and source-open paths.
+
+Fixture reconnect permission requires an opaque receipt issued after the original
+parent's correlated native IPC reply and independently checked process death.
+Copied controls, snapshots, exit diagnostics and replies cannot issue it. The
+original stream must have closed with exactly 1..33 sent and acknowledged before
+the next original frame is permitted. The expected resume is the coordinator's
+next block, 34; no duplicate block is added. Neither this permission nor an exit
+receipt grants runtime source membership, broker settlement or count/byte credit.
+
+After the new reader/session/generation and its LIB are current, release the old
+RPC result. Its original call must reject, its association must remain absent,
+and the fresh source must have its own authenticated end, conditional write and
+association. Retain the original Elasticsearch missing-document response beside
+the typed absence audit. Check native output, physical history and both MongoDB
+checkpoints for the resumed source; predeployment state must still return 503.
+
+Keep every raw observer row and the interrupted reader log, including any partial
+tail. Exclude that tail from parsed evidence. The cleanup oracle accepts only
+the privately issued intentional reader fault; it checks every other physical
+start, fork, exit, flush and disabled-profile receipt. Its detached normal-lifecycle
+input excludes the killed reader and accounts for that one expected failed child.
+The raw master exit and shutdown report remain unchanged, including exit 1 when
+the observer reports the deliberate child crash. Any other failed, forced,
+unresolved or omitted process makes cleanup fail.
+
+Record this boundary separately from the complete replay verdict. Passing it does
+not qualify live SHIP forks, the remaining recovery matrix, prospective capacity,
+full replay, launch pins or the release. Source bytes/oracles, queue budgets,
+256-block ancestry, durability, activation and phase/run deadlines are unchanged.
+
 ## Production master restart before adjudication
 
 The irreversible canonical RPC check retains the original physical live-reader

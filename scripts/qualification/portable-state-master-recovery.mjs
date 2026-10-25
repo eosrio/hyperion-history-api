@@ -6,6 +6,7 @@ import {dirname, join, resolve} from 'node:path';
 import {boundedRecoveryFile, durableRecoveryFile, createRecoveryRecorder, readRecoveryRecords} from './recovery-custody.mjs';
 import {captureOwnedMasterGroup, terminateOwnedMasterGroup, describeOwnedMasterGroupExit} from './owned-master-process-group.mjs';
 import {actionHistoryImmutableJson} from '../../build/indexer/history/action-history-manifest.js';
+import {assertWireRecoveryEnd as selectedEnd, auditWireRecoveryEnd as durableEnd} from './wire-recovery-end-audit.mjs';
 
 const chainId = '9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d';
 const profileId = 'wire-sysio-6508c9e8-native-engineering-v1';
@@ -55,18 +56,6 @@ export function readWireMasterRestartControl(file, {observerDirectory, configFil
     return control;
 }
 export const createWireMasterRecorder = control => createRecoveryRecorder(directory(control), control.runId);
-function selectedEnd(control, end, resumed = false) {
-    assert.equal(end.role, 'ds_pool_worker'); assert.equal(end.status, 'quiescent'); assert.equal(end.rootResult, 'returned');
-    assert.equal(end.acknowledgementAttempted, true); assert.equal(end.freshWriteOverflow, false);
-    assert.equal(end.binding.blockNum, resumed ? control.resumeBlockNum : control.blockNum);
-    assert.equal(end.binding.blockId, resumed ? control.resumeBlockId : control.blockId);
-    assert.equal(end.binding.traceOrdinal, control.traceOrdinal); assert.ok(end.binding.admissionId && end.binding.planId);
-    assert.equal(end.descriptor.kind, 'ds-delivery'); assert.match(end.descriptor.payloadSha256, /^[a-f0-9]{64}$/);
-    assert.match(end.descriptor.headersSha256, /^[a-f0-9]{64}$/);
-    assert.equal(end.freshWrites.length, 1); const write = end.freshWrites[0];
-    assert.equal(write.kind, 'confirmed-handoff'); assert.equal(write.classification, 'confirmed-handoff');
-    assert.match(write.id, /^h45actionhandoff1:[a-f0-9]{64}$/);
-}
 export function holdWireMasterEnd(control, end, workerPid, workerId) {
     selectedEnd(control, end);
     assert.ok(Number.isSafeInteger(workerPid) && workerPid > 0 && workerPid !== process.pid);
@@ -82,28 +71,6 @@ export function holdWireMasterEnd(control, end, workerPid, workerId) {
 export function readWireMasterRestartEvidence(control) {
     return {marker: JSON.parse(boundedRecoveryFile(join(directory(control), 'held-end.json'), 128 * 1024).toString()),
         events: readRecoveryRecords(directory(control), control.runId, ['control.json', 'held-end.json'])};
-}
-async function durableEnd(control, end, store, resumed = false) {
-    selectedEnd(control, end, resumed);
-    const blockNum = resumed ? control.resumeBlockNum : control.blockNum, blockId = resumed ? control.resumeBlockId : control.blockId;
-    const frameSha256 = resumed ? control.resumeFrameSha256 : control.frameSha256;
-    const admission = await store.resolve(end.binding.admissionId), source = admission.source;
-    assert.equal(source.inventoryInput.source.chainId, control.chainId);
-    assert.equal(source.inventoryInput.source.blockNum, blockNum); assert.equal(source.inventoryInput.source.blockId, blockId);
-    assert.equal(source.inventoryInput.profileId, control.profileId); assert.equal(source.producer.profileId, control.profileId);
-    assert.equal(hash(Buffer.from(source.frameHex, 'hex')), frameSha256);
-    assert.equal(admission.planId, end.binding.planId); assert.equal(source.inventoryInput.sourceSelectionId, end.binding.selectionId);
-    assert.equal(source.producer.configurationSha256, end.binding.configurationSha256);
-    assert.equal(admission.target.name, end.binding.targetName); assert.equal(admission.target.uuid, end.binding.targetUuid);
-    const tx = admission.inventory.transactions.find(value => value.traceOrdinal === control.traceOrdinal);
-    assert.ok(tx?.dispatch?.canonicalJson);
-    const payload = Buffer.from(tx.dispatch.canonicalJson); assert.equal(hash(payload), end.descriptor.payloadSha256);
-    const record = await store.readConfirmedHandoff(admission.id, control.traceOrdinal, payload);
-    assert.equal(record.id, end.freshWrites[0].id); assert.equal(record.outcome.kind, 'confirmed-action-handoff');
-    assert.equal(digest(record.outcome), end.freshWrites[0].recordSha256);
-    assert.equal(digest(record.outcome.work), end.freshWrites[0].workSha256);
-    return {admissionId: admission.id, planId: admission.planId, target: admission.target, recordId: record.id,
-        recordSha256: digest(record.outcome), payloadSha256: hash(payload), frameSha256};
 }
 export async function inspectWireMasterCheckpoint({control, masterPid, store, queues}) {
     assert.ok(controls.has(control), 'unissued master restart control');

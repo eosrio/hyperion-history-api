@@ -103,6 +103,7 @@ interface NativeRunOptions {
     readonly wait: (name: string, work: () => Promise<void>) => Promise<void>;
     readonly attemptRecovery?: () => unknown;
     readonly masterRestart?: () => {receipt: unknown; masterPid: number} | undefined;
+    readonly readerRestart?: () => {receipt: unknown; masterPid: number} | undefined;
 }
 
 /** Native proof services are read-only. Constructed negative controls touch only one owned action row. */
@@ -272,10 +273,18 @@ export async function createPortableNativeQualification(options: NativeRunOption
     return {profile, oracleHashes: oracle.hashes, held, controls, originalNotifications: notifications,
         async resumedHead() {
             assert.equal(lastNativeThrough, 33);
-            const restart = options.masterRestart?.(); assert.ok(restart);
-            const {describeWireMasterCrash, wireMasterResumedEvents} = await import('./portable-state-master-recovery.mjs');
-            const {control} = describeWireMasterCrash(restart.receipt); assert.equal(control.resumeBlockNum, 34);
-            const events = wireMasterResumedEvents(restart.receipt, restart.masterPid, await options.events());
+            const restart = options.masterRestart?.() ?? options.readerRestart?.(); assert.ok(restart);
+            let control: any, events: any[];
+            if (options.readerRestart?.()) {
+                const {describeWireReaderCrash, wireReaderResumedEvents} = await import('./portable-state-reader-recovery.mjs');
+                control = describeWireReaderCrash(restart.receipt).control;
+                events = wireReaderResumedEvents(restart.receipt, restart.masterPid, await options.events());
+            } else {
+                const {describeWireMasterCrash, wireMasterResumedEvents} = await import('./portable-state-master-recovery.mjs');
+                control = describeWireMasterCrash(restart.receipt).control;
+                events = wireMasterResumedEvents(restart.receipt, restart.masterPid, await options.events());
+            }
+            assert.equal(control.resumeBlockNum, 34);
             const current = await frontier.readControl(); assert.ok(current);
             assert.equal(current.value.phase, 'following'); assert.equal(current.value.head.blockNum, 34);
             const commit = await frontier.readCommit(current.value.head.commitId);
