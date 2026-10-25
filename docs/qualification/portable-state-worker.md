@@ -602,3 +602,58 @@ Mongo barriers. An observed restart boundary is separate from the final replay
 result: a later failure is still a failed run. This single drained-queue crash
 does not qualify other crash windows, broker/server restart, generic reversible
 inputs, live forks, launch pins or the complete release.
+
+## Native history query and bulk chronology
+
+[#334](https://github.com/eosrio/hyperion-history-api/issues/334) tracks the original
+native block-397 missing-row failure. A matching successful bulk receipt in a
+terminal capture cannot establish what an earlier search saw. Native runs now
+retain `history-diagnostics/NNN-action-search.json` before the existing response,
+identity, value and proof assertions. Each record contains the exact client
+request and complete deserialized response, including hits, exact totals and shard
+status. Target holds also retain the original expected identity, frame/oracle
+hashes, source position, current control/commit, selection and relevant observed
+worker events. A client rejection retains its original error and server body.
+
+`NNN-action-refresh.json` records the original refresh request/response, phase,
+source progress, recovery snapshot and latest existing owned-queue sample with its
+observation time. The sample can predate the refresh; it does not add a queue read
+or establish a new state/history barrier. Raw worker journals retain membership,
+publication, seal and source-ACK evidence independently.
+
+Native bulk captures additionally retain `bulk/NNNNN-chronology.json`, linked to
+the unchanged request and response files by hashes. The record distinguishes
+request arrival, the invocation of upstream `remote.end` and the actual upstream
+response-end callback, including failed/in-flight requests. Dispatch invocation
+does not prove server receipt. Compare monotonic nanoseconds only when the clock
+domains have the same driver PID and process time origin. Child-process sequences
+and timestamps are not automatically in that domain. The original response and
+copy checks still establish write acknowledgment; refreshes and later reads do
+not replace them.
+
+History diagnostics allow 128 records, 16 MiB per record and 64 MiB total. Full
+records are written exclusively and are never silently truncated. Serialization,
+file or budget failures preserve the original operation's result/error and mark
+the qualification evidence incomplete. The run cannot pass with such a failure.
+Bulk chronology bytes count against the existing 256 MiB bulk capture cap, with
+the existing request count and per-message limits. Observation and file-write
+overhead is part of this diagnostic run; it is not a production performance result.
+
+The native controlled feedback loop uses the sealed original `1..1480` corpus and
+installed Wire codec while controlling canonical/storage/search reads. It calls
+the original factory and `hold(397)`, then stops the visible-row control at an
+always-throwing independent proof guard. It never manufactures a successful grant.
+
+```sh
+node --experimental-strip-types tests/unit/portable-native-history-capture.mjs
+node --experimental-strip-types tests/unit/portable-native-history-capture.mjs delayed
+```
+
+The first command checks the visible, delayed, missing, wrong-identity, wrong-fork,
+timeout, failed-shard and incomplete-source cases, including a repeated delayed
+case. The second intentionally exits 1 at the unchanged missing-row assertion.
+These controls validate diagnostic capture, not a fix or service qualification.
+An actual owned Linux run must still retain the failed query and correlated
+write/refresh chronology before choosing a behavioral change. Keep the historical
+failure failed and preserve the original oracles, single search, default ancestry,
+queues, budgets, deadlines and separate full-replay/shutdown/cleanup verdicts.
