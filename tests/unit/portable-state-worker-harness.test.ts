@@ -29,7 +29,7 @@ describe('portable actual-source harness guards', () => {
         const report = JSON.parse(stdout.trim().split('\n').at(-1)!);
         expect(report).toMatchObject({passed: true, sequentialStatusProbes: portableSourceLimits.connections + 4,
             concurrentLimit: portableSourceLimits.connections, sessionHistoryLimit: portableSourceLimits.sessions,
-            originalStatusOnly: true, streamedBlocks: 0, copiedMasterRestartRejected: true, fullWorkerQualification: false});
+            originalStatusOnly: true, streamedBlocks: 0, copiedMasterRestartRejected: true, copiedReaderRestartRejected: true, fullWorkerQualification: false});
     }, 40000);
     it('declines an exact discovery health probe without creating source authority or poisoning the replay', async () => {
         const errors: string[] = [], source = {endBlock: 1, records: [{blockId: 'a'.repeat(64)}], startupInfo: {chain_id: 'b'.repeat(64)}} as PortableWorkerSource;
@@ -58,6 +58,49 @@ describe('portable actual-source harness guards', () => {
             expect(errors).toHaveLength(4); expect(errors.every(error => error.includes('RPC fallback is outside the retained startup view'))).toBe(true);
             expect(rpc.requests.every(request => request.allowed === false && !request.kind)).toBe(true);
         } finally {await rpc.close();}
+    });
+    it('archives only already observed source-checked RPC bytes without another upstream request', async () => {
+        const blockId = 'a'.repeat(64), previous = 'b'.repeat(64), chainId = 'c'.repeat(64);
+        const bytes = Buffer.from(JSON.stringify({block_num: 1, id: blockId, previous}, null, 2) + '\n');
+        let blockRequests = 0;
+        const upstream = Bun.serve({hostname: '127.0.0.1', port: 0, async fetch(request) {
+            if (new URL(request.url).pathname === '/v1/chain/get_info') return Response.json({chain_id: chainId, last_irreversible_block_num: 1});
+            expect(await request.json()).toEqual({block_num_or_id: 1}); blockRequests++; return new Response(bytes);
+        }});
+        const source = {chainId, endBlock: 1, records: [{blockId, headerPreviousBlockId: previous}],
+            originalStatus: ['get_status_result_v0', {last_irreversible: {block_num: 1}}]} as PortableWorkerSource;
+        const errors: string[] = [];
+        const rpc = await portableSourceRpc(source, errors, {authorityRpc: upstream.url.origin, replayThrough: () => 1});
+        try {
+            await expect(rpc.checkedBlockResponse(1)).rejects.toThrow('no original source-checked RPC response');
+            expect(blockRequests).toBe(0);
+            const response = await fetch(rpc.url + '/v1/chain/get_block', {method: 'POST',
+                headers: {'content-type': 'application/json'}, body: JSON.stringify({block_num_or_id: 1})});
+            expect(response.status).toBe(200); expect(Buffer.from(await response.arrayBuffer())).toEqual(bytes);
+            const archived = await rpc.checkedBlockResponse(1);
+            expect(archived).toEqual({blockNum: 1, blockId, bytes}); archived.bytes.fill(0);
+            expect((await rpc.checkedBlockResponse(1)).bytes).toEqual(bytes);
+            await expect(rpc.checkedBlockResponse(2)).rejects.toThrow('no original source-checked RPC response');
+            expect(blockRequests).toBe(1); expect(rpc.requests).toHaveLength(1); expect(errors).toEqual([]);
+        } finally {await rpc.close(); await upstream.stop(true);}
+    });
+    it('cannot archive an upstream block that failed its original source identity check', async () => {
+        let blockRequests = 0;
+        const chainId = 'c'.repeat(64), upstream = Bun.serve({hostname: '127.0.0.1', port: 0, fetch(request) {
+            if (new URL(request.url).pathname === '/v1/chain/get_info') return Response.json({chain_id: chainId, last_irreversible_block_num: 1});
+            blockRequests++; return Response.json({block_num: 1, id: 'f'.repeat(64), previous: 'b'.repeat(64)});
+        }});
+        const source = {chainId, endBlock: 1, records: [{blockId: 'a'.repeat(64), headerPreviousBlockId: 'b'.repeat(64)}],
+            originalStatus: ['get_status_result_v0', {last_irreversible: {block_num: 1}}]} as PortableWorkerSource;
+        const errors: string[] = [];
+        const rpc = await portableSourceRpc(source, errors, {authorityRpc: upstream.url.origin, replayThrough: () => 1});
+        try {
+            const response = await fetch(rpc.url + '/v1/chain/get_block', {method: 'POST',
+                headers: {'content-type': 'application/json'}, body: JSON.stringify({block_num_or_id: 1})});
+            expect(response.status).toBe(503);
+            await expect(rpc.checkedBlockResponse(1)).rejects.toThrow('no original source-checked RPC response');
+            expect(blockRequests).toBe(1); expect(errors).toHaveLength(1); expect(errors[0]).toContain('live RPC block differs from original SHIP source');
+        } finally {await rpc.close(); await upstream.stop(true);}
     });
     it('derives the public state boundary from the original ABI deployment independently of durable progress', () => {
         const abiHex = 'aabb', abiSha256 = createHash('sha256').update(Buffer.from(abiHex, 'hex')).digest('hex');

@@ -32,6 +32,8 @@ try {
     const sequential = await start(), cycles = portableSourceLimits.connections + 4;
     await assert.rejects(sequential.server.allowMasterRestart({schemaVersion: 1, kind: 'wire-master-crash-observed'}),
         /unissued Wire master crash receipt/);
+    await assert.rejects(sequential.server.allowReaderRestart({schemaVersion: 1, kind: 'owned-linux-reader-exit'}),
+        /unissued reader crash receipt/);
     assert.equal(sequential.server.metrics().restart, undefined);
     for (let index = 0; index < cycles; index++) {
         const result = await probe(sequential.server);
@@ -66,7 +68,7 @@ try {
     assert.ok(historical.server.metrics().sessions.every(session => session.sent.length === 0 && session.acknowledged.length === 0));
     console.log(JSON.stringify({passed: true, node: process.version, sequentialStatusProbes: cycles,
         concurrentLimit: portableSourceLimits.connections, sessionHistoryLimit: portableSourceLimits.sessions,
-        originalStatusOnly: true, streamedBlocks: 0, copiedMasterRestartRejected: true, fullWorkerQualification: false}));
+        originalStatusOnly: true, streamedBlocks: 0, copiedMasterRestartRejected: true, copiedReaderRestartRejected: true, fullWorkerQualification: false}));
 } finally {
     for (const socket of sockets) socket.terminate();
     for (const fixture of fixtures) await fixture.close();
