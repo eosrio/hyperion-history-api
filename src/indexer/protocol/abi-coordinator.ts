@@ -175,7 +175,7 @@ export class ProtocolAbiCoordinator {
     async revokeSource(readerSessionId:string,generation?:string):Promise<boolean> {
         const recognized=this.activeSession===readerSessionId||this.openingSession===readerSessionId;
         const settled=recognized?this.known?.value:undefined;
-        if(recognized){this.sourceEpoch++;this.recentSelections.clear();}
+        if(recognized){this.sourceEpoch++;this.activeSession=undefined;this.recentSelections.clear();}
         return this.run(async()=>{
             const version=await this.owned();
             if(version.value.source?.readerSessionId!==readerSessionId||(generation&&generation!==version.value.generation))return false;
@@ -235,6 +235,16 @@ export class ProtocolAbiCoordinator {
             this.rememberSelection(selectedId,source,version.value.generation,selection.readerSessionId);
             return {status:'accepted',generation:version.value.generation};
         });} catch(error){if(error instanceof ProtocolAbiCoordinatorStaleError)return {status:'stale',generation:this.known?.value.generation??generation};throw error;}
+    }
+    /** Synchronous local revocation only. Source membership and canonical input still require their own checks. */
+    retainSourceFence(readerSessionId:string,generation:string):()=>boolean {
+        const epoch=this.sourceEpoch;
+        return ()=>{
+            const control=this.known?.value;
+            return text(readerSessionId)&&text(generation)&&this.started&&!this.fenced&&!this.openingSession
+                &&epoch===this.sourceEpoch&&this.activeSession===readerSessionId&&!!control
+                &&control.source?.readerSessionId===readerSessionId&&control.generation===generation;
+        };
     }
     /** A recent selection must still belong to this physical live session and its settled control generation. */
     async currentlyAdmittedSource(selectionId:string,source:ProtocolSourcePosition,readerSessionId:string,generation:string):Promise<boolean> {

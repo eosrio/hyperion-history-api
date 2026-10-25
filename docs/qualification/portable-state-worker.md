@@ -361,6 +361,25 @@ restart, broker/server restart, forks, launch pins or the complete release.
 
 ## Production master restart before adjudication
 
+The irreversible canonical RPC check retains the original physical live-reader
+anchor across awaited reads. It checks current role ownership, reader IPC and process liveness
+and compatible LIB state before and after each block read. A replacement, disconnect,
+exit, shutdown, withdrawn/regressed anchor or same-height conflicting ID cannot
+authorize a stale RPC completion. Each successful recheck retains the latest
+validated LIB height and ID, so an inter-read regression or conflict after an
+accepted advance also rejects. Routine same-owner LIB advances and identical
+refreshes remain valid. Offline/no-live-reader and reversible selection retain
+their existing authority paths. When a canonical source coordinator is present,
+its original source, reader session and generation must also remain available
+and current across those reads. A synchronous coordinator revocation guard covers
+its own fork fence before the master receives the new generation and immediate
+source revocation before storage completes. This local guard adds no reads and
+does not replace source membership, certificates or canonical RPC verification.
+The native `action-canonical-reader-fencing`
+fixture uses the actual emitted master callback and physical native worker
+identities with controlled RPC/handover inputs; it does not qualify a live SHIP
+fork or the complete recovery matrix.
+
 On native Linux, use `--master-recovery` in place of `--profile` or
 `--worker-recovery`. This case holds the actual master's adjudication after the
 original block-33 DS handoff has a fresh durable write and an authenticated
