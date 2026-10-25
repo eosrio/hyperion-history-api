@@ -175,6 +175,10 @@ providers, native decisions, transport responses, receipts or worker services.
 This is a guarded replay of the production implementations, with that explicit
 engineering activation, rather than qualification of public/default activation.
 
+The guarded observer also records a bounded [projection startup lifecycle window](projection-startup-fencing.md).
+It distinguishes initialization retries from first-frame fencing without changing either behavior.
+Its descriptions are observations; original lifecycle methods still decide drainage and retry eligibility.
+
 The replay holds actual source prefixes 1/33/122/256/397 before the original
 Mongo prefixes 1244/1480. Prefix 256 keeps all genuine notification occurrences
 within the **default 256-block** proof ancestry; no recovery-window override is

@@ -1,5 +1,6 @@
 /** Read-only observations of actual production calls; no provider, decision, receipt or outcome substitution. */
 import assert from 'node:assert/strict';
+import cluster from 'node:cluster';
 import {createHash} from 'node:crypto';
 import {openSync, writeSync, fsyncSync, closeSync, readFileSync, realpathSync, statSync} from 'node:fs';
 import {isAbsolute, join} from 'node:path';
@@ -12,6 +13,9 @@ import {UndiciConnection} from '@elastic/transport';
 import {ProtocolAbiProofReader} from '../../build/indexer/protocol/abi-proof.js';
 import {ImmutableProtocolBundleStore} from '../../build/indexer/protocol/immutable-bundle-store.js';
 import {ObserverIoMetrics, installProofMetrics} from './portable-state-worker-proof-metrics.mjs';
+import {WorkerAttemptClient} from '../../build/indexer/protocol/worker-attempt-client.js';
+import {WorkerAttemptSupervisor} from '../../build/indexer/protocol/worker-attempt-supervisor.js';
+import {installProjectionDiagnostics} from './portable-state-projection-diagnostics.mjs';
 
 assert.equal(process.env.HYPERION_PORTABLE_NATIVE_QUALIFICATION, '1');
 const chain = process.env.CHAIN_NAME;
@@ -37,11 +41,16 @@ const record = (event, value) => {
 record('start', {profileId: config.settings.protocol.profileId, observationOnly: true});
 const proofMetrics = installProofMetrics({ProofReader: ProtocolAbiProofReader, BundleStore: ImmutableProtocolBundleStore,
     Connection: UndiciConnection, record});
+const projectionDiagnostics = cluster.isPrimary || process.env.worker_role === 'projection'
+    ? installProjectionDiagnostics({WorkerClient: WorkerAttemptClient, Supervisor: WorkerAttemptSupervisor,
+        Master: cluster.isPrimary ? (await import('../../build/indexer/modules/master.js')).HyperionMaster : undefined, record})
+    : undefined;
 process.once('exit', () => {
     // Snapshot excludes this summary row and the following exit row's own writes/syncs.
-    record('observer_metrics', {coverage: 'before-this-row', io: observerIo.snapshot(), proofs: proofMetrics.snapshot()});
+    record('observer_metrics', {coverage: 'before-this-row', io: observerIo.snapshot(), proofs: proofMetrics.snapshot(),
+        projectionDiagnostics: projectionDiagnostics?.snapshot()});
     record('exit', {bytes}); closeSync(descriptor);
-    if (proofMetrics.snapshot().reportFailures) process.exitCode = 1;
+    if (proofMetrics.snapshot().reportFailures || projectionDiagnostics?.snapshot().reportFailures) process.exitCode = 1;
 });
 
 const prepare = ProtocolNativeObservationStore.prototype.prepare;
