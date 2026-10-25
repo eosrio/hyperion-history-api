@@ -65,13 +65,17 @@ fresh-write, validation, ACK and authenticated-end order.
 Cancellation controls use the real parent fence and a transport that ignores abort. An
 early proof-open control observes the original outer wait rejecting while its tracked
 inner read is still pending. No authentic end, new output or ACK follows until physical
-drain; after release the failed callback remains unresolved. The sibling is prepared before
+drain; after release the failed callback remains unresolved. Actual issued ABI/native views,
+or the original scope-bound open helper before a view exists, reject post-fence use.
+Publisher, stream, cache, history and retained-store dispatch counts are compared at the
+hold, fence, rejected proof use, inner-read settlement and eventual end. These count new
+dispatches, without claiming cancellation retracts previously dispatched I/O. The sibling is prepared before
 the held callback starts, so peer setup cannot consume the original five-second proof-wait
 budget. No timeout or operation bound is enlarged.
 
 Storage, cancellation scheduling and canonical authority in these cases are controlled.
 They add no live broker/fork or full Wire qualification. Production runtime, dependency,
-source/oracle and qualification-harness bytes remain unchanged; the earlier owned Linux
+source/oracle and owned Linux qualification-script bytes remain unchanged; the earlier owned Linux
 regression retains its original revision and failed full-replay outcome.
 
 ```sh

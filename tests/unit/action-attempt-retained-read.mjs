@@ -126,6 +126,7 @@ try {
         supervisor.fenceActive();
         await until(() => event(first, 'qualification_proof_fenced'), first, 'original scope observes the authenticated parent fence');
         const fenced = event(first, 'qualification_proof_fenced');
+        assert.deepEqual(fenced.effects, held.effects, 'the fence cannot admit a new output or storage dispatch');
         assert.equal(fenced.readSettled, false); assert.equal(fenced.readSignalAborted, true);
         assert.equal(fenced.originalAckCount, 0); assert.equal(fenced.scope.state, 'fenced');
         assert(fenced.scope.pendingOperations >= 1);
@@ -134,6 +135,12 @@ try {
             const rejected = event(first, 'qualification_proof_wait_rejected');
             assert.equal(rejected.code, 'proof_cancelled'); assert.equal(rejected.readSettled, false);
         }
+        await until(() => event(first, 'qualification_proof_probe'), first, 'actual retained proof or bound open helper rejects post-fence use');
+        const probe = event(first, 'qualification_proof_probe');
+        assert.equal(probe.kind, late ? isMain ? 'issued-abi-view' : 'issued-native-view' : 'retained-open-helper');
+        assert.equal(probe.accepted, false); assert.equal(probe.code, 'worker_attempt_fenced');
+        assert.equal(probe.ownsFence, true); assert.equal(probe.readSettled, false);
+        assert.deepEqual(probe.effects, fenced.effects, 'post-fence proof use must not dispatch IO or output');
         await new Promise(yes => setTimeout(yes, 20));
         assert.equal(ownEnd(first), undefined, 'outer rejection cannot issue an end while its actual inner read is pending');
         assert.equal(event(first, 'qualification_ack'), undefined);
@@ -149,6 +156,13 @@ try {
     const settled = first.messages.findIndex(x => x.event === 'qualification_proof_settled');
     const ended = first.messages.findIndex(x => x.event === 'worker_attempt_request' && x.payload?.operation === 'end');
     assert(settled >= 0 && ended > settled);
+    if (kind === 'cancelled') {
+        const fenced = event(first, 'qualification_proof_fenced');
+        assert.deepEqual(event(first, 'qualification_proof_settled').effects, fenced.effects,
+            'inner-read settlement cannot authorize a new dispatch after the fence');
+        assert.deepEqual(event(first, 'qualification_proof_failed').effects, fenced.effects,
+            'the eventual original end cannot hide post-fence output or IO');
+    }
     if (failed) {
         const failure = event(first, 'qualification_proof_failed');
         assert(failure); assert.equal(event(first, 'qualification_ack'), undefined);
@@ -178,6 +192,7 @@ try {
     console.log(JSON.stringify({passed: true, native: process.version, mode, originalWireCallbacks: true,
         actualRetainedControlRead: true, originalFreshWriteBeforeHeldRead: late, unrelatedWorkerAssociated: true,
         noAckOnReadFailure: failed, outerRejectionBeforeInnerDrain: !late,
+        postFenceProofAndOutputObserved: kind === 'cancelled',
         originalReadSettledBeforeEnd: true, controlledStorageAndCanonicalAuthority: true,
         brokerSettlement: 'unknown', capacityAuthority: false, fullWorkerQualification: false}));
 } finally {

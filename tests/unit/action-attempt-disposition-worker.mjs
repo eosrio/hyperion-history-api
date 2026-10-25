@@ -223,12 +223,26 @@ try {
     };
     reader = worker(Reader.prototype, readerConsumer, readerPublisher);
     const main = worker(Main.prototype, mainConsumer, mainPublisher), pool = worker(Pool.prototype, poolConsumer, poolPublisher);
-    let proofReadHeld = false, proofReadSettled = false;
+    let proofReadHeld = false, proofReadSettled = false, proofProbe, proofProbeKind;
+    let storageReads = 0, storageWrites = 0, cacheDispatches = 0;
+    const proofEffects = () => ({
+        publisherDispatches: (managedOriginalMain ? mainPublisher : poolPublisher).sent.length,
+        streamDispatches: (managedOriginalMain ? mainConsumer : poolConsumer).streamed.length,
+        cacheDispatches, historyDispatches: blockWrites.length, storageReadDispatches: storageReads,
+        storageWriteDispatches: storageWrites
+    });
     const proofError = new Error('constructed required retained proof read failure');
     if (proofControl) {
+        for (const method of ['create', 'index']) {
+            const original = memory.client[method].bind(memory.client);
+            memory.client[method] = (...args) => {storageWrites++; return original(...args);};
+        }
         const originalGet = memory.client.get.bind(memory.client);
         memory.client.get = async (request, options) => {
-            const scope = currentProofConsumerScope();
+            storageReads++;
+            let scope;
+            // Diagnostic lookup must not itself block a transport dispatch made by a fenced caller.
+            try {scope = currentProofConsumerScope();} catch {}
             const selected = !proofReadHeld && scope?.id === proofAttemptId && options?.signal
                 && request.index === frontier.controlIndex && request.id === 'control'
                 && (proofControl.phase === 'open' ? !proofFreshWrite : !!proofFreshWrite);
@@ -236,20 +250,40 @@ try {
             // Hold the actual transport's returned original bytes. The controlled transport ignores abort.
             const value = await originalGet(request, options);
             if (!selected) return value;
+            // The controlled coordinator is independent work; settle its hint before taking effect baselines.
+            await draining;
             const consumer = managedOriginalMain ? mainConsumer : poolConsumer;
-            scope.signal.addEventListener('abort', () => previousSend.call(process, {
-                event: 'qualification_proof_fenced', scope: scope.snapshot(), originalAckCount: consumer.acked.length,
-                readSettled: proofReadSettled, readSignalAborted: options.signal.aborted
-            }), {once: true});
+            if (proofControl.kind === 'cancelled' && proofControl.phase === 'proof') {
+                const view = managedOriginalMain ? main.activeProtocolAbiProofView : pool.activeActionAdmission.nativeView;
+                assert(view, 'late cancellation retains its actually issued proof view');
+                const reader = managedOriginalMain ? main.getProtocolAbiProofReader() : pool.getProtocolNativeReader();
+                proofProbeKind = managedOriginalMain ? 'issued-abi-view' : 'issued-native-view';
+                proofProbe = () => reader.revalidate(view);
+            }
+            scope.signal.addEventListener('abort', () => {
+                previousSend.call(process, {
+                    event: 'qualification_proof_fenced', scope: scope.snapshot(), originalAckCount: consumer.acked.length,
+                    readSettled: proofReadSettled, readSignalAborted: options.signal.aborted, effects: proofEffects()
+                });
+                if (proofControl.kind === 'cancelled') void (async () => {
+                    let accepted = false, code, ownsFence = false;
+                    try {await proofProbe(); accepted = true;}
+                    catch (error) {code = error.code; ownsFence = scope.ownsFenceError(error);}
+                    previousSend.call(process, {event: 'qualification_proof_probe', kind: proofProbeKind,
+                        accepted, code, ownsFence, readSettled: proofReadSettled, effects: proofEffects()});
+                })();
+            }, {once: true});
             previousSend.call(process, {event: 'qualification_proof_held', request, scope: scope.snapshot(),
-                signalPassed: true, originalAckCount: consumer.acked.length, freshWrite: proofFreshWrite ?? null});
+                signalPassed: true, originalAckCount: consumer.acked.length, freshWrite: proofFreshWrite ?? null,
+                effects: proofEffects()});
             try {
                 await managedProofReleased;
                 if (proofControl.kind === 'failed') throw proofError;
                 return value;
             } finally {
                 proofReadSettled = true;
-                previousSend.call(process, {event: 'qualification_proof_settled', readSignalAborted: options.signal.aborted});
+                previousSend.call(process, {event: 'qualification_proof_settled', readSignalAborted: options.signal.aborted,
+                    effects: proofEffects()});
             }
         };
         if (proofControl.phase === 'open') {
@@ -257,6 +291,10 @@ try {
             const originalWait = ProtocolAbiProofReader.prototype.waitForOpen;
             ProtocolAbiProofReader.prototype.waitForOpen = async function(...args) {
                 const scope = currentProofConsumerScope();
+                if (scope?.id === proofAttemptId) {
+                    proofProbeKind = 'retained-open-helper';
+                    proofProbe = scope.bindCallback(() => this.open(args[0], args[1]));
+                }
                 try {return await originalWait.apply(this, args);}
                 catch (error) {
                     if (scope?.id === proofAttemptId) previousSend.call(process, {
@@ -288,7 +326,7 @@ try {
         ioRedisClient: {pipeline() {
             const writes = [];
             return {hset(key, values) {writes.push({key, values: new Map([...values].map(([key, value]) => [key, Buffer.from(value)]))}); return this;},
-                expire() {return this;}, async exec() {cache.push(...writes); return [];}};
+                expire() {return this;}, async exec() {cacheDispatches++; cache.push(...writes); return [];}};
         }}});
     const profile = {id: selected.id, profileId, components: selected.components};
     coordinator = new ProtocolAbiCoordinator({chainId, profile, ownerId: 'native-worker-original-owner', bindings, observations, store: frontier,
@@ -386,7 +424,8 @@ try {
         assert.equal((role === 'main' ? mainConsumer : poolConsumer).acked.length, 0);
         previousSend.call(process, {event: 'qualification_proof_failed', kind: proofControl.kind,
             originalAckCount: 0, freshWrite: proofFreshWrite ?? null,
-            errorName: observedError.name, errorCode: observedError.code ?? null, statusCode: observedError.statusCode ?? null});
+            errorName: observedError.name, errorCode: observedError.code ?? null, statusCode: observedError.statusCode ?? null,
+            effects: proofEffects()});
         await publishManagedSnapshot(role, admissionId ?? null, proofFreshWrite?.id ?? null, 0);
     };
     mainConsumer.onAck = () => {

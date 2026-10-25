@@ -14,5 +14,7 @@ for (const owner of ['main', 'handoff']) for (const fault of ['held-proof', 'fai
             originalWireCallbacks: true, actualRetainedControlRead: true,
             unrelatedWorkerAssociated: true, originalReadSettledBeforeEnd: true,
             capacityAuthority: false, fullWorkerQualification: false});
+        if (fault.startsWith('cancelled')) expect(JSON.parse(stdout.trim().split('\n').at(-1)!))
+            .toMatchObject({postFenceProofAndOutputObserved: true});
     }, 65_000);
 }
