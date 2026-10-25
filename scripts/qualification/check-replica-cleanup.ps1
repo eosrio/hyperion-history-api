@@ -44,11 +44,15 @@ function global:docker {
             }
         }
         'run' {
-            if($m.mode -eq 'run'){throw 'Injected run failure'}
-            $i=[array]::IndexOf($a,'--name'); $name=$a[$i+1]; $cid='a'*64
+            $i=[array]::IndexOf($a,'--name'); $name=$a[$i+1]
+            if($m.mode -eq 'run' -or ($m.mode.EndsWith('broker-run') -and $name.EndsWith('-rabbit'))){throw 'Injected run failure'}
+            $cid=([string]($m.containers.Count+1))*64
             $m.containers[$cid]=@{name=$name;volume="$name-data"}; return $cid
         }
-        'port' { throw 'Injected port lookup failure' }
+        'port' {
+            if($m.mode -eq 'port' -or $m.containers[$a[1]].name.EndsWith('-rabbit')){throw 'Injected port lookup failure'}
+            return '127.0.0.1:39001'
+        }
         'ps' {
             $i=[array]::IndexOf($a,'--filter'); $filter=$a[$i+1]
             $f=[array]::IndexOf($a,'--format')
@@ -69,22 +73,44 @@ function global:docker {
 }
 
 try {
-    foreach($mode in @('run','port')) {
+    foreach($mode in @('run','port','broker-run','broker-port','pinned-broker-run','pinned-broker-port')) {
         $reviewPath=Join-Path ([IO.Path]::GetTempPath()) ('es198-fixture-review-'+[guid]::NewGuid().ToString('N')+'.json')
         $global:ReviewDockerMock=@{mode=$mode;network=$null;volumes=@{};containers=@{};labels=@{};
             calls=[Collections.Generic.List[object]]::new();failRemoval=$false}
         try {
             $createError=$null
-            try { $null=& $FixtureScript -Action create -StateFile $reviewPath }
+            $pin=$mode.StartsWith('pinned-'); $brokerFailure=$mode.Contains('broker-')
+            try { $null=& $FixtureScript -Action create -StateFile $reviewPath -ExposeRabbitManagement -PinRabbitPorts:$pin }
             catch { $createError=$_.Exception.Message }
-            $expectedError=if($mode -eq 'run'){'Injected run failure'}else{'Injected port lookup failure'}
+            $expectedError=if($mode.EndsWith('run')){'Injected run failure'}else{'Injected port lookup failure'}
             if($createError -ne $expectedError){throw "Expected exact injected create error, got: $createError"}
             $s=Get-Content -LiteralPath $reviewPath -Raw|ConvertFrom-Json
-            if($s.nodes.Count -ne 1){throw 'Intent not persisted before creation'}
+            if($s.nodes.Count -ne $(if($brokerFailure){3}else{1})){throw 'Intent not persisted before creation'}
             if($mode -eq 'run' -and $s.nodes[0].containerId){throw 'Run failure unexpectedly saved a CID'}
             if($mode -eq 'port' -and -not $s.nodes[0].containerId){throw 'CID not saved before port lookup'}
+            if($brokerFailure) {
+                if(-not $s.broker -or $s.broker.volume -ne "$($s.broker.name)-data"){throw 'Broker intent not persisted before creation'}
+                if([bool]$s.broker.containerId -ne $mode.EndsWith('port')){throw 'Broker CID persistence differs from the actual run outcome'}
+                $brokerRun=@($global:ReviewDockerMock.calls | Where-Object { $_[0] -eq 'run' -and $_ -contains $s.broker.name })
+                if($brokerRun.Count -ne 1){throw 'Expected exactly one attempted broker run'}
+                $requested=@($brokerRun[0])
+                if($pin) {
+                    $ports=@($s.broker.pinnedPorts.amqp,$s.broker.pinnedPorts.management)
+                    if($ports[0] -eq $ports[1]){throw 'Pinned ports collide'}
+                    foreach($position in 0..1) {
+                        $port=[int]$ports[$position]; $target=if($position -eq 0){5672}else{15672}
+                        if($port -le 1024 -or $port -gt 65535 -or $requested -notcontains "127.0.0.1:${port}:$target"){
+                            throw 'Pinned endpoint intent differs from the Docker bind request'
+                        }
+                        $probe=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,$port)
+                        try { $probe.ExclusiveAddressUse=$true; $probe.Start() } finally { $probe.Stop() }
+                    }
+                } elseif($s.broker.pinnedPorts -or $requested -notcontains '127.0.0.1::5672' -or $requested -notcontains '127.0.0.1::15672') {
+                    throw 'Default fixture bindings changed'
+                }
+            }
             $global:ReviewDockerMock.labels=@{'io.eosrio.qualifier'='es198-replicas';'io.eosrio.run'=$s.run}
-            $reviewResults.Add([pscustomobject]@{scenario=if($mode -eq 'run'){'run-failure-after-network-and-volume'}else{'port-failure-after-container-created'};
+            $reviewResults.Add([pscustomobject]@{scenario=$mode;
                 passed=$true;creationFailure=$createError;persistedIntents=$s.nodes.Count;
                 cidPersisted=[bool]$s.nodes[0].containerId;realDockerCalls=0})
             if($mode -eq 'port') {
@@ -113,6 +139,16 @@ try {
             }
         }
     }
+    $invalidPath=Join-Path ([IO.Path]::GetTempPath()) ('es198-invalid-pin-'+[guid]::NewGuid().ToString('N')+'.json')
+    $beforeCalls=$global:ReviewDockerMock.calls.Count
+    foreach($invalidAction in @('create','cleanup')) {
+        $failure=$null
+        try { $null=& $FixtureScript -Action $invalidAction -StateFile $invalidPath -PinRabbitPorts }
+        catch { $failure=$_.Exception.Message }
+        if($failure -ne 'Pinned Rabbit ports require create with exposed management' -or (Test-Path -LiteralPath $invalidPath) -or
+            $global:ReviewDockerMock.calls.Count -ne $beforeCalls){throw 'Invalid pin option performed fixture work'}
+    }
+    $reviewResults.Add([pscustomobject]@{scenario='invalid-pin-option-before-state-or-docker';passed=$true;realDockerCalls=0})
     $reviewResults.Add([pscustomobject]@{scenario='repeated-cleanup-idempotency';passed=$true;
         runFailureRepeatedCleanup=$true;portFailureRepeatedCleanup=$true;realDockerCalls=0})
     $report=[ordered]@{schemaVersion=1;status='passed';fixtureScript=$FixtureScript;

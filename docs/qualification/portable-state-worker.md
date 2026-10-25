@@ -322,6 +322,40 @@ acceptance remain pending. Follow #277 for measured worker/proof backpressure;
 keep #270/#274 open. Do not widen ancestry or relax queue/seal guards to turn
 that failed run into a passing result.
 
+## Owned broker restart instrumentation
+
+The initial #319 fault mode uses `--native --authority-rpc URL --broker-recovery`
+on native Linux Node 24/26. It excludes profiling and other fault modes. Create
+its private services with `services.py create NEW_DIRECTORY --pin-rabbit-ports`.
+The ordinary fixture still uses dynamic Docker ports. The explicit option
+reserves two distinct loopback ports, persists the intended binds, then releases
+the reservations immediately before Docker binds them. A competing bind fails
+setup; it does not choose replacement endpoints after recording intent.
+
+The preload holds the actual block-33 DS handoff manifest response after the
+original publication confirmation and before its fresh-write observation or
+ACK. The original store call stays awaited when its attempt is fenced. The
+controller releases that response separately; it neither replaces the returned
+bytes nor converts cancellation into a successful write. Store validation and
+the original owner checks still decide what can happen after release.
+
+Only a privately issued, single-use census can restart the owned RabbitMQ
+container. The helper rechecks the exact run, image, container, exclusive data
+volume, unchanged CPU/memory budgets, fixed loopback binds, Docker socket/daemon
+identity and Linux process birth/command before the single-container restart.
+It preserves the daemon and other fixture services. Before/after counters retain
+their separate broker process incarnations; reset counters are not cumulative
+work, durable completion, ACK settlement, source authority or capacity evidence.
+
+This is instrumentation, **not completed broker-recovery qualification**. The
+report retains `recoveryQualified: false` and records the full workload verdict
+separately from cleanup. #319 still requires an actual owned Linux baseline and
+fault run, independently verified terminal custody, authentic recovered attempt
+and association checks, and resumed Mongo/API output oracles. Existing ordinary
+publication cardinality and source checks remain strict: an unexpected duplicate
+or unavailable input remains a visible failure until independently adjudicated.
+Do not close #288 or #277 from these resource-free guards or a restart observation.
+
 ## Production-master worker replacement
 
 For #288, append `--worker-recovery` to the native, source-bounded RPC command
