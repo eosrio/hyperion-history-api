@@ -71,6 +71,21 @@ test('storage census requires original identities and the original manifest on b
     ]) {const changed = fixture(); mutate(changed); await expect(snapshotWireStorage(changed.es, changed.core, changed.held)).rejects.toThrow();}
 });
 
+test('Elasticsearch default REQUEST and explicit request keep the same durable-write requirement', async () => {
+    const value = fixture();
+    delete value.replies.settings[value.index].settings['index.translog.durability'];
+    value.replies.settings[value.index].defaults = {'index.translog.durability': 'REQUEST'};
+    const result = await snapshotWireStorage(value.es, value.core, value.held);
+    expect(result.indices[value.index].durability).toBe('request');
+    expect(result.indices[value.index].rawDurability).toBe('REQUEST');
+    expect(result.indices[value.target].rawDurability).toBe('request');
+    for (const durability of ['ASYNC', 'async', '', ' request ']) {
+        const changed = fixture();
+        changed.replies.settings[changed.index].settings['index.translog.durability'] = durability;
+        await expect(snapshotWireStorage(changed.es, changed.core, changed.held)).rejects.toThrow();
+    }
+});
+
 test('a changed held response or an early ACK rejects before issuing a replica restart', async () => {
     for (const mutation of ['response', 'ack']) {
         const value = fixture(), output = realpathSync(mkdtempSync(join(tmpdir(), 'h45-storage-hold-')));

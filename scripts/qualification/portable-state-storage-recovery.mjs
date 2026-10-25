@@ -31,9 +31,11 @@ export async function snapshotWireStorage(es, core, held) {
     const indices = Object.fromEntries([held.request.index, target].map(name => {
         const entry = settings[name]; assert.ok(entry);
         const value = key => entry.settings?.[key] ?? entry.defaults?.[key];
-        assert.equal(value('index.number_of_replicas'), '1'); assert.equal(value('index.translog.durability'), 'request');
+        assert.equal(value('index.number_of_replicas'), '1');
+        const rawDurability = value('index.translog.durability');
+        assert.equal(typeof rawDurability, 'string'); assert.equal(rawDurability.toLowerCase(), 'request');
         const uuid = value('index.uuid'); assert.ok(typeof uuid === 'string' && uuid.length > 0);
-        return [name, {uuid, replicas: value('index.number_of_replicas'), durability: value('index.translog.durability')}];
+        return [name, {uuid, replicas: value('index.number_of_replicas'), durability: 'request', rawDurability}];
     }));
     assert.equal(indices[target].uuid, held.attempt.binding.targetUuid);
     const nodes = await es.nodes.info();
