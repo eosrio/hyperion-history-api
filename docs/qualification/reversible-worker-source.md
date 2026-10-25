@@ -84,7 +84,9 @@ instructions or replacement authority.
 
 The read-only evidence checker verifies every interned string/reference, all 34 frame
 checksums, all four exact process exits, the original native service request/reply pairs
-and end replies, and typed retained associations without storage writes:
+and end replies, and typed retained associations without storage writes. Each retained
+association's complete end description must equal its original native parent reply, including
+the binding, delivery descriptor and fresh-write receipts:
 
 ~~~sh
 node tests/unit/reversible-worker-evidence-check.mjs /absolute/owned/path/run.json
@@ -93,6 +95,10 @@ node tests/unit/reversible-worker-evidence-check.mjs /absolute/owned/path/run.js
 For cold inspection it uses the existing read-only immutable-bundle and source-journal
 readers beneath the admission validator. This does not reissue a fresh receipt, accepted
 end, canonical observation or readiness/capacity authority.
+
+Authenticate source and emission provenance with the separately sealed run receipt and trusted
+input preparer. Cold reads establish snapshot and typed-record consistency; authenticate the
+saved bytes against their external artifact hash before relying on that result.
 
 All three cases retain the normal validators and default five-second proof/fence/drain
 limits. Production service durability, combined live fork/storage/broker recovery, the full

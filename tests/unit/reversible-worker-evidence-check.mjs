@@ -85,7 +85,9 @@ export async function checkReversibleWorkerEvidence(path) {
     for (const id of associations) {
         const observed = (await store.readAttemptAssociation(id)).observation;
         assert.equal(observed.sourceChecked, true); assert.equal(observed.brokerSettlement, 'unknown');
-        assert(acceptedEnds.some(e => e.incarnation === observed.end.incarnation && e.attemptId === observed.end.attemptId));
+        const originalEnd = acceptedEnds.find(e => e.incarnation === observed.end.incarnation && e.attemptId === observed.end.attemptId);
+        assert(originalEnd, 'Retained association lacks its original native end reply');
+        assert.deepEqual(observed.end, originalEnd, 'Retained association end differs from its exact original native reply');
         assert.equal(observed.results.length, 1);
     }
     if (report.revoked) {
