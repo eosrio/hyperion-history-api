@@ -374,13 +374,22 @@ for settled prefix-33 authority while withholding this continuation deadlocks th
 fixture: opening a reader session deliberately fences the old proof authority.
 Source credits, bytes, budgets, ancestry and deadlines remain unchanged.
 
-This is instrumentation, **not completed broker-recovery qualification**. The
-report retains `recoveryQualified: false` and records the full workload verdict
-separately from cleanup. #319 still requires an actual owned Linux baseline and
-fault run, independently verified terminal custody, authentic recovered attempt
-and association checks, and resumed Mongo/API output oracles. Existing ordinary
-publication cardinality and source checks remain strict: an unexpected duplicate
-or unavailable input remains a visible failure until independently adjudicated.
+The controller reads back the replacement's actual attempt association and its
+original source/confirmed handoff. The old fenced attempt must have no fresh
+write, ACK or association. The replacement needs its own conditional two-copy
+receipt, accepted fresh observation, authenticated returned end and the master's
+source-checked association. Broker settlement remains unknown. Only that completed
+readback can identify the two physical publishers of the exact original
+transaction; copied audit JSON cannot do so. The native oracle rechecks block 33
+after recovery and keeps ordinary single-publication checks for all other work.
+The prefix-34 checkpoint also reconciles the two broker incarnations' source
+counters before any later source is released.
+
+These assertions are **not completed broker-recovery qualification**. The report
+retains `recoveryQualified: false` and records the full workload verdict separately
+from cleanup. #319 still requires their actual owned Linux baseline/fault execution
+and independently verified terminal custody. Unexpected duplicates and unavailable
+inputs remain visible failures.
 Do not close #288 or #277 from these resource-free guards or a restart observation.
 
 ## Production-master worker replacement

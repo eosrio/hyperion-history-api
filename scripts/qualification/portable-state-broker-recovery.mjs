@@ -6,10 +6,12 @@ import {mkdirSync, realpathSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
 import {boundedRecoveryFile, durableRecoveryFile, createRecoveryRecorder, readRecoveryRecords} from './recovery-custody.mjs';
+import {auditWireRecoveryEnd, wireRecoveryAssociationId} from './wire-recovery-end-audit.mjs';
 
 const chainId = '9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d';
 const profileId = 'wire-sysio-6508c9e8-native-engineering-v1';
 const controls = new WeakSet();
+const publicationMembership = new WeakMap();
 export const wireBrokerRecoveryDigest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const directory = control => join(control.output, 'broker-recovery');
 
@@ -61,7 +63,7 @@ export function readWireBrokerRecoveryEvidence(control) {
     return {held: JSON.parse(boundedRecoveryFile(join(directory(control), 'held-receipt.json'), 128 * 1024).toString()),
         events: readRecoveryRecords(directory(control), control.runId, ['control.json', 'held-receipt.json', 'release-receipt.json'])};
 }
-export function assertWireBrokerHeldReceipt(control, held) {
+function assertWireBrokerHandoffReceipt(control, held) {
     assert.equal(held.schemaVersion, 1);
     assert.equal(held.runId, control.runId); assert.equal(held.controlSha256, wireBrokerRecoveryDigest(control));
     assert.equal(held.role, 'ds_pool_worker'); assert.equal(held.source.blockNum, control.blockNum);
@@ -70,7 +72,7 @@ export function assertWireBrokerHeldReceipt(control, held) {
     assert.equal(held.traceOrdinal, control.traceOrdinal); assert.equal(held.attempt.binding.traceOrdinal, control.traceOrdinal);
     assert.equal(held.attempt.binding.blockNum, control.blockNum); assert.equal(held.attempt.binding.blockId, control.blockId);
     assert.equal(held.payloadSha256, held.attempt.descriptor.payloadSha256);
-    assert.equal(held.redelivered, false); assert.equal(held.attempt.mode, 'managed'); assert.equal(held.attempt.masterEnd, null);
+    assert.equal(held.attempt.mode, 'managed'); assert.equal(held.attempt.masterEnd, null);
     // The awaited store call belongs to the still-running root; counts alone never issue an end.
     assert.equal(held.scope.state, 'open'); assert.ok(Number.isSafeInteger(held.scope.pendingOperations) && held.scope.pendingOperations >= 0);
     assert.deepEqual(held.scope, held.attempt.scope); assert.match(held.recordId, /^h45actionhandoff1:[a-f0-9]{64}$/);
@@ -85,6 +87,9 @@ export function assertWireBrokerHeldReceipt(control, held) {
     assert.ok(held.response._shards.total === 2 && held.response._shards.failed === 0
         && held.response._shards.successful === held.response._shards.total);
     return held;
+}
+export function assertWireBrokerHeldReceipt(control, held) {
+    assert.equal(held.redelivered, false); return assertWireBrokerHandoffReceipt(control, held);
 }
 /** Record the original cut or observe a later real transport return without replacing it. */
 export function recordWireBrokerHandoffReceipt(control, receipt, record) {
@@ -140,6 +145,79 @@ export function assertWireBrokerHeldQueues(chain, rows) {
             assert.equal(row.messages, row.unacked);
         } else {assert.equal(row.unacked, 0); assert.equal(row.messages, 0);}
     }
+}
+/** Read actual master observations and retained records; this issues no runtime evidence or ACK settlement. */
+export async function auditWireBrokerAttemptRecovery({control, masterPid, store}) {
+    describeIssuedWireBrokerControl(control);
+    const {held, events} = readWireBrokerRecoveryEvidence(control);
+    assertWireBrokerHeldReceipt(control, held); assert.equal(held.parentPid, masterPid);
+    const one = (event, predicate) => {
+        const rows = events.filter(row => row.event === event && predicate(row));
+        assert.equal(rows.length, 1, 'expected one actual broker recovery ' + event); return rows[0];
+    };
+    const old = row => row.pid === held.pid && (row.attemptId ?? row.attempt?.attemptId) === held.attempt.attemptId;
+    const cut = one('handoff-receipt-held', old), fence = one('held-attempt-fenced', old), release = one('handoff-receipt-released', old);
+    assert.ok(cut.sequence < fence.sequence && fence.sequence < release.sequence);
+    assert.equal(fence.returned, false); assert.equal(fence.scope.state, 'fenced'); assert.equal(fence.attempt.masterEnd, null);
+    assert.equal(release.returned, false); assert.equal(release.ownerCurrent, false);
+    assert.ok(events.some(row => row.event === 'channel-close' && row.pid === held.pid
+        && row.sequence > fence.sequence && row.sequence < release.sequence));
+    assert.equal(events.filter(row => row.pid === held.pid && ['fresh-observation-attempt', 'ack-intent', 'ack-sent'].includes(row.event)).length, 0);
+    const original = one('end', row => row.pid === masterPid && row.end.attemptId === held.attempt.attemptId).end;
+    assert.equal(original.role, held.role);
+    assert.equal(original.status, 'quiescent'); assert.equal(original.rootResult, 'threw');
+    assert.equal(original.acknowledgementAttempted, false); assert.equal(original.freshWriteOverflow, false);
+    assert.deepEqual(original.freshWrites, []); assert.deepEqual(original.binding, held.attempt.binding);
+    assert.deepEqual(original.descriptor, held.attempt.descriptor);
+    const unresolved = one('adjudicated', row => row.pid === masterPid && row.end.attemptId === original.attemptId);
+    assert.deepEqual(unresolved.end, original); assert.deepEqual(unresolved.result, {state: 'unresolved'});
+    const originalId = wireRecoveryAssociationId(original);
+    await assert.rejects(() => store.readAttemptAssociation(originalId), error => error.name === 'ImmutableProtocolBundleReadError'
+        && error.code === 'missing' && error.recordId === originalId);
+    const retry = one('ack-sent', row => row.pid !== held.pid && row.admissionId === held.admissionId && row.traceOrdinal === control.traceOrdinal);
+    assert.equal(retry.redelivered, true); assert.equal(retry.parentPid, masterPid); assert.equal(retry.workerId, held.workerId);
+    assert.equal(new Set([masterPid, held.pid, retry.pid]).size, 3);
+    assert.equal(retry.payloadSha256, held.payloadSha256); assert.deepEqual(retry.attempt.binding, original.binding);
+    assert.equal(retry.attempt.mode, 'managed'); assert.equal(retry.attempt.masterEnd, null);
+    const sameRetry = row => row.pid === retry.pid && row.attempt?.attemptId === retry.attempt.attemptId;
+    const receipt = one('handoff-retry-receipt-returned', sameRetry);
+    assertWireBrokerHandoffReceipt(control, receipt); assert.equal(receipt.redelivered, true);
+    assert.equal(receipt.parentPid, masterPid); assert.equal(receipt.workerId, held.workerId);
+    assert.equal(receipt.method, 'index'); assert.equal(receipt.recordId, held.recordId);
+    assert.deepEqual(receipt.request.document, held.request.document);
+    assert.ok(Number.isSafeInteger(receipt.request.if_seq_no) && receipt.request.if_seq_no >= 0);
+    assert.ok(Number.isSafeInteger(receipt.request.if_primary_term) && receipt.request.if_primary_term > 0);
+    assert.deepEqual(receipt.attempt.descriptor, retry.attempt.descriptor);
+    assert.deepEqual(receipt.attempt.binding, retry.attempt.binding);
+    const observed = one('fresh-observation-return', row => sameRetry(row) && row.recordId === held.recordId);
+    assert.deepEqual(observed.attempt.descriptor, retry.attempt.descriptor); assert.deepEqual(observed.attempt.binding, retry.attempt.binding);
+    assert.equal(observed.accepted, true); assert.ok(receipt.sequence < observed.sequence && observed.sequence < retry.sequence);
+    const result = one('adjudicated', row => row.pid === masterPid && row.end.attemptId === retry.attempt.attemptId);
+    const end = one('end', row => row.pid === masterPid && row.end.attemptId === retry.attempt.attemptId).end;
+    assert.deepEqual(result.end, end); assert.equal(result.result.state, 'associated');
+    assert.notEqual(end.attemptId, original.attemptId); assert.notEqual(end.incarnation, original.incarnation);
+    assert.equal(end.epoch, original.epoch); assert.deepEqual(end.binding, original.binding);
+    assert.deepEqual(end.descriptor, retry.attempt.descriptor);
+    assert.equal(end.descriptor.headersSha256, original.descriptor.headersSha256);
+    for (const key of ['receiptId', 'consumerId', 'publisherId']) assert.notEqual(end.descriptor[key], original.descriptor[key]);
+    const sourceReadback = await auditWireRecoveryEnd(control, end, store);
+    assert.equal(sourceReadback.recordId, held.recordId);
+    assert.equal(result.result.id, wireRecoveryAssociationId(end));
+    const saved = await store.readAttemptAssociation(result.result.id);
+    assert.deepEqual(saved.observation.end, end); assert.equal(saved.observation.sourceChecked, true);
+    assert.equal(saved.observation.brokerSettlement, 'unknown');
+    assert.deepEqual(saved.observation.results, [{id: held.recordId, classification: 'confirmed-handoff'}]);
+    const audit = Object.freeze({outcome: 'owned-broker-restart-attempt-readback', originalEnd: original, retry, receipt,
+        end, association: saved, sourceReadback, brokerSettlement: 'unknown', releaseQualified: false, capacityAcceptance: false});
+    publicationMembership.set(audit, Object.freeze({...end.binding, owners: Object.freeze([held.pid, retry.pid])}));
+    return audit;
+}
+/** Only the completed readback can identify duplicate publications for this exact original transaction. */
+export function wireBrokerRecoveryPublicationOwners(receipt, context) {
+    if (receipt === undefined) return undefined;
+    const membership = publicationMembership.get(receipt); assert.ok(membership, 'unissued broker recovery publication evidence');
+    return ['admissionId', 'planId', 'traceOrdinal', 'blockNum', 'blockId'].every(key => context[key] === membership[key])
+        ? membership.owners : undefined;
 }
 /** Read-only counters are scoped to their observed process incarnation, never reconstructed as one broker total. */
 export function auditWireBrokerSourceCounterWindows({chain, through, restart, before, after}) {

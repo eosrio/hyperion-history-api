@@ -1,4 +1,5 @@
 import {expect, test} from 'bun:test';
+import {createHash} from 'node:crypto';
 import {mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {basename, dirname, join} from 'node:path';
@@ -10,7 +11,10 @@ import {assertWireBrokerInspection, describeOwnedWireBroker, describeOwnedWireBr
 import {createWireBrokerRecoveryControl, readWireBrokerRecoveryControl, releaseWireBrokerReceipt,
     awaitWireBrokerReceiptRelease, assertWireBrokerHeldReceipt, wireBrokerRecoveryDigest,
     auditWireBrokerSourceCounterWindows, describeIssuedWireBrokerControl,
-    assertWireBrokerHeldQueues} from '../../scripts/qualification/portable-state-broker-recovery.mjs';
+    assertWireBrokerHeldQueues, auditWireBrokerAttemptRecovery,
+    wireBrokerRecoveryPublicationOwners} from '../../scripts/qualification/portable-state-broker-recovery.mjs';
+import {actionHistoryImmutableJson} from '../../src/indexer/history/action-history-manifest.js';
+import {wireRecoveryAssociationId} from '../../scripts/qualification/wire-recovery-end-audit.mjs';
 
 const origin = 'http://127.0.0.1:58271', profileId = 'wire-sysio-6508c9e8-native-engineering-v1';
 const chainId = '9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d';
@@ -31,7 +35,7 @@ async function fixture(run: (value: any) => Promise<void>) {
     mkdirSync(observerDirectory, {recursive: true});
     const config = {settings: {chain, protocol: {profileId}}}; writeFileSync(configFile, JSON.stringify(config));
     const selected = createWireBrokerRecoveryControl({output, configFile, chain, source: {chainId, profileId, endBlock: 1480,
-        records: Array.from({length: 33}, () => ({blockId: 'b'.repeat(64)}))}, frameSha256: 'a'.repeat(64)});
+        records: Array.from({length: 33}, () => ({blockId: 'b'.repeat(64)}))}, frameSha256: createHash('sha256').update(Buffer.from('00', 'hex')).digest('hex')});
     try {await run({...selected, output, configFile, observerDirectory, chain, config});}
     finally {
         expect(dirname(output)).toBe(realpathSync(tmpdir())); expect(basename(output).startsWith('hyperion-wire-broker-')).toBe(true);
@@ -176,6 +180,82 @@ test('the held cut permits only its original DS queue to remain pending before u
         (v: any[]) => {v.push({...v[1]});}, (v: any[]) => {v.splice(0, 1);}, (v: any[]) => {v.splice(1, 1);}
     ]) {const changed = queues(); mutate(changed); expect(() => assertWireBrokerHeldQueues(chain, changed)).toThrow();}
 });
+
+/** Controlled readback/observer inputs test the oracle; only real Linux workers qualify recovery. */
+function brokerAttemptFixture({control, chain, output}: any, mutate = (_: any) => {}) {
+    const hash = (value: string) => createHash('sha256').update(value).digest('hex');
+    const digest = (value: unknown) => hash(actionHistoryImmutableJson(value));
+    const admissionId = 'h45actionadmission1:' + 'a'.repeat(64), planId = 'h45actionplan1:' + 'b'.repeat(64);
+    const binding = {admissionId, planId, blockNum: 33, blockId: control.blockId, traceOrdinal: 0,
+        selectionId: 'selection', configurationSha256: 'c'.repeat(64), targetName: chain + '-action-v1-000001', targetUuid: 'target'};
+    const payload = '{"controlled":true}', payloadSha256 = hash(payload);
+    const work = {admissionId, planId, source: {chainId, blockNum: 33, blockId: control.blockId}};
+    const id = 'h45actionhandoff1:' + digest(work), outcome = {kind: 'confirmed-action-handoff', work};
+    const descriptor = {kind: 'ds-delivery', payloadSha256, headersSha256: 'd'.repeat(64),
+        receiptId: 'old-receipt', consumerId: 'old-consumer', publisherId: 'old-publisher'};
+    const original = {epoch: 'epoch', incarnation: 'old', attemptId: 'old', role: 'ds_pool_worker', binding, descriptor,
+        status: 'quiescent', rootResult: 'threw', acknowledgementAttempted: false, freshWrites: [], freshWriteOverflow: false};
+    const fresh = {...structuredClone(original), incarnation: 'new', attemptId: 'new', rootResult: 'returned', acknowledgementAttempted: true,
+        descriptor: {...descriptor, receiptId: 'new-receipt', consumerId: 'new-consumer', publisherId: 'new-publisher'},
+        freshWrites: [{id, kind: 'confirmed-handoff', classification: 'confirmed-handoff', recordSha256: digest(outcome), workSha256: digest(work)}]};
+    const view = (end: any) => ({attemptId: end.attemptId, mode: 'managed', masterEnd: null,
+        descriptor: end.descriptor, binding: end.binding, scope: {id: end.attemptId, state: 'open', pendingOperations: 0}});
+    const held = {schemaVersion: 1, runId: control.runId, controlSha256: wireBrokerRecoveryDigest(control), role: 'ds_pool_worker',
+        pid: 10, parentPid: 9, workerId: 'slot', source: work.source, originalFrameSha256: control.frameSha256,
+        admissionId, traceOrdinal: 0, payloadSha256, redelivered: false, attempt: view(original), scope: view(original).scope,
+        recordId: id, method: 'create', request: {index: chain + '-history-source-admission-v1', id,
+            document: {kind: 'manifest', bundle_id: id}, wait_for_active_shards: 'all', pipeline: '_none', refresh: false},
+        response: {_id: id, _index: chain + '-history-source-admission-v1', result: 'created', _shards: {total: 2, successful: 2, failed: 0}}};
+    const retry = {...structuredClone(held), pid: 11, redelivered: true, attempt: view(fresh), scope: view(fresh).scope,
+        method: 'index', request: {...held.request, if_seq_no: 1, if_primary_term: 1}, response: {...held.response, result: 'updated'}};
+    const events: any[] = [{event: 'handoff-receipt-held', ...held},
+        {event: 'held-attempt-fenced', pid: 10, attemptId: 'old', returned: false, scope: {state: 'fenced'}, attempt: view(original)},
+        {event: 'channel-close', pid: 10},
+        {event: 'handoff-receipt-released', pid: 10, attemptId: 'old', returned: false, ownerCurrent: false},
+        {event: 'end', pid: 9, end: original}, {event: 'adjudicated', pid: 9, end: original, result: {state: 'unresolved'}},
+        {event: 'handoff-retry-receipt-returned', ...retry},
+        {event: 'fresh-observation-return', ...retry, accepted: true}, {event: 'ack-sent', ...retry},
+        {event: 'end', pid: 9, end: fresh}, {event: 'adjudicated', pid: 9, end: fresh, result: {state: 'associated', id: wireRecoveryAssociationId(fresh)}}];
+    const saved = {id: wireRecoveryAssociationId(fresh), observation: {end: structuredClone(fresh), sourceChecked: true,
+        brokerSettlement: 'unknown', results: [{id, classification: 'confirmed-handoff'}]}};
+    const admission = {planId, target: {name: binding.targetName, uuid: binding.targetUuid},
+        source: {frameHex: '00', inventoryInput: {source: work.source, sourceSelectionId: binding.selectionId, profileId},
+            producer: {profileId, configurationSha256: binding.configurationSha256}},
+        inventory: {transactions: [{traceOrdinal: 0, dispatch: {canonicalJson: payload}}]}};
+    const value = {held, events, saved, admission, outcome}; mutate(value);
+    writeFileSync(join(output, 'broker-recovery/held-receipt.json'), JSON.stringify(value.held));
+    for (const pid of [9, 10, 11]) writeFileSync(join(output, 'broker-recovery/process-' + pid + '.jsonl'),
+        value.events.filter(row => row.pid === pid).map((row, index) => JSON.stringify({...row, runId: control.runId, sequence: index + 1})).join('\n') + '\n');
+    return {control, masterPid: 9, store: {resolve: async () => value.admission,
+        readConfirmedHandoff: async () => ({id, outcome: value.outcome}), readAttemptAssociation: async (key: string) => {
+            if (key === value.saved.id) return value.saved;
+            throw Object.assign(new Error('controlled missing original'), {name: 'ImmutableProtocolBundleReadError', code: 'missing', recordId: key});
+        }}};
+}
+
+test('broker readback needs its own accepted receipt, authentic end and retained association before duplicate membership', async () => fixture(async value => {
+    const input = brokerAttemptFixture(value), audit = await auditWireBrokerAttemptRecovery(input);
+    const context = audit.end.binding;
+    expect(audit.outcome).toBe('owned-broker-restart-attempt-readback'); expect(audit.brokerSettlement).toBe('unknown');
+    expect(wireBrokerRecoveryPublicationOwners(audit, context)).toEqual([10, 11]);
+    expect(wireBrokerRecoveryPublicationOwners(undefined, context)).toBeUndefined();
+    expect(() => wireBrokerRecoveryPublicationOwners(structuredClone(audit), context)).toThrow('unissued');
+    for (const patch of [{admissionId: 'foreign'}, {planId: 'foreign'}, {traceOrdinal: 1}, {blockNum: 34}, {blockId: 'foreign'}])
+        expect(wireBrokerRecoveryPublicationOwners(audit, {...context, ...patch})).toBeUndefined();
+    audit.retry.pid = 999; expect(wireBrokerRecoveryPublicationOwners(audit, context)).toEqual([10, 11]);
+    for (const mutate of [
+        (v: any) => {v.events.find((r: any) => r.event === 'held-attempt-fenced').returned = true;},
+        (v: any) => {v.events.find((r: any) => r.event === 'adjudicated').result.state = 'associated';},
+        (v: any) => {v.events.find((r: any) => r.event === 'ack-sent').redelivered = false;},
+        (v: any) => {v.events.find((r: any) => r.event === 'handoff-retry-receipt-returned').response._shards.successful = 1;},
+        (v: any) => {v.events.find((r: any) => r.event === 'fresh-observation-return').accepted = false;},
+        (v: any) => {v.saved.observation.end.freshWrites = [];},
+        (v: any) => {v.saved.observation.sourceChecked = false;},
+        (v: any) => {v.admission.source.frameHex = '01';},
+        (v: any) => {v.admission.target.uuid = 'recreated';},
+        (v: any) => {v.events.push({...structuredClone(v.events.find((r: any) => r.event === 'ack-sent'))});}
+    ]) await expect(auditWireBrokerAttemptRecovery(brokerAttemptFixture(value, mutate))).rejects.toThrow();
+}));
 
 test('native broker error observations preserve original unhandled exits and existing handlers', async () => {
     const script = fileURLToPath(new URL('./wire-broker-channel-errors.mjs', import.meta.url));

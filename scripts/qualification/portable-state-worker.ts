@@ -35,7 +35,8 @@ import {createWireReaderRecoveryControl, readWireReaderRecoveryEvidence, snapsho
     wireReaderShutdownRows, wireReaderControlDigest} from './portable-state-reader-recovery.mjs';
 import {auditWireRecoveryEnd} from './wire-recovery-end-audit.mjs';
 import {createWireBrokerRecoveryControl, readWireBrokerRecoveryEvidence, assertWireBrokerHeldReceipt,
-    releaseWireBrokerReceipt, auditWireBrokerSourceCounterWindows, assertWireBrokerHeldQueues} from './portable-state-broker-recovery.mjs';
+    releaseWireBrokerReceipt, auditWireBrokerSourceCounterWindows, assertWireBrokerHeldQueues,
+    auditWireBrokerAttemptRecovery} from './portable-state-broker-recovery.mjs';
 import {captureOwnedWireBroker, describeOwnedWireBroker, restartOwnedWireBroker} from './owned-wire-broker.mjs';
 import {portableWorkerSourceFrame} from './portable-state-worker-source.ts';
 
@@ -451,6 +452,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
     let readerControl: ReturnType<typeof createWireReaderRecoveryControl> | undefined;
     let readerCrash: Awaited<ReturnType<typeof crashWireReader>> | undefined;
     let brokerControl: ReturnType<typeof createWireBrokerRecoveryControl> | undefined, brokerReceiptReleased = false;
+    let brokerAttemptAudit: Awaited<ReturnType<typeof auditWireBrokerAttemptRecovery>> | undefined;
     let mongoWriteFaultActive = false;
     const configureMongoWriteFault = async (mode: 'alwaysOn' | 'off') => {
         assert.ok(mongo); mongoFixture.ownedContainer('replica');
@@ -645,7 +647,8 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             ...(options.masterRecovery ? {masterRestart: () => masterCrash && master?.pid
                 ? {receipt: masterCrash, masterPid: master.pid} : undefined} : {}),
             ...(options.readerRecovery ? {readerRestart: () => readerCrash && master?.pid
-                ? {receipt: readerCrash, masterPid: master.pid} : undefined} : {})}) : undefined;
+                ? {receipt: readerCrash, masterPid: master.pid} : undefined} : {}),
+            ...(options.brokerRecovery ? {brokerRecovery: () => brokerAttemptAudit} : {})}) : undefined;
         if (native) report.native = {profile: native.profile, oracleHashes: native.oracleHashes, holds: [],
             activation: 'Existing admission engineering preload only; ordinary installed native provider; public/default operator activation remains disabled.',
             constructedControls: native.controls, notificationInventory: native.originalNotifications};
@@ -848,10 +851,20 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                         responses[index] = {projectionId: definition.id, ...responseReceipt(response)};
                     }
                 });
-                await wait('owned Rabbit queues drained after broker continuation', async () => {
+                let counterWindows: ReturnType<typeof auditWireBrokerSourceCounterWindows> | undefined;
+                await wait('owned Rabbit queues drained and incarnation counters reconciled after broker continuation', async () => {
                     const rows = await queues(); assert.ok(rows.length > 0);
                     assert.ok(rows.every((row: any) => row.ready === 0 && row.unacked === 0 && row.messages === 0));
+                    counterWindows = auditWireBrokerSourceCounterWindows({chain, through,
+                        restart: report.brokerRecovery.restart, before: report.brokerRecovery.before.counters, after: rows});
                 });
+                const {ActionSourceAdmissionStore} = await import(new URL('../../build/indexer/history/action-source-admission.js', import.meta.url).href);
+                const store = new ActionSourceAdmissionStore(es, chain, 1);
+                await wait('broker retry has its own retained source-bound attempt association', async () => {
+                    brokerAttemptAudit = await auditWireBrokerAttemptRecovery({control, masterPid: master!.pid, store});
+                });
+                report.brokerRecovery.attemptAudit = brokerAttemptAudit;
+                assert.ok(counterWindows);
                 assert.ok(native); await es.indices.refresh({index: chain + '-action-*'});
                 const nativePrefix = await native.hold(through);
                 const nativeFile = `prefixes/native-${through}.json`, nativeBytes = Buffer.from(JSON.stringify(nativePrefix, null, 2) + '\n');
@@ -859,7 +872,8 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                 report.native.holds.push({through, file: nativeFile, sha256: portableSourceHash(nativeBytes)});
                 report.brokerRecovery.continuation = {through, blockId: resumedBlock.blockId, responses,
                     source: replay.metrics(), recovery: report.lastRecovery, queues: await queues(),
-                    evidence: readWireBrokerRecoveryEvidence(control), recoveryQualified: false};
+                    evidence: readWireBrokerRecoveryEvidence(control), counterWindows, recoveryQualified: false};
+                report.brokerRecovery.status = 'observed';
                 const file = `prefixes/broker-restart-${through}.json`, bytes = Buffer.from(JSON.stringify(report.brokerRecovery, null, 2) + '\n');
                 await writeFile(join(output, file), bytes, {flag: 'wx'});
                 report.prefixes.push({through, file, sha256: portableSourceHash(bytes)});
