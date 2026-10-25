@@ -39,7 +39,7 @@ if (mode === 'reader') {
     const launch = () => {
         const worker = cluster.fork({worker_role: 'continuous_reader', worker_id: '1',
             READER_FIXTURE_TITLE: `${control.titlePrefix}-continuous_reader:1`}); worker.id = 1;
-        worker.process.stdout.resume(); worker.process.stderr.pipe(process.stderr);
+        worker.process.stdout.pipe(process.stderr); worker.process.stderr.pipe(process.stderr);
         worker.on('message', message => {
             if (message?.event === 'fixture_reader_ready') {
                 assert.equal(message.pid, worker.process.pid); master.liveReader.wref = worker;
@@ -54,7 +54,9 @@ if (mode === 'reader') {
         }});
         return worker;
     };
-    const reader = launch(); await until(() => master.protocolAbiSource, 'native test reader ready');
+    const reader = launch(); await until(() => {
+        assert.equal(reader.isDead(), false, 'native test reader exited before readiness'); return master.protocolAbiSource;
+    }, 'native test reader ready');
     const end = {role: 'ds_pool_worker', status: 'quiescent', rootResult: 'returned', acknowledgementAttempted: true, freshWriteOverflow: false,
         epoch: randomUUID(), incarnation: randomUUID(), attemptId: randomUUID(), binding: {blockNum: 33, blockId: control.blockId,
             traceOrdinal: 0, admissionId: 'h45actionadmission1:' + 'a'.repeat(64), planId: 'h45actionplan1:' + 'b'.repeat(64)},
@@ -78,7 +80,10 @@ if (mode === 'reader') {
     const output = realpathSync(mkdtempSync(join(realpathSync(tmpdir()), 'hapi-reader-controller-')));
     const chain = 'hyp-p191-123456abcdef', profileId = 'wire-sysio-6508c9e8-native-engineering-v1', configFile = join(output, 'chain.json');
     mkdirSync(join(output, 'observer/master'), {recursive: true});
-    durableRecoveryFile(configFile, {settings: {chain, protocol: {profileId}}});
+    // The unchanged observer imports StateReader for this real worker role; its module-level
+    // queue definitions load configuration even though the controlled worker opens no services.
+    durableRecoveryFile(configFile, {settings: {chain, protocol: {profileId}}, indexer: {}});
+    mkdirSync(join(output, 'config')); durableRecoveryFile(join(output, 'config/connections.json'), {});
     const {file: controlFile, control} = createWireReaderRecoveryControl({output, configFile, chain, frameSha256: 'a'.repeat(64),
         resumeFrameSha256: 'c'.repeat(64), source: {chainId: '9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d',
             profileId, endBlock: 1480, records: Array.from({length: 34}, (_, i) => ({blockId: (i === 33 ? 'd' : 'b').repeat(64)}))}});
@@ -105,7 +110,7 @@ if (mode === 'reader') {
     };
     let crash, snapshot, result;
     try {
-        await until(() => {assert.equal(state.exited, false, state.stderr); return state.ready;}, 'native parent controller ready'); assert.equal(state.stderr, '');
+        await until(() => {assert.equal(state.stderr, ''); assert.equal(state.exited, false); return state.ready;}, 'native parent controller ready');
         if (scenario === 'wrong-run') {
             child.send({event: 'qualifier_reader_request', mId: '0'.repeat(36), runId: randomUUID(), operation: 'snapshot'});
             await until(() => state.wrongRunRejected, 'foreign run rejected before capture');
