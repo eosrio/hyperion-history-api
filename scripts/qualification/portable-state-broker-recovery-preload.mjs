@@ -3,11 +3,9 @@ import assert from 'node:assert/strict';
 import cluster from 'node:cluster';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {createHash} from 'node:crypto';
-import {join} from 'node:path';
 import {Client} from '@elastic/elasticsearch';
 import {readWireBrokerRecoveryControl, createWireBrokerRecorder, wireBrokerRecoveryDigest,
-    assertWireBrokerHeldReceipt, awaitWireBrokerReceiptRelease, observeWireBrokerChannelEvents} from './portable-state-broker-recovery.mjs';
-import {durableRecoveryFile} from './recovery-custody.mjs';
+    recordWireBrokerHandoffReceipt, awaitWireBrokerReceiptRelease, observeWireBrokerChannelEvents} from './portable-state-broker-recovery.mjs';
 import {describeWorkerAttemptEnd} from '../../build/indexer/protocol/worker-attempt-supervisor.js';
 import {currentProofConsumerScope} from '../../build/indexer/protocol/proof-consumer-scope.js';
 import {ActionAttemptAdjudicator} from '../../build/indexer/history/action-attempt-adjudicator.js';
@@ -100,7 +98,8 @@ if (cluster.isPrimary) {
         const original = Client.prototype[method];
         Client.prototype[method] = async function (request, ...args) {
             const context = active.getStore();
-            const chosen = context?.handoff && request?.index === control.chain + '-history-source-admission-v1'
+            const chosen = context?.handoff && context.worker.activeActionAdmission?.traceOrdinal === control.traceOrdinal
+                && request?.index === control.chain + '-history-source-admission-v1'
                 && request.document?.kind === 'manifest' && /^h45actionhandoff1:[a-f0-9]{64}$/.test(request.id);
             const response = await original.call(this, request, ...args);
             if (!chosen) return response;
@@ -109,11 +108,7 @@ if (cluster.isPrimary) {
                 ...view, pid: process.pid, parentPid: process.ppid, at: Date.now(), method,
                 recordId: request.id, request, response, scope: scope.snapshot()};
             // The marker is exclusive across physical DS workers. A later retry uses the original transport normally.
-            try {durableRecoveryFile(join(control.output, 'broker-recovery/held-receipt.json'), assertWireBrokerHeldReceipt(control, held));}
-            catch (error) {
-                if (error.code === 'EEXIST') {record('handoff-retry-receipt-returned', held); return response;}
-                throw error;
-            }
+            if (recordWireBrokerHandoffReceipt(control, held, record) === 'subsequent') return response;
             let returned = false;
             const fenced = () => record('held-attempt-fenced', {attemptId: view.attempt.attemptId,
                 scope: scope.snapshot(), returned, attempt: context.worker.workerAttemptClient.describe(

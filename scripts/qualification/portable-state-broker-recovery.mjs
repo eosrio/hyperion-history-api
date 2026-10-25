@@ -86,6 +86,27 @@ export function assertWireBrokerHeldReceipt(control, held) {
         && held.response._shards.successful === held.response._shards.total);
     return held;
 }
+/** Record the original cut or observe a later real transport return without replacing it. */
+export function recordWireBrokerHandoffReceipt(control, receipt, record) {
+    const file = join(directory(control), 'held-receipt.json');
+    const original = () => {
+        try {return JSON.parse(boundedRecoveryFile(file, 128 * 1024).toString());}
+        catch (error) {if (error.code === 'ENOENT') return undefined; throw error;}
+    };
+    const subsequent = prior => {
+        // Validate the retained cut, not the new response. Its original store still validates that response.
+        assertWireBrokerHeldReceipt(control, prior);
+        record('handoff-retry-receipt-returned', receipt); return 'subsequent';
+    };
+    const prior = original(); if (prior !== undefined) return subsequent(prior);
+    try {
+        durableRecoveryFile(file, assertWireBrokerHeldReceipt(control, receipt));
+        return 'original';
+    } catch (error) {
+        if (error.code === 'EEXIST') return subsequent(original());
+        throw error;
+    }
+}
 export function releaseWireBrokerReceipt(control) {
     assert.ok(controls.has(control), 'unissued broker recovery control');
     durableRecoveryFile(join(directory(control), 'release-receipt.json'), {runId: control.runId,

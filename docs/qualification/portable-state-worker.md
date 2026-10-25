@@ -342,6 +342,11 @@ Channel errors use passive `errorMonitor` observation so the existing handled
 error path and unhandled worker exit both retain their original behavior. A
 native counterexample against the pinned amqplib dispatch distinguishes passive
 observation from an ordinary listener that would suppress an unhandled error.
+The first held receipt remains strictly an original delivery. Subsequent selected
+transport returns are observed after validating that retained cut; their original
+store validates the new response. A native bundle CAS regression holds and fences
+the old return, obtains a fresh receipt in a separate scope, and verifies that a
+partial-copy response still fails in the original store.
 
 Only a privately issued, single-use census can restart the owned RabbitMQ
 container. The helper rechecks the exact run, image, container, exclusive data

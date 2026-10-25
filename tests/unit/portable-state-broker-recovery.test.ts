@@ -133,6 +133,7 @@ test('held receipt cannot substitute a different attempt, source, phase or incom
     expect(assertWireBrokerHeldReceipt(control, held)).toBe(held);
     for (const mutate of [
         (v: any) => {v.source.blockNum = 34;}, (v: any) => {v.scope.state = 'fenced';},
+        (v: any) => {v.redelivered = true;},
         (v: any) => {v.attempt.binding.admissionId = 'other';}, (v: any) => {v.attempt.masterEnd = {};},
         (v: any) => {v.response._shards.successful = 1;},
         (v: any) => {v.response._shards.total = 1; v.response._shards.successful = 1;},
@@ -191,4 +192,15 @@ test('native broker error observations preserve original unhandled exits and exi
         if (expectedCode === 1) expect(stderr).toContain('Error: constructed-owned-broker-channel-error');
         else expect(stderr).toBe('');
     }
+});
+
+test('native original bundle CAS retry passes through observation and keeps its own fresh receipt', async () => {
+    const script = fileURLToPath(new URL('./wire-broker-handoff-receipts.mjs', import.meta.url));
+    const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node', script],
+        {stdout: 'pipe', stderr: 'pipe', timeout: 5000});
+    const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
+    expect({code, stderr, stdout: stdout.slice(-16000)}).toMatchObject({code: 0, stderr: ''});
+    expect(JSON.parse(stdout.trim().split('\n').at(-1)!)).toMatchObject({passed: true, controlledEsTransport: true,
+        originalManifestHeld: true, genuineCasPath: true, separateFreshScope: true,
+        partialReceiptRejectedByOriginalStore: true, originalStillFenced: true, fullWorkerQualification: false});
 });
