@@ -10,6 +10,43 @@ Current checks distinguish confirmed handoff, intentional no-effect, intentional
 
 The configured RPC alone is insufficient to establish the current reversible SHIP fork. For irreversible blocks, a configured live reader must have reported an authenticated LIB anchor at or above the source block, and RPC must resolve that anchor to the same block ID. For reversible Wire inputs, the exact source selection must also be among the bounded recent admissions of the current physical live-reader session and settled coordinator generation. The parent then sends a bounded probe to that reader's ordered SHIP ingress queue. Earlier queued frames, including a replacement fork, are processed before the reader checks its current reversible block map; a timeout, changed socket/session/generation, full 32-probe queue or missing block rejects association. The parent rechecks coordinator control after the reader reply. The coordinator invalidates process-local membership on source replacement, fork recovery and restart; a control read can revoke, but never create, membership from a primary-visible unacknowledged write. The control read stays outside the coordinator's serial mutation lane. A replay of the already committed head with a new selection ID is remembered only when its parent and raw capture digest match the committed selection; changed SHIP head/LIB metadata can replay, while changed traces or deltas cannot inherit authority. Selections older than the configured recovery window and inputs without a source selection remain unresolved until irreversible authority is available. The stored `sourceChecked` value records a point-in-time observation, not lasting canonical or fork authority; any later capacity decision must recheck its source. The generic reversible source path and combined live SHIP fork qualification remain #288 gates.
 
+## Authority across awaited checks (#313)
+
+At baseline `33863e85`, the native `main-late-config-target` control reproduced an
+association after configuration changed during the awaited target lookup. A separate
+original DS handoff reproduced acceptance of an old target UUID after canonical lookup.
+The controls use original Wire callbacks, authenticated physical ends and fresh durable
+results, with explicitly controlled metadata/storage/canonical inputs.
+
+Configuration and target identity are checked before canonical verification, immediately
+before association persistence and after its acknowledged return. Each awaited target
+lookup is followed by a synchronous configuration check. A successful path makes three
+logical target-UUID lookups; this is not a measurement of HTTP attempts, latency or cost.
+The private queue remains bounded at 256 pending/four active adjudications.
+
+The actual master retains a process-local guard for each canonical observation. Later
+target/selection/persistence awaits must preserve that original reader, source generation
+and coordinator scope. Reversible guards also require the original reader to remain
+connected and alive. Ordinary coordinator advancement remains valid; replacement,
+revocation, recovery and shutdown invalidate the old observation. The guard lookup uses
+the original object identity, so a copied canonical block cannot reissue it. These guards
+add no canonical RPC reads or membership/capacity authority.
+
+A late change detected before persistence leaves the attempt unresolved without a new association.
+A change during persistence may leave a primary-visible historical record, but cannot
+yield a successful adjudication. Reading that record cannot recreate its physical end,
+acknowledge an uncertain write or grant capacity. An idempotent reassertion still requires
+a fresh conditional write receipt. Existing worker ACK and configured-copy durability
+rules are unchanged.
+
+Native controls hold target, canonical, selection, chunk/manifest, reassertion-read and
+post-write target operations, and independently change configuration, target or source
+generation. Separate actual-master/native-reader controls exercise retained irreversible
+and reversible observations, including ordinary coordinator advancement. Their source
+lifecycle inputs remain constructed; live configuration/fork and full Wire qualification
+remain separate #288/#277 gates. Default activation, source inputs, budgets, ancestry and
+phase/run deadlines are unchanged.
+
 ## Current Wire testnet source preflight
 
 Canonical RPC validation reads only the requested block number, ID and parent ID.

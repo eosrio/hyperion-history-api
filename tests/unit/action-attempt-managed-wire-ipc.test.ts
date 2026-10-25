@@ -2,7 +2,12 @@ import {expect, test} from 'bun:test';
 import {fileURLToPath} from 'node:url';
 
 for (const mode of ['main','main-held-write','main-failed-write','main-ack-throws','main-held-operation','main-held-end','main-failed-end',
-    'main-held-adjudication','main-unknown-association','main-late-config-target','ds','contract','handoff',
+    'main-held-adjudication','main-unknown-association','main-late-config-target',
+    'handoff-late-config-canonical','handoff-late-target-canonical','handoff-late-config-selection','handoff-late-target-selection',
+    'handoff-late-config-chunk','handoff-late-target-chunk','handoff-late-config-manifest','handoff-late-target-manifest',
+    'handoff-late-config-reassertion-read','handoff-late-target-reassertion-read','ds','contract','handoff',
+    'handoff-late-source-selection','handoff-late-source-manifest','handoff-late-source-prewrite-target',
+    'handoff-late-source-postwrite-target','handoff-late-source-reassertion-read',
     'handoff-held-confirm','handoff-failed-confirm','handoff-held-drain','handoff-failed-drain']) test(`original Wire ${mode} callback reaches the managed native parent adjudicator`, async () => {
     const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node',
         fileURLToPath(new URL('./action-attempt-managed-wire-ipc.mjs', import.meta.url)), mode],
@@ -48,8 +53,12 @@ for (const mode of ['main','main-held-write','main-failed-write','main-ack-throw
     if (mode === 'main-held-end') expect(result).toMatchObject({heldEndBeforeAssociation: true});
     if (mode === 'main-held-adjudication') expect(result).toMatchObject({heldAdjudicationBeforePersistence: true,
         unrelatedWorkerProgressDuringHold: true});
-    if (mode === 'main-late-config-target') expect(result).toMatchObject({lateConfigurationRejected: true,
-        restoredOriginalContextControl: true});
+    if (mode.includes('-late-')) {
+        const boundary = mode.split('-').slice(3).join('-'), stored = ['chunk','manifest','reassertion-read','postwrite-target'].includes(boundary);
+        expect(result).toMatchObject({lateAuthorityRejected: true, lateAuthorityChange: mode.split('-')[2], lateAuthorityBoundary: boundary,
+            retainedRecordInspectionOnly: stored, restoredOriginalContextControl: true});
+        if (stored) expect(result.freshReassertionReceiptRequired).toBe(true);
+    }
     if (mode === 'main-unknown-association') expect(result).toMatchObject({unknownAssociationWrite: true,
         failedAdjudicationIsolated: true, unrelatedWorkerProgressDuringFailure: true,
         primaryVisibleInspectionOnly: true, restartCannotReissueEnd: true, freshRetryReceiptRequired: true});

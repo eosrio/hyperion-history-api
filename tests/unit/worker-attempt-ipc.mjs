@@ -327,6 +327,7 @@ async function nativeFreshActionAssociation() {
             persisted.push(association); return {id: 'private-native-association'};
         }};
     const authority = {configurationSha256: () => config, targetUuid: async () => target.uuid,
+        assertCanonicalCurrent: () => {}, // Constructed canonical authority; this exercises native attempt ownership.
         canonicalBlock: async () => ({chainId, blockId, previousBlockId, irreversible: true})};
     const adjudicator = new ActionAttemptAdjudicator(supervisor, store, {}, authority);
     assert.deepEqual(await adjudicator.adjudicate(endEvidence[before + 1]), {state: 'unresolved'});

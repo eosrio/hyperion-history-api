@@ -8,14 +8,17 @@ import {setTimeout as delay} from 'node:timers/promises';
 
 assert.equal(process.versions.bun, undefined);
 assert.match(process.version, /^v(?:24|26)\./);
-const scenario = process.argv[2] ?? 'replace-anchor';
+const requestedScenario = process.argv[2] ?? 'replace-anchor', postRpc = requestedScenario.startsWith('post-'),
+    reversibleObservation = requestedScenario.startsWith('post-reversible-');
+const scenario = reversibleObservation ? requestedScenario.slice('post-reversible-'.length) : postRpc ? requestedScenario.slice(5) : requestedScenario;
 const twoStage = ['advanced-regress', 'advanced-conflict', 'advance-twice', 'advanced-refresh'].includes(scenario);
 const successful = ['unchanged', 'advance-anchor', 'advance-block', 'refresh-block', 'offline',
-    'source-steady-block', 'source-advance-block', 'advance-twice', 'advanced-refresh'].includes(scenario);
+    'source-steady-block', 'source-advance-block', 'coordinator-advance-block', 'advance-twice', 'advanced-refresh'].includes(scenario);
 assert.ok(successful || ['replace-anchor', 'replace-block', 'retire-block', 'disconnect-block',
     'withdraw-block', 'regress-block', 'conflict-block', 'shutdown-block', 'unlisted-block',
     'source-replaced-block', 'source-revoked-block', 'source-generation-block', 'source-missing-initial',
     'coordinator-fork-block', 'coordinator-revoked-block', 'advanced-regress', 'advanced-conflict'].includes(scenario));
+if (postRpc) assert.ok(!twoStage && scenario !== 'source-missing-initial', 'post-RPC scope control needs a completed original observation');
 const until = async (test, label) => {
     const deadline = performance.now() + 5000;
     while (!test()) {assert.ok(performance.now() < deadline, label); await delay(5);}
@@ -61,7 +64,7 @@ if (cluster.isWorker) {
         let calls = 0, held = false, secondHeld = false, release, releaseSecond;
         const gate = new Promise(resolve => {release = resolve; releaseRpc.push(resolve);});
         const secondGate = new Promise(resolve => {releaseSecond = resolve; releaseRpc.push(resolve);});
-        const heldCall = twoStage || scenario.endsWith('-anchor') || scenario === 'offline' ? 1 : 2;
+        const heldCall = reversibleObservation || twoStage || scenario.endsWith('-anchor') || scenario === 'offline' ? 1 : 2;
         const rpc = new APIClient({provider: {async call(args) {
             assert.equal(args.path, '/v1/chain/get_block'); assert.equal(args.params.block_num_or_id, 33);
             calls++;
@@ -69,15 +72,16 @@ if (cluster.isWorker) {
             else if (twoStage && calls === 2) {secondHeld = true; await secondGate;}
             return {status: 200, headers: {}, text: bytes.toString(), json: structuredClone(original)};
         }}});
-        rpc.v1.chain.get_info = async () => ({head_block_num: UInt32.from(40), last_irreversible_block_num: UInt32.from(33),
+        rpc.v1.chain.get_info = async () => ({head_block_num: UInt32.from(40), last_irreversible_block_num: UInt32.from(reversibleObservation ? 32 : 33),
             chain_id: Checksum256.from(chainId)});
         const master = Object.assign(Object.create(HyperionMaster.prototype), {rpc, esClient: {},
             chain: 'canonical-reader-fixture', conf: {settings: {es_replicas: 0}, indexer: {live_reader: scenario !== 'offline'}},
             shutdownStarted: false, liveReader: {wref: first.worker},
             workerMap: [{wref: first.worker, worker_role: 'continuous_reader'}],
-            actionCanonicalLib: scenario === 'offline' ? undefined : {worker: first.worker, blockNum: 33, blockId: original.id}});
+            actionCanonicalLib: scenario === 'offline' ? undefined : {worker: first.worker,
+                blockNum: reversibleObservation ? 32 : 33, blockId: reversibleObservation ? original.previous : original.id}});
         let coordinatorFixture;
-        if (scenario.startsWith('source-') || scenario.startsWith('coordinator-')) {
+        if (reversibleObservation || scenario.startsWith('source-') || scenario.startsWith('coordinator-')) {
             // Separately constructed provider inputs; real stores/coordinator own all control receipts.
             // This local fence is not a native source certificate or Wire fork qualification.
             const memory = frontierMemoryClient(), schemaJson = '{"version":"eosio::abi/1.1"}';
@@ -90,24 +94,32 @@ if (cluster.isWorker) {
                 store: new ProtocolAbiFrontierStore(memory.client, 'canonical-reader-fixture')});
             await coordinator.start();
             const session = 'controlled-session-one', generation = (await coordinator.openSource(contextId, session)).generation;
-            const select = async identity => {
-                const source = {chainId, blockNum: 1, blockId: identity.toString(16).padStart(64, '0'), previousBlockId: null};
+            const select = async (identity, blockNum = 1, previousBlockId = null) => {
+                const source = {chainId, blockNum, blockId: identity.toString(16).padStart(64, '0'), previousBlockId};
                 const capture = {kind: 'unattested-ship-result-sections-v1', schemaJson, blockHex: '00', tracesHex: '00', deltasHex: '00'};
                 return (await bindings.prepareSelection({schemaVersion: 1, contextId, readerSessionId: session, readerRole: 'live', assignmentId: null,
                     source, captureSha256: protocolAbiCaptureDigest(source, capture),
                     frameSha256: createHash('sha256').update('controlled-frame-' + identity).digest('hex'),
-                    head: {blockNum: 1, blockId: source.blockId}, irreversible: {blockNum: 0, blockId: '0'.repeat(64)}})).id;
+                    head: {blockNum, blockId: source.blockId}, irreversible: {blockNum: 0, blockId: '0'.repeat(64)}})).id;
             };
             master.protocolAbiCoordinator = coordinator;
             if (scenario !== 'source-missing-initial') master.protocolAbiSource = {worker: first.worker, readerSessionId: session, generation};
             coordinatorFixture = {coordinator, select, session, generation};
-            if (scenario === 'coordinator-fork-block') assert.equal((await coordinator.admit(await select(1), generation)).status, 'accepted');
+            if (scenario === 'coordinator-fork-block' || scenario === 'coordinator-advance-block')
+                assert.equal((await coordinator.admit(await select(1), generation)).status, 'accepted');
         }
         const authority = master.attemptAdjudicatorFor(supervisor).current;
         const pending = authority.canonicalBlock(33); let settled = false;
         void pending.then(() => {settled = true;}, () => {settled = true;});
         await until(() => held || settled, 'the actual master waits for its original RPC observation or refuses unavailable source');
         if (scenario !== 'source-missing-initial') assert.equal(held, true);
+        let observation;
+        if (postRpc) {
+            release(); observation = await pending;
+            assert.equal(observation.irreversible, !reversibleObservation);
+            authority.assertCanonicalCurrent(observation);
+            assert.throws(() => authority.assertCanonicalCurrent(structuredClone(observation)), /Unissued canonical action observation/);
+        }
         if (twoStage) {
             master.actionCanonicalLib = {worker: first.worker, blockNum: 34, blockId: '00000022' + 'e'.repeat(56)};
             release();
@@ -141,6 +153,9 @@ if (cluster.isWorker) {
         else if (scenario === 'source-generation-block') master.protocolAbiSource.generation = 'controlled-generation-two';
         else if (scenario === 'coordinator-revoked-block') {
             await coordinatorFixture.coordinator.revokeSource(coordinatorFixture.session, coordinatorFixture.generation);
+        } else if (scenario === 'coordinator-advance-block') {
+            const {coordinator, select, generation} = coordinatorFixture;
+            assert.equal((await coordinator.admit(await select(2, 2, '1'.padStart(64, '0')), generation)).status, 'accepted');
         } else if (scenario === 'coordinator-fork-block') {
             const {coordinator, select, generation} = coordinatorFixture;
             let recovering = false;
@@ -156,12 +171,17 @@ if (cluster.isWorker) {
             master.actionCanonicalLib = {worker: first.worker, blockNum: 34, blockId: '00000022' + 'e'.repeat(56)};
         } else if (scenario === 'refresh-block') master.actionCanonicalLib = {...master.actionCanonicalLib};
         release();
-        if (successful) assert.deepEqual(await pending, {chainId, blockId: original.id, previousBlockId: original.previous, irreversible: true});
+        if (postRpc) {
+            if (successful) authority.assertCanonicalCurrent(observation);
+            else assert.throws(() => authority.assertCanonicalCurrent(observation), /Current live SHIP irreversible anchor|no longer current/);
+        } else if (successful) assert.deepEqual(await pending, {chainId, blockId: original.id, previousBlockId: original.previous, irreversible: true});
         else await assert.rejects(pending, /Current live SHIP irreversible anchor/,
             'an old RPC completion must not authorize a retired or changed physical reader');
-        assert.equal(calls, scenario === 'source-missing-initial' ? 0
+        assert.equal(calls, reversibleObservation ? 1 : scenario === 'source-missing-initial' ? 0
             : scenario === 'offline' || !successful && scenario.endsWith('-anchor') ? 1 : 2);
-        result = {passed: true, scenario, native: process.version, actualMasterCallback: true, nativeReaderIdentities: true,
+        result = {passed: true, scenario: requestedScenario, native: process.version, actualMasterCallback: true, nativeReaderIdentities: true,
+            postRpcFenceChecked: postRpc,
+            reversibleObservation,
             staleCompletionRejected: !successful, controlledRpcAndHandover: true, controlledSourceLifecycle: true,
             capacityAuthority: false, fullWorkerQualification: false};
     } finally {

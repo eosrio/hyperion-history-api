@@ -51,7 +51,7 @@ import {isProtocolAbiCoordinatorRequest, type ProtocolAbiCoordinatorReply} from 
 import {ensureProtocolActionMapping} from '../protocol/action-proof-mapping.js';
 import {resolvePortableStateConfiguration} from '../projection/config.js';
 import {WorkerAttemptSupervisor, type WorkerAttemptRole} from '../protocol/worker-attempt-supervisor.js';
-import {ActionAttemptAdjudicator} from '../history/action-attempt-adjudicator.js';
+import {ActionAttemptAdjudicator, type CurrentAttemptCanonicalBlock} from '../history/action-attempt-adjudicator.js';
 import {ActionSourceAdmissionStore} from '../history/action-source-admission.js';
 import {actionConfigurationSnapshot} from '../history/action-producer-epoch.js';
 import {assertActionSequenceTemplateReadback, ensureActionSequenceMappings,
@@ -127,7 +127,9 @@ export class HyperionMaster {
         };
     }
     private attemptAdjudicatorFor(supervisor: WorkerAttemptSupervisor): ActionAttemptAdjudicator {
-        return this.actionAttemptAdjudicator ??= new ActionAttemptAdjudicator(supervisor,
+        if (this.actionAttemptAdjudicator) return this.actionAttemptAdjudicator;
+        const canonicalChecks = new WeakMap<CurrentAttemptCanonicalBlock, () => void>();
+        return this.actionAttemptAdjudicator = new ActionAttemptAdjudicator(supervisor,
             new ActionSourceAdmissionStore(this.esClient, this.chain, this.conf.settings.es_replicas ?? 0),
             new ProtocolSourceBindingStore(this.esClient, this.chain, this.conf.settings.es_replicas ?? 0, {readOnly: true}), {
                 configurationSha256: () => createHash('sha256').update(actionConfigurationSnapshot(this.conf, this.cm.filters,
@@ -137,6 +139,9 @@ export class HyperionMaster {
                     if (info.head_block_num.toNumber() < blockNum) throw new Error('Canonical node is behind the original worker source');
                     const irreversible = info.last_irreversible_block_num.toNumber() >= blockNum;
                     const checkAnchor = irreversible && this.conf.indexer.live_reader ? this.captureActionLibAnchor(blockNum) : undefined;
+                    const live = !irreversible ? this.protocolAbiSource : undefined, coordinator = this.protocolAbiCoordinator;
+                    const readerSessionId = live?.readerSessionId, generation = live?.generation;
+                    const sourceFence = live && generation ? coordinator?.retainSourceFence(live.readerSessionId, generation) : undefined;
                     // RPC alone can lag a SHIP fork. An authenticated live reader's LIB anchors its branch.
                     if (checkAnchor) {
                         const lib = checkAnchor();
@@ -147,7 +152,22 @@ export class HyperionMaster {
                     }
                     const block = await this.readCanonicalRpcBlock(blockNum);
                     checkAnchor?.();
-                    return {chainId: String(info.chain_id).toLowerCase(), ...block, irreversible};
+                    const observation = Object.freeze({chainId: String(info.chain_id).toLowerCase(), ...block, irreversible});
+                    canonicalChecks.set(observation, () => {
+                        if (this.shutdownStarted) throw new Error('Canonical action observation is no longer current');
+                        checkAnchor?.();
+                        if (!irreversible && (!live || !generation || !coordinator || this.protocolAbiSource !== live
+                            || this.protocolAbiCoordinator !== coordinator || live.readerSessionId !== readerSessionId
+                            || live.generation !== generation || !this.isCurrentProtocolLiveReader(live.worker)
+                            || !live.worker.isConnected() || live.worker.isDead() || !sourceFence?.()))
+                            throw new Error('Canonical action source scope is no longer current');
+                    });
+                    return observation;
+                },
+                assertCanonicalCurrent: block => {
+                    const check = canonicalChecks.get(block);
+                    if (!check) throw new Error('Unissued canonical action observation');
+                    check();
                 },
                 reversibleSelection: async (selectionId, source, readerSessionId) => {
                     const live = this.protocolAbiSource, coordinator = this.protocolAbiCoordinator;

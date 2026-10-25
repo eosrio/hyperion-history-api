@@ -119,6 +119,7 @@ if (phase === 'controller') {
         const adjudicator = new ActionAttemptAdjudicator(supervisor, state.store,
             new ProtocolSourceBindingStore(state.memory.client, state.chain), {
                 configurationSha256: () => admission.source.producer.configurationSha256,
+                assertCanonicalCurrent: () => {}, // Constructed canonical authority in this restart control.
                 targetUuid: async name => {assert.equal(name, admission.target.name); return admission.target.uuid;},
                 canonicalBlock: async num => {assert.equal(num, source.blockNum); return {...source,
                     previousBlockId: admission.source.previousBlockId, irreversible: true};}
