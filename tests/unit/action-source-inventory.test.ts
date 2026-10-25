@@ -70,7 +70,7 @@ function emit(value: ActionSourceInventoryInput, ordinals: number[], transaction
         }
         processed.push(result);
     }
-    const grouped = groupActionTraces(processed as any, value.profileId !== 'antelope-default-v1') as any[];
+    const grouped = groupActionTraces(processed as any, value.profileId !== 'antelope-default-v1' ? 'certified-extension' : 'legacy-antelope') as any[];
     for (const result of grouped) {
         result.act_digest = result.receipts[0].act_digest;
         for (const receipt of result.receipts) delete receipt.act_digest;

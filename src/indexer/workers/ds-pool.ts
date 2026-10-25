@@ -1115,7 +1115,7 @@ export default class DSPoolWorker extends HyperionWorker {
                 if (this.usesProtocolSourceBindings) for (const action of _processedTraces) await this.revalidateProtocolAction(action);
                 let _finalTraces: ActionTrace[];
                 try {_finalTraces = groupActionTraces(_processedTraces, this.usesProtocolSourceBindings
-                    ? (this.usesExtensionProtocol ? true : 'antelope') : false);} catch (error) {
+                    ? (this.usesExtensionProtocol ? 'certified-extension' : 'certified-antelope') : 'legacy-antelope');} catch (error) {
                     // A later hook may have corrupted an earlier action. Only pure grouping is classified here.
                     if (!this.activeActionAdmission) throw error;
                     throw this.contractOutputFailure('contract-grouping-invalid', error);
