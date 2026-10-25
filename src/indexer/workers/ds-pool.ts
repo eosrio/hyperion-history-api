@@ -36,6 +36,11 @@ import {createHash} from 'node:crypto';
 import type {ProtocolAbiActionInput} from '@eosrio/hyperion-sdk/protocol';
 import {currentProofConsumerScope, trackProofConsumerOperation} from '../protocol/proof-consumer-scope.js';
 
+type ActionAdmissionPredicate = 'owner_current' | 'producer_epoch' | 'executable' | 'source_chain'
+    | 'source_block_number' | 'source_block_id' | 'source_producer' | 'source_timestamp' | 'target_identity'
+    | 'transaction_dispatch_present' | 'dispatch_payload' | 'dispatch_inline_count' | 'dispatch_filtered'
+    | 'source_selection' | 'bound_owner_current' | 'bound_configuration';
+
 interface ProtocolActionWork {
     original: ActionTrace;
     metadata: ProtocolActionMetadata;
@@ -923,9 +928,13 @@ export default class DSPoolWorker extends HyperionWorker {
         // Keep the original short-circuit order and evaluate each operand once. The rejection
         // boundary exposes the actual failed decision to engineering observers, without a recheck.
         let reason = 'Action admission producer/source/target epoch mismatch';
-        const equal = (predicate: string, actual: unknown, expected: unknown): void => {
-            if (actual !== expected) this.rejectActionAdmission(reason, {
-                predicate, actual, expected, message, admission, epoch, owner});
+        const equal = (predicate: ActionAdmissionPredicate, actual: unknown, expected: unknown, sensitiveOperands = false): void => {
+            if (actual === expected) return;
+            const operand = (value: unknown) => sensitiveOperands
+                ? {sha256: createHash('sha256').update(value as string).digest('hex'), bytes: Buffer.byteLength(value as string)} : value;
+            this.rejectActionAdmission(reason, {
+                predicate, actual: operand(actual), expected: operand(expected), operandFormat: sensitiveOperands ? 'sha256' : 'value',
+                message, admission, epoch, owner});
         };
         equal('owner_current', owner.current(), true);
         equal('producer_epoch', actionHistoryImmutableJson(epoch.producer), actionHistoryImmutableJson(admission.source.producer));
@@ -940,7 +949,7 @@ export default class DSPoolWorker extends HyperionWorker {
             reason = 'Action admission input payload or source ordinal mismatch';
             const transaction = admission.inventory.transactions.find(value => value.traceOrdinal === ordinal);
             if (!transaction?.dispatch) this.rejectActionAdmission(reason, {
-                predicate: 'transaction_dispatch_present', actual: false, expected: true, message, admission, epoch, owner});
+                predicate: 'transaction_dispatch_present', actual: false, expected: true, operandFormat: 'value', message, admission, epoch, owner});
             equal('dispatch_payload', createHash('sha256').update(payload).digest('hex'), transaction.dispatch.bodySha256);
             equal('dispatch_inline_count', headers?.inline_count, transaction.dispatch.inlineCount);
             equal('dispatch_filtered', headers?.filtered, transaction.dispatch.filtered);
@@ -956,12 +965,12 @@ export default class DSPoolWorker extends HyperionWorker {
         this.assertWorkerAttemptActive();
         reason = 'Action admission producer/channel epoch changed during attempt binding';
         equal('bound_owner_current', owner.current(), true);
-        equal('bound_configuration', currentActionConfiguration(this), epoch.configuration);
+        equal('bound_configuration', currentActionConfiguration(this), epoch.configuration, true);
     }
 
     /** Diagnostic boundary only: never grants attempt, source, retry, settlement or progress authority. */
     private rejectActionAdmission(reason: string, decision: {
-        predicate: string; actual: unknown; expected: unknown; message: Message; admission: ActionSourceAdmission;
+        predicate: ActionAdmissionPredicate; actual: unknown; expected: unknown; operandFormat: 'value' | 'sha256'; message: Message; admission: ActionSourceAdmission;
         epoch: Awaited<ReturnType<typeof actionProducerEpoch>>; owner: ActionPublicationOwner
     }): never {
         throw Object.assign(new Error(reason), {actionAdmissionPredicate: decision.predicate});

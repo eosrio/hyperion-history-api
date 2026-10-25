@@ -125,7 +125,10 @@ try {
                 else assert.equal(row.parentIncarnation, null);
                 assert.equal(row.observationOnly, true); assert.equal(row.physical.pid, process.pid);
                 if (process.platform === 'linux') assert.match(row.physical.birthTicks, /^[1-9][0-9]*$/);
-                if (predicate === 'bound_configuration') assert.ok(!JSON.stringify(row).includes('operator-secret'));
+                if (predicate === 'bound_configuration') {
+                    assert.ok(!JSON.stringify(row).includes('operator-secret')); assert.equal(row.operandFormat, 'sha256');
+                    assert.equal(row.expected.sha256, epoch.producer.configurationSha256);
+                }
             } else {assert.equal(rows.length, beforeRows); failRecorder = false;}
         }
         const after = rows.length;

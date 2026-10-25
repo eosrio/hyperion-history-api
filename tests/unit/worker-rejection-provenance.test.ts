@@ -38,12 +38,27 @@ test('capture failures, omitted decisions and changed limits fail the diagnostic
     const row = {kind: 'native_boundary', event: 'observer_metrics', pid: 101, rejectionDiagnostics: {
         observationOnly: true, maximumRejections: 32, maximumPendingPublications: 64, maximumWorkers: 256,
         reportFailures: 0, omittedRejections: 0}};
-    expect(auditWorkerRejectionDiagnostics([row])).toHaveLength(1);
-    expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics, reportFailures: 1}}])).toThrow('capture failed');
-    expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics, omittedRejections: 1}}])).toThrow('omitted');
-    expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics, maximumRejections: 33}}])).toThrow();
-    expect(() => auditWorkerRejectionDiagnostics([row, structuredClone(row)])).toThrow('Duplicated');
-    expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: undefined}])).toThrow('unavailable');
+    const starts = [{kind: 'start', pid: 101}, {kind: 'native_boundary', event: 'start', pid: 101}];
+    expect(auditWorkerRejectionDiagnostics([...starts, row], 101).status).toBe('complete');
+    expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics, reportFailures: 1}}], 101)).toThrow('capture failed');
+    expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics, omittedRejections: 1}}], 101)).toThrow('omitted');
+    expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics, maximumRejections: 33}}], 101)).toThrow();
+    expect(() => auditWorkerRejectionDiagnostics([row, structuredClone(row)], 101)).toThrow('Duplicated');
+    expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: undefined}], 101)).toThrow('unavailable');
+    expect(auditWorkerRejectionDiagnostics([], 101)).toMatchObject({status: 'incomplete', processes: [{pid: 101, missing: ['native-start', 'diagnostic-summary']}]});
+    expect(auditWorkerRejectionDiagnostics(starts, 101)).toMatchObject({status: 'incomplete', processes: [{pid: 101, missing: ['diagnostic-summary']}]});
+    const physicalFork = {kind: 'worker_fork', pid: 101, childPid: 102};
+    const raw = [...starts, row, physicalFork, {kind: 'start', pid: 102}];
+    expect(auditWorkerRejectionDiagnostics(raw, 101).processes.find(value => value.pid === 102)?.missing).toEqual(['native-start', 'diagnostic-summary']);
+    const nativeStart = {kind: 'native_boundary', event: 'start', pid: 102};
+    expect(auditWorkerRejectionDiagnostics([...raw, nativeStart], 101).processes.find(value => value.pid === 102)?.missing).toEqual(['diagnostic-summary']);
+    // The metadata audit creates no fault permission. Only the caller's existing verified
+    // original-object fault view can select survivors; the raw absent summary remains unknown.
+    const checked = raw.filter(value => value !== physicalFork && value.pid !== 102);
+    expect(auditWorkerRejectionDiagnostics(checked, 101).status).toBe('complete');
+    expect(auditWorkerRejectionDiagnostics([...checked, nativeStart], 101).processes.find(value => value.pid === 102)?.missing)
+        .toEqual(['physical-census-membership', 'diagnostic-summary']);
+    expect(() => auditWorkerRejectionDiagnostics(checked, undefined)).toThrow('Original primary PID');
 });
 
 test.each([['--record-limit', 34, 32], ['--byte-limit', 1, 0]])('native %s exhaustion preserves every original rejection', async (mode, checks, rows) => {

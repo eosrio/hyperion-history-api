@@ -46,10 +46,7 @@ export function installWorkerRejectionDiagnostics({Pool, Reader, Supervisor, clu
             if (!retained) throw new Error('Original rejected delivery custody is unavailable');
             const attempt = client.describe(retained.handle);
             const source = admission.source.inventoryInput;
-            // Configuration values may contain operator secrets. Retain the actual compared digests only.
-            const operand = value => predicate === 'bound_configuration'
-                ? {sha256: hash(value), bytes: Buffer.byteLength(value)} : value;
-            return {reason, predicate, actual: operand(decision.actual), expected: operand(decision.expected),
+            return {reason, predicate, actual: decision.actual, expected: decision.expected, operandFormat: decision.operandFormat,
                 attempt, parentEpoch: client.authority?.epoch ?? null, parentIncarnation: client.authority?.incarnation ?? null,
                 workerId: process.env.worker_id ?? null, originalConsumerId: attempt.descriptor.consumerId,
                 originalPublisherId: attempt.descriptor.publisherId,
@@ -162,8 +159,18 @@ export function installWorkerRejectionDiagnostics({Pool, Reader, Supervisor, clu
 }
 
 /** Capture integrity only. Successful validation never changes or excuses a raw worker outcome. */
-export function auditWorkerRejectionDiagnostics(rows) {
-    const pids = new Set(), summaries = [];
+export function auditWorkerRejectionDiagnostics(rows, primaryPid) {
+    const validPid = pid => Number.isSafeInteger(pid) && pid > 0;
+    assert.ok(validPid(primaryPid), 'Original primary PID is required for diagnostic coverage');
+    const expected = new Set([primaryPid]), starts = new Set(), pids = new Set(), summaries = [];
+    for (const row of rows) {
+        if (row.kind === 'start') {assert.ok(validPid(row.pid)); expected.add(row.pid);}
+        if (row.kind === 'worker_fork') {assert.ok(validPid(row.childPid)); expected.add(row.childPid);}
+        if (row.kind === 'native_boundary' && row.event === 'start') {
+            assert.ok(validPid(row.pid) && !starts.has(row.pid), 'Duplicated or invalid native diagnostic start'); starts.add(row.pid);
+        }
+    }
+    assert.ok(expected.size <= 64 && starts.size <= 64, 'Diagnostic process census exceeds its existing bound');
     for (const row of rows.filter(value => value.kind === 'native_boundary' && value.event === 'observer_metrics')) {
         assert.ok(Number.isSafeInteger(row.pid) && row.pid > 0 && !pids.has(row.pid), 'Duplicated or invalid rejection diagnostic process');
         pids.add(row.pid);
@@ -174,5 +181,8 @@ export function auditWorkerRejectionDiagnostics(rows) {
         assert.equal(value.omittedRejections, 0, 'Worker rejection diagnostic decisions were omitted');
         summaries.push({pid: row.pid, ...value});
     }
-    return summaries;
+    const processes = [...new Set([...expected, ...starts, ...pids])].sort((a, b) => a - b).map(pid => ({pid,
+        missing: [...(!expected.has(pid) ? ['physical-census-membership'] : []),
+            ...(!starts.has(pid) ? ['native-start'] : []), ...(!pids.has(pid) ? ['diagnostic-summary'] : [])]}));
+    return {status: processes.some(value => value.missing.length) ? 'incomplete' : 'complete', processes, summaries};
 }

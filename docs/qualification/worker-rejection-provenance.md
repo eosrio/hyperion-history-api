@@ -41,6 +41,13 @@ observer's total byte budget. Overflow or capture/sink failure increments
 `rejectionDiagnostics.reportFailures` in `observer_metrics` and fails qualification.
 The observed operation still returns or throws its original result.
 
+Coverage reconciles the actual launched primary and ordinary start/fork census with
+each native start and summary. Missing files or summaries remain explicitly
+`incomplete` in the raw report. Required normal survivors must have complete
+coverage. Existing deliberate-kill modes select survivors only through their
+existing original-object fault verification; the killed process's absent summary
+stays unknown in raw coverage. This creates no new fault allowance.
+
 These records grant no source, end, retry, ACK, capacity, restart or fault membership
 authority. There is no fault-accounted shutdown mode in this change. Raw
 `shutdown.success: false`, nonzero master/child exits, unknown storage/ACK outcomes
