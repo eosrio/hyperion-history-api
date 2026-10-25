@@ -42,7 +42,7 @@ export interface GetBlocksResultV0 {
 }
 
 export default class StateReader extends HyperionWorker {
-    private get usesOrderedSourceIngress(): boolean {return this.usesExtensionProtocol || this.actionSourceAdmissionEnabled;}
+    private get usesOrderedSourceIngress(): boolean {return this.usesProtocolSourceBindings || this.actionSourceAdmissionEnabled;}
     private actionSourceSession?: {readerSessionId: string; schemaJson: string; generation?: number; verified: boolean};
     private readonly isLiveReader = process.env['worker_role'] === 'continuous_reader';
     private readonly baseRequest: any;
@@ -397,7 +397,7 @@ export default class StateReader extends HyperionWorker {
         switch (msg.event) {
             case 'protocol_source_probe_request': {
                 const request = msg.data, source = request?.source;
-                if (!this.isLiveReader || !this.usesExtensionProtocol || typeof request?.requestId !== 'string'
+                if (!this.isLiveReader || !this.usesProtocolSourceBindings || typeof request?.requestId !== 'string'
                     || typeof request.readerSessionId !== 'string' || typeof request.generation !== 'string'
                     || source?.chainId !== this.chainId || !Number.isSafeInteger(source.blockNum)
                     || typeof source.blockId !== 'string' || (source.previousBlockId !== null && typeof source.previousBlockId !== 'string')) break;
@@ -666,7 +666,7 @@ export default class StateReader extends HyperionWorker {
         hLog(`SHIP Range from ${beingBlock} to ${endBlock}`);
 
         if (!this.conf.indexer.disable_reading || process.env['worker_role'] === 'repair_reader') {
-            if (this.usesExtensionProtocol && this.recovery) {
+            if (this.usesProtocolSourceBindings && this.recovery) {
                 this.resumeReaderRecovery();
                 return;
             }
@@ -711,7 +711,7 @@ export default class StateReader extends HyperionWorker {
         if (firstBlock >= Math.max(traceBegin, stateBegin)) return true;
         return firstBlock === 1 && traceBegin === 2 && stateBegin === 1
             && Number(this.shipInitStatus['chain_state_end_block']) > 1
-            && this.usesExtensionProtocol && typeof this.protocol.verifyNativeGenesis === 'function'
+            && this.usesProtocolSourceBindings && typeof this.protocol.verifyNativeGenesis === 'function'
             && this.baseRequest.fetch_block === true && this.baseRequest.fetch_deltas === true;
     }
 
@@ -882,7 +882,7 @@ export default class StateReader extends HyperionWorker {
                 num: blk_num,
                 content: data,
                 confirmLive,
-                headers: {...(this.usesExtensionProtocol ? await this.bindProtocolSource(res, data) : {}),
+                headers: {...(this.usesProtocolSourceBindings ? await this.bindProtocolSource(res, data) : {}),
                     ...(this.actionSourceAdmissionEnabled ? await this.bindActionSource(res, data) : {})}
             };
 
@@ -1024,7 +1024,7 @@ export default class StateReader extends HyperionWorker {
                             throw new Error('Action source SHiP session did not identify the configured chain');
                         this.assertCurrentIngress(session.generation); session.verified = true;
                     }
-                    if (this.usesExtensionProtocol) {
+                    if (this.usesProtocolSourceBindings) {
                         const chainId = result[1]?.chain_id?.toString().toLowerCase();
                         if (!this.sourceContext || !/^[0-9a-f]{64}$/.test(chainId ?? '') || chainId !== this.chainId) {
                             this.verifiedReaderSessionId = undefined;
@@ -1043,12 +1043,12 @@ export default class StateReader extends HyperionWorker {
                 case 'get_blocks_result_v1': {
                     if (this.actionSourceAdmissionEnabled && !this.actionSourceSession?.verified)
                         throw new Error('Action source block arrived before chain verification');
-                    if (this.usesExtensionProtocol && (!this.sourceContext || this.verifiedReaderSessionId !== this.sourceContext.readerSessionId)) {
+                    if (this.usesProtocolSourceBindings && (!this.sourceContext || this.verifiedReaderSessionId !== this.sourceContext.readerSessionId)) {
                         await this.quarantineIngress(data, 'Block arrived before this connection identified the configured chain', 'protocol_reader_chain_unverified');
                         return 'other';
                     }
                     const published = await this.handleBlockResult(result[1], data);
-                    if (this.usesExtensionProtocol && published !== 1) {
+                    if (this.usesProtocolSourceBindings && published !== 1) {
                         await this.quarantineIngress(data, 'Block response was not routed to a history worker', 'protocol_reader_unrouted_block');
                     }
                     // Every block-flow response consumes one source credit,
@@ -1097,7 +1097,7 @@ export default class StateReader extends HyperionWorker {
         await this.initializeProtocolShip(abiString);
         this.assertCurrentIngress(generation);
         if (this.actionSourceAdmissionEnabled) this.actionSourceSession = {readerSessionId: randomUUID(), schemaJson: abiString, generation, verified: false};
-        if (this.usesExtensionProtocol) {
+        if (this.usesProtocolSourceBindings) {
             const stop = this.profiler.start('protocol_source_prepare_context');
             try {
                 this.protocolSourceBindingStore ??= new ProtocolSourceBindingStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0);
@@ -1222,7 +1222,7 @@ export default class StateReader extends HyperionWorker {
     }
 
     private async quarantineIngress(frame: Buffer, message: string, code = 'protocol_reader_stale_ingress'): Promise<void> {
-        if (this.actionSourceAdmissionEnabled && !this.usesExtensionProtocol) {
+        if (this.actionSourceAdmissionEnabled && !this.usesProtocolSourceBindings) {
             const id = await this.getActionAdmissionStore().retainRejectedIngress({chainId: this.chainId, protocolId: this.protocolId,
                 profileId: this.protocol.profileId, frameHex: frame.toString('hex'), reason: {code, message}});
             process.send?.({event: 'ds_error', data: {type: 'action_source_incomplete', code, capsuleId: id}});
@@ -1239,7 +1239,7 @@ export default class StateReader extends HyperionWorker {
     }
 
     private requestBlocks(start: number) {
-        if (this.usesExtensionProtocol && this.isLiveReader) {
+        if (this.usesProtocolSourceBindings && this.isLiveReader) {
             if (!this.coordinatorSource?.generation) return;
             if (this.coordinatorResumeFromBlock !== null && this.coordinatorResumeFromBlock !== undefined) start = this.coordinatorResumeFromBlock;
             this.coordinatorResumeFromBlock = undefined;
@@ -1248,7 +1248,7 @@ export default class StateReader extends HyperionWorker {
         let first_block: string | number = start > 0 ? start : process.env.first_block ? process.env.first_block : 1;
         const last_block = start > 0 ? 0xffffffff : process.env.last_block ? process.env.last_block : 0xffffffff;
         const request = this.baseRequest;
-        if (this.isLiveReader && this.usesExtensionProtocol) {
+        if (this.isLiveReader && this.usesProtocolSourceBindings) {
             request.have_positions = [];
         } else if (this.isLiveReader && process.env.worker_last_processed_block_id) {
             request.have_positions = [{block_num: Number(process.env.worker_last_processed_block) - 1,
@@ -1274,7 +1274,7 @@ export default class StateReader extends HyperionWorker {
     }
 
     private send(req_data: (string | any)[], generation = this.activeIngressGeneration ?? this.sourceContext?.generation ?? this.actionSourceSession?.generation) {
-        if (this.usesExtensionProtocol && /^get_blocks_request_/.test(req_data[0])
+        if (this.usesProtocolSourceBindings && /^get_blocks_request_/.test(req_data[0])
             && (!this.sourceContext || this.verifiedReaderSessionId !== this.sourceContext.readerSessionId)) return;
         if (this.actionSourceAdmissionEnabled && /^get_blocks_request_/.test(req_data[0]) && !this.actionSourceSession?.verified) return;
         // Commands and credits from an old await must never reach a new physical socket.

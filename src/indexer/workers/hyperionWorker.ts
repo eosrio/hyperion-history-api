@@ -248,6 +248,13 @@ export abstract class HyperionWorker {
     /** Internal engineering seam. Public activation requires the remaining #225 qualification gates. */
     get actionSourceAdmissionEnabled(): boolean {return false;}
 
+    private actionSourceBindingMode?: boolean;
+    /** Shared source lifecycle; builtin live qualification uses the existing engineering admission gate. */
+    get usesProtocolSourceBindings(): boolean {
+        if (this.usesExtensionProtocol) return true;
+        return this.actionSourceBindingMode ??= this.actionSourceAdmissionEnabled && this.conf?.indexer?.live_reader === true;
+    }
+
     getActionAdmissionStore(): ActionSourceAdmissionStore {
         return this.actionAdmissionStore ??= new ActionSourceAdmissionStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0);
     }
@@ -388,7 +395,7 @@ export abstract class HyperionWorker {
     }
 
     private async initializeProtocol() {
-        const selected = await loadChainProtocol(this.conf.settings.protocol);
+        const selected = await loadChainProtocol(this.conf.settings.protocol, {sourceEvidence: this.usesProtocolSourceBindings});
         this.protocol = selected.provider;
         this.protocolId = selected.id;
         this.protocolComponents = selected.components;

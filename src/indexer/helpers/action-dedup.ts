@@ -31,7 +31,7 @@ import { ActionTrace } from "../../interfaces/action-trace.js";
  * @param processedTraces - Array of parsed action traces with receipt data
  * @returns Array of grouped action traces with merged receipts
  */
-export function groupActionTraces(processedTraces: ActionTrace[], certifiedOrigins = false): ActionTrace[] {
+export function groupActionTraces(processedTraces: ActionTrace[], certifiedOrigins: boolean | 'antelope' = false): ActionTrace[] {
     if (certifiedOrigins) {
         // Schema2 raw/incomplete forms retain independently certified source ancestry, not value authority.
         const hasOrigin = (proof: ActionTrace['protocol']): proof is NonNullable<ActionTrace['protocol']> & {input: {inputActionOrdinal: number}} =>
@@ -50,7 +50,12 @@ export function groupActionTraces(processedTraces: ActionTrace[], certifiedOrigi
         return [...groups.values()].map(members => {
             const trace = members.find(member => hasOrigin(member.protocol)
                 && member.protocol.input.actionOrdinal === member.protocol.input.inputActionOrdinal) ?? members[0];
-            trace['receipts'] = members.map(member => ({...member.receipt}));
+            trace['receipts'] = members.map(member => {
+                const receipt = {...member.receipt};
+                // Preserve the existing Antelope response shape with certified notification ancestry.
+                if (certifiedOrigins === 'antelope') {delete receipt.code_sequence; delete receipt.abi_sequence;}
+                return receipt;
+            });
             trace['code_sequence'] = trace.receipt.code_sequence;
             trace['abi_sequence'] = trace.receipt.abi_sequence;
             delete trace['receipt']; delete trace['receiver'];

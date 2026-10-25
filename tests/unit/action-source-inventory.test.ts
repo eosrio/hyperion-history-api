@@ -450,6 +450,34 @@ describe('whole final transaction validation', () => {
         expect(() => validateActionSourceTransactionOutput(inventory, 0, docs)).toThrow(ActionSourceInventoryError);
     });
 
+    it('certifies Antelope notification ancestry without merging identical inline actions or changing receipt fields', () => {
+        const value = input([action(1), action(2, 1, 'alice'), action(3, 1)]);
+        value.sourceSelectionId = selectionId;
+        const inventory = deriveActionSourceInventory(value);
+        expect(inventory.transactions[0].groups.map(group => group.actionOrdinals)).toEqual([[1, 2], [3]]);
+        const document = (ordinal: number, members: number[]): any => ({
+            '@timestamp': '2026-10-20T00:00:00.000', block_num: 12, block_id: blockId, producer: 'producer', trx_id: txid,
+            action_ordinal: ordinal, creator_action_ordinal: ordinal === 1 ? 0 : 1, global_sequence: String(100 + ordinal),
+            code_sequence: ordinal, abi_sequence: ordinal + 20, act_digest: digest,
+            act: {account: 'token', name: 'transfer', authorization: [{actor: 'alice', permission: 'active'}], data: {value: 'opaque'}},
+            receipts: members.map(member => ({receiver: member === 2 ? 'alice' : 'token', global_sequence: String(100 + member),
+                recv_sequence: String(member), auth_sequence: [{account: 'alice', sequence: String(member + 10)}]})),
+            ...(ordinal === 1 ? {cpu_usage_us: 15, net_usage_words: 2, inline_count: 2, inline_filtered: false} : {}),
+            protocol: {schemaVersion: 1, source: {chainId, blockNum: 12, blockId}, selectionId, input: {
+                transactionId: txid, actionOrdinal: ordinal, inputActionOrdinal: ordinal, receiver: 'token', account: 'token',
+                name: 'transfer', rawHex: '0102', globalSequence: String(100 + ordinal), receiptAbiSequence: String(ordinal + 20)}}});
+        const documents = [document(1, [1, 2]), document(3, [3])];
+        expect(validateActionSourceTransactionOutput(inventory, 0, documents)).toEqual(documents);
+        for (const mutate of [
+            (docs: any[]) => {docs[1].protocol.input.inputActionOrdinal = 1;},
+            (docs: any[]) => {docs[0].receipts[0].code_sequence = 1;},
+            (docs: any[]) => {docs[0].protocol.selectionId = 'h45srcsel1:' + '0'.repeat(64);},
+            (docs: any[]) => {delete docs[0].protocol;}
+        ]) {const invalid = clone(documents); mutate(invalid); expect(() => validateActionSourceTransactionOutput(inventory, 0, invalid)).toThrow(ActionSourceInventoryError);}
+        expect(() => deriveActionSourceInventory({...value, sourceSelectionId: 'copied'})).toThrow('Invalid source selection');
+        expect(() => deriveActionSourceInventory({...value, wireActionInputs: []})).toThrow('Antelope source cannot use Wire');
+    });
+
     it('retains exact strings at 2^53, 2^63 and uint64 maximum without interpreting contract fields', () => {
         for (const sequence of ['9007199254740992', '9223372036854775808', '18446744073709551615']) {
             const value = input([action(1, 0, 'token', sequence)]);

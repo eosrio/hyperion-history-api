@@ -7,6 +7,8 @@ import {tmpdir} from 'node:os';
 import {join, resolve, dirname, basename, isAbsolute} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {Checksum256, UInt32} from '@wharfkit/antelope';
+import {registerHooks} from 'node:module';
+import {prepareAntelopeReversibleWorkerInputs} from './antelope-reversible-worker-inputs.mjs';
 import {prepareReversibleWorkerInputs} from './reversible-worker-inputs.mjs';
 import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
 import {dispatchFixtureService} from './controlled-worker-service-transport.mjs';
@@ -14,6 +16,12 @@ import {encodeWorkerEvidence} from './reversible-worker-evidence.mjs';
 
 const mode = process.argv[2] ?? 'baseline';
 assert(['baseline', 'revoke', 'late-rpc'].includes(mode));
+const sourceFamily = process.argv[4] ?? 'wire';
+assert(['wire', 'antelope'].includes(sourceFamily));
+const selectedBlock = sourceFamily === 'wire' ? 33 : 2, continuationBlock = selectedBlock + 1;
+const sourceHooks = sourceFamily === 'antelope' ? registerHooks({resolve(specifier, context, next) {
+    assert(!specifier.includes('hyperion-wire-plugin'), 'Antelope parent must not load Wire'); return next(specifier, context);
+}}) : undefined;
 const evidencePath = process.argv[3];
 if (evidencePath) {assert(isAbsolute(evidencePath)); assert(!existsSync(evidencePath), 'Never overwrite frozen observations');}
 const directory = mkdtempSync(join(tmpdir(), 'hyperion-reversible-workers-'));
@@ -31,6 +39,7 @@ const config = {settings: {chain, parser: '3.2', protocol: {provider: 'extension
     scaling: {routing_mode: 'round_robin', ds_pool_size: 2, ds_queues: 1, ad_idx_queues: 1, indexing_queues: 1},
     api: {tx_cache_mode: 'batch', disable_tx_cache: false},
     whitelists: {actions: [], deltas: [], root_only: false}, blacklists: {actions: [], deltas: []}, plugins: {}};
+if (sourceFamily === 'antelope') {delete config.settings.protocol; config.settings.eosio_alias = 'eosio'; config.settings.system_contract = 'eosio';}
 let describeEnd;
 async function until(predicate, label, milliseconds = 30_000) {
     const deadline = Date.now() + milliseconds;
@@ -51,7 +60,7 @@ function command(state, body) {
 }
 function spawn(name, role) {
     const child = cluster.fork({CONFIG_JSON: join(directory, 'chain.json'), worker_role: role, live_mode: 'true',
-        QUALIFICATION_CHAIN_ID: input.chainId, HYPERION_QUALIFICATION_PLAIN_PROOF: 'false',
+        QUALIFICATION_CHAIN_ID: input.chainId, QUALIFICATION_SOURCE_FAMILY: sourceFamily, HYPERION_QUALIFICATION_PLAIN_PROOF: 'false',
         HYPERION_QUALIFICATION_PLAIN_HANDOFF: 'false'});
     const state = {name, role, child, messages: [], sent: [], stdout: '', stderr: '', exited: false};
     const originalSend = child.send.bind(child);
@@ -92,7 +101,7 @@ const memory = frontierMemoryClient(1), hash = bytes => createHash('sha256').upd
 memory.client.indices.exists = async ({index}) => memory.settings.has(index);
 memory.settings.set(chain + '-action-v1-000001', {'index.uuid': 'owned-reversible-action-target'});
 try {
-    input = await prepareReversibleWorkerInputs(directory);
+    input = sourceFamily === 'wire' ? await prepareReversibleWorkerInputs(directory) : await prepareAntelopeReversibleWorkerInputs();
     mkdirSync(join(directory, 'config'));
     writeFileSync(join(directory, 'chain.json'), JSON.stringify(config));
     writeFileSync(join(directory, 'config/connections.json'), JSON.stringify({chains: {[chain]: {chain_id: input.chainId}}}));
@@ -107,14 +116,15 @@ try {
         import('../../build/indexer/protocol/worker-attempt-supervisor.js')]);
     describeEnd = supervisorModule.describeWorkerAttemptEnd;
     supervisor = new supervisorModule.WorkerAttemptSupervisor({onEnd: value => ends.push(value)});
-    const selected = await loadChainProtocol(config.settings.protocol);
+    const selected = await loadChainProtocol(config.settings.protocol, {sourceEvidence: true});
     bindings = new ProtocolSourceBindingStore(memory.client, chain, 1);
     frontier = new ProtocolAbiFrontierStore(memory.client, chain, 1);
     store = new ActionSourceAdmissionStore(memory.client, chain, 1);
     coordinator = new ProtocolAbiCoordinator({chainId: input.chainId,
         profile: {id: selected.id, profileId: input.profileId, components: selected.components},
         ownerId: randomUUID(), bindings, observations: new ProtocolAbiObservationStore(memory.client, chain, 1), store: frontier,
-        verifyNativeGenesis: selected.provider.verifyNativeGenesis.bind(selected.provider), nativeActionInterfaceVersion: 1});
+        verifyNativeGenesis: selected.provider.verifyNativeGenesis?.bind(selected.provider),
+        nativeActionInterfaceVersion: selected.provider.nativeActions?.interfaceVersion});
     await coordinator.start();
     const filters = {action_blacklist: new Set(), action_whitelist: new Set(), delta_blacklist: new Set(), delta_whitelist: new Set()};
     const loader = Object.assign(Object.create(HyperionModuleLoader.prototype), {handledActions: new Map(), plugins: []});
@@ -122,7 +132,7 @@ try {
         cm: {filters}, mLoader: loader, protocolAbiCoordinator: coordinator, workerAttemptSupervisor: supervisor,
         protocolSourceProbes: new Map(), workerMap: [], shutdownStarted: false, shouldCountIPCMessages: false,
         rpc: {v1: {chain: {get_info: async () => ({chain_id: Checksum256.from(input.chainId),
-            head_block_num: UInt32.from(34), last_irreversible_block_num: UInt32.from(0)})}},
+            head_block_num: UInt32.from(continuationBlock), last_irreversible_block_num: UInt32.from(0)})}},
             call: async request => {
                 assert.equal(request.path, '/v1/chain/get_block');
                 const position = input.positions.get(request.params.block_num_or_id); assert(position);
@@ -155,14 +165,14 @@ try {
     async function replayRequestedSourcePrefix(reopened) {
         assert.equal(reopened.requestedStartBlock, 1, 'ABI coverage must not skip unconfirmed reader publication recovery');
         let last;
-        for (let number = reopened.requestedStartBlock; number <= 33; number++) last = await frame(number);
+        for (let number = reopened.requestedStartBlock; number <= selectedBlock; number++) last = await frame(number);
         assert(last);
         return last.published.find(p => p.options.headers.action_trace_ordinal === 0);
     }
     let selectedDispatch;
-    for (let number = 1; number <= 33; number++) {
+    for (let number = 1; number <= selectedBlock; number++) {
         const result = await frame(number);
-        if (number === 33) selectedDispatch = result.published.find(p => p.options.headers.action_trace_ordinal === 0);
+        if (number === selectedBlock) selectedDispatch = result.published.find(p => p.options.headers.action_trace_ordinal === 0);
     }
     assert(selectedDispatch);
     function ownEnd(state, index = 0) {
@@ -173,6 +183,16 @@ try {
         });
     }
     const adjudicator = master.attemptAdjudicatorFor(supervisor);
+    let sourceNoEffects;
+    if (sourceFamily === 'antelope') {
+        const evidence = ownEnd(main, 0); assert(evidence);
+        const end = describeEnd(supervisor, evidence), admission = await store.resolve(end.binding.admissionId);
+        assert.equal(end.rootResult, 'returned'); assert.equal(end.status, 'quiescent'); assert.equal(end.acknowledgementAttempted, true);
+        assert.equal(end.binding.blockNum, 1); assert.equal(end.freshWrites.length, 1);
+        assert.equal(end.freshWrites[0].kind, 'attempt-disposition'); assert.equal(end.freshWrites[0].classification, 'intentional-no-effect');
+        assert.deepEqual(admission.inventory.transactions, []); assert.equal(admission.source.schemaVersion, 2);
+        sourceNoEffects = {end, originalEncodedEmptyTraceVector: true, sourceBoundRetainedInput: true};
+    }
     const associationIds = () => [...memory.documents.values()].map(x => x.document)
         .filter(x => x.kind === 'manifest' && x.bundle_id.startsWith('h45actionassociation1:')).map(x => x.bundle_id);
     async function associate(state, number, index = 0) {
@@ -188,13 +208,18 @@ try {
         const actual = publications.filter(p => p.worker === state.name)[index]; assert(actual);
         const row = JSON.parse(Buffer.from(actual.payloadHex, 'hex').toString());
         assert.equal(row.global_sequence, expected.globalSequence); assert.equal(row.trx_id, expected.transactionId);
-        assert.equal(row.protocol.native.nativeKind, expected.nativeKind); assert.deepEqual(row.act.data, expected.expectedValue);
+        if (sourceFamily === 'wire') assert.equal(row.protocol.native.nativeKind, expected.nativeKind);
+        else {
+            assert.equal(row.protocol.schemaVersion, 1); assert.equal(row.protocol.native, undefined);
+            const effects = await command(state, {operation: 'effects'}); assert(effects.effects.nativeContractDecodes >= 1);
+        }
+        assert.deepEqual(row.act.data, expected.expectedValue);
         return {end, associationId: result.id};
     }
     let result, revoked, lateRpc;
     if (mode === 'baseline') {
         await command(first, {operation: 'delivery', delivery: selectedDispatch, tag: 1});
-        result = await associate(first, 33);
+        result = await associate(first, selectedBlock);
     } else if (mode === 'revoke') {
         let held;
         const released = new Promise(resolve => {heldRelease = resolve;});
@@ -243,10 +268,10 @@ try {
         assert.deepEqual(recoveredSelection.source, selected.source);
         assert.equal(recoveredSelection.captureSha256, selected.captureSha256);
         await command(peer, {operation: 'delivery', delivery: recoveredDelivery, tag: 1});
-        const recoveredOriginalDelivery = await associate(peer, 33);
+        const recoveredOriginalDelivery = await associate(peer, selectedBlock);
         assert.equal(recoveredOriginalDelivery.end.binding.selectionId, recoveredSelectionId);
         assert.equal(held.settled, false); assert.equal(ownEnd(first), undefined);
-        const next = await frame(34), delivery = next.published.find(p => p.options.headers.action_trace_ordinal === 0); assert(delivery);
+        const next = await frame(continuationBlock), delivery = next.published.find(p => p.options.headers.action_trace_ordinal === 0); assert(delivery);
         await command(peer, {operation: 'delivery', delivery, tag: 2});
         // The original required IO is still owned while an independent original worker genuinely completes.
         assert.equal(held.settled, false); assert.equal(ownEnd(first), undefined);
@@ -271,7 +296,7 @@ try {
                 memory.settings.get(chain + '-action-v1-000001')['index.uuid'] = 'owned-reversible-action-target';
             }
         }
-        result = await associate(peer, 34, 1);
+        result = await associate(peer, continuationBlock, 1);
         const priorPeerEnd = result.end, conditional = [];
         memory.faults.beforeWrite = async (request, method) => {
             if (request.index === store.index && request.id === priorPeerEnd.freshWrites[0].id && method === 'index') {
@@ -281,7 +306,7 @@ try {
         };
         await command(peer, {operation: 'delivery', delivery, tag: 3, redelivered: true});
         delete memory.faults.beforeWrite;
-        const redelivery = await associate(peer, 34, 2);
+        const redelivery = await associate(peer, continuationBlock, 2);
         assert.equal(conditional.length, 1); assert.equal(redelivery.end.incarnation, priorPeerEnd.incarnation);
         assert.notEqual(redelivery.end.attemptId, priorPeerEnd.attemptId);
         assert.equal(redelivery.end.freshWrites[0].id, priorPeerEnd.freshWrites[0].id);
@@ -313,7 +338,7 @@ try {
         assert.equal(originalEnd.rootResult, 'returned'); assert.equal(originalEnd.freshWrites.length, 1);
         const released = new Promise(resolve => {rpcRelease = resolve;});
         rpcGate = {entered: false, released};
-        const pendingObservation = adjudicator.current.canonicalBlock(33);
+        const pendingObservation = adjudicator.current.canonicalBlock(selectedBlock);
         pendingObservation.catch(() => {});
         await until(() => rpcGate.entered, 'Actual canonical RPC response is held after the master captures its current source');
         assert.equal(associationIds().length, 0);
@@ -321,7 +346,7 @@ try {
         await until(() => master.protocolAbiSource === undefined, 'Authenticated source is revoked during original canonical RPC await');
         await coordinator.drain(); rpcRelease();
         const observation = await pendingObservation;
-        assert.equal(observation.blockId, input.positions.get(33).blockId); assert.equal(observation.irreversible, false);
+        assert.equal(observation.blockId, input.positions.get(selectedBlock).blockId); assert.equal(observation.irreversible, false);
         assert.throws(() => adjudicator.current.assertCanonicalCurrent(observation), /source scope is no longer current/);
         assert.throws(() => adjudicator.current.assertCanonicalCurrent(structuredClone(observation)), /Unissued canonical/);
         rpcGate = undefined;
@@ -331,18 +356,19 @@ try {
         assert.notEqual(replacement.readerSessionId, sourceOpened.readerSessionId);
         assert.notEqual(replacement.coordinatorGeneration, sourceOpened.coordinatorGeneration);
         await replayRequestedSourcePrefix(replacement);
-        const next = await frame(34), delivery = next.published.find(p => p.options.headers.action_trace_ordinal === 0); assert(delivery);
+        const next = await frame(continuationBlock), delivery = next.published.find(p => p.options.headers.action_trace_ordinal === 0); assert(delivery);
         await command(peer, {operation: 'delivery', delivery, tag: 1});
-        result = await associate(peer, 34);
+        result = await associate(peer, continuationBlock);
         assert.deepEqual(await adjudicator.adjudicate(originalEvidence), {state: 'unresolved'});
         assert.equal(associationIds().length, 1);
         lateRpc = {originalEnd, replacement, oldCanonicalObservationRejected: true,
             sourceStillHasSameCanonicalBlockIdentity: true, oldEndUnresolvedAfterReplacement: true};
     }
     const admission = await store.resolve(result.end.binding.admissionId);
-    report = {passed: true, mode, actualMasterCoordinator: true, originalSeparateNativeWorkers: true,
+    report = {passed: true, mode, sourceFamily, actualMasterCoordinator: true, originalSeparateNativeWorkers: true,
         realReversibleReaderProbe: true, readerSessionId: sourceOpened.readerSessionId, generation: sourceOpened.coordinatorGeneration,
-        ...result, revoked, lateRpc, sourceArchiveSha256: input.sourceArchiveSha256,
+        ...result, revoked, lateRpc, sourceNoEffects,
+        ...(sourceFamily === 'wire' ? {sourceArchiveSha256: input.sourceArchiveSha256} : {sourceFixtureSha256: input.sourceFixtureSha256}),
         sourcePayloadUnchanged: true, producer: admission.source.producer, executableSha256: admission.source.executableSha256,
         constructedReversibleEnvelopesAndTransports: true, capacityAuthority: false, releaseQualified: false};
     for (const state of states) state.child.send({event: 'qualification_finish'});
@@ -362,15 +388,16 @@ try {
     commands.clear();
     for (const state of states) if (!state.exited) {state.forcedKill = true; try {state.child.process.kill();} catch {}}
     if (states.some(s => !s.exited)) await until(() => states.every(s => s.exited), 'Failed-case exact owned process cleanup', 5000).catch(() => {});
-    supervisor?.stop(); process.chdir(originalDirectory);
+    supervisor?.stop(); sourceHooks?.deregister(); process.chdir(originalDirectory);
     if (originalConfig === undefined) delete process.env.CONFIG_JSON; else process.env.CONFIG_JSON = originalConfig;
     if (evidencePath) {
-        const fixtureFiles = ['controlled-worker-service-transport.mjs', 'reversible-worker-inputs.mjs',
+        const fixtureFiles = ['antelope-reversible-worker-inputs.mjs', '../fixtures/antelope-reversible-worker/generate.mjs',
+            '../fixtures/antelope-reversible-worker/source.json', '../fixtures/antelope-worker/ship.abi.json', 'controlled-worker-service-transport.mjs', 'reversible-worker-inputs.mjs',
             'reversible-original-worker.mjs', 'reversible-original-attempts.mjs', 'reversible-worker-evidence.mjs',
             'reversible-worker-evidence-check.mjs', 'reversible-worker-report-check.mjs'].map(path => {
             const bytes = readFileSync(new URL(path, import.meta.url)); return {path, bytes: bytes.length, sha256: hash(bytes)};
         });
-        const snapshot = {schemaVersion: 1, mode, report: failure ? null : report, failure, fixtureFiles,
+        const snapshot = {schemaVersion: 1, mode, sourceFamily, report: failure ? null : report, failure, fixtureFiles,
             inputs: input && {schemaJson: input.schemaJson, frames: input.frames, expected: [...input.expected]},
             stores: {documents: [...memory.documents], mappings: [...memory.mappings], settings: [...memory.settings], sequences: [...memory.sequences]},
             ends: ends.map(e => describeEnd(supervisor, e)), storageRequests,

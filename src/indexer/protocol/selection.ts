@@ -5,6 +5,7 @@ import {fileURLToPath} from 'node:url';
 import {validateProtocolSelection, validateProtocolNativeActions, type ProtocolComponent,
     type ProtocolNativeActionRequirement, type ProtocolNativeActions, type ProtocolProvider} from '@eosrio/hyperion-sdk/protocol';
 import {createContractDecoder, type ContractDecoder} from './contract-cache.js';
+import {installedRuntimeArtifacts} from '../helpers/runtime-artifacts.js';
 
 export type ChainProtocolConfiguration =
     | {provider: 'antelope'}
@@ -74,11 +75,18 @@ async function installedComponent(packageRoot: string, module: string, runtime: 
 }
 
 /** Immutable executable selection is made once per worker lifetime. */
-export async function loadChainProtocol(configuration?: ChainProtocolConfiguration): Promise<{provider: ProtocolProvider; decoder: ContractDecoder; id: string; components?: readonly ProtocolComponent[]}> {
+export async function loadChainProtocol(configuration?: ChainProtocolConfiguration, engineering: {sourceEvidence?: boolean} = {}): Promise<{provider: ProtocolProvider; decoder: ContractDecoder; id: string; components?: readonly ProtocolComponent[]}> {
     if (configuration === undefined || configuration.provider === 'antelope') {
         if (configuration && Object.keys(configuration).some(key => key !== 'provider')) throw new Error('Invalid Antelope protocol configuration');
+        let components: readonly ProtocolComponent[] | undefined;
+        if (engineering.sourceEvidence === true) {
+            const artifact = await installedRuntimeArtifacts(true);
+            const host = await readJson(fileURLToPath(new URL('../../../package.json', import.meta.url)));
+            components = Object.freeze([Object.freeze({id: 'hyperion-antelope-runtime', runtime: 'node' as const,
+                version: host.version, sourceRevision: artifact.codeRevision, sha256: artifact.executableSha256})]);
+        }
         const {createAntelopeProvider} = await import('./antelope.js');
-        return {...await createAntelopeProvider(), id: 'antelope'};
+        return {...await createAntelopeProvider(), id: 'antelope', ...(components ? {components} : {})};
     }
     if (configuration.provider !== 'extension' || typeof configuration.package !== 'string'
         || !/^(?:@[a-z0-9_.-]+\/)?[a-z0-9_.-]+$/.test(configuration.package)
