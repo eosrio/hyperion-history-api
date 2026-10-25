@@ -19,6 +19,11 @@ export class LiveReaderCheckpoint {
         this.anchorId = anchorId;
     }
 
+    /** Publication progress only; ABI coverage and unconfirmed reversible observations cannot advance it. */
+    resumePoint(): Readonly<{nextBlock: number; blockId: string}> {
+        return Object.freeze({nextBlock: this.nextBlock, blockId: this.anchorId});
+    }
+
     /** The physical reader's current reversible branch, including an unconfirmed replacement suffix. */
     hasCurrentReversible(position: ReaderBlockPosition): boolean {
         const block = this.blocks.get(position.num);

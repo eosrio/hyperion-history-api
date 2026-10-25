@@ -409,7 +409,7 @@ export default class MainDSWorker extends HyperionWorker {
             ...(wireActionInputs ? {wireActionInputs} : {}),
             ...(this.usesExtensionProtocol ? {sourceSelectionId: this.activeSourceSelectionId} : {})};
         const store = this.getActionAdmissionStore();
-        const sourceId = await store.retainSource({schemaVersion: 1, frameHex: scope.frameHex,
+        const sourceId = await store.retainSource({schemaVersion: 2, frameHex: scope.frameHex,
             schemaJson: scope.schemaJson, captureSha256: capture.captureSha256, ingressId: scope.ingressId,
             previousBlockId: capture.source.previousBlockId, producer: epoch.producer,
             executableSha256: epoch.executableSha256, inventoryInput});

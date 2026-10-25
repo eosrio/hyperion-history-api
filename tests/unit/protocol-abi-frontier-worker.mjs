@@ -155,7 +155,8 @@ try {
     // Explicit incomplete contract observations advance topology with UNKNOWN ABI knowledge.
     const admittedProvider=a.worker.protocol;assert(Object.isFrozen(admittedProvider));
     // Inject a fault into this worker's fixture context without mutating its admitted provider.
-    a.worker.protocol={...admittedProvider,observeBlockAbi(){throw new Error('Unsupported contract observation');}};
+    const incompleteProvider={...admittedProvider,observeBlockAbi(){throw new Error('Unsupported contract observation');}};
+    a.worker.protocol=incompleteProvider;
     try{
         resumed.connection.message(frame(104,{prev_block:{block_num:103,block_id:replacementId}}));await resumed.drain();await a.consume(publications.at(-1));
     }finally{a.worker.protocol=admittedProvider;}
@@ -185,8 +186,18 @@ try {
     await until(async()=>(await frontier.readControl()).value.source===null);
     assert.equal(currentMaster.shutdownStarted,false,'Normal physical revocation became a master infrastructure failure');
     currentSocket.message(Buffer.from(schemaJson));await resumed.drain();currentSocket.message(status());await resumed.drain();
-    assert.equal(resumed.commands.at(-1)[1].start_block_num,106,'Coordinator-ahead resume reused the older Rabbit checkpoint');
+    assert.equal(resumed.commands.at(-1)[1].start_block_num,103,'ABI coverage skipped unpublished reversible blocks');
     assert.deepEqual(resumed.commands.at(-1)[1].have_positions,[]);assert.equal(currentMaster.liveReader.worker_last_processed_block,103);
+    // Re-deliver the requested canonical suffix; ABI coverage is not publication completion.
+    for(const number of [103,104,105]) {
+        const changes=number===103?{this_block:{block_num:103,block_id:replacementId}}
+            :number===104?{prev_block:{block_num:103,block_id:replacementId}}:{};
+        // Reproduce this source's original constructed observation fault, not a different result under the same pin.
+        if(number===104)a.worker.protocol=incompleteProvider;
+        try{currentSocket.message(frame(number,changes));await resumed.drain();await a.consume(publications.at(-1));}
+        finally{a.worker.protocol=admittedProvider;}
+        assert.equal(currentMaster.liveReader.worker_last_processed_block,103,'Reversible replay fabricated an irreversible checkpoint');
+    }
     resumed.worker.holdPublisherConfirms=true;const beforeFresh=publications.length;
     currentSocket.message(frame(106,{last_irreversible:{block_num:106,block_id:blockId(106)}}));await until(()=>publications.length===beforeFresh+1);
     assert.equal(currentMaster.liveReader.worker_last_processed_block,103,'Opening a source fabricated a broker checkpoint');
@@ -245,7 +256,7 @@ try {
         assert.equal(rotatedUrls,1);assert.equal(rotationTimers.length,1);assert.equal(resumed.commands.length,rotationCommands);
         assert.equal(publications.length,rotationPublications);
         rotated.message(Buffer.from(schemaJson));await resumed.drain();rotated.message(status());await resumed.drain();
-        assert.equal(resumed.commands.at(-1)[1].start_block_num,108);
+        assert.equal(resumed.commands.at(-1)[1].start_block_num,107,'Rotation skipped a reversible publication gap');
         assert.notEqual(resumed.worker.coordinatorSource.generation,rotationGeneration);
         assert.equal((await frontier.readControl()).value.source.readerSessionId,resumed.worker.sourceContext.readerSessionId);
         assert.equal(rotatedUrls,1);assert.equal(rotationTimers.length,1);

@@ -24,7 +24,8 @@ export interface ActionSourceIngress {
     readerSessionId: string; schemaJson: string; frameHex: string; captureSha256: string;
 }
 export interface RetainedActionSource {
-    readonly schemaVersion: 1;
+    /** Schema 2 scopes the output plan to this immutable input; schema 1 retains its legacy identity. */
+    readonly schemaVersion: 1 | 2;
     /** Original broker frame and handshake, retained before filtering. These bytes are not consensus attestation. */
     readonly frameHex: string;
     readonly schemaJson: string;
@@ -133,7 +134,7 @@ export class ActionSourceAdmissionStore {
     }
     private validateSource(input: unknown): RetainedActionSource {
         const source = copy(input) as RetainedActionSource;
-        if (!source || source.schemaVersion !== 1 || typeof source.frameHex !== 'string' || !/^(?:[0-9a-f]{2})+$/.test(source.frameHex)
+        if (!source || (source.schemaVersion !== 1 && source.schemaVersion !== 2) || typeof source.frameHex !== 'string' || !/^(?:[0-9a-f]{2})+$/.test(source.frameHex)
             || typeof source.schemaJson !== 'string' || !source.schemaJson.length || !hex64.test(source.captureSha256)
             || !hex64.test(source.executableSha256) || (source.previousBlockId !== null && !hex64.test(source.previousBlockId)))
             throw new Error('Invalid retained action source');
@@ -150,12 +151,13 @@ export class ActionSourceAdmissionStore {
         if (sourceIdentity(source) !== id) throw new Error('Retained action source identity mismatch');
         return source;
     }
-    private compile(source: RetainedActionSource, target: ActionHistoryBlockPlan['target']) {
+    private compile(source: RetainedActionSource, target: ActionHistoryBlockPlan['target'], sourceId: string) {
         const inventory = deriveActionSourceInventory(source.inventoryInput);
         if (source.previousBlockId === null) throw new Error('Missing source predecessor cannot establish complete action membership');
         const plan = validateActionHistoryBlockPlan({schemaVersion: 1,
             source: {chainId: inventory.source.chainId, blockNum: inventory.source.blockNum, blockId: inventory.source.blockId,
-                previousBlockId: source.previousBlockId, captureSha256: source.captureSha256}, producer: source.producer, target,
+                previousBlockId: source.previousBlockId, captureSha256: source.captureSha256,
+                ...(source.schemaVersion === 2 ? {retainedSourceId: sourceId} : {})}, producer: source.producer, target,
             transactions: inventory.transactions.map(({transactionId, traceOrdinal, traceSha256, disposition}) =>
                 ({transactionId, traceOrdinal, traceSha256, disposition}))});
         return {inventory, plan};
@@ -165,7 +167,7 @@ export class ActionSourceAdmissionStore {
         return this.bounded(async () => {
             const source = await this.source(sourceId, signal);
             let compiled: ReturnType<ActionSourceAdmissionStore['compile']> | undefined, incomplete: string | null = null;
-            try {compiled = this.compile(source, target);} catch (error) {
+            try {compiled = this.compile(source, target, sourceId);} catch (error) {
                 // Only this pure compilation is classified as source-incomplete. I/O errors must escape without ACK.
                 incomplete = String((error as Error)?.message ?? error).slice(0, 4096).toWellFormed();
             }
@@ -194,7 +196,7 @@ export class ActionSourceAdmissionStore {
         }
         if (link.incomplete !== null) throw new Error('Complete action admission has an incomplete cause');
         // Re-issue from original retained source/policy. Stored expected output JSON is never authority.
-        const {inventory, plan} = this.compile(source, link.target);
+        const {inventory, plan} = this.compile(source, link.target, link.sourceId);
         const stored = await this.journal.readPlan(link.planId, signal);
         if (actionHistoryImmutableJson(stored.plan) !== actionHistoryImmutableJson(plan)) throw new Error('Action admission plan mismatch');
         return {id, sourceId: link.sourceId, source, target: link.target, planId: link.planId, inventory, incomplete: null};
@@ -300,7 +302,7 @@ export class ActionSourceAdmissionStore {
                     || !hex64.test(entry.payloadSha256) || !hex64.test(entry.headersSha256))
                 || outcome.effectRoot !== sha(actionHistoryImmutableJson({fragmentId: outcome.fragmentId, effects: outcome.effects})))
                 throw new Error('Invalid observed confirmed action handoff');
-            const plan = this.compile(current.source, current.target).plan;
+            const plan = this.compile(current.source, current.target, current.sourceId).plan;
             const fragment = createActionHistoryFragment(plan, work.transactionId, outcome.effects.map(entry => entry.effect));
             if (actionHistoryFragmentId(fragment, plan) !== outcome.fragmentId) throw new Error('Observed action handoff fragment/root mismatch');
             signal?.throwIfAborted(); return {id, outcome: copy(outcome)};
@@ -352,7 +354,7 @@ export class ActionSourceAdmissionStore {
             let reason: ActionAttemptDisposition['reason'] | undefined;
             if (current.source.inventoryInput.traces === null || current.source.inventoryInput.traces === undefined) reason = 'source-traces-missing';
             else if (current.source.previousBlockId === null) reason = 'source-predecessor-missing';
-            else try {this.compile(current.source, current.target);} catch (error) {if (isActionSourceValidationFailure(error)) reason = 'source-inventory-invalid';}
+            else try {this.compile(current.source, current.target, current.sourceId);} catch (error) {if (isActionSourceValidationFailure(error)) reason = 'source-inventory-invalid';}
             return reason ? [observation(reason, 'source-unprocessable')] : [];
         }
         const transactions = current.inventory!.transactions, result: ActionAttemptDisposition[] = [];

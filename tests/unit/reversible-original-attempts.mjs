@@ -140,17 +140,24 @@ try {
     assert.equal(master.protocolAbiSource.worker, reader.child);
     assert.equal(master.protocolAbiSource.readerSessionId, sourceOpened.readerSessionId);
     assert.equal(master.protocolAbiSource.generation, sourceOpened.coordinatorGeneration);
-    let lastMain = 0;
+    let lastMain = 0, nextMainTag = 0;
     async function frame(number) {
         const before = publications.length;
         const receipt = await command(reader, {operation: 'frame', frameHex: input.frames[number - 1].frameHex});
         const raw = publications.slice(before).filter(p => p.worker === 'reader');
         assert.equal(raw.length, 1); assert.equal(raw[0].payloadHex, input.frames[number - 1].frameHex);
-        await command(main, {operation: 'delivery', delivery: raw[0], tag: number});
+        await command(main, {operation: 'delivery', delivery: raw[0], tag: ++nextMainTag});
         await coordinator.drain();
         const published = publications.slice(lastMain).filter(p => p.worker === 'main' && p.options.headers.block_num === number);
         lastMain = publications.length;
         return {receipt, published};
+    }
+    async function replayRequestedSourcePrefix(reopened) {
+        assert.equal(reopened.requestedStartBlock, 1, 'ABI coverage must not skip unconfirmed reader publication recovery');
+        let last;
+        for (let number = reopened.requestedStartBlock; number <= 33; number++) last = await frame(number);
+        assert(last);
+        return last.published.find(p => p.options.headers.action_trace_ordinal === 0);
     }
     let selectedDispatch;
     for (let number = 1; number <= 33; number++) {
@@ -227,11 +234,23 @@ try {
         assert.notEqual(replacement.readerSessionId, sourceOpened.readerSessionId);
         assert.notEqual(replacement.coordinatorGeneration, sourceOpened.coordinatorGeneration);
         assert.equal(master.protocolAbiSource.readerSessionId, replacement.readerSessionId);
+        const recoveredDelivery = await replayRequestedSourcePrefix(replacement);
+        assert(recoveredDelivery); assert.equal(held.settled, false); assert.equal(ownEnd(first), undefined);
+        const recoveredSelectionId = recoveredDelivery.options.headers['hyperion-source-selection-v1'];
+        assert.notEqual(recoveredSelectionId, oldSelectionId);
+        const recoveredSelection = (await bindings.readSelection(recoveredSelectionId)).selection;
+        assert.equal(recoveredSelection.readerSessionId, replacement.readerSessionId);
+        assert.deepEqual(recoveredSelection.source, selected.source);
+        assert.equal(recoveredSelection.captureSha256, selected.captureSha256);
+        await command(peer, {operation: 'delivery', delivery: recoveredDelivery, tag: 1});
+        const recoveredOriginalDelivery = await associate(peer, 33);
+        assert.equal(recoveredOriginalDelivery.end.binding.selectionId, recoveredSelectionId);
+        assert.equal(held.settled, false); assert.equal(ownEnd(first), undefined);
         const next = await frame(34), delivery = next.published.find(p => p.options.headers.action_trace_ordinal === 0); assert(delivery);
-        await command(peer, {operation: 'delivery', delivery, tag: 1});
+        await command(peer, {operation: 'delivery', delivery, tag: 2});
         // The original required IO is still owned while an independent original worker genuinely completes.
         assert.equal(held.settled, false); assert.equal(ownEnd(first), undefined);
-        const peerEvidence = ownEnd(peer); assert(peerEvidence);
+        const peerEvidence = ownEnd(peer, 1); assert(peerEvidence);
         for (const changed of ['configuration', 'target']) {
             const originalSettings = memory.client.indices.getSettings;
             let entered, release, once = false;
@@ -245,13 +264,14 @@ try {
                 const pending = adjudicator.adjudicate(peerEvidence); pending.catch(() => {}); await enteredRead;
                 if (changed === 'configuration') config.indexer.disable_indexing = true;
                 else memory.settings.get(chain + '-action-v1-000001')['index.uuid'] = 'replaced-physical-target';
-                release(); assert.deepEqual(await pending, {state: 'unresolved'}); assert.equal(associationIds().length, 0);
+                release(); assert.deepEqual(await pending, {state: 'unresolved'});
+                assert.deepEqual(associationIds(), [recoveredOriginalDelivery.associationId]);
             } finally {
                 release(); memory.client.indices.getSettings = originalSettings; config.indexer.disable_indexing = false;
                 memory.settings.get(chain + '-action-v1-000001')['index.uuid'] = 'owned-reversible-action-target';
             }
         }
-        result = await associate(peer, 34);
+        result = await associate(peer, 34, 1);
         const priorPeerEnd = result.end, conditional = [];
         memory.faults.beforeWrite = async (request, method) => {
             if (request.index === store.index && request.id === priorPeerEnd.freshWrites[0].id && method === 'index') {
@@ -259,9 +279,9 @@ try {
                 assert(Number.isSafeInteger(request.if_primary_term)); conditional.push(structuredClone(request));
             }
         };
-        await command(peer, {operation: 'delivery', delivery, tag: 2, redelivered: true});
+        await command(peer, {operation: 'delivery', delivery, tag: 3, redelivered: true});
         delete memory.faults.beforeWrite;
-        const redelivery = await associate(peer, 34, 1);
+        const redelivery = await associate(peer, 34, 2);
         assert.equal(conditional.length, 1); assert.equal(redelivery.end.incarnation, priorPeerEnd.incarnation);
         assert.notEqual(redelivery.end.attemptId, priorPeerEnd.attemptId);
         assert.equal(redelivery.end.freshWrites[0].id, priorPeerEnd.freshWrites[0].id);
@@ -272,6 +292,8 @@ try {
         const oldEnd = describeEnd(supervisor, evidence);
         assert.equal(oldEnd.rootResult, 'threw'); assert.equal(oldEnd.status, 'quiescent');
         assert.equal(oldEnd.acknowledgementAttempted, false); assert.equal(oldEnd.freshWrites.length, 1);
+        assert.notEqual(recoveredOriginalDelivery.end.incarnation, oldEnd.incarnation);
+        assert.notEqual(recoveredOriginalDelivery.end.attemptId, oldEnd.attemptId);
         assert.deepEqual(await adjudicator.adjudicate(evidence), {state: 'unresolved'});
         const after = await command(first, {operation: 'effects'});
         assert.equal(after.scope.state, 'drained'); assert.equal(after.scope.pendingOperations, 0);
@@ -279,9 +301,11 @@ try {
         assert.equal(after.effects.storageDispatches, fenced.effects.storageDispatches);
         assert.equal(after.effects.cacheDispatches, fenced.effects.cacheDispatches);
         assert.equal(after.effects.streamDispatches, fenced.effects.streamDispatches);
-        assert.equal(associationIds().length, 2);
+        assert.equal(associationIds().length, 3);
         revoked = {oldEnd, pendingAtFence: fenced.scope.pendingOperations, retainedResponseSha256: hash(Buffer.from(JSON.stringify(held.response))),
-            replacement, peerAssociatedBeforeOriginalSettlement: true, redelivery, conditionalWrites: conditional.length,
+            replacement, recoveredOriginalDelivery: {...recoveredOriginalDelivery, originalSourceSelectionId: oldSelectionId,
+                currentSourceSelectionId: recoveredSelectionId, sameCapturedSource: true, associatedBeforeOriginalSettlement: true},
+            peerAssociatedBeforeOriginalSettlement: true, redelivery, conditionalWrites: conditional.length,
             currentConfigurationAndTargetLateReadsRejected: true, oldScopeEffectsAfterFence: after.effects};
     } else {
         await command(first, {operation: 'delivery', delivery: selectedDispatch, tag: 1});
@@ -306,6 +330,7 @@ try {
         const replacement = await command(reader, {operation: 'reconnect', schemaJson: input.schemaJson, statusHex: input.statusHex});
         assert.notEqual(replacement.readerSessionId, sourceOpened.readerSessionId);
         assert.notEqual(replacement.coordinatorGeneration, sourceOpened.coordinatorGeneration);
+        await replayRequestedSourcePrefix(replacement);
         const next = await frame(34), delivery = next.published.find(p => p.options.headers.action_trace_ordinal === 0); assert(delivery);
         await command(peer, {operation: 'delivery', delivery, tag: 1});
         result = await associate(peer, 34);
@@ -341,7 +366,8 @@ try {
     if (originalConfig === undefined) delete process.env.CONFIG_JSON; else process.env.CONFIG_JSON = originalConfig;
     if (evidencePath) {
         const fixtureFiles = ['controlled-worker-service-transport.mjs', 'reversible-worker-inputs.mjs',
-            'reversible-original-worker.mjs', 'reversible-original-attempts.mjs', 'reversible-worker-evidence.mjs'].map(path => {
+            'reversible-original-worker.mjs', 'reversible-original-attempts.mjs', 'reversible-worker-evidence.mjs',
+            'reversible-worker-evidence-check.mjs', 'reversible-worker-report-check.mjs'].map(path => {
             const bytes = readFileSync(new URL(path, import.meta.url)); return {path, bytes: bytes.length, sha256: hash(bytes)};
         });
         const snapshot = {schemaVersion: 1, mode, report: failure ? null : report, failure, fixtureFiles,

@@ -40,22 +40,46 @@ selected-source path.
 - **revoke**: hold the original post-fresh control response, then revoke through the
   authenticated physical reader. The real master fences the original DS scope. Its proof
   rejects reuse and its IO remains physically pending. Reconnect with the reader's new
-  session/generation; an independent DS worker completes block 34 while the old operation
-  remains held. Late configuration/target reads refuse association. Redelivery of 34 needs
+  session/generation and the original reader's confirmed-publication request boundary.
+  Replay that requested prefix 1..33, then recover the original block-33 delivery on an
+  independent DS worker with its own fresh result/end and current-source association while
+  the old operation remains held. Block 34 then continues independently. Late
+  configuration/target reads refuse association. Redelivery of 34 needs
   its own conditional write, fresh observation and authentic end. Release the original
   response only afterward; the old attempt drains with no ACK/association or post-fence
   effects.
 - **late-rpc**: hold a canonical RPC result after the actual master captures its source,
   then revoke that source. The same block identity returns, but its issued observation is
   stale and a JSON copy cannot become issued. The old authentic end remains unresolved
-  after replacement; a new source/worker can complete block 34.
+  after replacement; a new source replays its requested prefix and a worker can complete block 34.
 
-Block 34 is current-source continuation and redelivery. These cases do not claim that the
-fenced block-33 delivery has recovered or that a full projection/history replay completed.
+The recovered block-33 association belongs to a new physical attempt and source selection;
+its original failed end remains unresolved. Block 34 is subsequent continuation/redelivery.
+These component controls do not establish a completed full projection/history replay.
 Old failed/unknown outcomes and broker settlement remain explicit. No reader grant, queue
 budget, deadline, ancestry limit, dependency, public activation or production setting changes.
 
+## Publication and plan identities
+
+The reader's confirmed, contiguous irreversible publication cursor is independent of canonical
+ABI coverage. Reopening selects the earlier required boundary, preserves its anchor when
+applicable, and creates a fresh publication epoch. Callbacks from an old checkpoint, source
+context or physical socket cannot advance the new source. The strict finalized-prefix rewind
+guard remains active; the source replays the actual requested prefix instead of bypassing it.
+
+Newly produced retained action sources use schema 2. Their history plans include the exact
+retained source ID, keeping per-selection output provenance in separate immutable contexts.
+Complete document fingerprints still include protocol selection/native-link metadata, and a
+different result within the same plan still conflicts. Schema-1 sources keep their original
+plan identities and remain readable/retryable. These internal records do not activate the
+engineering action-history path or grant readiness, sink completion or capacity authority.
+
 ## Running and retaining observations
+
+Cold inspection compares every reported end with its complete retained association or original
+native reply. Regression controls change each report copy's payload hash while keeping the
+stored records, original IPC and native ends unchanged; those contradictory copies must fail.
+These constructed contradictions establish saved-record consistency only.
 
 Use the normal npm lock installation, complete project check and native TypeScript build.
 Run the focused suite on the selected native Node 24 and 26 runtimes:
