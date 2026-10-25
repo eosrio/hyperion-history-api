@@ -16,7 +16,7 @@ import {persistRestartSnapshot, restartDirectory} from './action-attempt-restart
 
 const mode = process.argv[2] ?? 'main';
 assert(['main','main-held-write','main-failed-write','main-ack-throws','main-held-operation','main-held-end','main-failed-end',
-    'main-held-adjudication','main-unknown-association','main-restart-checkpoint','handoff-restart-checkpoint','ds','contract','handoff',
+    'main-held-adjudication','main-unknown-association','main-late-config-target','main-restart-checkpoint','handoff-restart-checkpoint','ds','contract','handoff',
     'handoff-held-confirm','handoff-failed-confirm','handoff-held-drain','handoff-failed-drain'].includes(mode));
 const isMain = mode.startsWith('main');
 const checkpointDirectory = mode.endsWith('-restart-checkpoint') ? restartDirectory(process.argv[3]) : undefined;
@@ -26,7 +26,7 @@ cluster.setupPrimary({exec: fileURLToPath(new URL('./action-attempt-disposition-
     args: [mode === 'main-held-write' ? 'managed-original-main-held-write'
         : mode === 'main-failed-write' ? 'managed-original-main-failed-write'
         : mode === 'main-ack-throws' ? 'managed-original-main-ack-throws'
-        : ['main','main-held-adjudication','main-unknown-association','main-restart-checkpoint'].includes(mode) ? 'managed-original-main'
+        : ['main','main-held-adjudication','main-unknown-association','main-late-config-target','main-restart-checkpoint'].includes(mode) ? 'managed-original-main'
         : mode === 'handoff-restart-checkpoint' ? 'managed-original-handoff'
         : mode === 'ds' ? 'managed-original-ds'
         : mode === 'contract' ? 'managed-original-contract' : 'managed-original-' + mode],
@@ -313,8 +313,9 @@ try {
         const adjudicator = new ActionAttemptAdjudicator(supervisor, untouched, untouched, untouched);
         assert.deepEqual(await adjudicator.adjudicate(ends[0]), {state: 'unresolved'});
     } else {
+    let currentConfiguration = admission.source.producer.configurationSha256;
     const authority = {
-        configurationSha256: () => admission.source.producer.configurationSha256,
+        configurationSha256: () => currentConfiguration,
         targetUuid: async name => {assert.equal(name, admission.target.name); return memory.settings.get(name)['index.uuid'];},
         canonicalBlock: async blockNum => {
             assert.equal(blockNum, source.blockNum);
@@ -323,6 +324,29 @@ try {
         }
     };
     const adjudicator = new ActionAttemptAdjudicator(supervisor, store, selections, authority);
+    if (mode === 'main-late-config-target') {
+        assert.equal(memory.calls.some(call => ['create','index'].includes(call.method)
+            && call.request.document?.bundle_id?.startsWith('h45actionassociation1:')), false,
+        'no association was already written before the controlled target read');
+        let reached = false, release;
+        const gate = new Promise(resolveGate => {release = resolveGate;}), originalTarget = authority.targetUuid;
+        authority.targetUuid = async name => {
+            const uuid = await originalTarget(name); reached = true; await gate; return uuid;
+        };
+        const before = memory.calls.length, pending = adjudicator.adjudicate(ends[0]);
+        try {
+            await waitFor(() => reached, 'original target UUID lookup held');
+            currentConfiguration = '0'.repeat(64);
+            assert.notEqual(currentConfiguration, admission.source.producer.configurationSha256);
+            assert.equal(authority.configurationSha256(), currentConfiguration,
+                'the current authority getter observes the changed configuration during the hold');
+        } finally {release();}
+        assert.deepEqual(await pending, {state: 'unresolved'}, 'configuration changed during target lookup must not associate');
+        assert.equal(memory.calls.slice(before).some(call => ['create','index'].includes(call.method)
+            && call.request.document?.bundle_id?.startsWith('h45actionassociation1:')), false);
+        authority.targetUuid = originalTarget; currentConfiguration = admission.source.producer.configurationSha256;
+        recovery = {lateConfigurationRejected: true, restoredOriginalContextControl: true};
+    }
     if (checkpointDirectory) {
         assert.equal(memory.calls.some(call => ['create','index'].includes(call.method)
             && call.request.document?.bundle_id?.startsWith('h45actionassociation1:')), false);
