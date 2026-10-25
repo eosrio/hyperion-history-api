@@ -25,6 +25,9 @@ const chain = 'handoff-worker-original', chainId = '9ccd94e823fda51363bd4265ad61
 const hash = value => createHash('sha256').update(value).digest('hex');
 const mode = process.argv[2] ?? 'lifecycle';
 const managedProofCase = /^managed-original-(main|handoff)-(held|failed|cancelled)-(proof|open)$/.exec(mode);
+const managedHandoffFaultCase = /^managed-original-handoff-(held-write|failed-write|lost-receipt|ack-throws)$/.exec(mode);
+const handoffFault = managedHandoffFaultCase && process.env.HYPERION_QUALIFICATION_PLAIN_HANDOFF !== 'true'
+    ? managedHandoffFaultCase[1] : undefined;
 const proofControl = managedProofCase && process.env.HYPERION_QUALIFICATION_PLAIN_PROOF !== 'true'
     ? {kind: managedProofCase[2], phase: managedProofCase[3]} : undefined;
 let proofAttemptId, proofFreshWrite;
@@ -45,18 +48,20 @@ const managedOriginalMain = mode === 'managed-original-main' || managedOriginalM
     managedOriginalHandoffFailedDrain = mode === 'managed-original-handoff-failed-drain',
     managedOriginalHandoff = mode === 'managed-original-handoff' || managedOriginalHandoffHeldConfirm
         || managedOriginalHandoffFailedConfirm || managedOriginalHandoffHeldDrain || managedOriginalHandoffFailedDrain
-        || managedProofCase?.[1] === 'handoff';
+        || managedProofCase?.[1] === 'handoff' || !!managedHandoffFaultCase;
 const managedOriginalDs = managedOriginalNoEffect || managedOriginalContract || managedOriginalHandoff;
 const managedOriginal = managedOriginalMain || managedOriginalDs;
 const events = [], sourceFrames = [], blockWrites = [], cache = [];
 let reader, coordinator, managedClient, snapshotPath, draining = Promise.resolve();
 let finishManaged, releaseManagedWrite, releaseManagedConfirm, releaseManagedDrain, releaseManagedOperation;
-let releaseManagedProof;
+let releaseManagedProof, retryManagedHandoff;
+const managedHandoffRetry = new Promise(resolve => {retryManagedHandoff = resolve;});
 const managedProofReleased = new Promise(resolve => {releaseManagedProof = resolve;});
 let startManagedPeer;
 const managedPeerStarted = new Promise(resolve => {startManagedPeer = resolve;});
 const awaitManagedPeerStart = async () => {
-    if (!managedProofCase || process.env.HYPERION_QUALIFICATION_PLAIN_PROOF !== 'true') return;
+    if (!(managedProofCase && process.env.HYPERION_QUALIFICATION_PLAIN_PROOF === 'true')
+        && !(managedHandoffFaultCase && process.env.HYPERION_QUALIFICATION_PLAIN_HANDOFF === 'true')) return;
     previousSend.call(process, {event: 'qualification_peer_ready'});
     await managedPeerStarted;
 };
@@ -75,6 +80,7 @@ if (managedOriginal) process.on('message', message => {
     if (message?.event === 'qualification_release_operation') releaseManagedOperation();
     if (message?.event === 'qualification_release_proof') releaseManagedProof();
     if (message?.event === 'qualification_start_peer') startManagedPeer();
+    if (message?.event === 'qualification_retry_handoff') retryManagedHandoff();
     if (message?.event === 'qualification_release_end') {
         managedEndReleased = true;
         for (const {event, callback} of heldManagedEnds.splice(0)) previousSend.call(process, event, callback);
@@ -398,7 +404,7 @@ try {
     const numberFrom = bytes => Number(codec.decode('result', bytes)[1].this_block.block_num);
     const sourceAckChecks = [];
     const records = () => ids(memory, 'h45actionattempt1:').map(id => ({id, value: JSON.parse(retained(memory, admissionStore.index, id).payloadJson)}));
-    const publishManagedSnapshot = async (role, admissionId, recordId, originalAckCount) => {
+    const publishManagedSnapshot = async (role, admissionId, recordId, originalAckCount, parentCommand = managedFinished) => {
         assert(managedOriginal && (role === 'main' ? managedOriginalMain : managedOriginalDs));
         const snapshot = {documents: [...memory.documents], mappings: [...memory.mappings], settings: [...memory.settings],
             admissionId, recordId, originalAckCount};
@@ -408,7 +414,7 @@ try {
         previousSend.call(process, {event: 'qualification_fixture', path: snapshotPath,
             sha256: hash(bytes), bytes: bytes.length});
         let timer;
-        try {await Promise.race([managedFinished, new Promise((_, reject) => {
+        try {await Promise.race([parentCommand, new Promise((_, reject) => {
             timer = setTimeout(() => reject(new Error('Managed Wire qualification parent did not finish')), 20_000);
         })]);} finally {clearTimeout(timer);}
     };
@@ -642,6 +648,7 @@ try {
                 assert.equal(handoffs.length, 1, 'original native publication must be durable before DS ACK');
                 managedHandoffId = handoffs[0];
                 previousSend.call(process, {event: 'qualification_ack', recordId: managedHandoffId});
+                if (handoffFault === 'ack-throws') throw handoffError;
             };
             if (managedOriginalHandoffHeldConfirm) {
                 poolPublisher.held = managedConfirmReleased;
@@ -652,9 +659,84 @@ try {
             if (managedOriginalHandoffFailedConfirm)
                 poolPublisher.confirmError = new Error('constructed original publication confirm failure');
             if (managedOriginalHandoffHeldDrain || managedOriginalHandoffFailedDrain) poolPublisher.writable = false;
-            if (managedProofCase) await awaitManagedPeerStart();
+            if (managedProofCase || managedHandoffFaultCase) await awaitManagedPeerStart();
+            const handoffError = new Error('constructed original DS ' + handoffFault + ' failure');
+            const handoffManifest = request => request.index === admissionStore.index && request.document?.kind === 'manifest'
+                && request.document.bundle_id.startsWith('h45actionhandoff1:');
+            let failedHandoffWrites = 0, lostHandoffReceipts = 0;
+            if (handoffFault === 'held-write' || handoffFault === 'failed-write') memory.faults.beforeWrite = async request => {
+                if (!handoffManifest(request)) return;
+                assert.equal(poolPublisher.sent.length, 1); assert.equal(poolPublisher.confirmCalls, 1);
+                assert.equal(poolConsumer.acked.length, 0); assert.equal(request.wait_for_active_shards, 'all');
+                if (handoffFault === 'failed-write') {failedHandoffWrites++; throw handoffError;}
+                previousSend.call(process, {event: 'qualification_handoff_write_held', originalAckCount: 0,
+                    confirmCalls: poolPublisher.confirmCalls, retainedHandoffs: ids(memory, 'h45actionhandoff1:').length,
+                    request: {index: request.index, id: request.id, kind: request.document.kind,
+                        bundleId: request.document.bundle_id, requiredCopies: request.wait_for_active_shards}});
+                await managedWriteReleased;
+                assert.equal(poolConsumer.acked.length, 0);
+                delete memory.faults.beforeWrite;
+            };
+            if (handoffFault === 'lost-receipt') memory.faults.receipt = (receipt, request) => {
+                if (!handoffManifest(request)) return receipt;
+                assert.equal(poolPublisher.sent.length, 1); assert.equal(poolPublisher.confirmCalls, 1);
+                assert.equal(poolConsumer.acked.length, 0); assert.equal(request.wait_for_active_shards, 'all');
+                assert(memory.documents.has(memory.key(request.index, request.id)));
+                lostHandoffReceipts++; throw handoffError;
+            };
             const processing = pool.processMessages(prepared.messages);
             processing.catch(() => {});
+            if (handoffFault && handoffFault !== 'held-write') {
+                await assert.rejects(processing, error => error === handoffError);
+                delete memory.faults.beforeWrite; delete memory.faults.receipt;
+                assert.equal(poolConsumer.acked.length, 0);
+                const handoffs = ids(memory, 'h45actionhandoff1:');
+                assert.equal(handoffs.length, handoffFault === 'failed-write' ? 0 : 1);
+                assert.equal(failedHandoffWrites, handoffFault === 'failed-write' ? 1 : 0);
+                assert.equal(lostHandoffReceipts, handoffFault === 'lost-receipt' ? 1 : 0);
+                previousSend.call(process, {event: 'qualification_handoff_failed', kind: handoffFault,
+                    originalAckCount: 0, failedWrites: failedHandoffWrites, lostReceipts: lostHandoffReceipts,
+                    retainedHandoffs: handoffs.length, confirmCalls: poolPublisher.confirmCalls,
+                    originalPayloadSha256: hash(prepared.messages[0].content), errorName: handoffError.name});
+                await publishManagedSnapshot('ds', prepared.admission.id, handoffs[0] ?? null, 0,
+                    handoffFault === 'lost-receipt' ? managedHandoffRetry : managedFinished);
+                if (handoffFault === 'lost-receipt') {
+                    const original = prepared.messages[0], retry = {content: Buffer.from(original.content),
+                        properties: structuredClone(original.properties), fields: {...original.fields, deliveryTag: 2, redelivered: true}};
+                    attemptLifecycle(pool, 'ds_pool_worker').captureActionAdmissionDelivery(retry, poolConsumer);
+                    attemptLifecycle(pool, 'ds_pool_worker').captureProtocolActionDelivery(retry, poolConsumer);
+                    let conditionalWrites = 0, acceptedReceipts = 0;
+                    memory.faults.beforeWrite = async (request, method) => {
+                        if (!handoffManifest(request) || method !== 'index') return;
+                        assert.equal(request.id, handoffs[0]); assert.equal(request.wait_for_active_shards, 'all');
+                        assert(Number.isSafeInteger(request.if_seq_no)); assert(Number.isSafeInteger(request.if_primary_term));
+                        conditionalWrites++;
+                    };
+                    memory.faults.receipt = (receipt, request) => {
+                        if (!handoffManifest(request)) return receipt;
+                        assert.equal(conditionalWrites, 1); assert.equal(request.id, handoffs[0]);
+                        assert.equal(request.wait_for_active_shards, 'all');
+                        assert(Number.isSafeInteger(request.if_seq_no)); assert(Number.isSafeInteger(request.if_primary_term));
+                        assert.equal(receipt._shards.failed, 0); acceptedReceipts++;
+                        previousSend.call(process, {event: 'qualification_handoff_retry_receipt', recordId: request.id,
+                            conditionalWrites, acceptedReceipts, ifSeqNo: request.if_seq_no,
+                            ifPrimaryTerm: request.if_primary_term, requiredCopies: request.wait_for_active_shards});
+                        return receipt;
+                    };
+                    poolConsumer.onAck = delivery => {
+                        assert.equal(delivery, retry); assert.equal(acceptedReceipts, 1);
+                        assert.deepEqual(ids(memory, 'h45actionhandoff1:'), handoffs);
+                        previousSend.call(process, {event: 'qualification_ack', recordId: handoffs[0]});
+                    };
+                    await pool.processMessages([retry]);
+                    assert.equal(conditionalWrites, 1); assert.equal(acceptedReceipts, 1);
+                    assert.equal(poolPublisher.sent.length, 2); assert.equal(poolPublisher.confirmCalls, 2);
+                    assert.equal(poolConsumer.acked.length, 1);
+                    delete memory.faults.beforeWrite; delete memory.faults.receipt; poolConsumer.onAck = undefined;
+                    await publishManagedSnapshot('ds', prepared.admission.id, handoffs[0], 1);
+                }
+                break;
+            }
             if (proofControl && proofControl.kind !== 'held') {
                 await publishProofFailure('ds', processing, prepared.admission.id);
                 break;
@@ -736,7 +818,7 @@ try {
         }
     }
     if (managedOriginalDs && !managedOriginalHandoffFailedConfirm && !managedOriginalHandoffFailedDrain
-        && !(proofControl && proofControl.kind !== 'held')) {
+        && !(proofControl && proofControl.kind !== 'held') && !(handoffFault && handoffFault !== 'held-write')) {
         const recordId = managedOriginalHandoff ? managedHandoffId : records().find(row =>
             row.value.work.admissionId === prepared.admission.id && row.value.work.stage === 'ds-transaction')?.id;
         assert(recordId); assert.equal(poolConsumer.acked.length, 1);
