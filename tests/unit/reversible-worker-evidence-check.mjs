@@ -86,13 +86,23 @@ export async function checkReversibleWorkerEvidence(path) {
     if (report.revoked) assert(recovered, 'Revocation evidence lacks recovery of its original delivery');
     const associations = [report.associationId, ...(report.revoked ? [recovered.associationId, report.revoked.redelivery.associationId] : [])];
     assert.equal(new Set(associations).size, associations.length);
+    const associationEnds = new Map();
     for (const id of associations) {
         const observed = (await store.readAttemptAssociation(id)).observation;
+        associationEnds.set(id, observed.end);
         assert.equal(observed.sourceChecked, true); assert.equal(observed.brokerSettlement, 'unknown');
         const originalEnd = acceptedEnds.find(e => e.incarnation === observed.end.incarnation && e.attemptId === observed.end.attemptId);
         assert(originalEnd, 'Retained association lacks its original native end reply');
         assert.deepEqual(observed.end, originalEnd, 'Retained association end differs from its exact original native reply');
         assert.equal(observed.results.length, 1);
+    }
+    for (const result of [report, ...(report.revoked ? [recovered, report.revoked.redelivery] : [])])
+        assert.deepEqual(result.end, associationEnds.get(result.associationId), 'Reported association end differs from its retained association');
+    for (const end of [...(report.revoked ? [report.revoked.oldEnd] : []), ...(report.lateRpc ? [report.lateRpc.originalEnd] : [])]) {
+        assert(end && typeof end === 'object', 'Reported original end is absent');
+        const original = acceptedEnds.find(e => e.incarnation === end.incarnation && e.attemptId === end.attemptId);
+        assert(original, 'Reported original end lacks its native reply');
+        assert.deepEqual(end, original, 'Reported original end differs from its exact original native reply');
     }
     if (report.revoked) {
         assert(report.revoked.pendingAtFence >= 1);

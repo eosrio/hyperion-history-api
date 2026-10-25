@@ -366,7 +366,8 @@ try {
     if (originalConfig === undefined) delete process.env.CONFIG_JSON; else process.env.CONFIG_JSON = originalConfig;
     if (evidencePath) {
         const fixtureFiles = ['controlled-worker-service-transport.mjs', 'reversible-worker-inputs.mjs',
-            'reversible-original-worker.mjs', 'reversible-original-attempts.mjs', 'reversible-worker-evidence.mjs'].map(path => {
+            'reversible-original-worker.mjs', 'reversible-original-attempts.mjs', 'reversible-worker-evidence.mjs',
+            'reversible-worker-evidence-check.mjs', 'reversible-worker-report-check.mjs'].map(path => {
             const bytes = readFileSync(new URL(path, import.meta.url)); return {path, bytes: bytes.length, sha256: hash(bytes)};
         });
         const snapshot = {schemaVersion: 1, mode, report: failure ? null : report, failure, fixtureFiles,

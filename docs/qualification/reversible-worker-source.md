@@ -76,6 +76,11 @@ engineering action-history path or grant readiness, sink completion or capacity 
 
 ## Running and retaining observations
 
+Cold inspection compares every reported end with its complete retained association or original
+native reply. Regression controls change each report copy's payload hash while keeping the
+stored records, original IPC and native ends unchanged; those contradictory copies must fail.
+These constructed contradictions establish saved-record consistency only.
+
 Use the normal npm lock installation, complete project check and native TypeScript build.
 Run the focused suite on the selected native Node 24 and 26 runtimes:
 
