@@ -13,3 +13,4 @@ docs/qualification/evidence/worker-attempt-quiescence/** -text
 docs/qualification/evidence/action-attempt-worker-20261023/** -text
 tests/fixtures/native-stream-v1/* -text
 tests/fixtures/wire-rpc-block-33.json -text
+tests/fixtures/antelope-worker/* text eol=lf
