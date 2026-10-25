@@ -85,6 +85,38 @@ bun test tests/unit/action-attempt-retained-read.test.ts
 Select an explicit native Node 24/26 executable through `HYPERION_NATIVE_NODE`, after the
 normal dependency install and emitted build.
 
+## Original DS handoff write and ACK faults (#317)
+
+The native baseline at `aed65c0b` runs
+`node tests/unit/action-attempt-managed-wire-ipc.mjs handoff` unchanged and passes.
+Four further controls use the same original block-33 DS callback and actual
+supervisor/fresh-write/end/adjudicator path. Holding the configured-copy handoff
+manifest after publisher confirmation prevents fresh-result observation and ACK;
+a distinct physical callback under the same supervisor still completes. Releasing
+the write preserves its ordinary validation, ACK and authenticated-end ordering.
+
+A failed manifest write or lost receipt after primary visibility leaves the
+original root thrown, with no ACK or fresh write receipt. Visible handoff bytes
+remain inspection-only; reading them cannot create a write receipt or authenticate
+a copied end. A thrown original ACK retains its attempted marker and fresh durable
+result, but no returned ACK or successful association. Confirmed publication is
+already dispatched; these failures do not retract it or establish broker settlement.
+After the lost receipt, a new captured delivery attempt in the original worker
+revalidates the same dispatch and conditionally reasserts the same handoff manifest.
+Only its accepted configured-copy receipt, fresh observation, ACK and authentic end
+permit association. The old failed end cannot borrow that new receipt.
+
+The retained-read and handoff-fault controls share bounded native child supervision,
+original payload validation, snapshot custody and controlled canonical association.
+Storage, broker transport and canonical inputs remain constructed. This extends
+the callback fault matrix without qualifying live server/broker/fork recovery,
+prospective reader capacity, full Wire/Mongo replay or performance. Production
+runtime and owned Linux qualification scripts are unchanged.
+
+```sh
+bun test tests/unit/action-attempt-handoff-faults.test.ts tests/unit/action-attempt-retained-read.test.ts
+```
+
 ## Current Wire testnet source preflight
 
 Canonical RPC validation reads only the requested block number, ID and parent ID.

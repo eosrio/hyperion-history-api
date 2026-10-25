@@ -1,104 +1,18 @@
 /** Original managed Wire callbacks; delayed transport/canonical inputs are controlled, not live qualification. */
 import assert from 'node:assert/strict';
-import cluster from 'node:cluster';
-import {createHash} from 'node:crypto';
-import {readFileSync, rmSync, statSync} from 'node:fs';
-import {tmpdir} from 'node:os';
-import {basename, dirname, resolve} from 'node:path';
-import {fileURLToPath} from 'node:url';
-import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
-import {WorkerAttemptSupervisor, describeWorkerAttemptEnd} from '../../build/indexer/protocol/worker-attempt-supervisor.js';
+import {describeWorkerAttemptEnd} from '../../build/indexer/protocol/worker-attempt-supervisor.js';
 import {ActionAttemptAdjudicator} from '../../build/indexer/history/action-attempt-adjudicator.js';
-import {ActionSourceAdmissionStore} from '../../build/indexer/history/action-source-admission.js';
-import {ProtocolSourceBindingStore} from '../../build/indexer/protocol/source-bindings.js';
+import {managedWireAttemptFixture} from './managed-wire-attempt-fixture.mjs';
 
 const mode = process.argv[2] ?? 'main-held-proof';
 const selected = /^(main|handoff)-(held|failed|cancelled)-(proof|open)$/.exec(mode);
 assert(selected && (selected[3] !== 'open' || selected[2] === 'cancelled'));
 const isMain = selected[1] === 'main', kind = selected[2], phase = selected[3], late = phase === 'proof';
-const role = isMain ? 'deserializer' : 'ds_pool_worker', ends = [], children = [], snapshots = [];
-const supervisor = new WorkerAttemptSupervisor({onEnd: end => ends.push(end)});
-const hash = bytes => createHash('sha256').update(bytes).digest('hex');
-cluster.setupPrimary({exec: fileURLToPath(new URL('./action-attempt-disposition-worker.mjs', import.meta.url)),
-    args: ['managed-original-' + mode], silent: true});
-function spawn(plain = false) {
-    const child = cluster.fork({HYPERION_QUALIFICATION_PLAIN_PROOF: String(plain)});
-    const state = {child, messages: [], exited: false, stderr: '', stdout: ''};
-    child.on('message', message => state.messages.push(message));
-    child.on('exit', code => {state.exited = true; state.code = code;});
-    child.process.stdout.on('data', bytes => {state.stdout += bytes;});
-    child.process.stderr.on('data', bytes => {state.stderr += bytes;});
-    children.push(state); supervisor.attach(child, role); return state;
-}
-async function until(predicate, state, label, timeout = 30_000) {
-    const deadline = Date.now() + timeout;
-    while (!predicate()) {
-        assert(!state.exited && Date.now() < deadline, JSON.stringify({label, code: state.code,
-            stderr: state.stderr.slice(-3000), stdout: state.stdout.slice(-3000), events: state.messages.map(x => x.event)}));
-        await new Promise(yes => setTimeout(yes, 5));
-    }
-}
-const event = (state, name) => state.messages.find(x => x.event === name);
-const requests = (state, operation) => state.messages.filter(x => x.event === 'worker_attempt_request' && x.payload?.operation === operation);
-function ownEnd(state) {
-    const registration = requests(state, 'register')[0]?.payload;
-    return registration && ends.find(value => {
-        const end = describeWorkerAttemptEnd(supervisor, value);
-        return end.incarnation === registration.incarnation && end.attemptId === registration.attemptId;
-    });
-}
-function retainedSnapshot(state) {
-    const receipt = event(state, 'qualification_fixture'), path = resolve(receipt.path);
-    assert.equal(dirname(path), resolve(tmpdir()));
-    assert.match(basename(path), /^hyperion-managed-wire-(?:main|ds)-[0-9a-f-]+\.json$/);
-    snapshots.push(path);
-    const bytes = readFileSync(path); assert.equal(statSync(path).size, receipt.bytes);
-    assert(bytes.length > 0 && bytes.length <= 64 * 1024 * 1024); assert.equal(hash(bytes), receipt.sha256);
-    const snapshot = JSON.parse(bytes), memory = frontierMemoryClient();
-    for (const field of ['documents', 'mappings', 'settings']) for (const [key, value] of snapshot[field]) memory[field].set(key, value);
-    memory.client.indices.exists = async ({index}) => memory.settings.has(index);
-    return {snapshot, memory, store: new ActionSourceAdmissionStore(memory.client, 'handoff-worker-original'),
-        selections: new ProtocolSourceBindingStore(memory.client, 'handoff-worker-original')};
-}
-async function inspectOriginal(state) {
-    const evidence = ownEnd(state), end = describeWorkerAttemptEnd(supervisor, evidence), retained = retainedSnapshot(state);
-    assert.equal(end.role, role); assert.equal(end.status, 'quiescent');
-    assert.equal(end.binding.blockNum, isMain ? 1 : 33);
-    if (isMain) {
-        const ingress = await retained.store.resolveIngress(end.binding.ingressId);
-        assert.equal(hash(Buffer.from(ingress.frameHex, 'hex')), end.descriptor.payloadSha256);
-    } else {
-        const admission = await retained.store.resolve(end.binding.admissionId);
-        const transaction = admission.inventory.transactions.find(x => x.traceOrdinal === end.binding.traceOrdinal);
-        assert.equal(hash(Buffer.from(transaction.dispatch.canonicalJson)), end.descriptor.payloadSha256);
-    }
-    return {...retained, evidence, end};
-}
-async function associateOriginal(retained) {
-    const admission = await retained.store.resolve(retained.end.binding.admissionId), source = admission.source.inventoryInput.source;
-    const issued = new WeakSet();
-    const current = {configurationSha256: () => admission.source.producer.configurationSha256,
-        targetUuid: async name => retained.memory.settings.get(name)['index.uuid'],
-        canonicalBlock: async blockNum => {
-            assert.equal(blockNum, source.blockNum);
-            const block = Object.freeze({chainId: source.chainId, blockId: source.blockId,
-                previousBlockId: admission.source.previousBlockId, irreversible: true}); issued.add(block); return block;
-        },
-        assertCanonicalCurrent: block => assert(issued.has(block), 'unissued controlled canonical observation')};
-    const adjudicator = new ActionAttemptAdjudicator(supervisor, retained.store, retained.selections, current);
-    const result = await adjudicator.adjudicate(retained.evidence); assert.equal(result.state, 'associated');
-    const stored = (await retained.store.readAttemptAssociation(result.id)).observation;
-    assert.equal(stored.end.attemptId, retained.end.attemptId); assert.equal(stored.brokerSettlement, 'unknown');
-    assert.deepEqual(stored.results, [{id: retained.snapshot.recordId, classification: isMain ? 'source-incomplete' : 'confirmed-handoff'}]);
-}
-async function finish(state) {
-    state.child.send({event: 'qualification_done'});
-    await until(() => state.exited, state, 'owned original callback exits');
-    assert.equal(state.code, 0, state.stdout.slice(-3000)); assert.equal(state.stderr, '');
-}
+const fixture = managedWireAttemptFixture({role: isMain ? 'deserializer' : 'ds_pool_worker', workerMode: 'managed-original-' + mode});
+const {supervisor, spawn, event, requests, ownEnd, until, inspectOriginal, associateOriginal, finish} = fixture;
 try {
     // Prepare the sibling before the held worker starts its original five-second proof wait.
-    const peer = spawn(true);
+    const peer = spawn({HYPERION_QUALIFICATION_PLAIN_PROOF: 'true'});
     await until(() => event(peer, 'qualification_peer_ready'), peer, 'independent worker is ready to run its original callback');
     const first = spawn();
     await until(() => event(first, 'qualification_proof_held'), first, 'original callback reaches required retained control read');
@@ -196,11 +110,5 @@ try {
         originalReadSettledBeforeEnd: true, controlledStorageAndCanonicalAuthority: true,
         brokerSettlement: 'unknown', capacityAuthority: false, fullWorkerQualification: false}));
 } finally {
-    for (const state of children) if (!state.exited) {
-        try {state.child.send({event: 'qualification_release_proof'}); state.child.send({event: 'qualification_done'});} catch {}
-        try {state.child.process.kill();} catch {}
-        await until(() => state.exited, state, 'owned failed-case child cleanup', 5000).catch(() => {});
-    }
-    for (const path of snapshots) rmSync(path, {force: true});
-    supervisor.stop();
+    await fixture.close();
 }
