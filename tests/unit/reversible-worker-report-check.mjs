@@ -12,7 +12,8 @@ const hash = value => createHash('sha256').update(JSON.stringify(value)).digest(
 const originalParts = Object.fromEntries(['stores', 'processes', 'ends', 'inputs'].map(key => [key, hash(envelope.data[key])]));
 const copies = [['report', 'end'], ...(report.revoked ? [
     ['report', 'revoked', 'recoveredOriginalDelivery', 'end'], ['report', 'revoked', 'redelivery', 'end'],
-    ['report', 'revoked', 'oldEnd']] : []), ...(report.lateRpc ? [['report', 'lateRpc', 'originalEnd']] : [])];
+    ['report', 'revoked', 'oldEnd']] : []), ...(report.lateRpc ? [['report', 'lateRpc', 'originalEnd']] : []),
+    ...(report.sourceNoEffects ? [['report', 'sourceNoEffects', 'end']] : [])];
 const directory = mkdtempSync(join(tmpdir(), 'hyperion-evidence-report-'));
 try {
     for (const [index, path] of copies.entries()) {

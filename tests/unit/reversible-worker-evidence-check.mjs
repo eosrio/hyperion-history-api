@@ -8,6 +8,7 @@ import {ActionHistorySourceJournal} from '../../build/indexer/history/action-sou
 import {ImmutableProtocolBundleStore} from '../../build/indexer/protocol/immutable-bundle-store.js';
 import {ProtocolSourceBindingStore} from '../../build/indexer/protocol/source-bindings.js';
 import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
+import {prepareAntelopeReversibleWorkerInputs} from './antelope-reversible-worker-inputs.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 export async function checkReversibleWorkerEvidence(path) {
@@ -45,8 +46,19 @@ export async function checkReversibleWorkerEvidence(path) {
     const data = envelope.data, report = data.report;
     assert.equal(data.failure, undefined); assert.equal(report.passed, true);
     assert.equal(report.capacityAuthority, false); assert.equal(report.releaseQualified, false);
-    assert.equal(data.inputs.frames.length, 34);
-    for (let i = 0; i < 34; i++) {
+    const sourceFamily = data.sourceFamily ?? 'wire'; assert(['wire', 'antelope'].includes(sourceFamily));
+    assert.equal(report.sourceFamily ?? 'wire', sourceFamily);
+    const selectedBlock = sourceFamily === 'wire' ? 33 : 2, frameCount = selectedBlock + 1;
+    assert.equal(data.inputs.frames.length, frameCount);
+    if (sourceFamily === 'antelope') {
+        const original = await prepareAntelopeReversibleWorkerInputs();
+        assert.equal(value(['inputs', 'schemaJson']), original.schemaJson);
+        assert.deepEqual(data.inputs.expected, [...original.expected]);
+        assert.equal(report.sourceFixtureSha256, original.sourceFixtureSha256);
+        assert.deepEqual(data.inputs.frames.map((frame, index) => ({...frame, frameHex: value(['inputs', 'frames', index, 'frameHex'])})),
+            original.frames, 'Antelope input differs from its fixed independent source');
+    }
+    for (let i = 0; i < frameCount; i++) {
         const frame = data.inputs.frames[i], raw = Buffer.from(value(['inputs', 'frames', i, 'frameHex']), 'hex');
         assert.equal(hash(raw), frame.controlledFrameSha256); assert.equal(frame.originalSha256, frame.capturedReceipt.sha256);
         assert.equal(frame.position.blockId, frame.capturedReceipt.blockId);
@@ -56,6 +68,10 @@ export async function checkReversibleWorkerEvidence(path) {
     for (const process of data.processes) {
         assert.equal(process.exited, true); assert.equal(process.exitCode, 0); assert.equal(process.forcedKill, false);
         assert.equal(process.stderr, '');
+        if (sourceFamily === 'antelope') {
+            const ready = process.received.find(message => message.event === 'qualification_ready');
+            assert.equal(ready.sourceFamily, 'antelope'); assert(ready.nativeAddonLoads > 0);
+        }
         for (const message of process.received) if (message.event === 'qualification_service_request') {
             assert(!requests.has(message.id)); requests.set(message.id, process.name);
         }
@@ -104,6 +120,16 @@ export async function checkReversibleWorkerEvidence(path) {
         assert(original, 'Reported original end lacks its native reply');
         assert.deepEqual(end, original, 'Reported original end differs from its exact original native reply');
     }
+    if (sourceFamily === 'antelope') {
+        const end = report.sourceNoEffects?.end;
+        assert(end, 'Missing original Antelope empty-source outcome');
+        assert.deepEqual(end, acceptedEnds.find(candidate => candidate.incarnation === end.incarnation && candidate.attemptId === end.attemptId),
+            'Reported empty-source end differs from its exact original native reply');
+        const admission = await store.resolve(end.binding.admissionId);
+        assert.equal(end.binding.blockNum, 1); assert.equal(end.rootResult, 'returned'); assert.equal(end.acknowledgementAttempted, true);
+        assert.equal(end.freshWrites.length, 1); assert.equal(end.freshWrites[0].kind, 'attempt-disposition');
+        assert.equal(end.freshWrites[0].classification, 'intentional-no-effect'); assert.deepEqual(admission.inventory.transactions, []);
+    }
     if (report.revoked) {
         assert(report.revoked.pendingAtFence >= 1);
         assert.equal(report.revoked.oldEnd.rootResult, 'threw'); assert.equal(report.revoked.oldEnd.acknowledgementAttempted, false);
@@ -148,11 +174,11 @@ export async function checkReversibleWorkerEvidence(path) {
     }
     for (const message of data.processes[readerIndex].received) if (message.event === 'qualification_ship_request'
         && message.request[0] === 'get_blocks_request_v0') requestedStarts.push(message.request[1].start_block_num);
-    const prefix = Array.from({length: 33}, (_, index) => index + 1);
-    assert.deepEqual(observedFrames, data.mode === 'baseline' ? prefix : [...prefix, ...prefix, 34]);
+    const prefix = Array.from({length: selectedBlock}, (_, index) => index + 1);
+    assert.deepEqual(observedFrames, data.mode === 'baseline' ? prefix : [...prefix, ...prefix, frameCount]);
     assert.deepEqual(requestedStarts, data.mode === 'baseline' ? [1] : [1, 1]);
     return {passed: true, mode: data.mode, bytes: bytes.length, sha256: hash(bytes),
-        strings: texts.size, references: paths.size, originalFrames: 34, nativeProcesses: 4,
+        strings: texts.size, references: paths.size, originalFrames: frameCount, sourceFamily, nativeProcesses: 4,
         originalServiceRequestsAndReplies: requests.size, authenticEndReplies: acceptedEnds.length,
         typedAssociationsRead: associations.length, originalDeliveryRecovered: !!recovered,
         originalFrameDeliveries: observedFrames.length, requestedStarts, coldWrites: 0, capacityAuthority: false, releaseQualified: false};

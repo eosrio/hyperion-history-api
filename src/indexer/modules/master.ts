@@ -759,9 +759,10 @@ export class HyperionMaster {
 
     private async initializeProtocolAbiCoordinator(): Promise<void> {
         // A bulk-only process must never acquire or replace live-source ownership.
-        if (this.conf.settings.protocol?.provider !== 'extension' || !this.conf.indexer.live_reader || this.protocolAbiCoordinator) return;
+        if ((this.conf.settings.protocol?.provider !== 'extension' && this.engineering?.exactActionSequenceStorage !== true)
+            || !this.conf.indexer.live_reader || this.protocolAbiCoordinator) return;
         try {
-            const selected = await loadChainProtocol(this.conf.settings.protocol);
+            const selected = await loadChainProtocol(this.conf.settings.protocol, {sourceEvidence: true});
             const replicas = this.conf.settings.es_replicas ?? 0;
             const options = this.conf.settings.protocol_abi_coordination;
             const coordinator = new ProtocolAbiCoordinator({chainId: this.manager.conn.chains[this.chain].chain_id,

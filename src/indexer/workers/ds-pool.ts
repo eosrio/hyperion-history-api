@@ -595,10 +595,19 @@ export default class DSPoolWorker extends HyperionWorker {
         work.metadata = Object.freeze({schemaVersion: 1, source: Object.freeze({...metadata.source}), selectionId: metadata.selectionId,
             input: Object.freeze({...input, inputActionOrdinal: selected.binding.inputActionOrdinal})});
         try {
-            const abi: any = this.protocol.contractCodec.decodeAbi(protocolBytes(selected.state.abiHex));
-            const type = abi.actions?.find(entry => String(entry.name) === input.name)?.type;
-            if (!type) throw new Error('Certified ABI has no action mapping');
-            action.act.data = this.protocol.contractCodec.decodeValue(abi, type, protocolBytes(input.rawHex));
+            if (this.usesExtensionProtocol) {
+                const abi: any = this.protocol.contractCodec.decodeAbi(protocolBytes(selected.state.abiHex));
+                const type = abi.actions?.find(entry => String(entry.name) === input.name)?.type;
+                if (!type) throw new Error('Certified ABI has no action mapping');
+                action.act.data = this.protocol.contractCodec.decodeValue(abi, type, protocolBytes(input.rawHex));
+            } else {
+                // Select the certified ABI in the existing native decoder, without historical/RPC fallbacks.
+                if (!this.loadActionAbi(input.account, {kind: 'historical', block: metadata.source.blockNum, hex: selected.state.abiHex},
+                    () => this.abieos.loadAbiHex(input.account, selected.state.abiHex))) throw new Error('Certified Antelope ABI was rejected');
+                const type = this.abieos.getTypeForAction(input.account, input.name);
+                if (!type) throw new Error('Certified ABI has no action mapping');
+                action.act.data = this.abieos.binToJson(input.account, type, protocolBytes(input.rawHex));
+            }
             action.protocol = work.metadata; delete action['ds_error'];
         } catch (error: any) {
             if (this.activeActionAdmission) throw this.contractOutputFailure('contract-abi-invalid', error);
@@ -711,7 +720,7 @@ export default class DSPoolWorker extends HyperionWorker {
 
     private assertProtocolDelivery(): void {
         this.assertWorkerAttemptActive();
-        if (!this.usesExtensionProtocol) return;
+        if (!this.usesProtocolSourceBindings) return;
         if (!this.activeProtocolDelivery || this.activeProtocolDelivery.channel !== this.ch || !this.ch_ready)
             throw new Error('Protocol action delivery lost its original broker channel');
     }
@@ -783,7 +792,7 @@ export default class DSPoolWorker extends HyperionWorker {
                 // batch fails to deserialize. Worst case the flush itself
                 // fails and we log it; the durable AMQP path for those
                 // traces is unaffected.
-                if (!this.usesExtensionProtocol) await this.flushRedisBatch();
+                if (!this.usesProtocolSourceBindings) await this.flushRedisBatch();
                 else {this.redisBatchPipeline = null; this.redisBatchHasOps = false; this.activeProtocolDelivery = undefined;}
             }
         } finally {
@@ -795,7 +804,7 @@ export default class DSPoolWorker extends HyperionWorker {
 
     private async processActionMessage(data: Message): Promise<void> {
         if (this.actionSourceAdmissionEnabled) await this.beginActionAdmission(data);
-        if (this.usesExtensionProtocol) {
+        if (this.usesProtocolSourceBindings) {
             const owner = this.protocolDeliveryOwners.get(data);
             if (!owner || owner !== this.ch || !this.ch_ready) throw new Error('Protocol action delivery lacks its original broker channel');
             this.activeProtocolDelivery = {message: data, channel: owner};
@@ -890,14 +899,14 @@ export default class DSPoolWorker extends HyperionWorker {
 
     private async flushRedisBatch(): Promise<void> {
         if (this.redisBatchPipeline && this.redisBatchHasOps) {
-            if (this.usesExtensionProtocol && !await this.protocolCacheIsCurrent()) {
+            if (this.usesProtocolSourceBindings && !await this.protocolCacheIsCurrent()) {
                 this.redisBatchPipeline = null; this.redisBatchHasOps = false; return;
             }
             try {
                 const stopRedis = this.profiler.start('redis_batch_exec');
                 try { await trackProofConsumerOperation(() => this.redisBatchPipeline.exec()); } finally { stopRedis(); }
             } catch (e) {
-                if (this.usesExtensionProtocol) throw e;
+                if (this.usesProtocolSourceBindings) throw e;
                 hLog(e);
             }
         }
@@ -920,7 +929,7 @@ export default class DSPoolWorker extends HyperionWorker {
             const transaction = admission.inventory.transactions.find(value => value.traceOrdinal === ordinal);
             if (!transaction?.dispatch || createHash('sha256').update(payload).digest('hex') !== transaction.dispatch.bodySha256
                 || headers?.inline_count !== transaction.dispatch.inlineCount || headers?.filtered !== transaction.dispatch.filtered
-                || (this.usesExtensionProtocol && headers?.[protocolSourceSelectionHeader] !== admission.inventory.sourceSelectionId))
+                || (this.usesProtocolSourceBindings && headers?.[protocolSourceSelectionHeader] !== admission.inventory.sourceSelectionId))
                 throw new Error('Action admission input payload or source ordinal mismatch');
         }
         this.actionHookFailure = undefined;
@@ -943,7 +952,7 @@ export default class DSPoolWorker extends HyperionWorker {
         this.assertActionAdmissionOwner(scope);
         if (actionHistoryImmutableJson(target) !== actionHistoryImmutableJson(scope.admission.target))
             throw new Error('Action admission target identity changed');
-        if (this.usesExtensionProtocol && this.protocolTrace?.view) await this.getProtocolProofReader().revalidate(this.protocolTrace.view);
+        if (this.usesProtocolSourceBindings && this.protocolTrace?.view) await this.getProtocolProofReader().revalidate(this.protocolTrace.view);
         this.assertActionAdmissionOwner(scope);
     }
 
@@ -955,7 +964,7 @@ export default class DSPoolWorker extends HyperionWorker {
 
     contractOutputFailure(reason: ActionContractFailureReason, error: unknown): ActionContractOutputFailure | ActionSourceInventoryError {
         const scope = this.activeActionAdmission!;
-        if (this.usesExtensionProtocol && !scope.proofView) return actionSourceValidationFailure('Output validation lacks original contract proof authority');
+        if (this.usesProtocolSourceBindings && !scope.proofView) return actionSourceValidationFailure('Output validation lacks original contract proof authority');
         return actionContractOutputFailure({admissionId: scope.admission.id, traceOrdinal: scope.traceOrdinal, dispatchPayload: scope.payload,
             configuration: scope.configuration, owner: scope.owner}, reason, error instanceof Error ? error.message : String(error));
     }
@@ -1020,7 +1029,7 @@ export default class DSPoolWorker extends HyperionWorker {
 
             if (transaction_trace.status === 0) {
                 const selectionId = extra?.[protocolSourceSelectionHeader];
-                if (this.usesExtensionProtocol) {
+                if (this.usesProtocolSourceBindings) {
                     this.protocolActions = new WeakMap();
                     this.protocolCacheViews ??= new Set();
                     this.protocolNativeCacheEntries ??= new Set();
@@ -1103,9 +1112,10 @@ export default class DSPoolWorker extends HyperionWorker {
 
                 // Group action traces: merge notification receipts while preserving
                 // genuinely distinct duplicate actions (fixes #148)
-                if (this.usesExtensionProtocol) for (const action of _processedTraces) await this.revalidateProtocolAction(action);
+                if (this.usesProtocolSourceBindings) for (const action of _processedTraces) await this.revalidateProtocolAction(action);
                 let _finalTraces: ActionTrace[];
-                try {_finalTraces = groupActionTraces(_processedTraces, this.usesExtensionProtocol);} catch (error) {
+                try {_finalTraces = groupActionTraces(_processedTraces, this.usesProtocolSourceBindings
+                    ? (this.usesExtensionProtocol ? 'certified-extension' : 'certified-antelope') : 'legacy-antelope');} catch (error) {
                     // A later hook may have corrupted an earlier action. Only pure grouping is classified here.
                     if (!this.activeActionAdmission) throw error;
                     throw this.contractOutputFailure('contract-grouping-invalid', error);
@@ -1118,7 +1128,7 @@ export default class DSPoolWorker extends HyperionWorker {
                 const finalized: ActionTrace[] = [];
                 for (const uniqueAction of _finalTraces) {
 
-                    if (this.usesExtensionProtocol) {
+                    if (this.usesProtocolSourceBindings) {
                         await this.revalidateProtocolAction(uniqueAction);
                         this.assertProtocolDelivery();
                         const work = this.protocolActions.get(uniqueAction);
@@ -1230,9 +1240,9 @@ export default class DSPoolWorker extends HyperionWorker {
                         // one for any subsequent traces in the same batch.
                         const stopLive = this.profiler.start('redis_live_flush');
                         try {
-                            if (!this.usesExtensionProtocol || await this.protocolCacheIsCurrent()) await this.redisBatchPipeline.exec();
+                            if (!this.usesProtocolSourceBindings || await this.protocolCacheIsCurrent()) await this.redisBatchPipeline.exec();
                         } catch (e) {
-                            if (this.usesExtensionProtocol) throw e;
+                            if (this.usesProtocolSourceBindings) throw e;
                             hLog(e);
                         } finally {
                             stopLive();
@@ -1318,7 +1328,7 @@ export default class DSPoolWorker extends HyperionWorker {
                 if (data) {
                     this.captureWorkerAttemptDelivery(data, consumer, 'ds-delivery');
                     if (this.actionSourceAdmissionEnabled) this.captureActionAdmissionDelivery(data, consumer);
-                    if (this.usesExtensionProtocol) this.captureProtocolActionDelivery(data, consumer);
+                    if (this.usesProtocolSourceBindings) this.captureProtocolActionDelivery(data, consumer);
                     this.consumerQueue.push(data);
                 }
             });

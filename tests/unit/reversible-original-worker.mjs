@@ -11,8 +11,13 @@ assert(allowed.includes(role));
 assert.equal(process.env.HYPERION_QUALIFICATION_PLAIN_PROOF, 'false');
 assert.equal(process.env.HYPERION_QUALIFICATION_PLAIN_HANDOFF, 'false');
 assert(!process.versions.bun && [24, 26].includes(Number(process.versions.node.split('.')[0])));
+const sourceFamily = process.env.QUALIFICATION_SOURCE_FAMILY ?? 'wire';
+assert(['wire', 'antelope'].includes(sourceFamily));
+let nativeAddonLoads = 0, nativeContractDecodes = 0;
 const hooks = registerHooks({resolve(specifier, context, next) {
-    assert(!specifier.includes('node-abieos'), 'Wire source must not load the Antelope addon');
+    if (sourceFamily === 'wire') assert(!specifier.includes('node-abieos'), 'Wire source must not load the Antelope addon');
+    else {assert(!specifier.includes('hyperion-wire-plugin'), 'Antelope source must not load Wire');
+        if (specifier === '@eosrio/node-abieos') nativeAddonLoads++;}
     return next(specifier, context);
 }});
 const config = JSON.parse(readFileSync(process.env.CONFIG_JSON)), chain = config.settings.chain;
@@ -26,10 +31,15 @@ const [{default: Reader}, {default: Main}, {default: Pool}, {default: Parser}, {
     import('../../build/indexer/protocol/worker-attempt-client.js'), import('../../build/indexer/protocol/source-bindings.js'),
     import('../../build/indexer/protocol/abi-observation-store.js'), import('../../build/indexer/history/action-source-admission.js'),
     import('../../build/indexer/protocol/abi-coordinator-rpc.js'), import('../../build/indexer/helpers/reader-progress.js')]);
-const selected = await loadChainProtocol(config.settings.protocol), observedScopes = new WeakSet();
+const selected = await loadChainProtocol(config.settings.protocol, {sourceEvidence: true}), observedScopes = new WeakSet();
+if (sourceFamily === 'antelope') {
+    assert.equal(selected.id, 'antelope'); assert(nativeAddonLoads > 0);
+    const decode = selected.decoder.binToJson;
+    selected.decoder.binToJson = (...args) => {if (args[0] === 'counter' && args[1] === 'setvalue') nativeContractDecodes++; return decode(...args);};
+}
 let worker, managed, lastScope, storageDispatches = 0, cacheDispatches = 0, finished, ready = false;
 const finish = new Promise(resolve => {finished = resolve;});
-const effects = () => ({storageDispatches, publisherDispatches: worker?.cch.sent.length ?? 0,
+const effects = () => ({storageDispatches, nativeContractDecodes, publisherDispatches: worker?.cch.sent.length ?? 0,
     originalAcks: worker?.ch.acked.length ?? 0, cacheDispatches, streamDispatches: worker?.ch.streamed.length ?? 0,
     physicallyPendingTransport: transport.pendingCount()});
 const transport = fixtureWorkerTransport(process, ({kind, scope}) => {
@@ -39,8 +49,10 @@ const transport = fixtureWorkerTransport(process, ({kind, scope}) => {
     observedScopes.add(scope);
     scope.signal.addEventListener('abort', () => {
         process.send({event: 'qualification_scope_fenced', scope: scope.snapshot(), effects: effects()});
-        const view = worker.activeActionAdmission?.nativeView;
-        if (view) void worker.getProtocolNativeReader().revalidate(view).then(
+        const nativeView = worker.activeActionAdmission?.nativeView, proofView = worker.activeActionAdmission?.proofView;
+        const revalidate = nativeView ? () => worker.getProtocolNativeReader().revalidate(nativeView)
+            : proofView ? () => worker.getProtocolProofReader().revalidate(proofView) : undefined;
+        if (revalidate) void revalidate().then(
             () => process.send({event: 'qualification_post_fence_probe', accepted: true, effects: effects()}),
             error => process.send({event: 'qualification_post_fence_probe', accepted: false, code: error.code,
                 ownsFence: scope.ownsFenceError(error), effects: effects()}));
@@ -52,7 +64,7 @@ try {
     Object.assign(loader, {handledActions: new Map(), handledDeltas: new Map(), parser, plugins: []});
     const prototype = role === 'continuous_reader' ? Reader.prototype : role === 'deserializer' ? Main.prototype : Pool.prototype;
     worker = Object.create(prototype);
-    Object.assign(worker, {chain, chainId, conf: config, configModule: cm, filters, mLoader: loader,
+    Object.assign(worker, {loadedActionAbis: new Map(), chain, chainId, conf: config, configModule: cm, filters, mLoader: loader,
         protocol: selected.provider, protocolId: selected.id, protocolComponents: selected.components,
         protocolReady: Promise.resolve(), abieos: selected.decoder, client: transport.client,
         ch: new transport.Consumer(), cch: new transport.Publisher(), ch_ready: true, cch_ready: true,
@@ -148,7 +160,7 @@ try {
             worker.onIpcMessage(message);
     });
     ready = true;
-    process.send({event: 'qualification_ready', role, pid: process.pid, runtime: process.version,
+    process.send({event: 'qualification_ready', sourceFamily, nativeAddonLoads, role, pid: process.pid, runtime: process.version,
         executableSha256: createHash('sha256').update(readFileSync(process.execPath)).digest('hex'),
         execArgv: process.execArgv, nodeOptions: process.env.NODE_OPTIONS ?? null});
     await finish;
