@@ -109,18 +109,20 @@ export class HyperionMaster {
         const anchor = this.actionCanonicalLib, coordinator = this.protocolAbiCoordinator, source = this.protocolAbiSource;
         const readerSessionId = source?.readerSessionId, generation = source?.generation;
         const sourceFence = coordinator && source && generation ? coordinator.retainSourceFence(source.readerSessionId, generation) : undefined;
+        let lastValidatedBlockNum = anchor?.blockNum ?? 0, lastValidatedBlockId = anchor?.blockId;
         return () => {
             const current = this.actionCanonicalLib;
             if (!anchor || this.shutdownStarted || this.liveReader?.wref !== anchor.worker
                 || !anchor.worker.isConnected() || anchor.worker.isDead() || anchor.blockNum < blockNum
                 || !this.workerMap.some(definition => definition.wref === anchor.worker && definition.worker_role === 'continuous_reader')
-                || !current || current.worker !== anchor.worker || current.blockNum < anchor.blockNum
-                || current.blockNum === anchor.blockNum && current.blockId !== anchor.blockId
+                || !current || current.worker !== anchor.worker || current.blockNum < lastValidatedBlockNum
+                || current.blockNum === lastValidatedBlockNum && current.blockId !== lastValidatedBlockId
                 || this.protocolAbiCoordinator !== coordinator || this.protocolAbiSource !== source
                 || source?.readerSessionId !== readerSessionId || source?.generation !== generation
                 || (coordinator ? !source || !generation || source.worker !== anchor.worker
                     || !this.isCurrentProtocolLiveReader(anchor.worker) || !sourceFence?.() : !!source))
                 throw new Error('Current live SHIP irreversible anchor is unavailable');
+            lastValidatedBlockNum = current.blockNum; lastValidatedBlockId = current.blockId;
             return anchor;
         };
     }

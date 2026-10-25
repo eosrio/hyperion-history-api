@@ -365,7 +365,9 @@ The irreversible canonical RPC check retains the original physical live-reader
 anchor across awaited reads. It checks current role ownership, reader IPC and process liveness
 and compatible LIB state before and after each block read. A replacement, disconnect,
 exit, shutdown, withdrawn/regressed anchor or same-height conflicting ID cannot
-authorize a stale RPC completion. Routine same-owner LIB advances and identical
+authorize a stale RPC completion. Each successful recheck retains the latest
+validated LIB height and ID, so an inter-read regression or conflict after an
+accepted advance also rejects. Routine same-owner LIB advances and identical
 refreshes remain valid. Offline/no-live-reader and reversible selection retain
 their existing authority paths. When a canonical source coordinator is present,
 its original source, reader session and generation must also remain available

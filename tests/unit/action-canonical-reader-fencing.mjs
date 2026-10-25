@@ -9,12 +9,13 @@ import {setTimeout as delay} from 'node:timers/promises';
 assert.equal(process.versions.bun, undefined);
 assert.match(process.version, /^v(?:24|26)\./);
 const scenario = process.argv[2] ?? 'replace-anchor';
+const twoStage = ['advanced-regress', 'advanced-conflict', 'advance-twice', 'advanced-refresh'].includes(scenario);
 const successful = ['unchanged', 'advance-anchor', 'advance-block', 'refresh-block', 'offline',
-    'source-steady-block', 'source-advance-block'].includes(scenario);
+    'source-steady-block', 'source-advance-block', 'advance-twice', 'advanced-refresh'].includes(scenario);
 assert.ok(successful || ['replace-anchor', 'replace-block', 'retire-block', 'disconnect-block',
     'withdraw-block', 'regress-block', 'conflict-block', 'shutdown-block', 'unlisted-block',
     'source-replaced-block', 'source-revoked-block', 'source-generation-block', 'source-missing-initial',
-    'coordinator-fork-block', 'coordinator-revoked-block'].includes(scenario));
+    'coordinator-fork-block', 'coordinator-revoked-block', 'advanced-regress', 'advanced-conflict'].includes(scenario));
 const until = async (test, label) => {
     const deadline = performance.now() + 5000;
     while (!test()) {assert.ok(performance.now() < deadline, label); await delay(5);}
@@ -43,6 +44,7 @@ if (cluster.isWorker) {
     cluster.setupPrimary({exec: fileURLToPath(import.meta.url), args: [scenario], silent: true});
     const readers = [], supervisor = new WorkerAttemptSupervisor();
     let result, releaseFork, pendingCoordinator;
+    const releaseRpc = [];
     try {
         for (let index = 0; index < 2; index++) {
             const worker = cluster.fork(), state = {ready: false, exited: false, code: null, signal: null, stderr: ''};
@@ -56,13 +58,15 @@ if (cluster.isWorker) {
         await until(() => readers.every(value => value.state.ready), 'owned native reader identities start');
         const [first, replacement] = readers;
         assert.notEqual(first.worker.process.pid, replacement.worker.process.pid);
-        let calls = 0, held = false, release;
-        const gate = new Promise(resolve => {release = resolve;});
-        const heldCall = scenario.endsWith('-anchor') || scenario === 'offline' ? 1 : 2;
+        let calls = 0, held = false, secondHeld = false, release, releaseSecond;
+        const gate = new Promise(resolve => {release = resolve; releaseRpc.push(resolve);});
+        const secondGate = new Promise(resolve => {releaseSecond = resolve; releaseRpc.push(resolve);});
+        const heldCall = twoStage || scenario.endsWith('-anchor') || scenario === 'offline' ? 1 : 2;
         const rpc = new APIClient({provider: {async call(args) {
             assert.equal(args.path, '/v1/chain/get_block'); assert.equal(args.params.block_num_or_id, 33);
             calls++;
             if (calls === heldCall) {held = true; await gate;}
+            else if (twoStage && calls === 2) {secondHeld = true; await secondGate;}
             return {status: 200, headers: {}, text: bytes.toString(), json: structuredClone(original)};
         }}});
         rpc.v1.chain.get_info = async () => ({head_block_num: UInt32.from(40), last_irreversible_block_num: UInt32.from(33),
@@ -104,7 +108,17 @@ if (cluster.isWorker) {
         void pending.then(() => {settled = true;}, () => {settled = true;});
         await until(() => held || settled, 'the actual master waits for its original RPC observation or refuses unavailable source');
         if (scenario !== 'source-missing-initial') assert.equal(held, true);
-        if (scenario.startsWith('replace') || scenario === 'retire-block') {
+        if (twoStage) {
+            master.actionCanonicalLib = {worker: first.worker, blockNum: 34, blockId: '00000022' + 'e'.repeat(56)};
+            release();
+            await until(() => secondHeld || settled, 'the master accepts the first advance and starts its second block read');
+            assert.equal(secondHeld, true, 'the first observed same-owner LIB advance is valid');
+            if (scenario === 'advanced-regress') master.actionCanonicalLib = {worker: first.worker, blockNum: 33, blockId: original.id};
+            else if (scenario === 'advanced-conflict') master.actionCanonicalLib = {worker: first.worker, blockNum: 34, blockId: '00000022' + 'f'.repeat(56)};
+            else if (scenario === 'advance-twice') master.actionCanonicalLib = {worker: first.worker, blockNum: 35, blockId: '00000023' + 'e'.repeat(56)};
+            else master.actionCanonicalLib = {...master.actionCanonicalLib};
+            releaseSecond();
+        } else if (scenario.startsWith('replace') || scenario === 'retire-block') {
             first.worker.send({event: 'fixture_finish'});
             await until(() => first.state.exited, 'original physical reader exits before RPC completes');
             assert.equal(first.state.code, 0);
@@ -152,6 +166,7 @@ if (cluster.isWorker) {
             capacityAuthority: false, fullWorkerQualification: false};
     } finally {
         const cleanupErrors = [];
+        for (const release of releaseRpc) release();
         releaseFork?.();
         if (pendingCoordinator) {
             try {await pendingCoordinator;} catch (error) {cleanupErrors.push(String(error));}

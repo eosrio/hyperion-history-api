@@ -4,7 +4,7 @@ import {fileURLToPath} from 'node:url';
 for (const scenario of ['unchanged', 'advance-anchor', 'advance-block', 'refresh-block', 'offline', 'replace-anchor',
     'replace-block', 'retire-block', 'disconnect-block', 'withdraw-block', 'regress-block', 'conflict-block', 'shutdown-block', 'unlisted-block',
     'source-steady-block', 'source-advance-block', 'source-replaced-block', 'source-revoked-block', 'source-generation-block', 'source-missing-initial',
-    'coordinator-fork-block', 'coordinator-revoked-block'])
+    'coordinator-fork-block', 'coordinator-revoked-block', 'advanced-regress', 'advanced-conflict', 'advance-twice', 'advanced-refresh'])
 test(`native canonical RPC completion preserves current reader authority: ${scenario}`, async () => {
     const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node',
         fileURLToPath(new URL('./action-canonical-reader-fencing.mjs', import.meta.url)), scenario],
