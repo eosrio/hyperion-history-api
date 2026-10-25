@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 1,
+  "constructed": true,
+  "consensusSignatureValid": false,
+  "protocolId": "antelope",
+  "profileId": "antelope-default-v1",
+  "upstream": {
+    "repository": "AntelopeIO/leap",
+    "tag": "v5.0.3",
+    "revision": "d133c6413ce8ce2e96096a0513ec25b4a8dbe837",
+    "path": "libraries/state_history/abi.cpp",
+    "blob": "d778d0c7fc40c96a070b860400f9d9244f1cba1b",
+    "extractedAbiSha256": "02cf367cafebb669176e8843bc7684bff5780c5bfd2d6feff328ea9a4044e411"
+  },
+  "generator": {
+    "node": "v26.4.0",
+    "sourceSha256": "c1489bad9a2f910aff0778590bdb4b61b5a00cd6250b769d7c3968cd3b50f940"
+  },
+  "source": {
+    "chainId": "0265b2a2bc02d602de2eb41b8fa4c69ca3ea6824baed8fe00b34af19d036eefe",
+    "blockNum": 12,
+    "blockId": "0000000c1419577a44ca431cdc96d602ba9212767ac93e0d65b98796c4df2a86",
+    "previousBlockId": "0000000baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "producer": "producer",
+    "timestamp": "2026-10-25T00:00:00.000",
+    "traceOrdinal": 0,
+    "transactionId": "3333333333333333333333333333333333333333333333333333333333333333",
+    "actionOrdinal": 1,
+    "receiptOrdinal": 0
+  },
+  "contract": {
+    "account": "counter",
+    "abiDeployment": {
+      "blockNum": 7,
+      "blockId": "0000000777777777777777777777777777777777777777777777777777777777",
+      "abiSequence": 3
+    },
+    "abi": {
+      "version": "eosio::abi/1.2",
+      "types": [],
+      "structs": [
+        {
+          "name": "setvalue",
+          "base": "",
+          "fields": [
+            {
+              "name": "value",
+              "type": "uint64"
+            }
+          ]
+        }
+      ],
+      "actions": [
+        {
+          "name": "setvalue",
+          "type": "setvalue",
+          "ricardian_contract": ""
+        }
+      ],
+      "tables": [],
+      "ricardian_clauses": [],
+      "error_messages": [],
+      "abi_extensions": [],
+      "variants": [],
+      "action_results": []
+    },
+    "abiHex": "0e656f73696f3a3a6162692f312e3200010873657476616c756500010576616c75650675696e743634010000004a47b3b3c20873657476616c756500000000000000",
+    "abiSha256": "07f56fcc3b5aabe97142aeeda89d97a3684de09a8213ab9773142f02115f816e",
+    "actionHex": "0100000000000080"
+  },
+  "expected": {
+    "account": "counter",
+    "name": "setvalue",
+    "receiver": "counter",
+    "authorization": [
+      {
+        "actor": "alice",
+        "permission": "active"
+      }
+    ],
+    "data": {
+      "value": "9223372036854775809"
+    },
+    "globalSequence": "9007199254740995",
+    "receiverSequence": "9223372036854775808",
+    "authSequence": "18446744073709551615",
+    "codeSequence": 2,
+    "abiSequence": 3,
+    "returnValue": "beef"
+  },
+  "status": {
+    "hex": "000c0000000000000c1419577a44ca431cdc96d602ba9212767ac93e0d65b98796c4df2a860b0000000000000baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa010000000d000000010000000d0000000265b2a2bc02d602de2eb41b8fa4c69ca3ea6824baed8fe00b34af19d036eefe",
+    "sha256": "0535f142b3cd50c6b693b7b2b5ef4b71505d60a339360f546e834f4837c208fd",
+    "bytes": 121
+  },
+  "frames": {
+    "handoff": {
+      "hex": "010c0000000000000c1419577a44ca431cdc96d602ba9212767ac93e0d65b98796c4df2a860b0000000000000baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa010c0000000000000c1419577a44ca431cdc96d602ba9212767ac93e0d65b98796c4df2a86010b0000000000000baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01b8010006e06400000057219de8ad01000000000baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001d10101003333333333333333333333333333333333333333333333333333333333333333000f000000020700000000000000100000000000000000010101000100000000e0aa3c3545dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd03000000000020000000000000000080010000000000855c34ffffffffffffffff0203000000e0aa3c3545000000e0aa3c35450000004a47b3b3c2010000000000855c3400000000a8ed32320801000000000000800000000000000000000000000002beef0000000000010100",
+      "sha256": "33c1acd62700aa0c2d18c88aeca57aa1b026cd51ca8de7c72bc3c7db5a50dd07",
+      "bytes": 549
+    },
+    "empty": {
+      "hex": "010c0000000000000c1419577a44ca431cdc96d602ba9212767ac93e0d65b98796c4df2a860b0000000000000baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa010c0000000000000c1419577a44ca431cdc96d602ba9212767ac93e0d65b98796c4df2a86010b0000000000000baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01b8010006e06400000057219de8ad01000000000baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc0100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010100010100",
+      "sha256": "c7d001a2785d19fece02e617b36e0424d7102387ed0a4f4634ee65565d1710e2",
+      "bytes": 340
+    },
+    "missing": {
+      "hex": "010c0000000000000c1419577a44ca431cdc96d602ba9212767ac93e0d65b98796c4df2a860b0000000000000baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa010c0000000000000c1419577a44ca431cdc96d602ba9212767ac93e0d65b98796c4df2a86010b0000000000000baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01b8010006e06400000057219de8ad01000000000baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010100",
+      "sha256": "8d5329fe0a20df91cc0883d979c8cc51db2ed91575a47b59f7667399fd6251f1",
+      "bytes": 338
+    }
+  }
+}
