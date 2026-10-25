@@ -110,6 +110,21 @@ class FixtureHelpers(unittest.TestCase):
         self.assertTrue(result["redis"]["redisVerifiedAbsent"])
         self.assertEqual(operations[-1], ("core", "cleanup"))
 
+    def test_stable_rabbit_endpoints_are_explicit_and_do_not_change_the_pressure_budget(self):
+        for pin in [False, True]:
+            with patch.object(services.subprocess, "run") as run:
+                services.core_command("create", self.directory, "owned-pwsh", pin_rabbit_ports=pin)
+            arguments = run.call_args.args[0]
+            self.assertEqual("-PinRabbitPorts" in arguments, pin)
+            self.assertIn("-ExposeRabbitManagement", arguments)
+            position = arguments.index("-IndexingPressureLimitMb")
+            self.assertEqual(arguments[position + 1], "64")
+            self.assertEqual(run.call_args.kwargs["timeout"], 360)
+        with patch.object(services.subprocess, "run") as run:
+            with self.assertRaisesRegex(ValueError, "create-only"):
+                services.core_command("cleanup", self.directory, "owned-pwsh", pin_rabbit_ports=True)
+            run.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -5,6 +5,7 @@ import {fileURLToPath} from 'node:url';
 import type {Client} from '@elastic/elasticsearch';
 import {boundedPortableFile, portableSourceHash, portableWorkerSourceFrame, type PortableWorkerSource} from './portable-state-worker-source.ts';
 import {wireRecoveryPublicationOwners} from './portable-state-worker-recovery.mjs';
+import {wireBrokerRecoveryPublicationOwners} from './portable-state-broker-recovery.mjs';
 
 export const portableNativeProfile = 'wire-sysio-6508c9e8-native-engineering-v1';
 export const portableLegacyProfile = 'wire-sysio-6508c9e8-engineering-v1';
@@ -102,6 +103,7 @@ interface NativeRunOptions {
     readonly bulk: {readonly directory: string; readonly receipts: readonly any[]};
     readonly wait: (name: string, work: () => Promise<void>) => Promise<void>;
     readonly attemptRecovery?: () => unknown;
+    readonly brokerRecovery?: () => unknown;
     readonly masterRestart?: () => {receipt: unknown; masterPid: number} | undefined;
     readonly readerRestart?: () => {receipt: unknown; masterPid: number} | undefined;
 }
@@ -232,8 +234,10 @@ export async function createPortableNativeQualification(options: NativeRunOption
             const fragment = manifest.fragments.find((fragment: any) => fragment.effects.some((effect: any) => effect.globalSequence === row.logical.global_sequence));
             assert.ok(fragment);
             const transaction = plan.transactions.find((value: any) => value.transactionId === fragment.transactionId); assert.ok(transaction);
-            const owners = wireRecoveryPublicationOwners(options.attemptRecovery?.(), {admissionId: current.id, planId: current.planId,
-                traceOrdinal: transaction.traceOrdinal, blockNum: number, blockId: plan.source.blockId});
+            const context = {admissionId: current.id, planId: current.planId,
+                traceOrdinal: transaction.traceOrdinal, blockNum: number, blockId: plan.source.blockId};
+            const owners = wireRecoveryPublicationOwners(options.attemptRecovery?.(), context)
+                ?? wireBrokerRecoveryPublicationOwners(options.brokerRecovery?.(), context);
             assertPortableNativePublications(confirmed, {payloadSha256: logicalSha256, admissionId: current.id,
                 fragmentId: manifests.actionHistoryFragmentId(fragment, plan), blockNum: number, owners});
             persistedOutputs.set(JSON.stringify([row.index, row.id]), {index: row.index, id: row.id, logicalSha256,
@@ -307,6 +311,10 @@ export async function createPortableNativeQualification(options: NativeRunOption
             const commit = await frontier.readCommit(control.value.head.commitId);
             assert.equal(commit.nativeActionInterfaceVersion, 1); assert.equal(commit.source.blockId, source.records[through - 1].blockId);
             const result: any = {through, control, commit, notifications: [], native: null};
+            if (through === 34 && options.brokerRecovery?.()) {
+                // Recheck the already-held original output against its two audited physical publishers.
+                result.brokerRecoveredMembership = await admission(events, 33, await actions(33));
+            }
             if (through === 1) {const raw = await durable(events, 1), membership = await admission(events, 1, await actions(1));
                 await assert.rejects(native.open(raw.original.position, raw.event.selectionId), {code: 'native_source_incomplete'});
                 result.genesis = {raw, membership, wholeHistoryCompleteness: false};}

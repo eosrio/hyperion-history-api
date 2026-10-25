@@ -322,6 +322,76 @@ acceptance remain pending. Follow #277 for measured worker/proof backpressure;
 keep #270/#274 open. Do not widen ancestry or relax queue/seal guards to turn
 that failed run into a passing result.
 
+## Owned broker restart instrumentation
+
+The initial #319 fault mode uses `--native --authority-rpc URL --broker-recovery`
+on native Linux Node 24/26. It excludes profiling and other fault modes. Create
+its private services with `services.py create NEW_DIRECTORY --pin-rabbit-ports`.
+The ordinary fixture still uses dynamic Docker ports. The explicit option
+reserves two distinct loopback ports, persists the intended binds, then releases
+the reservations immediately before Docker binds them. A competing bind fails
+setup; it does not choose replacement endpoints after recording intent.
+
+The preload holds the actual block-33 DS handoff manifest response after the
+original publication confirmation and before its fresh-write observation or
+ACK. The original store call stays awaited when its attempt is fenced. The
+controller releases that response separately; it neither replaces the returned
+bytes nor converts cancellation into a successful write. Store validation and
+the original owner checks still decide what can happen after release.
+Channel errors use passive `errorMonitor` observation so the existing handled
+error path and unhandled worker exit both retain their original behavior. A
+native counterexample against the pinned amqplib dispatch distinguishes passive
+observation from an ordinary listener that would suppress an unhandled error.
+The first held receipt remains strictly an original delivery. Subsequent selected
+transport returns are observed after validating that retained cut; their original
+store validates the new response. A native bundle CAS regression holds and fences
+the old return, obtains a fresh receipt in a separate scope, and verifies that a
+partial-copy response still fails in the original store.
+
+Only a privately issued, single-use census can restart the owned RabbitMQ
+container. The helper rechecks the exact run, image, container, exclusive data
+volume, unchanged CPU/memory budgets, fixed loopback binds, Docker socket/daemon
+identity and Linux process birth/command before the single-container restart.
+It preserves the daemon and other fixture services. Before/after counters retain
+their separate broker process incarnations; reset counters are not cumulative
+work, durable completion, ACK settlement, source authority or capacity evidence.
+
+The replay permits one block-34 stream after the issued broker restart and the
+unchanged run control match the original source. Its original stream must have
+sent and acknowledged exactly blocks 1-33. Reconnection releases no new source
+bytes: the controller first observes the old socket physically closed and one
+new, empty block-34 stream. Copied restart or control JSON cannot authorize this
+transition or release its continuation.
+
+Run the original block-33 API and native oracles before the restart while the
+selected handoff receipt is held. Only that DS queue may remain unacknowledged;
+every other queue must drain. Query-visible data does not settle that original
+attempt. After reconnecting, observe retryable source unavailability, then release
+only the original block 34 so the new reader can establish canonical authority.
+Verify its actual source ACK, projection checkpoint, restored predeployment API
+contract and native frontier before the remaining original prefix holds. Waiting
+for settled prefix-33 authority while withholding this continuation deadlocks the
+fixture: opening a reader session deliberately fences the old proof authority.
+Source credits, bytes, budgets, ancestry and deadlines remain unchanged.
+
+The controller reads back the replacement's actual attempt association and its
+original source/confirmed handoff. The old fenced attempt must have no fresh
+write, ACK or association. The replacement needs its own conditional two-copy
+receipt, accepted fresh observation, authenticated returned end and the master's
+source-checked association. Broker settlement remains unknown. Only that completed
+readback can identify the two physical publishers of the exact original
+transaction; copied audit JSON cannot do so. The native oracle rechecks block 33
+after recovery and keeps ordinary single-publication checks for all other work.
+The prefix-34 checkpoint also reconciles the two broker incarnations' source
+counters before any later source is released.
+
+These assertions are **not completed broker-recovery qualification**. The report
+retains `recoveryQualified: false` and records the full workload verdict separately
+from cleanup. #319 still requires their actual owned Linux baseline/fault execution
+and independently verified terminal custody. Unexpected duplicates and unavailable
+inputs remain visible failures.
+Do not close #288 or #277 from these resource-free guards or a restart observation.
+
 ## Production-master worker replacement
 
 For #288, append `--worker-recovery` to the native, source-bounded RPC command

@@ -29,7 +29,8 @@ describe('portable actual-source harness guards', () => {
         const report = JSON.parse(stdout.trim().split('\n').at(-1)!);
         expect(report).toMatchObject({passed: true, sequentialStatusProbes: portableSourceLimits.connections + 4,
             concurrentLimit: portableSourceLimits.connections, sessionHistoryLimit: portableSourceLimits.sessions,
-            originalStatusOnly: true, streamedBlocks: 0, copiedMasterRestartRejected: true, copiedReaderRestartRejected: true, fullWorkerQualification: false});
+            originalStatusOnly: true, streamedBlocks: 0, copiedMasterRestartRejected: true, copiedReaderRestartRejected: true,
+            copiedBrokerRestartRejected: true, unissuedBrokerContinuationRejected: true, fullWorkerQualification: false});
     }, 40000);
     it('declines an exact discovery health probe without creating source authority or poisoning the replay', async () => {
         const errors: string[] = [], source = {endBlock: 1, records: [{blockId: 'a'.repeat(64)}], startupInfo: {chain_id: 'b'.repeat(64)}} as PortableWorkerSource;
@@ -167,8 +168,11 @@ describe('portable actual-source harness guards', () => {
     it('resumes from the next original block after the completed coordinator head with bounded ACK accounting', () => {
         const value = request(40, 1000); value[1].start_block_num = 34;
         const flow = new PortableSourceFlow(40, 34);
-        expect(flow.releaseThrough(34)).toEqual([]);
-        expect(flow.receive(value).blocks).toEqual([34]);
+        expect(flow.releaseThrough(33)).toEqual([]);
+        expect(flow.receive(value).blocks).toEqual([]);
+        expect(flow.sent).toEqual([]); expect(flow.acknowledged).toEqual([]); expect(flow.outstanding).toBe(0);
+        expect(() => flow.receive(ack(1))).toThrow();
+        expect(flow.releaseThrough(34)).toEqual([34]);
         expect(flow.sent).toEqual([34]); expect(flow.outstanding).toBe(1);
         expect(flow.receive(ack(1)).blocks).toEqual([]);
         expect(flow.releaseThrough(40)).toEqual([35, 36, 37, 38, 39, 40]);
