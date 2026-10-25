@@ -47,6 +47,44 @@ lifecycle inputs remain constructed; live configuration/fork and full Wire quali
 remain separate #288/#277 gates. Default activation, source inputs, budgets, ancestry and
 phase/run deadlines are unchanged.
 
+## Required retained validation reads (#315)
+
+Separate native controls delay the actual frontier-control read used by the original
+MainDS/genesis and DS/block-33 proof readers. The controlled transport has read the
+original response bytes but withholds its return. In the late-read cases the same
+physical attempt has already observed its fresh disposition or handoff; it still cannot
+ACK or issue an end until validation settles. An independent physical worker under the
+same supervisor completes its original callback and association while the first read is held.
+
+An ordinary failed read leaves the original root thrown, without ACK or association.
+MainDS preserves the infrastructure error; the native reader reports its existing retryable
+`native_read_unavailable`/503. Previously written records retain their original typed
+classification and remain inspection-only. Released positive controls retain the original
+fresh-write, validation, ACK and authenticated-end order.
+
+Cancellation controls use the real parent fence and a transport that ignores abort. An
+early proof-open control observes the original outer wait rejecting while its tracked
+inner read is still pending. No authentic end, new output or ACK follows until physical
+drain; after release the failed callback remains unresolved. Actual issued ABI/native views,
+or the original scope-bound open helper before a view exists, reject post-fence use.
+Publisher, stream, cache, history and retained-store dispatch counts are compared at the
+hold, fence, rejected proof use, inner-read settlement and eventual end. These count new
+dispatches, without claiming cancellation retracts previously dispatched I/O. The sibling is prepared before
+the held callback starts, so peer setup cannot consume the original five-second proof-wait
+budget. No timeout or operation bound is enlarged.
+
+Storage, cancellation scheduling and canonical authority in these cases are controlled.
+They add no live broker/fork or full Wire qualification. Production runtime, dependency,
+source/oracle and owned Linux qualification-script bytes remain unchanged; the earlier owned Linux
+regression retains its original revision and failed full-replay outcome.
+
+```sh
+bun test tests/unit/action-attempt-retained-read.test.ts
+```
+
+Select an explicit native Node 24/26 executable through `HYPERION_NATIVE_NODE`, after the
+normal dependency install and emitted build.
+
 ## Current Wire testnet source preflight
 
 Canonical RPC validation reads only the requested block number, ID and parent ID.
