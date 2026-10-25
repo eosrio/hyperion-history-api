@@ -24,6 +24,10 @@ const directory = mkdtempSync(join(tmpdir(), 'hyperion-attempt-worker-original-'
 const chain = 'handoff-worker-original', chainId = '9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d', blockId = number => number.toString(16).padStart(64, '0');
 const hash = value => createHash('sha256').update(value).digest('hex');
 const mode = process.argv[2] ?? 'lifecycle';
+const managedProofCase = /^managed-original-(main|handoff)-(held|failed|cancelled)-(proof|open)$/.exec(mode);
+const proofControl = managedProofCase && process.env.HYPERION_QUALIFICATION_PLAIN_PROOF !== 'true'
+    ? {kind: managedProofCase[2], phase: managedProofCase[3]} : undefined;
+let proofAttemptId, proofFreshWrite;
 const managedOriginalMainHeldWrite = mode === 'managed-original-main-held-write';
 const managedOriginalMainFailedWrite = mode === 'managed-original-main-failed-write';
 const managedOriginalMainAckThrows = mode === 'managed-original-main-ack-throws';
@@ -32,7 +36,7 @@ const managedOriginalMainHeldEnd = mode === 'managed-original-main-held-end';
 const managedOriginalMainFailedEnd = mode === 'managed-original-main-failed-end';
 const managedOriginalMain = mode === 'managed-original-main' || managedOriginalMainHeldWrite
     || managedOriginalMainFailedWrite || managedOriginalMainAckThrows || managedOriginalMainHeldOperation
-    || managedOriginalMainHeldEnd || managedOriginalMainFailedEnd,
+    || managedOriginalMainHeldEnd || managedOriginalMainFailedEnd || managedProofCase?.[1] === 'main',
     managedOriginalNoEffect = mode === 'managed-original-ds',
     managedOriginalContract = mode === 'managed-original-contract',
     managedOriginalHandoffHeldConfirm = mode === 'managed-original-handoff-held-confirm',
@@ -40,12 +44,22 @@ const managedOriginalMain = mode === 'managed-original-main' || managedOriginalM
     managedOriginalHandoffHeldDrain = mode === 'managed-original-handoff-held-drain',
     managedOriginalHandoffFailedDrain = mode === 'managed-original-handoff-failed-drain',
     managedOriginalHandoff = mode === 'managed-original-handoff' || managedOriginalHandoffHeldConfirm
-        || managedOriginalHandoffFailedConfirm || managedOriginalHandoffHeldDrain || managedOriginalHandoffFailedDrain;
+        || managedOriginalHandoffFailedConfirm || managedOriginalHandoffHeldDrain || managedOriginalHandoffFailedDrain
+        || managedProofCase?.[1] === 'handoff';
 const managedOriginalDs = managedOriginalNoEffect || managedOriginalContract || managedOriginalHandoff;
 const managedOriginal = managedOriginalMain || managedOriginalDs;
 const events = [], sourceFrames = [], blockWrites = [], cache = [];
 let reader, coordinator, managedClient, snapshotPath, draining = Promise.resolve();
 let finishManaged, releaseManagedWrite, releaseManagedConfirm, releaseManagedDrain, releaseManagedOperation;
+let releaseManagedProof;
+const managedProofReleased = new Promise(resolve => {releaseManagedProof = resolve;});
+let startManagedPeer;
+const managedPeerStarted = new Promise(resolve => {startManagedPeer = resolve;});
+const awaitManagedPeerStart = async () => {
+    if (!managedProofCase || process.env.HYPERION_QUALIFICATION_PLAIN_PROOF !== 'true') return;
+    previousSend.call(process, {event: 'qualification_peer_ready'});
+    await managedPeerStarted;
+};
 const managedFinished = new Promise(resolve => {finishManaged = resolve;});
 const managedWriteReleased = new Promise(resolve => {releaseManagedWrite = resolve;});
 const managedConfirmReleased = new Promise(resolve => {releaseManagedConfirm = resolve;});
@@ -59,6 +73,8 @@ if (managedOriginal) process.on('message', message => {
     if (message?.event === 'qualification_release_confirm') releaseManagedConfirm();
     if (message?.event === 'qualification_release_drain') releaseManagedDrain();
     if (message?.event === 'qualification_release_operation') releaseManagedOperation();
+    if (message?.event === 'qualification_release_proof') releaseManagedProof();
+    if (message?.event === 'qualification_start_peer') startManagedPeer();
     if (message?.event === 'qualification_release_end') {
         managedEndReleased = true;
         for (const {event, callback} of heldManagedEnds.splice(0)) previousSend.call(process, event, callback);
@@ -66,6 +82,8 @@ if (managedOriginal) process.on('message', message => {
 });
 process.send = (event, callback) => {
     if (managedOriginal && event?.event === 'worker_attempt_request') {
+        if (proofControl && event.payload?.operation === 'register') proofAttemptId = event.payload.attemptId;
+        if (proofControl && event.payload?.operation === 'observe') proofFreshWrite = event.payload.write;
         if (event.payload?.operation === 'end' && managedOriginalMainHeldEnd && !managedEndReleased) {
             assert(heldManagedEnds.length < 3, 'original end hold must retain only the bounded request attempts');
             heldManagedEnds.push({event, callback});
@@ -205,6 +223,50 @@ try {
     };
     reader = worker(Reader.prototype, readerConsumer, readerPublisher);
     const main = worker(Main.prototype, mainConsumer, mainPublisher), pool = worker(Pool.prototype, poolConsumer, poolPublisher);
+    let proofReadHeld = false, proofReadSettled = false;
+    const proofError = new Error('constructed required retained proof read failure');
+    if (proofControl) {
+        const originalGet = memory.client.get.bind(memory.client);
+        memory.client.get = async (request, options) => {
+            const scope = currentProofConsumerScope();
+            const selected = !proofReadHeld && scope?.id === proofAttemptId && options?.signal
+                && request.index === frontier.controlIndex && request.id === 'control'
+                && (proofControl.phase === 'open' ? !proofFreshWrite : !!proofFreshWrite);
+            if (selected) proofReadHeld = true;
+            // Hold the actual transport's returned original bytes. The controlled transport ignores abort.
+            const value = await originalGet(request, options);
+            if (!selected) return value;
+            const consumer = managedOriginalMain ? mainConsumer : poolConsumer;
+            scope.signal.addEventListener('abort', () => previousSend.call(process, {
+                event: 'qualification_proof_fenced', scope: scope.snapshot(), originalAckCount: consumer.acked.length,
+                readSettled: proofReadSettled, readSignalAborted: options.signal.aborted
+            }), {once: true});
+            previousSend.call(process, {event: 'qualification_proof_held', request, scope: scope.snapshot(),
+                signalPassed: true, originalAckCount: consumer.acked.length, freshWrite: proofFreshWrite ?? null});
+            try {
+                await managedProofReleased;
+                if (proofControl.kind === 'failed') throw proofError;
+                return value;
+            } finally {
+                proofReadSettled = true;
+                previousSend.call(process, {event: 'qualification_proof_settled', readSignalAborted: options.signal.aborted});
+            }
+        };
+        if (proofControl.phase === 'open') {
+            const {ProtocolAbiProofReader} = await import('../../build/indexer/protocol/abi-proof.js');
+            const originalWait = ProtocolAbiProofReader.prototype.waitForOpen;
+            ProtocolAbiProofReader.prototype.waitForOpen = async function(...args) {
+                const scope = currentProofConsumerScope();
+                try {return await originalWait.apply(this, args);}
+                catch (error) {
+                    if (scope?.id === proofAttemptId) previousSend.call(process, {
+                        event: 'qualification_proof_wait_rejected', code: error.code, readSettled: proofReadSettled
+                    });
+                    throw error;
+                }
+            };
+        }
+    }
     const attemptLifecycle = (value, role) => {
         if (!(managedOriginalMain && value === main || managedOriginalDs && value === pool)) controlledAttemptLifecycle(value, role);
         return value;
@@ -255,6 +317,7 @@ try {
         assert.equal(retainedIngress.frameHex, bytes.toString('hex'));
         attemptLifecycle(main, 'deserializer').captureActionAdmissionDelivery(delivery, mainConsumer);
         attemptLifecycle(main, 'deserializer').captureProtocolSourceDelivery(delivery, mainConsumer);
+        if (managedOriginalMain && managedProofCase) await awaitManagedPeerStart();
         await parser.parseMessage(main, [delivery]); await draining;
         assert.equal(mainConsumer.acked.at(-1), delivery);
         const messages = mainPublisher.sent.slice(mainBefore).map(sent => {
@@ -311,6 +374,21 @@ try {
             timer = setTimeout(() => reject(new Error('Managed Wire qualification parent did not finish')), 20_000);
         })]);} finally {clearTimeout(timer);}
     };
+    const publishProofFailure = async (role, processing, admissionId) => {
+        let observedError;
+        await assert.rejects(processing, error => {
+            observedError = error;
+            return proofControl.kind === 'failed' ? role === 'main' ? error === proofError
+                : error.name === 'ProtocolNativeActionUnavailableError' && error.code === 'native_read_unavailable' && error.statusCode === 503
+                : error.code === 'worker_attempt_fenced' || error.code === 'proof_cancelled' || error.code === 'native_cancelled';
+        });
+        assert(proofReadHeld && proofReadSettled);
+        assert.equal((role === 'main' ? mainConsumer : poolConsumer).acked.length, 0);
+        previousSend.call(process, {event: 'qualification_proof_failed', kind: proofControl.kind,
+            originalAckCount: 0, freshWrite: proofFreshWrite ?? null,
+            errorName: observedError.name, errorCode: observedError.code ?? null, statusCode: observedError.statusCode ?? null});
+        await publishManagedSnapshot(role, admissionId ?? null, proofFreshWrite?.id ?? null, 0);
+    };
     mainConsumer.onAck = () => {
         const rows = records();
         assert.equal(rows.length, 1, 'Original missing-trace source ACK requires its durable typed source observation');
@@ -357,7 +435,11 @@ try {
         }
     };
     const genesisFrame = readFileSync(join(sourceDir, 'block-000001.bin'));
-    if (managedOriginalMainFailedWrite) {
+    if (managedOriginalMain && proofControl && proofControl.kind !== 'held') {
+        const processing = prepare(genesisFrame);
+        processing.catch(() => {});
+        await publishProofFailure('main', processing, undefined);
+    } else if (managedOriginalMainFailedWrite) {
         await assert.rejects(prepare(genesisFrame),
             /constructed managed disposition write failure/);
         assert.equal(failedManagedWrites, 1);
@@ -531,8 +613,13 @@ try {
             if (managedOriginalHandoffFailedConfirm)
                 poolPublisher.confirmError = new Error('constructed original publication confirm failure');
             if (managedOriginalHandoffHeldDrain || managedOriginalHandoffFailedDrain) poolPublisher.writable = false;
+            if (managedProofCase) await awaitManagedPeerStart();
             const processing = pool.processMessages(prepared.messages);
             processing.catch(() => {});
+            if (proofControl && proofControl.kind !== 'held') {
+                await publishProofFailure('ds', processing, prepared.admission.id);
+                break;
+            }
             if (managedOriginalHandoffHeldDrain) {
                 await until(() => poolPublisher.sent.length === 1 && poolPublisher.confirmCalls === 1,
                     'original handoff receives confirm but still awaits publisher drain');
@@ -609,7 +696,8 @@ try {
             if (managedOriginalContract) break;
         }
     }
-    if (managedOriginalDs && !managedOriginalHandoffFailedConfirm && !managedOriginalHandoffFailedDrain) {
+    if (managedOriginalDs && !managedOriginalHandoffFailedConfirm && !managedOriginalHandoffFailedDrain
+        && !(proofControl && proofControl.kind !== 'held')) {
         const recordId = managedOriginalHandoff ? managedHandoffId : records().find(row =>
             row.value.work.admissionId === prepared.admission.id && row.value.work.stage === 'ds-transaction')?.id;
         assert(recordId); assert.equal(poolConsumer.acked.length, 1);
