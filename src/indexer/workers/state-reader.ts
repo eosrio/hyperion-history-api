@@ -866,9 +866,14 @@ export default class StateReader extends HyperionWorker {
             const lib = res.last_irreversible;
             let confirmLive: (() => {nextBlock: number; blockId: string} | undefined) | undefined;
             try {
-                confirmLive = this.isLiveReader ? this.liveCheckpoint?.observe({
-                    num: blk_num, id: blk_id, previous: res.prev_block?.block_id.toString() ?? ''
-                }, protocolNumber(lib.block_num)) : undefined;
+                const checkpoint = this.isLiveReader ? this.liveCheckpoint : undefined;
+                if (checkpoint) {
+                    const generation = this.physicalIngressGeneration, context = this.sourceContext;
+                    const confirm = checkpoint.observe({num: blk_num, id: blk_id,
+                        previous: res.prev_block?.block_id.toString() ?? ''}, protocolNumber(lib.block_num));
+                    confirmLive = () => this.liveCheckpoint === checkpoint && this.physicalIngressGeneration === generation
+                        && this.sourceContext === context ? confirm() : undefined;
+                }
             } catch (error: any) {
                 this.failSourceRecovery(error.message);
                 return 0;
@@ -1164,10 +1169,15 @@ export default class StateReader extends HyperionWorker {
             source.generation = opened.generation;
             this.coordinatorResumeFromBlock = opened.resumeFromBlock;
             if (opened.resumeFromBlock !== null) {
-                this.local_block_num = opened.resumeFromBlock - 1;
+                const published = this.liveCheckpoint?.resumePoint();
+                const resume = published ? Math.min(published.nextBlock, opened.resumeFromBlock) : opened.resumeFromBlock;
+                this.coordinatorResumeFromBlock = resume;
+                this.local_block_num = resume - 1;
                 // This is a new local publication epoch, not a fabricated master checkpoint.
-                // Only fresh confirmed irreversible publications may emit live_checkpoint.
-                this.liveCheckpoint = new LiveReaderCheckpoint(opened.resumeFromBlock, '', this.conf.settings.reader_recovery_window_blocks);
+                // ABI coverage cannot skip publication recovery; only fresh confirmed irreversible
+                // publications advance this cursor. Preserve its anchor when both starts agree.
+                this.liveCheckpoint = new LiveReaderCheckpoint(resume, published?.nextBlock === resume ? published.blockId : '',
+                    this.conf.settings.reader_recovery_window_blocks);
             }
         } catch (error) {
             this.assertCurrentIngress(context.generation);

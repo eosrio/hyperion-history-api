@@ -15,6 +15,8 @@ for (const mode of ['baseline', 'revoke', 'late-rpc']) test('actual reversible n
     expect(result.processes.every((p: any) => p.exitCode === 0 && /^v(?:24|26)\./.test(p.node))).toBe(true);
     if (mode === 'revoke') expect(result.revoked).toMatchObject({peerAssociatedBeforeOriginalSettlement: true,
         conditionalWrites: 1, currentConfigurationAndTargetLateReadsRejected: true,
+        recoveredOriginalDelivery: {sameCapturedSource: true, associatedBeforeOriginalSettlement: true,
+            end: {binding: {blockNum: 33}, rootResult: 'returned', status: 'quiescent', acknowledgementAttempted: true}},
         oldEnd: {rootResult: 'threw', acknowledgementAttempted: false, status: 'quiescent'}});
     if (mode === 'late-rpc') expect(result.lateRpc).toMatchObject({oldCanonicalObservationRejected: true,
         sourceStillHasSameCanonicalBlockIdentity: true, oldEndUnresolvedAfterReplacement: true});

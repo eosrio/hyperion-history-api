@@ -6,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {ActionSourceAdmissionStore} from '../../build/indexer/history/action-source-admission.js';
 import {ActionHistorySourceJournal} from '../../build/indexer/history/action-source-journal.js';
 import {ImmutableProtocolBundleStore} from '../../build/indexer/protocol/immutable-bundle-store.js';
+import {ProtocolSourceBindingStore} from '../../build/indexer/protocol/source-bindings.js';
 import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -81,7 +82,10 @@ export async function checkReversibleWorkerEvidence(path) {
     store.bundles = new ImmutableProtocolBundleStore(memory.client, 'reversible-worker-original', 1,
         'action-source-admission', 'history-source-admission-v1', undefined, {readOnly: true});
     store.journal = new ActionHistorySourceJournal(memory.client, 'reversible-worker-original', 1, {readOnly: true});
-    const associations = [report.associationId, ...(report.revoked ? [report.revoked.redelivery.associationId] : [])];
+    const recovered = report.revoked?.recoveredOriginalDelivery;
+    if (report.revoked) assert(recovered, 'Revocation evidence lacks recovery of its original delivery');
+    const associations = [report.associationId, ...(report.revoked ? [recovered.associationId, report.revoked.redelivery.associationId] : [])];
+    assert.equal(new Set(associations).size, associations.length);
     for (const id of associations) {
         const observed = (await store.readAttemptAssociation(id)).observation;
         assert.equal(observed.sourceChecked, true); assert.equal(observed.brokerSettlement, 'unknown');
@@ -97,14 +101,50 @@ export async function checkReversibleWorkerEvidence(path) {
         const transaction = admission.inventory.transactions.find(t => t.traceOrdinal === old.binding.traceOrdinal);
         const retained = await store.readConfirmedHandoff(admission.id, old.binding.traceOrdinal, Buffer.from(transaction.dispatch.canonicalJson));
         assert.equal(retained.id, old.freshWrites[0].id);
+        assert.equal(recovered.end.binding.blockNum, old.binding.blockNum);
+        assert.equal(recovered.end.binding.blockId, old.binding.blockId);
+        assert.notEqual(recovered.end.incarnation, old.incarnation); assert.notEqual(recovered.end.attemptId, old.attemptId);
+        assert.equal(recovered.end.rootResult, 'returned'); assert.equal(recovered.end.acknowledgementAttempted, true);
+        assert.equal(recovered.end.binding.selectionId, recovered.currentSourceSelectionId);
+        assert.notEqual(recovered.currentSourceSelectionId, recovered.originalSourceSelectionId);
+        const sources = new ProtocolSourceBindingStore(memory.client, 'reversible-worker-original', 1, {readOnly: true});
+        const originalSelection = (await sources.readSelection(recovered.originalSourceSelectionId)).selection;
+        const currentSelection = (await sources.readSelection(recovered.currentSourceSelectionId)).selection;
+        assert.deepEqual(currentSelection.source, originalSelection.source);
+        assert.equal(currentSelection.captureSha256, originalSelection.captureSha256);
+        assert.equal(currentSelection.readerSessionId, report.revoked.replacement.readerSessionId);
+        assert.notEqual(currentSelection.readerSessionId, originalSelection.readerSessionId);
+        const recoveredAdmission = await store.resolve(recovered.end.binding.admissionId);
+        assert.equal(recoveredAdmission.source.schemaVersion, 2);
+        assert.equal((await store.journal.readPlan(recoveredAdmission.planId)).plan.source.retainedSourceId, recoveredAdmission.sourceId);
+        assert.notEqual(recoveredAdmission.planId, admission.planId);
+        assert.equal(recoveredAdmission.source.captureSha256, admission.source.captureSha256);
+        const recoveredTransaction = recoveredAdmission.inventory.transactions.find(t => t.traceOrdinal === recovered.end.binding.traceOrdinal);
+        const recoveredHandoff = await store.readConfirmedHandoff(recoveredAdmission.id, recovered.end.binding.traceOrdinal,
+            Buffer.from(recoveredTransaction.dispatch.canonicalJson));
+        assert.equal(recoveredHandoff.id, recovered.end.freshWrites[0].id);
         for (const id of associations) {
             const observed = (await store.readAttemptAssociation(id)).observation;
             assert.notEqual(observed.end.attemptId, old.attemptId);
         }
     }
+    const readerIndex = data.processes.findIndex(p => p.role === 'continuous_reader'); assert(readerIndex >= 0);
+    const originalFrames = new Map(data.inputs.frames.map(frame => [frame.controlledFrameSha256, frame.number]));
+    const observedFrames = [], requestedStarts = [];
+    for (const [messageIndex, message] of data.processes[readerIndex].sent.entries()) {
+        if (message.event !== 'qualification_command' || message.input.operation !== 'frame') continue;
+        const frame = Buffer.from(value(['processes', readerIndex, 'sent', messageIndex, 'input', 'frameHex']), 'hex');
+        const number = originalFrames.get(hash(frame)); assert(number !== undefined); observedFrames.push(number);
+    }
+    for (const message of data.processes[readerIndex].received) if (message.event === 'qualification_ship_request'
+        && message.request[0] === 'get_blocks_request_v0') requestedStarts.push(message.request[1].start_block_num);
+    const prefix = Array.from({length: 33}, (_, index) => index + 1);
+    assert.deepEqual(observedFrames, data.mode === 'baseline' ? prefix : [...prefix, ...prefix, 34]);
+    assert.deepEqual(requestedStarts, data.mode === 'baseline' ? [1] : [1, 1]);
     return {passed: true, mode: data.mode, bytes: bytes.length, sha256: hash(bytes),
         strings: texts.size, references: paths.size, originalFrames: 34, nativeProcesses: 4,
         originalServiceRequestsAndReplies: requests.size, authenticEndReplies: acceptedEnds.length,
-        typedAssociationsRead: associations.length, coldWrites: 0, capacityAuthority: false, releaseQualified: false};
+        typedAssociationsRead: associations.length, originalDeliveryRecovered: !!recovered,
+        originalFrameDeliveries: observedFrames.length, requestedStarts, coldWrites: 0, capacityAuthority: false, releaseQualified: false};
 }
 if (process.argv[1] === fileURLToPath(import.meta.url)) console.log(JSON.stringify(await checkReversibleWorkerEvidence(process.argv[2])));

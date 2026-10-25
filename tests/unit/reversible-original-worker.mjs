@@ -66,7 +66,9 @@ try {
         worker.configureWorkerAttemptLifecycle(managed);
     }
     if (role === 'continuous_reader') {
-        Object.assign(worker, {baseRequest: {}, shipRev: 0, socketGeneration: 1, activeIngressGeneration: 1,
+        Object.assign(worker, {baseRequest: {max_messages_in_flight: 1, have_positions: [], irreversible_only: false,
+            fetch_block: true, fetch_traces: true, fetch_deltas: true}, shipRev: 'v0', ship: {connected: true},
+            socketGeneration: 1, activeIngressGeneration: 1,
             physicalIngressGeneration: 1, isLiveReader: true, local_block_num: 0, local_lib: 0, receivedFirstBlock: true,
             reversibleBlockMap: new Map(), forkedBlocks: new Map(), publications: new Map(), sourceProbes: new Set(),
             liveCheckpoint: new LiveReaderCheckpoint(1, '', 256),
@@ -94,7 +96,9 @@ try {
             if (role === 'continuous_reader') {
                 await worker.onMessage(Buffer.from(input.schemaJson));
                 await worker.blockReadingQueue.push({kind: 'frame', data: Buffer.from(input.statusHex, 'hex')});
-                return {readerSessionId: worker.sourceContext.readerSessionId, coordinatorGeneration: worker.coordinatorSource.generation};
+                worker.requestBlocks(1);
+                return {readerSessionId: worker.sourceContext.readerSessionId, coordinatorGeneration: worker.coordinatorSource.generation,
+                    requestedStartBlock: worker.baseRequest.start_block_num};
             }
             await worker.initializeProtocolShip(input.schemaJson); return {};
         }
@@ -114,7 +118,9 @@ try {
             await worker.blockReadingQueue.push({kind: 'connected', generation: worker.physicalIngressGeneration});
             await worker.onMessage(Buffer.from(input.schemaJson));
             await worker.blockReadingQueue.push({kind: 'frame', data: Buffer.from(input.statusHex, 'hex')});
-            return {readerSessionId: worker.sourceContext.readerSessionId, coordinatorGeneration: worker.coordinatorSource.generation};
+            worker.requestBlocks(1);
+            return {readerSessionId: worker.sourceContext.readerSessionId, coordinatorGeneration: worker.coordinatorSource.generation,
+                requestedStartBlock: worker.baseRequest.start_block_num};
         }
         if (input.operation === 'delivery') {
             assert.notEqual(role, 'continuous_reader');

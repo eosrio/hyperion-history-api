@@ -41,6 +41,19 @@ const complete = (source = plan()) => [
 ];
 
 describe('immutable action history source membership', () => {
+    it('binds an optional retained source identity without changing legacy plan identities', () => {
+        const legacy = plan(), before = actionHistoryImmutableJson(legacy);
+        const scoped = {...legacy, source: {...legacy.source, retainedSourceId: 'h45actionsource1:' + hex('a')}};
+        const other = {...scoped, source: {...scoped.source, retainedSourceId: 'h45actionsource1:' + hex('b')}};
+        expect(actionHistoryPlanId(scoped)).not.toBe(actionHistoryPlanId(other));
+        expect(() => validateActionHistoryFragment(complete(scoped)[0], other)).toThrow('fragment binding');
+        expect(actionHistoryImmutableJson(validateActionHistoryBlockPlan(legacy))).toBe(before);
+        expect(actionHistoryPlanId(legacy)).toBe('h45actionplan1:' + hash(actionHistoryImmutableJson(['hyperion-action-history-plan-v1', legacy])));
+        for (const invalid of [null, '', 'h45actionsource1:' + hex('A'), 'h45actionsource2:' + hex('a'), hex('a')]) {
+            const value: any = structuredClone(scoped); value.source.retainedSourceId = invalid;
+            expect(() => validateActionHistoryBlockPlan(value)).toThrow('Invalid action history source block plan');
+        }
+    });
     it('returns separate frozen source plans and deterministic domain-specific identities', () => {
         const input = plan(), before = structuredClone(input), validated = validateActionHistoryBlockPlan(input);
         expect(validated).toEqual(input); expect(validated).not.toBe(input);
