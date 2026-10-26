@@ -33,7 +33,9 @@ export class WorkerAttemptClient {
     private readonly timeout: number;
     private readonly drainTimeout: number;
     private readonly retries: number;
-    private readonly onMessage = (message: any) => {
+    private readonly onMessage = (message: any) => this.handleMessage(message);
+    /** Keep the registered callback stable while handling the original three-method transport contract. */
+    private handleMessage(message: any): void {
         if (message?.event === 'worker_attempt_reply' && typeof message.requestId === 'string') this.pending.get(message.requestId)?.resolve(message.result);
         else if (['worker_attempt_fence','worker_attempt_fence_active'].includes(message?.event)) {
             const stop = message.event === 'worker_attempt_fence';
@@ -42,8 +44,9 @@ export class WorkerAttemptClient {
             } else if (!this.authority && typeof message.epoch === 'string' && typeof message.incarnation === 'string')
                 this.pendingFence = {epoch: message.epoch, incarnation: message.incarnation, sequence: this.sequence, stop};
         }
-    };
-    private readonly onDisconnect = () => {this.fenceAll(); for (const request of this.pending.values()) request.reject(new Error('Worker lifecycle IPC disconnected'));};
+    }
+    private readonly onDisconnect = () => this.handleDisconnect();
+    private handleDisconnect(): void {this.fenceAll(); for (const request of this.pending.values()) request.reject(new Error('Worker lifecycle IPC disconnected'));}
     constructor(private readonly options: Options) {
         this.timeout = options.timeoutMs ?? 5000; this.drainTimeout = options.drainTimeoutMs ?? 5000; this.retries = options.retries ?? 2;
         if (![this.timeout,this.drainTimeout].every(value => Number.isSafeInteger(value) && value >= 10 && value <= 30000)
