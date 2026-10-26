@@ -172,7 +172,7 @@ loop referenced until cleanup completes. These are harness corrections, not prod
 
 The passed scalar fixture supports this physical/query design for implementation. It does not establish the
 actual worker/API adapter, an upgrade path, multi-value custom sorts, full receipt tuple semantics or runtime
-performance. Node 22/24 CI results must be assessed separately at the exact committed script revision.
+performance. Node 24/26 CI results must be assessed separately at the exact committed script revision.
 
 Before closing #219, qualify the actual production writer/query adapter and all supported filters/custom sorts,
 source/tuple semantics, Node/Bun boundaries, HTTP schemas, aliases, old caches, live/replay streams, archive

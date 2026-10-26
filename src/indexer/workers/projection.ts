@@ -16,7 +16,10 @@ export default class ProjectionWorker extends HyperionWorker {
     }
     async run(): Promise<void> {
         try {
+            const initialized = await this.runProjectionAttempt('projection-initialization', {chainId: this.chainId,
+                portableState: this.conf.features.portable_state}, async () => {
             await this.protocolReady;
+            this.assertWorkerAttemptActive();
             const configuration = resolvePortableStateConfiguration(this.conf.features.portable_state, this.chainId);
             if (!configuration) throw new Error('Projection worker requires explicit portable state configuration');
             if (!this.usesExtensionProtocol || !this.protocol.verifyNativeGenesis || !this.conf.indexer.live_reader)
@@ -25,19 +28,26 @@ export default class ProjectionWorker extends HyperionWorker {
             if (!this.manager.mongodbClient) this.manager.prepareMongoClient();
             const client = this.manager.mongodbClient!;
             await client.connect();
+            this.assertWorkerAttemptActive();
             const adapter = createPortableStateBackend(client, configuration);
             const source = new PortableProjectionSource({client: this.client, chain: this.chain, chainId: this.chainId,
                 profile: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
                 provider: this.protocol, replicas: this.conf.settings.es_replicas ?? 0,
+                requireAttemptScope: this.workerAttemptScopeRequired,
                 maxAncestryBlocks: this.conf.settings.protocol_abi_coordination?.recovery_window_blocks});
             this.controller = await PortableStateController.create({chainId: this.chainId, configuration, adapter, source,
+                attempts: {run: (metadata, operation) => this.runProjectionAttempt('projection-frame', metadata, operation),
+                    bind: fields => this.bindWorkerAttempt(fields)},
                 onProgress: data => {try {process.send?.({event: 'portable_state_progress', data});} catch {}}});
+            this.assertWorkerAttemptActive();
+            return {client};
+            });
             while (!this.stopped) {
-                await this.controller.drain();
+                await this.controller!.drain();
                 if (!this.stopped) await delay(100);
             }
-            await this.controller.stop();
-            await client.close();
+            await this.controller!.stop();
+            await initialized.client.close();
             this.profiler.stopReporting();
             process.exit(0);
         } catch (error) {

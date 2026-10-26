@@ -1,3 +1,4 @@
+import {controlledAttemptLifecycle} from './worker-attempt-fixture.mjs';
 import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
 import {mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync} from 'node:fs';
@@ -40,7 +41,7 @@ try {
             ds_profiling:false,allow_custom_abi:false,max_ws_payload_mb:16},
         indexer:{fetch_block:true,fetch_traces:true,fetch_deltas:true,process_deltas:true,abi_scan_mode:false,disable_indexing:false},
         features:{index_all_deltas:true,index_deltas:true,index_deltas_deletions:true,index_transfer_memo:true,
-            contract_state:{contracts:{'hyp.replay':{People:{}}}},streaming:{deltas:false,traces:false},tables:{},failed_trx:false},
+            contract_state:{enabled:true,contracts:{'hyp.replay':{People:{}}}},streaming:{deltas:false,traces:false},tables:{},failed_trx:false},
         scaling:{ds_pool_size:1,routing_mode:'round_robin',indexing_queues:1,ad_idx_queues:1,dyn_idx_queues:1},
         prefetch:{read:1,block:1,index:1},plugins:{},whitelists:{root_only:false,actions:[],deltas:[]},api:{tx_cache_mode:'batch'},
     };
@@ -121,7 +122,9 @@ try {
     const until = async predicate => { const limit = Date.now()+3000; while(!predicate()) {assert(Date.now()<limit);await new Promise(resolve=>setTimeout(resolve,5));} };
     await until(()=>main.mLoader.parser && main.mLoader.chainMappings.has('*::transfer'));
     const delivery = payload => ({content:payload.content,properties:{headers:payload.headers}});
-    const consume=async message=>{main.captureProtocolSourceDelivery(message,main.ch);return main.mLoader.parser.parseMessage(main,[message]);};
+    // Policy replays below are distinct broker receipts of the unchanged source, never a repeated ended attempt.
+    const consume=async original=>{const message={...original,content:Buffer.from(original.content),properties:structuredClone(original.properties)};
+        (controlledAttemptLifecycle(main, 'deserializer'), main).captureProtocolSourceDelivery(message,main.ch);return main.mLoader.parser.parseMessage(main,[message]);};
     await consume(delivery(distributed[0]));
     assert(output.some(value=>value.queue.includes('index_abis')),'captured binary account ABI did not reach the ABI output');
     const capturedBlock = output.find(value=>value.queue.includes('index_blocks'));
@@ -158,7 +161,7 @@ try {
         mLoader:main.mLoader,ch_ready:true,ch:{ack(){},sendToQueue:(queue,content)=>{actions.push(JSON.parse(content));return true;}},
         preIndexingQueue:{push:async()=>{}},allowStreaming:false,ioRedisClient:null});
     pool.common = {deserializeActionAtBlockNative:pool.deserializeActionAtBlockNative,attachActionExtras:pool.attachActionExtras};
-    for(const message of poolMessages)pool.captureProtocolActionDelivery(message,pool.ch);
+    for(const message of poolMessages)(controlledAttemptLifecycle(pool, 'ds_pool_worker'), pool).captureProtocolActionDelivery(message,pool.ch);
     await pool.processMessages(poolMessages);
     assert.equal(actions.length,2);
     for(const action of actions) {

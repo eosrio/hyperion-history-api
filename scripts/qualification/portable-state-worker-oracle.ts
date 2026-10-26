@@ -44,6 +44,20 @@ function mappedValue(value: any, fields: readonly ProjectionField[]) {
 
 export interface PortableOracleTable {readonly table: string; readonly tableId: number; readonly fields: readonly ProjectionField[]}
 
+/** First serving boundary comes from the authenticated original ABI deployment, never adapter progress. */
+export function portableWorkerAbiAvailability(plan: Pick<PortableWorkerPlan, 'definitions'>, oracle: any) {
+    const pinned = oracle.sourceAbi;
+    assert.ok(Number.isSafeInteger(pinned.blockNum) && pinned.blockNum >= 1);
+    assert.match(pinned.blockId, /^[0-9a-f]{64}$/); assert.equal(Number.parseInt(pinned.blockId.slice(0, 8), 16), pinned.blockNum);
+    assert.equal(portableSourceHash(Buffer.from(pinned.abiHex, 'hex')), pinned.abiSha256);
+    assert.ok(plan.definitions.length > 0);
+    for (const definition of plan.definitions) {
+        assert.equal(definition.source.abiSha256, pinned.abiSha256);
+        assert.equal(definition.source.abiDeployment, `${pinned.blockId}:${definition.source.contract}:${pinned.abiSha256}`);
+    }
+    return {fromBlock: pinned.blockNum, blockId: pinned.blockId, abiSha256: pinned.abiSha256};
+}
+
 /** Bind every selected source row to exact clio input/output and the original deployment bytes. */
 export function derivePortableWorkerExpectations(source: PortableWorkerSource, oracle: any,
     contract: string, tables: readonly PortableOracleTable[]): {definitions: ProjectionDefinition[]; barriers: PortableWorkerBarrier[]} {

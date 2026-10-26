@@ -90,7 +90,7 @@ node --experimental-strip-types scripts/qualification/action-source-admission-re
 pwsh -NoProfile -File scripts/qualification/es955-worker-fixture.ps1 -Action cleanup -StateFile OWNED_STATE
 ```
 
-Always perform ownership-checked cleanup, including on failure. Run supported Node 22 and 24
+Always perform ownership-checked cleanup, including on failure. Run supported Node 24 and 26
 separately with fresh fixture state. Keep source/emitted/runtime/service hashes, raw response
 receipts, observer/resource evidence and cleanup receipts. This is a correctness run; it does
 not establish production throughput or a measured bottleneck.

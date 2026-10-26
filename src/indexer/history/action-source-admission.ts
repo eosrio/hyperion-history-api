@@ -2,9 +2,15 @@ import {createHash} from 'node:crypto';
 import type {Client} from '@elastic/elasticsearch';
 import {ImmutableProtocolBundleStore} from '../protocol/immutable-bundle-store.js';
 import {ActionHistorySourceJournal, ActionHistorySourceJournalReadError} from './action-source-journal.js';
-import {actionHistoryImmutableJson, validateActionHistoryBlockPlan, type ActionHistoryBlockPlan} from './action-history-manifest.js';
-import {deriveActionSourceInventory, validateActionSourceTransactionOutput,
+import {actionHistoryImmutableJson, validateActionHistoryBlockPlan, fingerprintActionHistoryEffect,
+    createActionHistoryFragment, actionHistoryFragmentId, type ActionHistoryBlockPlan, type ActionHistoryEffect} from './action-history-manifest.js';
+import {readConfirmedActionPublications, confirmedActionPublicationBytes, actionPublicationEvidenceBounds, type ActionPublicationOwner,
+    type ConfirmedActionPublication} from './action-confirmed-publication.js';
+import {deriveActionSourceInventory, validateActionSourceTransactionOutput, isActionSourceValidationFailure,
     type ActionSourceInventory, type ActionSourceInventoryInput} from './action-source-inventory.js';
+import {actionAttemptDispositionBounds, actionAttemptDispositionId, issueActionAttemptDisposition, readActionAttemptDispositionEvidence,
+    readActionContractOutputFailure, validateActionAttemptDisposition, type ActionContractOutputFailure, type ActionContractFailureBinding,
+    type ActionAttemptDisposition, type ActionAttemptDispositionEvidence} from './action-attempt-disposition.js';
 import {assertCompleteProtocolSearch} from '../protocol/search.js';
 
 export const actionSourceAdmissionHeader = 'hyperion-action-admission-v1';
@@ -35,6 +41,23 @@ export interface ActionSourceAdmission {
     readonly planId: string | null;
     readonly inventory?: ActionSourceInventory;
     readonly incomplete: string | null;
+}
+export interface ActionSourceHandoffWork {
+    readonly admissionId: string; readonly sourceId: string; readonly planId: string;
+    readonly source: ActionHistoryBlockPlan['source']; readonly sourceSelectionId: string | null;
+    readonly producer: ActionHistoryBlockPlan['producer']; readonly executableSha256: string;
+    readonly target: ActionHistoryBlockPlan['target']; readonly transactionId: string; readonly traceOrdinal: number;
+    readonly traceSha256: string; readonly dispatchSha256: string;
+}
+export interface ActionSourceConfirmedHandoff {
+    readonly schemaVersion: 1; readonly kind: 'confirmed-action-handoff'; readonly work: ActionSourceHandoffWork;
+    readonly fragmentId: string; readonly effectRoot: string;
+    readonly effects: readonly Readonly<{effect: ActionHistoryEffect; payloadSha256: string; headersSha256: string; route: 'index_actions'}>[];
+}
+export interface ActionSourceConfirmedHandoffInput {
+    readonly admissionId: string; readonly traceOrdinal: number; readonly dispatchPayload: Uint8Array;
+    readonly configuration: string; readonly owner: ActionPublicationOwner;
+    readonly publications: readonly ConfirmedActionPublication[];
 }
 const sha = (value: string | Uint8Array) => createHash('sha256').update(value).digest('hex');
 const hex64 = /^[0-9a-f]{64}$/;
@@ -142,35 +165,340 @@ export class ActionSourceAdmissionStore {
         });
     }
     async resolve(id: string, signal?: AbortSignal): Promise<ActionSourceAdmission> {
+        return this.bounded(() => this.resolveCurrent(id, signal));
+    }
+    private async resolveCurrent(id: string, signal?: AbortSignal): Promise<ActionSourceAdmission> {
         if (typeof id !== 'string' || !admissionSyntax.test(id)) throw new Error('Invalid action admission handle');
-        return this.bounded(async () => {
-            const link: AdmissionLink = await this.get(id, signal);
-            if (!link || link.schemaVersion !== 1 || !sourceSyntax.test(link.sourceId)
-                || admissionIdentity(link.sourceId, link.target) !== id || Object.keys(link).length !== 5
-                || (link.incomplete !== null && typeof link.incomplete !== 'string')) throw new Error('Invalid action admission link');
-            const source = await this.source(link.sourceId, signal);
-            if (link.planId === null) {
-                if (!link.incomplete) throw new Error('Incomplete admission lacks its cause');
-                return {id, sourceId: link.sourceId, source, target: link.target, planId: null, incomplete: link.incomplete};
-            }
-            if (link.incomplete !== null) throw new Error('Complete action admission has an incomplete cause');
-            // Re-issue from original retained source/policy. Stored expected output JSON is never authority.
-            const {inventory, plan} = this.compile(source, link.target);
-            const stored = await this.journal.readPlan(link.planId, signal);
-            if (actionHistoryImmutableJson(stored.plan) !== actionHistoryImmutableJson(plan)) throw new Error('Action admission plan mismatch');
-            return {id, sourceId: link.sourceId, source, target: link.target, planId: link.planId, inventory, incomplete: null};
-        });
+        const link: AdmissionLink = await this.get(id, signal);
+        if (!link || link.schemaVersion !== 1 || !sourceSyntax.test(link.sourceId)
+            || admissionIdentity(link.sourceId, link.target) !== id || Object.keys(link).length !== 5
+            || (link.incomplete !== null && typeof link.incomplete !== 'string')) throw new Error('Invalid action admission link');
+        const source = await this.source(link.sourceId, signal);
+        if (link.planId === null) {
+            if (!link.incomplete) throw new Error('Incomplete admission lacks its cause');
+            return {id, sourceId: link.sourceId, source, target: link.target, planId: null, incomplete: link.incomplete};
+        }
+        if (link.incomplete !== null) throw new Error('Complete action admission has an incomplete cause');
+        // Re-issue from original retained source/policy. Stored expected output JSON is never authority.
+        const {inventory, plan} = this.compile(source, link.target);
+        const stored = await this.journal.readPlan(link.planId, signal);
+        if (actionHistoryImmutableJson(stored.plan) !== actionHistoryImmutableJson(plan)) throw new Error('Action admission plan mismatch');
+        return {id, sourceId: link.sourceId, source, target: link.target, planId: link.planId, inventory, incomplete: null};
     }
     async prepareTransaction(admission: ActionSourceAdmission, traceOrdinal: number, payload: Uint8Array,
                              finalActions: readonly unknown[], signal?: AbortSignal) {
+        return this.bounded(() => this.prepareTransactionCurrent(admission, traceOrdinal, payload, finalActions, signal));
+    }
+    private async prepareTransactionCurrent(admission: ActionSourceAdmission, traceOrdinal: number, payload: Uint8Array,
+                                            finalActions: readonly unknown[], signal?: AbortSignal) {
         const detached = copy(finalActions), payloadSha256 = sha(payload);
-        const current = await this.resolve(admission.id, signal);
+        const current = await this.resolveCurrent(admission.id, signal);
         const transaction = current.inventory?.transactions.find(value => value.traceOrdinal === traceOrdinal);
         if (!current.inventory || !current.planId || !transaction?.dispatch || payloadSha256 !== transaction.dispatch.bodySha256)
             throw new Error('Action admission dispatch/source membership mismatch');
         const actions = validateActionSourceTransactionOutput(current.inventory, traceOrdinal, detached);
         const fragment = await this.journal.recordFragment(current.planId, transaction.transactionId, actions, signal);
         return {actions, fragmentId: fragment.id, planId: current.planId};
+    }
+    private handoffPayload(payload: Uint8Array): Buffer {
+        if (!(payload instanceof Uint8Array) || payload.byteLength < 1 || payload.byteLength > actionPublicationEvidenceBounds.maximumBytes)
+            throw new Error('Action handoff dispatch exceeds its byte bounds');
+        return Buffer.from(payload);
+    }
+    private handoffWork(current: ActionSourceAdmission, traceOrdinal: number, payload: Buffer): ActionSourceHandoffWork {
+        const inventory = current.inventory, transaction = inventory?.transactions.find(value => value.traceOrdinal === traceOrdinal);
+        if (!current.planId || !inventory || !transaction?.dispatch || transaction.disposition !== 'process' || !transaction.groups.length
+            || sha(payload) !== transaction.dispatch.bodySha256) throw new Error('Action handoff requires complete nonempty original source work');
+        return {admissionId: current.id, sourceId: current.sourceId, planId: current.planId,
+            source: {chainId: inventory.source.chainId, blockNum: inventory.source.blockNum, blockId: inventory.source.blockId,
+                previousBlockId: current.source.previousBlockId!, captureSha256: current.source.captureSha256},
+            sourceSelectionId: inventory.sourceSelectionId, producer: current.source.producer, executableSha256: current.source.executableSha256,
+            target: current.target, transactionId: transaction.transactionId, traceOrdinal, traceSha256: transaction.traceSha256,
+            dispatchSha256: transaction.dispatch.bodySha256};
+    }
+    private handoffId(work: ActionSourceHandoffWork): string {return 'h45actionhandoff1:' + sha(actionHistoryImmutableJson(work));}
+
+    /** Confirmed broker handoff only. No sink acceptance, canonicality, readiness or capacity release. */
+    async recordConfirmedHandoff(input: ActionSourceConfirmedHandoffInput, signal?: AbortSignal): Promise<{id: string; outcome: ActionSourceConfirmedHandoff}> {
+        return this.bounded(async () => {
+            signal?.throwIfAborted();
+            const owner = input.owner;
+            // Issuance, owners and the SUM of all retained bytes are checked before copying/parsing ticket data.
+            const publications = readConfirmedActionPublications(owner, input.publications);
+            const payload = this.handoffPayload(input.dispatchPayload);
+            if (typeof input.configuration !== 'string' || Buffer.byteLength(input.configuration) > actionPublicationEvidenceBounds.maximumBytes)
+                throw new Error('Action handoff configuration exceeds its byte bounds');
+            const configuration = input.configuration, admissionId = input.admissionId, traceOrdinal = input.traceOrdinal;
+            const consumer = owner.consumer, publisher = owner.publisher, predicate = owner.current;
+            const currentOwner = () => {
+                signal?.throwIfAborted();
+                if (owner.consumer !== consumer || owner.publisher !== publisher || owner.current !== predicate || !predicate())
+                    throw new Error('Action handoff lost its original publication owner');
+            };
+            currentOwner();
+            const current = await this.resolveCurrent(admissionId, signal); currentOwner();
+            const work = this.handoffWork(current, traceOrdinal, payload);
+            const configured = JSON.parse(configuration), count = configured?.config?.scaling?.ad_idx_queues;
+            if (actionHistoryImmutableJson(configured) !== configuration || sha(configuration) !== work.producer.configurationSha256
+                || configured?.config?.indexer?.disable_indexing === true || !Number.isInteger(count) || count < 1 || count > 0xffffffff)
+                throw new Error('Action handoff configuration/routing authority mismatch');
+            const route = this.chain + ':index_actions:';
+            const actions = publications.map(publication => {
+                const suffix = publication.queue.startsWith(route) ? publication.queue.slice(route.length) : '';
+                const ordinal = Number(suffix);
+                if (!/^[1-9][0-9]{0,9}$/.test(suffix) || ordinal > count || ordinal > 0xffffffff)
+                    throw new Error('Action handoff publication is outside configured action routing');
+                const action = JSON.parse(publication.payload.toString());
+                if (actionHistoryImmutableJson(action) !== publication.payload.toString() || Object.hasOwn(action, 'ds_error')
+                    || action.protocol?.status === 'incomplete') throw new Error('Incomplete or noncanonical action cannot establish a confirmed handoff');
+                return action;
+            });
+            const prepared = await this.prepareTransactionCurrent(current, traceOrdinal, payload, actions, signal); currentOwner();
+            const effects = publications.map((publication, index) => {
+                const headers = publication.headers;
+                if (!headers || Object.keys(headers).length !== 3 || headers.block_num !== work.source.blockNum
+                    || headers[actionSourceAdmissionHeader] !== work.admissionId || headers.action_fragment_id !== prepared.fragmentId)
+                    throw new Error('Action handoff publication headers do not bind the prepared original work');
+                return {effect: fingerprintActionHistoryEffect(prepared.actions[index]), payloadSha256: sha(publication.payload),
+                    headersSha256: sha(publication.headersJson), route: 'index_actions' as const};
+            });
+            const effectRoot = sha(actionHistoryImmutableJson({fragmentId: prepared.fragmentId, effects}));
+            const outcome: ActionSourceConfirmedHandoff = {schemaVersion: 1, kind: 'confirmed-action-handoff', work,
+                fragmentId: prepared.fragmentId, effectRoot, effects};
+            const id = this.handoffId(work);
+            currentOwner(); await this.put(id, outcome, signal); currentOwner();
+            return {id, outcome: copy(outcome)};
+        });
+    }
+
+    /** Observed record only: reads neither re-acknowledge durability nor issue capacity/readiness authority. */
+    async readConfirmedHandoff(admissionId: string, traceOrdinal: number, dispatchPayload: Uint8Array,
+                               signal?: AbortSignal): Promise<{id: string; outcome: ActionSourceConfirmedHandoff}> {
+        return this.bounded(async () => {
+            const payload = this.handoffPayload(dispatchPayload);
+            const current = await this.resolveCurrent(admissionId, signal), work = this.handoffWork(current, traceOrdinal, payload), id = this.handoffId(work);
+            const outcome: ActionSourceConfirmedHandoff = await this.get(id, signal);
+            if (!outcome || Object.keys(outcome).length !== 6 || outcome.schemaVersion !== 1 || outcome.kind !== 'confirmed-action-handoff'
+                || actionHistoryImmutableJson(outcome.work) !== actionHistoryImmutableJson(work) || !Array.isArray(outcome.effects)
+                || !outcome.effects.length || outcome.effects.length > actionPublicationEvidenceBounds.maximumPublications
+                || outcome.effects.length !== current.inventory!.transactions.find(value => value.traceOrdinal === traceOrdinal)!.groups.length
+                || outcome.effects.some(entry => !entry || Object.keys(entry).length !== 4 || entry.route !== 'index_actions'
+                    || !hex64.test(entry.payloadSha256) || !hex64.test(entry.headersSha256))
+                || outcome.effectRoot !== sha(actionHistoryImmutableJson({fragmentId: outcome.fragmentId, effects: outcome.effects})))
+                throw new Error('Invalid observed confirmed action handoff');
+            const plan = this.compile(current.source, current.target).plan;
+            const fragment = createActionHistoryFragment(plan, work.transactionId, outcome.effects.map(entry => entry.effect));
+            if (actionHistoryFragmentId(fragment, plan) !== outcome.fragmentId) throw new Error('Observed action handoff fragment/root mismatch');
+            signal?.throwIfAborted(); return {id, outcome: copy(outcome)};
+        });
+    }
+    private attemptBinding(input: {admissionId: string; configuration: string; owner: ActionPublicationOwner; traceOrdinal?: number; dispatchPayload?: Uint8Array}) {
+        const admissionId = input.admissionId, configuration = input.configuration, owner = input.owner;
+        const consumer = owner.consumer, publisher = owner.publisher, predicate = owner.current;
+        const currentOwner = () => {if (owner.consumer !== consumer || owner.publisher !== publisher || owner.current !== predicate || !predicate())
+            throw new Error('Action attempt lost its original owner');};
+        currentOwner();
+        if (!admissionSyntax.test(admissionId) || typeof configuration !== 'string'
+            || Buffer.byteLength(configuration) > actionAttemptDispositionBounds.maximumBytes) throw new Error('Invalid action attempt binding');
+        const traceOrdinal = input.traceOrdinal;
+        if (traceOrdinal !== undefined && (!Number.isSafeInteger(traceOrdinal) || traceOrdinal < 0)) throw new Error('Invalid action attempt ordinal');
+        const originalPayload = input.dispatchPayload;
+        if (originalPayload !== undefined && (!(originalPayload instanceof Uint8Array) || originalPayload.byteLength < 1))
+            throw new Error('Action attempt dispatch is not bounded bytes');
+        if (Buffer.byteLength(configuration) + (originalPayload?.byteLength ?? 0) > actionAttemptDispositionBounds.maximumBytes)
+            throw new Error('Action attempt aggregate input byte budget exhausted');
+        const dispatchPayload = originalPayload === undefined ? undefined : Buffer.from(originalPayload);
+        return {admissionId, configuration, owner, traceOrdinal, dispatchPayload, currentOwner};
+    }
+    private attemptOwner(owner: ActionPublicationOwner, configuration: string, current: ActionSourceAdmission) {
+        const consumer = owner.consumer, publisher = owner.publisher, predicate = owner.current;
+        if (typeof configuration !== 'string' || Buffer.byteLength(configuration) > actionAttemptDispositionBounds.maximumBytes
+            || sha(configuration) !== current.source.producer.configurationSha256
+            || actionHistoryImmutableJson(JSON.parse(configuration)) !== configuration) throw new Error('Action attempt configuration authority mismatch');
+        return () => {if (owner.consumer !== consumer || owner.publisher !== publisher || owner.current !== predicate || !predicate())
+            throw new Error('Action attempt lost its original owner');};
+    }
+    private attemptWork(current: ActionSourceAdmission, stage: ActionAttemptDisposition['work']['stage'], traceOrdinal?: number): ActionAttemptDisposition['work'] {
+        const source = current.source, input = source.inventoryInput;
+        const transaction = traceOrdinal === undefined ? undefined : current.inventory?.transactions.find(value => value.traceOrdinal === traceOrdinal);
+        if (traceOrdinal !== undefined && !transaction) throw new Error('Action attempt lacks original transaction membership');
+        return {stage, admissionId: current.id, sourceId: current.sourceId, ingressId: source.ingressId,
+            source: {chainId: input.source.chainId, blockNum: input.source.blockNum, blockId: input.source.blockId,
+                previousBlockId: source.previousBlockId, captureSha256: source.captureSha256},
+            sourceSelectionId: input.sourceSelectionId ?? null, producer: source.producer, executableSha256: source.executableSha256,
+            policySha256: current.inventory?.policySha256 ?? sha(actionHistoryImmutableJson(input.policy)), target: current.target,
+            planId: current.planId, transaction: transaction ? {transactionId: transaction.transactionId, traceOrdinal: transaction.traceOrdinal,
+                traceSha256: transaction.traceSha256, dispatchSha256: transaction.dispatch?.bodySha256 ?? null, expectedGroups: transaction.groups.length} : null};
+    }
+    private sourceAttemptObservations(current: ActionSourceAdmission, configuration: string): ActionAttemptDisposition[] {
+        const observation = (reason: ActionAttemptDisposition['reason'], disposition: ActionAttemptDisposition['disposition'],
+            ordinal?: number, output: ActionAttemptDisposition['output'] = {kind: 'unresolved'}): ActionAttemptDisposition =>
+            ({schemaVersion: 1, kind: 'action-attempt-disposition', work: this.attemptWork(current, 'main-source', ordinal), disposition, reason, output});
+        if (!current.planId) {
+            let reason: ActionAttemptDisposition['reason'] | undefined;
+            if (current.source.inventoryInput.traces === null || current.source.inventoryInput.traces === undefined) reason = 'source-traces-missing';
+            else if (current.source.previousBlockId === null) reason = 'source-predecessor-missing';
+            else try {this.compile(current.source, current.target);} catch (error) {if (isActionSourceValidationFailure(error)) reason = 'source-inventory-invalid';}
+            return reason ? [observation(reason, 'source-unprocessable')] : [];
+        }
+        const transactions = current.inventory!.transactions, result: ActionAttemptDisposition[] = [];
+        let bytes = Buffer.byteLength(configuration);
+        const append = (value: ActionAttemptDisposition) => {
+            bytes += Buffer.byteLength(actionHistoryImmutableJson(value));
+            if (result.length >= actionAttemptDispositionBounds.maximumRecords || bytes > actionAttemptDispositionBounds.maximumBytes)
+                throw new Error('Action attempt aggregate source observation budget exhausted');
+            result.push(value);
+        };
+        if (!transactions.length) append(observation('empty-source-vector', 'no-effects', undefined, {kind: 'none-required'}));
+        for (const transaction of transactions) {
+            if (transaction.disposition === 'excluded') append(observation('policy-excluded', 'policy-excluded', transaction.traceOrdinal, {kind: 'none-required'}));
+            else if (!transaction.dispatch && transaction.disposition === 'no-effects') append(observation('no-effects', 'no-effects', transaction.traceOrdinal, {kind: 'none-required'}));
+            else if (transaction.dispatch && JSON.parse(configuration)?.config?.indexer?.fetch_traces === false)
+                append(observation('traces-disabled', 'operator-disabled', transaction.traceOrdinal));
+        }
+        return result;
+    }
+    async prepareSourceAttemptDispositions(input: {admissionId: string; configuration: string; owner: ActionPublicationOwner}, signal?: AbortSignal): Promise<readonly ActionAttemptDispositionEvidence[]> {
+        return this.bounded(async () => {
+            signal?.throwIfAborted();
+            const {admissionId, configuration, owner, currentOwner} = this.attemptBinding(input);
+            const current = await this.resolveCurrent(admissionId, signal); currentOwner();
+            this.attemptOwner(owner, configuration, current)();
+            const observations = this.sourceAttemptObservations(current, configuration);
+            if (observations.length > actionAttemptDispositionBounds.maximumRecords) throw new Error('Action attempt count budget exhausted');
+            if (Buffer.byteLength(configuration) + Buffer.byteLength(actionHistoryImmutableJson(observations)) > actionAttemptDispositionBounds.maximumBytes)
+                throw new Error('Action attempt aggregate source evidence byte budget exhausted');
+            return observations.map(observation => issueActionAttemptDisposition(this, owner, observation, async () => {
+                currentOwner(); const fresh = await this.resolveCurrent(admissionId, signal); currentOwner();
+                const rederived = this.sourceAttemptObservations(fresh, configuration).find(value => actionAttemptDispositionId(value) === actionAttemptDispositionId(observation));
+                if (!rederived) throw new Error('Original source attempt observation is no longer derivable'); return rederived;
+            }));
+        });
+    }
+    private transactionAttemptObservation(current: ActionSourceAdmission, traceOrdinal: number, payload: Buffer,
+        configuration: string): ActionAttemptDisposition | undefined {
+        const transaction = current.inventory?.transactions.find(value => value.traceOrdinal === traceOrdinal);
+        if (!current.planId || !transaction?.dispatch || sha(payload) !== transaction.dispatch.bodySha256)
+            throw new Error('Action attempt dispatch/source membership mismatch');
+        const base = {schemaVersion: 1 as const, kind: 'action-attempt-disposition' as const,
+            work: this.attemptWork(current, 'ds-transaction', traceOrdinal)};
+        if (transaction.disposition === 'no-effects' && transaction.groups.length === 0)
+            return {...base, disposition: 'no-effects', reason: 'no-effects', output: {kind: 'none-required'}};
+        if (transaction.disposition === 'process' && transaction.groups.length > 0 && JSON.parse(configuration)?.config?.indexer?.disable_indexing === true)
+            return {...base, disposition: 'operator-disabled', reason: 'indexing-disabled', output: {kind: 'unresolved'}};
+        return undefined;
+    }
+    async prepareTransactionAttemptDisposition(input: {admissionId: string; traceOrdinal: number; dispatchPayload: Uint8Array;
+        configuration: string; owner: ActionPublicationOwner}, signal?: AbortSignal): Promise<ActionAttemptDispositionEvidence | undefined> {
+        return this.bounded(async () => {
+            const binding = this.attemptBinding(input); signal?.throwIfAborted();
+            const derive = async () => {
+                binding.currentOwner(); const current = await this.resolveCurrent(binding.admissionId, signal); binding.currentOwner();
+                this.attemptOwner(binding.owner, binding.configuration, current)();
+                return this.transactionAttemptObservation(current, binding.traceOrdinal!, binding.dispatchPayload!, binding.configuration);
+            };
+            const observation = await derive();
+            if (observation && Buffer.byteLength(binding.configuration) + binding.dispatchPayload!.length + Buffer.byteLength(actionHistoryImmutableJson(observation)) > actionAttemptDispositionBounds.maximumBytes)
+                throw new Error('Action attempt aggregate transaction evidence byte budget exhausted');
+            return observation && issueActionAttemptDisposition(this, binding.owner, observation, async () => {
+                const value = await derive(); if (!value) throw new Error('Original transaction attempt is no longer derivable'); return value;
+            });
+        });
+    }
+    async prepareContractAttemptDisposition(input: ActionContractFailureBinding & {failure: ActionContractOutputFailure}, signal?: AbortSignal): Promise<ActionAttemptDispositionEvidence> {
+        return this.bounded(async () => {
+            const binding = this.attemptBinding(input), failure = input.failure; signal?.throwIfAborted();
+            const exact = {admissionId: binding.admissionId, traceOrdinal: binding.traceOrdinal!, dispatchPayload: binding.dispatchPayload!,
+                configuration: binding.configuration, owner: binding.owner};
+            const derive = async (): Promise<ActionAttemptDisposition> => {
+                const reason = readActionContractOutputFailure(exact, failure); binding.currentOwner();
+                const current = await this.resolveCurrent(binding.admissionId, signal); binding.currentOwner();
+                this.attemptOwner(binding.owner, binding.configuration, current)();
+                this.handoffWork(current, binding.traceOrdinal!, binding.dispatchPayload!);
+                return {schemaVersion: 1, kind: 'action-attempt-disposition', work: this.attemptWork(current, 'ds-transaction', binding.traceOrdinal),
+                    disposition: 'contract-output-incomplete', reason, output: {kind: 'unresolved'}};
+            };
+            const observation = await derive();
+            if (Buffer.byteLength(binding.configuration) + binding.dispatchPayload!.length + Buffer.byteLength(actionHistoryImmutableJson(observation)) > actionAttemptDispositionBounds.maximumBytes)
+                throw new Error('Action attempt aggregate contract evidence byte budget exhausted');
+            return issueActionAttemptDisposition(this, binding.owner, observation, derive);
+        });
+    }
+    async prepareRawIncompleteAttemptDisposition(input: ActionSourceConfirmedHandoffInput, signal?: AbortSignal): Promise<ActionAttemptDispositionEvidence> {
+        return this.bounded(async () => {
+            signal?.throwIfAborted();
+            const owner = input.owner, tickets = input.publications;
+            // Count/SUM ticket guards precede other request inspection or byte copies.
+            const publicationBytes = confirmedActionPublicationBytes(owner, tickets);
+            const configuration = input.configuration, dispatchPayload = input.dispatchPayload;
+            if (typeof configuration !== 'string' || !(dispatchPayload instanceof Uint8Array)) throw new Error('Invalid raw handoff binding');
+            const reserved = Buffer.byteLength(configuration) + dispatchPayload.byteLength;
+            if (publicationBytes + reserved > actionAttemptDispositionBounds.maximumBytes) throw new Error('Raw handoff aggregate input byte budget exhausted');
+            const publications = readConfirmedActionPublications(owner, tickets, reserved);
+            const binding = this.attemptBinding({admissionId: input.admissionId, traceOrdinal: input.traceOrdinal, owner, configuration, dispatchPayload});
+            const derive = async (): Promise<ActionAttemptDisposition> => {
+                binding.currentOwner(); const current = await this.resolveCurrent(binding.admissionId, signal); binding.currentOwner();
+                this.attemptOwner(binding.owner, binding.configuration, current)();
+                const work = this.handoffWork(current, binding.traceOrdinal!, binding.dispatchPayload!);
+                const configured = JSON.parse(binding.configuration), count = configured?.config?.scaling?.ad_idx_queues;
+                if (configured?.config?.indexer?.disable_indexing === true || configured?.config?.indexer?.fetch_traces === false
+                    || !Number.isInteger(count) || count < 1 || count > 0xffffffff) throw new Error('Raw handoff configuration/routing authority mismatch');
+                const route = this.chain + ':index_actions:';
+                const actions = publications.map(publication => {
+                    const suffix = publication.queue.startsWith(route) ? publication.queue.slice(route.length) : '';
+                    if (!/^[1-9][0-9]{0,9}$/.test(suffix) || Number(suffix) > count || Number(suffix) > 0xffffffff)
+                        throw new Error('Raw handoff publication is outside configured action routing');
+                    const action = JSON.parse(publication.payload.toString());
+                    if (actionHistoryImmutableJson(action) !== publication.payload.toString()) throw new Error('Raw handoff action is not canonical');
+                    return action;
+                });
+                if (!actions.some(action => action.protocol?.schemaVersion === 2 && action.protocol?.status === 'incomplete' && action.ds_error === true))
+                    throw new Error('Raw handoff requires at least one checked native incomplete output');
+                const prepared = await this.prepareTransactionCurrent(current, binding.traceOrdinal!, binding.dispatchPayload!, actions, signal);
+                binding.currentOwner();
+                const effects = publications.map((publication, index) => {
+                    const headers = publication.headers;
+                    if (!headers || Object.keys(headers).length !== 3 || headers.block_num !== work.source.blockNum
+                        || headers[actionSourceAdmissionHeader] !== work.admissionId || headers.action_fragment_id !== prepared.fragmentId)
+                        throw new Error('Raw handoff publication headers do not bind the exact prepared fragment');
+                    const incomplete = actions[index].protocol?.status === 'incomplete';
+                    if (incomplete && (actions[index].protocol.schemaVersion !== 2 || actions[index].ds_error !== true))
+                        throw new Error('Raw handoff has an unchecked incomplete sibling');
+                    if (!incomplete && Object.hasOwn(actions[index], 'ds_error')) throw new Error('Raw handoff has an invalid complete sibling');
+                    return {effect: fingerprintActionHistoryEffect(prepared.actions[index]), payloadSha256: sha(publication.payload),
+                        headersSha256: sha(publication.headersJson), status: incomplete ? 'incomplete' as const : 'complete' as const};
+                });
+                const observation: ActionAttemptDisposition = {schemaVersion: 1, kind: 'action-attempt-disposition', work: this.attemptWork(current, 'ds-transaction', binding.traceOrdinal),
+                    disposition: 'raw-incomplete-handoff', reason: 'raw-output-incomplete', output: {kind: 'raw-incomplete', fragmentId: prepared.fragmentId, effects}};
+                if (publicationBytes + reserved + Buffer.byteLength(actionHistoryImmutableJson(observation)) > actionAttemptDispositionBounds.maximumBytes)
+                    throw new Error('Raw handoff aggregate evidence byte budget exhausted');
+                return observation;
+            };
+            const observation = await derive(); return issueActionAttemptDisposition(this, binding.owner, observation, derive);
+        });
+    }
+    async recordAttemptDisposition(input: {owner: ActionPublicationOwner; evidence: ActionAttemptDispositionEvidence}, signal?: AbortSignal): Promise<{id: string; observation: ActionAttemptDisposition}> {
+        return this.bounded(async () => {
+            signal?.throwIfAborted();
+            const evidence = readActionAttemptDispositionEvidence(this, input.owner, input.evidence);
+            const observation = await evidence.rederive(); signal?.throwIfAborted();
+            if (!evidence.current() || actionHistoryImmutableJson(observation) !== actionHistoryImmutableJson(evidence.observation))
+                throw new Error('Action attempt source/output association changed');
+            const id = actionAttemptDispositionId(observation);
+            await this.put(id, observation, signal); signal?.throwIfAborted();
+            if (!evidence.current()) throw new Error('Action attempt owner changed across persistence');
+            return {id, observation: copy(observation)};
+        });
+    }
+    async readAttemptDisposition(id: string, signal?: AbortSignal): Promise<{id: string; observation: ActionAttemptDisposition}> {
+        return this.bounded(async () => {
+            if (typeof id !== 'string' || !/^h45actionattempt1:[0-9a-f]{64}$/.test(id)) throw new Error('Invalid action attempt record ID');
+            const observation: ActionAttemptDisposition = await this.get(id, signal);
+            validateActionAttemptDisposition(observation);
+            if (actionAttemptDispositionId(observation) !== id)
+                throw new Error('Invalid observed action attempt record');
+            return {id, observation: copy(observation)};
+        });
     }
     async trySeal(admission: ActionSourceAdmission, signal?: AbortSignal): Promise<boolean> {
         const current = await this.resolve(admission.id, signal);

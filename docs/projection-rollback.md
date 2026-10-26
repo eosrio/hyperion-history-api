@@ -109,7 +109,7 @@ not supported.
 
 ## Repeatable checks
 
-Use the pinned Node.js 22/24, TypeScript 7.0.2 and Bun 1.4.3 toolchain:
+Use the pinned Node.js 24/26, TypeScript 7.0.2 and Bun 1.4.4 toolchain:
 
 ```sh
 npm ci --allow-git=all
@@ -142,7 +142,7 @@ stand in for successful application or completed rollback.
 
 Reports retain the native child exits and command barriers, physical row hashes,
 checkpoints, source/emission fingerprints and cleanup results. A failing rollback
-run remains in the report. The Node.js 22/24 CI matrix runs this fixture separately
+run remains in the report. The Node.js 24/26 CI matrix runs this fixture separately
 from the unit and toolchain checks.
 
 The [2026-10-21 evidence](performance/evidence/projection-rollback-20261021/README.md)

@@ -22,7 +22,7 @@ Prepare the locked dependencies/native build and owned services as described in
 the [original reproduction guide](../../../docs/qualification/portable-state-worker.md).
 Use a fresh service fixture for each runtime/mode run, with the declared64MiB
 Elasticsearch indexing-pressure limit. The driver rejects another pressure budget.
-It creates its own pinned Mongo8.0.34 replica set. Run on native Linux Node22/24;
+It creates its own pinned Mongo8.0.34 replica set. Run new qualification on native Linux Node24/26;
 do not point it at a production service.
 
 The service helper defaults to the unchanged20/10/5GiB low/high/flood disk
@@ -36,13 +36,18 @@ This profile changes no incumbent cluster and preserves one replica and all-copy
 write acknowledgments. Preserve failed allocation/startup attempts as evidence.
 
 ```sh
+case "$(node -p 'process.versions.node.split(".")[0]')" in
+  24) types_flag=--experimental-transform-types ;;
+  26) types_flag=--experimental-strip-types ;;
+  *) echo 'Use native Node 24 or 26' >&2; exit 1 ;;
+esac
 python tests/fixtures/portable-state-worker/prepare.py out/p246-original
 python tests/fixtures/portable-state-worker/services.py create out/p246-services --disk-watermark-profile 8-4-2gb
-node --experimental-transform-types scripts/qualification/portable-state-recovery-input.ts out/p246-original/plan.json out/p246-input-receipt.json
+node "$types_flag" scripts/qualification/portable-state-recovery-input.ts out/p246-original/plan.json out/p246-input-receipt.json
 bun check -p tsconfig.json
 bun check -p scripts/qualification/tsconfig.json
-bun test tests/unit/portable-state-recovery-harness.test.ts tests/unit/reader-progress.test.ts
-node --experimental-transform-types scripts/qualification/portable-state-recovery.ts out/p246-services/worker-state.json out/p246-original/plan.json out/p246-reversible reversible
+bun test ./tests/unit/portable-state-recovery-harness.test.ts ./tests/unit/reader-progress.test.ts
+node "$types_flag" scripts/qualification/portable-state-recovery.ts out/p246-services/worker-state.json out/p246-original/plan.json out/p246-reversible reversible
 ```
 
 Repeat with a fresh fixture/output and `irreversible`. Keep original failed attempts,
@@ -56,6 +61,8 @@ append `--profile-prefix 288` to stop after stable common288 and capture the exi
 bounded native CPU profiles. `--cpu-profile off` adds a matching observer-only
 prefix control. These runs return `profiled-prefix`, never full recovery `passed`;
 the ordinary complete scenario and timeout are unchanged.
+The prefix source re-audit and profile completion use that same original run deadline;
+neither starts a new budget or earns a prefix verdict after it expires.
 
 The SHiP server obeys requested ranges, anchors, credits and reconnect sessions; it
 never supplies a skipped replacement prefix to conceal a faulty reader resume.

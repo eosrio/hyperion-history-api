@@ -84,7 +84,7 @@ Definition changes, corrupt metadata and incomplete initialization retain distin
 errors and cannot enter this recovery path.
 
 From this directory, run `npm run typecheck`, `npm run build`, and `npm test` using
-the repository's pinned TypeScript 7.0.2, Bun 1.4.3 and committed npm dependency
+the repository's pinned TypeScript 7.0.2, Bun 1.4.4 and committed npm dependency
 tree. The root qualification runner additionally exercises the adapter against a
 real MongoDB service; unit fixtures do not replace that evidence.
 

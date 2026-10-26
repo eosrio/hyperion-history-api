@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-22",
+  "executionCandidate": "07d6a906a7acc40a5b50c6c2430e85257cbc88c5",
+  "tree": "f4a74eb616cf2ddb0b2a1a57613a5ce6cfeb4c68",
+  "status": "failed qualification; source fix and harness reviewable",
+  "issues": {
+    "qualification": 270,
+    "certificateHandoff": 274,
+    "proofCoverageUnderWorkerLag": 277,
+    "releaseIntegration": 191
+  },
+  "toolchain": {
+    "bun": "1.4.4",
+    "embeddedTypeScript": "7.0.2",
+    "nativeNode": "24.19.0",
+    "elasticsearch": "9.5.5",
+    "mongoDB": "8.0.34"
+  },
+  "source": {
+    "archiveSha256": "42d092f3ecf6f428ecdba4825580377acdd27f2818ce445d4f197719e6ab72b7",
+    "originalBlocks": 1480,
+    "edited": false,
+    "wireCommit": "7167659e9c043cb3351074fcacb40200cc57f3a3",
+    "sdkCommit": "339b5c93d1338968c18ed14254961439dcab16a0"
+  },
+  "sourceValidation": {
+    "fullUnitTests": 1093,
+    "fullUnitAssertions": 8507,
+    "fullUnitRuntime": "Bun1.4.4 with native Node24 children",
+    "wholeAppFilesChecked": 248,
+    "qualifierFilesChecked": 22,
+    "nativeBuild": "passed",
+    "scope": "Source/component checks do not establish complete Linux worker qualification."
+  },
+  "case24d": {
+    "status": "failed",
+    "seconds": 695.632,
+    "completedHolds": [
+      1,
+      33,
+      122,
+      256,
+      397
+    ],
+    "failedAt": 1244,
+    "error": "Owned Rabbit queues did not drain; true earlier action proof expiry independently confirmed.",
+    "expiredActions": 223,
+    "expiredOriginalNativeActions": 159,
+    "expiredContractActions": 64,
+    "expiredNativeBlockRange": [
+      829,
+      987
+    ],
+    "maximumLagAtDSAck": 259,
+    "maximumLagAcrossBothAckStreams": 260,
+    "lastDsBlock": 1012,
+    "sourceAckThrough": 1244,
+    "lastLag": 232,
+    "dsMessagesRetainedAfterShutdown": 299,
+    "allOtherRabbitQueuesEmpty": true,
+    "newPhysicalMongoAudits1244And1480Completed": false,
+    "node22FullWorkerRun": "not run; pending proof coverage fix",
+    "final1480Acceptance": "not reached"
+  },
+  "profile": {
+    "dsTraces": 1278,
+    "protocolAbiTraceWaitSeconds": 293.09,
+    "processTracesSeconds": 439.359,
+    "processMessagesBatchSeconds": 547.525,
+    "cpuSeconds": 180.977,
+    "observerElapsedSeconds": 654.538,
+    "interpretation": "Nested elapsed spans and sample CPU; not exclusive CPU attribution or measured GET counts.",
+    "inference": "Two ancestry walks at stable232 lag require at least932 serial GETs per trace. Measure actual counts/waits/hash CPU before selecting an optimization."
+  },
+  "cleanup": {
+    "ownedWorkerAndApiShutdown": "passed",
+    "ownedContainersVolumesNetworks": 0,
+    "ownedLxdRemoved": true,
+    "ownedExportsRemaining": 0,
+    "incumbentWireESNodeosPIDStartExecutablePreserved": true,
+    "wireHeadBefore": 486956,
+    "wireHeadAfter": 500768
+  },
+  "boundaries": {
+    "defaultAncestryBlocks": 256,
+    "defaultAdmissionEnabled": false,
+    "productionActivation": false,
+    "BunRuntimeQualified": false,
+    "WireReleaseQualified": false,
+    "fullWorkerQualified": false,
+    "forkRecoveryQualified": false,
+    "streamClient231Qualified": false,
+    "retainedHistoryUpgradeQualified": false,
+    "AtomicAssetsParityQualified": false
+  }
+}

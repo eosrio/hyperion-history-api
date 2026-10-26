@@ -116,7 +116,7 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
             }
 
             mergeActionMeta(action, false, fastify.manager.config.settings?.protocol?.provider === 'extension');
-            await protectProtocolAction(fastify, request, action);
+            await protectProtocolAction(fastify, request, action, {noBinary: query.noBinary === true});
             if (fastify.manager.config.settings?.protocol?.provider === 'extension') delete action.protocol;
 
             if (query.noBinary === true) {

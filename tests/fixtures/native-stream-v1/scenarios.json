@@ -1,0 +1,3846 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "head history to live and draining completion",
+      "config": {},
+      "steps": [
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "1",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "1",
+          "delivery": "head",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "1",
+                "request_id": "1",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "request_id": "1",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "1",
+                "generation": "1",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "sequence": "1",
+            "mode": "history",
+            "records": [
+              {
+                "block_num": 100,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "global_sequence": "18446744073709551615"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "poll",
+          "expect": {
+            "commands": [
+              {
+                "type": "ack",
+                "stream_id": "1",
+                "generation": "1",
+                "sequence": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "data",
+                "stream_id": "1",
+                "generation": "1",
+                "sequence": "1",
+                "blocks": [
+                  100
+                ],
+                "cursors": [
+                  "18446744073709551615"
+                ],
+                "payloads": [
+                  {
+                    "global_sequence": "18446744073709551615"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "history_end",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100"
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "history_end",
+                "stream_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "sequence": "2",
+            "mode": "live",
+            "records": [
+              {
+                "block_num": 101,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "global_sequence": "18446744073709551615"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "end",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100"
+          },
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "poll",
+          "expect": {
+            "commands": [
+              {
+                "type": "ack",
+                "stream_id": "1",
+                "generation": "1",
+                "sequence": "2"
+              }
+            ],
+            "events": [
+              {
+                "type": "data",
+                "stream_id": "1",
+                "generation": "1",
+                "sequence": "2",
+                "blocks": [
+                  101
+                ],
+                "cursors": [
+                  "18446744073709551615"
+                ],
+                "payloads": [
+                  {
+                    "global_sequence": "18446744073709551615"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "op": "poll",
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "end",
+                "stream_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "poll",
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "LIB cannot release old connection data",
+      "config": {},
+      "steps": [
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "1",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "1",
+          "delivery": "irreversible",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "1",
+                "request_id": "1",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "request_id": "1",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "1",
+                "generation": "1",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "sequence": "1",
+            "mode": "history",
+            "records": [
+              {
+                "block_num": 100,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "global_sequence": "18446744073709551615"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "poll",
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "disconnect",
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "disconnected"
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "2",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "2"
+              },
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "2",
+                "resume_from": 100
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "2"
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "2",
+            "stream_id": "1",
+            "generation": "2",
+            "subscription_id": "100",
+            "request_id": "2",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "1",
+                "generation": "2",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "lib",
+            "connection_id": "2",
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "block_num": 200,
+            "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "lib",
+                "block_num": 200
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "sequence": "1",
+            "mode": "history",
+            "records": [
+              {
+                "block_num": 100,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "global_sequence": "18446744073709551615"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "poll",
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "repeated outages preserve inclusive recovery",
+      "config": {},
+      "steps": [
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "1",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "1",
+          "delivery": "irreversible",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "1",
+                "request_id": "1",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "request_id": "1",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "1",
+                "generation": "1",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "sequence": "1",
+            "mode": "history",
+            "records": [
+              {
+                "block_num": 100,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "global_sequence": "18446744073709551615"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "disconnect",
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "disconnected"
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "2",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "2"
+              },
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "2",
+                "resume_from": 100
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "2"
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "2",
+            "stream_id": "1",
+            "generation": "2",
+            "subscription_id": "100",
+            "request_id": "2",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "1",
+                "generation": "2",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "disconnect",
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "disconnected"
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "3",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "3"
+              },
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "3",
+                "resume_from": 100
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "3"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "replay disabled fails visibly",
+      "config": {},
+      "steps": [
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "1",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "1",
+          "delivery": "head",
+          "replay": false,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "1",
+                "request_id": "1",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "request_id": "1",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "1",
+                "generation": "1",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "disconnect",
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "disconnected"
+              },
+              {
+                "type": "error",
+                "stream_id": "1",
+                "code": "STREAM_REPLAY_REQUIRED",
+                "retryable": true
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "2",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "2"
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "2"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "sequence gap only fails its own subscription",
+      "config": {},
+      "steps": [
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "1",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "1",
+          "delivery": "head",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "1",
+                "request_id": "1",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "request_id": "1",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "1",
+                "generation": "1",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "2",
+          "delivery": "head",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "2",
+                "generation": "2",
+                "request_id": "2",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "2",
+            "generation": "2",
+            "subscription_id": "101",
+            "request_id": "2",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "2",
+                "generation": "2",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "sequence": "2",
+            "mode": "history",
+            "records": [
+              {
+                "block_num": 100,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "global_sequence": "18446744073709551615"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "cancel",
+                "stream_id": "1",
+                "generation": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "error",
+                "stream_id": "1",
+                "code": "PROTOCOL_ERROR",
+                "retryable": false
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "2",
+            "generation": "2",
+            "subscription_id": "101",
+            "sequence": "1",
+            "mode": "history",
+            "records": [
+              {
+                "block_num": 100,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "global_sequence": "18446744073709551615"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "poll",
+          "expect": {
+            "commands": [
+              {
+                "type": "ack",
+                "stream_id": "2",
+                "generation": "2",
+                "sequence": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "data",
+                "stream_id": "2",
+                "generation": "2",
+                "sequence": "1",
+                "blocks": [
+                  100
+                ],
+                "cursors": [
+                  "18446744073709551615"
+                ],
+                "payloads": [
+                  {
+                    "global_sequence": "18446744073709551615"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "stale server subscription cannot mutate sequence",
+      "config": {},
+      "steps": [
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "1",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "1",
+          "delivery": "head",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "1",
+                "request_id": "1",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "request_id": "1",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "1",
+                "generation": "1",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "999",
+            "sequence": "77",
+            "mode": "history",
+            "records": [
+              {
+                "block_num": 100,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "global_sequence": "18446744073709551615"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "sequence": "1",
+            "mode": "history",
+            "records": [
+              {
+                "block_num": 100,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "global_sequence": "18446744073709551615"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "poll",
+          "expect": {
+            "commands": [
+              {
+                "type": "ack",
+                "stream_id": "1",
+                "generation": "1",
+                "sequence": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "data",
+                "stream_id": "1",
+                "generation": "1",
+                "sequence": "1",
+                "blocks": [
+                  100
+                ],
+                "cursors": [
+                  "18446744073709551615"
+                ],
+                "payloads": [
+                  {
+                    "global_sequence": "18446744073709551615"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "record window fails the overflowing stream",
+      "config": {
+        "stream_records": 1
+      },
+      "steps": [
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "1",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "1",
+          "delivery": "irreversible",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "1",
+                "request_id": "1",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "request_id": "1",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "1",
+                "generation": "1",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "sequence": "1",
+            "mode": "history",
+            "records": [
+              {
+                "block_num": 100,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "global_sequence": "18446744073709551615"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "sequence": "2",
+            "mode": "history",
+            "records": [
+              {
+                "block_num": 101,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "global_sequence": "18446744073709551615"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "cancel",
+                "stream_id": "1",
+                "generation": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "error",
+                "stream_id": "1",
+                "code": "SLOW_CONSUMER",
+                "retryable": true
+              }
+            ]
+          }
+        },
+        {
+          "op": "poll",
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "complete UTF8 frame bytes count against stream window",
+      "config": {
+        "stream_bytes": 128
+      },
+      "steps": [
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "1",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "1",
+          "delivery": "head",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "1",
+                "request_id": "1",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "request_id": "1",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "1",
+                "generation": "1",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "sequence": "1",
+            "mode": "history",
+            "records": [
+              {
+                "block_num": 100,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "memo": "日本語 🌐日本語 🌐日本語 🌐日本語 🌐"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "cancel",
+                "stream_id": "1",
+                "generation": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "error",
+                "stream_id": "1",
+                "code": "SLOW_CONSUMER",
+                "retryable": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "connection record window also bounds independent streams",
+      "config": {
+        "connection_records": 1
+      },
+      "steps": [
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "1",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "1",
+          "delivery": "irreversible",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "1",
+                "request_id": "1",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "request_id": "1",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "1",
+                "generation": "1",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "2",
+          "delivery": "irreversible",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "2",
+                "generation": "2",
+                "request_id": "2",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "2",
+            "generation": "2",
+            "subscription_id": "101",
+            "request_id": "2",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "2",
+                "generation": "2",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "sequence": "1",
+            "mode": "history",
+            "records": [
+              {
+                "block_num": 100,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "global_sequence": "18446744073709551615"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "2",
+            "generation": "2",
+            "subscription_id": "101",
+            "sequence": "1",
+            "mode": "history",
+            "records": [
+              {
+                "block_num": 100,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "global_sequence": "18446744073709551615"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "cancel",
+                "stream_id": "2",
+                "generation": "2"
+              }
+            ],
+            "events": [
+              {
+                "type": "error",
+                "stream_id": "2",
+                "code": "SLOW_CONSUMER",
+                "retryable": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "cancel pending attempt and ignore late acceptance",
+      "config": {},
+      "steps": [
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "1",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "1",
+          "delivery": "head",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "1",
+                "request_id": "1",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "cancel",
+          "stream_id": "1",
+          "expect": {
+            "commands": [
+              {
+                "type": "cancel",
+                "stream_id": "1",
+                "generation": "1",
+                "subscription_id": null
+              }
+            ],
+            "events": [
+              {
+                "type": "cancelled",
+                "stream_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "request_id": "1",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "sequence": "1",
+            "mode": "history",
+            "records": [
+              {
+                "block_num": 100,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "global_sequence": "18446744073709551615"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "poll",
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "stream ID reuse fences previous generation",
+      "config": {},
+      "steps": [
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "1",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "1",
+          "delivery": "head",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "1",
+                "request_id": "1",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "request_id": "1",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "1",
+                "generation": "1",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "cancel",
+          "stream_id": "1",
+          "expect": {
+            "commands": [
+              {
+                "type": "cancel",
+                "stream_id": "1",
+                "generation": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "cancelled",
+                "stream_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "1",
+          "delivery": "head",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "2",
+                "request_id": "2",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "2",
+            "subscription_id": "101",
+            "request_id": "2",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "1",
+                "generation": "2",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "sequence": "1",
+            "mode": "history",
+            "records": [
+              {
+                "block_num": 100,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "global_sequence": "18446744073709551615"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "2",
+            "subscription_id": "101",
+            "sequence": "1",
+            "mode": "history",
+            "records": [
+              {
+                "block_num": 100,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "global_sequence": "18446744073709551615"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "poll",
+          "expect": {
+            "commands": [
+              {
+                "type": "ack",
+                "stream_id": "1",
+                "generation": "2",
+                "sequence": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "data",
+                "stream_id": "1",
+                "generation": "2",
+                "sequence": "1",
+                "blocks": [
+                  100
+                ],
+                "cursors": [
+                  "18446744073709551615"
+                ],
+                "payloads": [
+                  {
+                    "global_sequence": "18446744073709551615"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "live before history_end is rejected",
+      "config": {},
+      "steps": [
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "1",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "1",
+          "delivery": "head",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "1",
+                "request_id": "1",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "request_id": "1",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "1",
+                "generation": "1",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "sequence": "1",
+            "mode": "live",
+            "records": [
+              {
+                "block_num": 100,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "global_sequence": "18446744073709551615"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "cancel",
+                "stream_id": "1",
+                "generation": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "error",
+                "stream_id": "1",
+                "code": "PROTOCOL_ERROR",
+                "retryable": false
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "request deadline is finite",
+      "config": {
+        "request_timeout_ms": 20
+      },
+      "steps": [
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "1",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "1",
+          "delivery": "head",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "1",
+                "request_id": "1",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "advance",
+          "now_ms": 19,
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "advance",
+          "now_ms": 20,
+          "expect": {
+            "commands": [
+              {
+                "type": "cancel",
+                "stream_id": "1",
+                "generation": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "error",
+                "stream_id": "1",
+                "code": "REQUEST_TIMEOUT",
+                "retryable": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "equal LIB does not hide finality timeout",
+      "config": {
+        "lib_timeout_ms": 30
+      },
+      "steps": [
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "1",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "1",
+          "delivery": "irreversible",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "1",
+                "request_id": "1",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "request_id": "1",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "1",
+                "generation": "1",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "lib",
+            "connection_id": "1",
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "block_num": 99,
+            "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "lib",
+                "block_num": 99
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "sequence": "1",
+            "mode": "history",
+            "records": [
+              {
+                "block_num": 100,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "global_sequence": "18446744073709551615"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "advance",
+          "now_ms": 29,
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "lib",
+            "connection_id": "1",
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "block_num": 99,
+            "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "ping",
+            "id": "1"
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "pong",
+                "id": "1"
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "advance",
+          "now_ms": 30,
+          "expect": {
+            "commands": [
+              {
+                "type": "cancel",
+                "stream_id": "1",
+                "generation": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "error",
+                "stream_id": "1",
+                "code": "LIB_TIMEOUT",
+                "retryable": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "fork synchronously invalidates buffers before later LIB",
+      "config": {},
+      "steps": [
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "1",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "1",
+          "delivery": "irreversible",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "1",
+                "request_id": "1",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "request_id": "1",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "1",
+                "generation": "1",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "sequence": "1",
+            "mode": "history",
+            "records": [
+              {
+                "block_num": 100,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "global_sequence": "18446744073709551615"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "fork",
+            "connection_id": "1",
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "starting_block": 100,
+            "ending_block": 101,
+            "new_block_id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "cancel",
+                "generation": "1"
+              },
+              {
+                "type": "subscribe",
+                "generation": "2",
+                "resume_from": 100
+              }
+            ],
+            "events": [
+              {
+                "type": "fork",
+                "starting_block": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "2",
+            "subscription_id": "101",
+            "request_id": "2",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "1",
+                "generation": "2",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "lib",
+            "connection_id": "1",
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "block_num": 101,
+            "block_id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "lib",
+                "block_num": 101
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "sequence": "1",
+            "mode": "history",
+            "records": [
+              {
+                "block_num": 100,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "global_sequence": "18446744073709551615"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "poll",
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "2",
+            "subscription_id": "101",
+            "sequence": "1",
+            "mode": "history",
+            "records": [
+              {
+                "block_num": 100,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "global_sequence": "18446744073709551615"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "poll",
+          "expect": {
+            "commands": [
+              {
+                "type": "ack",
+                "stream_id": "1",
+                "generation": "2",
+                "sequence": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "data",
+                "stream_id": "1",
+                "generation": "2",
+                "sequence": "1",
+                "blocks": [
+                  100
+                ],
+                "cursors": [
+                  "18446744073709551615"
+                ],
+                "payloads": [
+                  {
+                    "global_sequence": "18446744073709551615"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "scoped source error preserves unrelated stream",
+      "config": {},
+      "steps": [
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "1",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "1",
+          "delivery": "head",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "1",
+                "request_id": "1",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "request_id": "1",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "1",
+                "generation": "1",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "2",
+          "delivery": "head",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "2",
+                "generation": "2",
+                "request_id": "2",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "2",
+            "generation": "2",
+            "subscription_id": "101",
+            "request_id": "2",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "2",
+                "generation": "2",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "error",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "request_id": "1",
+            "code": "HISTORY_UNAVAILABLE",
+            "message": "source unavailable",
+            "retryable": true
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "cancel",
+                "stream_id": "1",
+                "generation": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "error",
+                "stream_id": "1",
+                "code": "HISTORY_UNAVAILABLE",
+                "retryable": true
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "2",
+            "generation": "2",
+            "subscription_id": "101",
+            "sequence": "1",
+            "mode": "history",
+            "records": [
+              {
+                "block_num": 100,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "global_sequence": "18446744073709551615"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "poll",
+          "expect": {
+            "commands": [
+              {
+                "type": "ack",
+                "stream_id": "2",
+                "generation": "2",
+                "sequence": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "data",
+                "stream_id": "2",
+                "generation": "2",
+                "sequence": "1",
+                "blocks": [
+                  100
+                ],
+                "cursors": [
+                  "18446744073709551615"
+                ],
+                "payloads": [
+                  {
+                    "global_sequence": "18446744073709551615"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "data before accepted fails instead of silently dropping",
+      "config": {},
+      "steps": [
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "1",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "1",
+          "delivery": "head",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "1",
+                "request_id": "1",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "sequence": "1",
+            "mode": "history",
+            "records": [
+              {
+                "block_num": 100,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "global_sequence": "18446744073709551615"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "cancel",
+                "stream_id": "1",
+                "generation": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "error",
+                "stream_id": "1",
+                "code": "PROTOCOL_ERROR",
+                "retryable": false
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "data cannot precede accepted replay lower bound",
+      "config": {},
+      "steps": [
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "1",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "1",
+          "delivery": "head",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "1",
+                "request_id": "1",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "request_id": "1",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "1",
+                "generation": "1",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "sequence": "1",
+            "mode": "history",
+            "records": [
+              {
+                "block_num": 99,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "global_sequence": "18446744073709551615"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "cancel",
+                "stream_id": "1",
+                "generation": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "error",
+                "stream_id": "1",
+                "code": "PROTOCOL_ERROR",
+                "retryable": false
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "LIB block identity cannot confirm contradictory data",
+      "config": {},
+      "steps": [
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "1",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "1",
+          "delivery": "irreversible",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "1",
+                "request_id": "1",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "request_id": "1",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "1",
+                "generation": "1",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "sequence": "1",
+            "mode": "history",
+            "records": [
+              {
+                "block_num": 100,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "global_sequence": "18446744073709551615"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "lib",
+            "connection_id": "1",
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "block_num": 100,
+            "block_id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "expect": {
+            "fatal": "PROTOCOL_ERROR"
+          }
+        }
+      ]
+    },
+    {
+      "name": "LIB cannot regress across reconnect",
+      "config": {},
+      "steps": [
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "1",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "1",
+          "delivery": "head",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "1",
+                "request_id": "1",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "request_id": "1",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "1",
+                "generation": "1",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "lib",
+            "connection_id": "1",
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "block_num": 100,
+            "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "lib",
+                "block_num": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "disconnect",
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "disconnected"
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "2",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "2"
+              },
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "2",
+                "resume_from": 100
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "2"
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "lib",
+            "connection_id": "2",
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "block_num": 99,
+            "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "expect": {
+            "fatal": "PROTOCOL_ERROR"
+          }
+        }
+      ]
+    },
+    {
+      "name": "equal LIB identity survives reconnect",
+      "config": {},
+      "steps": [
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "1",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "1",
+          "delivery": "head",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "1",
+                "request_id": "1",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "request_id": "1",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "1",
+                "generation": "1",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "lib",
+            "connection_id": "1",
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "block_num": 100,
+            "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "lib",
+                "block_num": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "disconnect",
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "disconnected"
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "2",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "2"
+              },
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "2",
+                "resume_from": 100
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "2"
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "lib",
+            "connection_id": "2",
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "block_num": 100,
+            "block_id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "expect": {
+            "fatal": "PROTOCOL_ERROR"
+          }
+        }
+      ]
+    },
+    {
+      "name": "cancel releases both connection budgets",
+      "config": {
+        "connection_records": 1
+      },
+      "steps": [
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "1",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "1",
+          "delivery": "irreversible",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "1",
+                "request_id": "1",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "request_id": "1",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "1",
+                "generation": "1",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "2",
+          "delivery": "irreversible",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "2",
+                "generation": "2",
+                "request_id": "2",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "2",
+            "generation": "2",
+            "subscription_id": "101",
+            "request_id": "2",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "2",
+                "generation": "2",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "sequence": "1",
+            "mode": "history",
+            "records": [
+              {
+                "block_num": 100,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "global_sequence": "18446744073709551615"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "cancel",
+          "stream_id": "1",
+          "expect": {
+            "commands": [
+              {
+                "type": "cancel",
+                "stream_id": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "cancelled",
+                "stream_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "data",
+            "connection_id": "1",
+            "stream_id": "2",
+            "generation": "2",
+            "subscription_id": "101",
+            "sequence": "1",
+            "mode": "history",
+            "records": [
+              {
+                "block_num": 100,
+                "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cursor": "18446744073709551615",
+                "payload": {
+                  "global_sequence": "18446744073709551615"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "commands": [],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "lib",
+            "connection_id": "1",
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "block_num": 100,
+            "block_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "lib",
+                "block_num": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "poll",
+          "expect": {
+            "commands": [
+              {
+                "type": "ack",
+                "stream_id": "2"
+              }
+            ],
+            "events": [
+              {
+                "type": "data",
+                "stream_id": "2"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "relay replacement needs a new transport rather than in-band hello",
+      "config": {},
+      "steps": [
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "1",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "1",
+          "delivery": "head",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "1",
+                "request_id": "1",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "request_id": "1",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "1",
+                "generation": "1",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "2",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "fatal": "PROTOCOL_ERROR"
+          }
+        }
+      ]
+    },
+    {
+      "name": "chain identity remains pinned across reconnect",
+      "config": {},
+      "steps": [
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "connection_id": "1",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "ready",
+                "connection_id": "1"
+              }
+            ],
+            "events": [
+              {
+                "type": "connected",
+                "connection_id": "1"
+              }
+            ]
+          }
+        },
+        {
+          "op": "subscribe",
+          "stream_id": "1",
+          "delivery": "head",
+          "replay": true,
+          "request": {
+            "kind": "action",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [
+              {
+                "type": "subscribe",
+                "stream_id": "1",
+                "generation": "1",
+                "request_id": "1",
+                "resume_from": null
+              }
+            ],
+            "events": []
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "accepted",
+            "connection_id": "1",
+            "stream_id": "1",
+            "generation": "1",
+            "subscription_id": "100",
+            "request_id": "1",
+            "start_from": 100
+          },
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "accepted",
+                "stream_id": "1",
+                "generation": "1",
+                "start_from": 100
+              }
+            ]
+          }
+        },
+        {
+          "op": "disconnect",
+          "expect": {
+            "commands": [],
+            "events": [
+              {
+                "type": "disconnected"
+              }
+            ]
+          }
+        },
+        {
+          "op": "server",
+          "packet": {
+            "type": "hello",
+            "version": 1,
+            "chain_id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "connection_id": "2",
+            "heartbeat_interval_ms": 15000
+          },
+          "expect": {
+            "fatal": "CHAIN_MISMATCH"
+          }
+        }
+      ]
+    }
+  ]
+}

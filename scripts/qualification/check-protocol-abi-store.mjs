@@ -10,6 +10,7 @@ import {ProtocolAbiCoordinator} from '../../build/indexer/protocol/abi-coordinat
 import {ProtocolAbiProofReader,ProtocolAbiProofUnavailableError} from '../../build/indexer/protocol/abi-proof.js';
 import {ensureProtocolActionMapping} from '../../build/indexer/protocol/action-proof-mapping.js';
 import {createHash} from 'node:crypto';
+import {checkProtocolNativeJournal} from './check-protocol-native-journal.mjs';
 
 // Own the exact server and namespace; this runner never accepts a borrowed cluster URL.
 const image='docker.elastic.co/elasticsearch/elasticsearch@sha256:c40a1fb2bc6976821e5625d2329992a1e9c29df576e5955fdcba02421abf0d3c';
@@ -25,6 +26,9 @@ const checkOwner=value=>{
 const output=process.argv[2];if(process.argv.length>3)throw new Error('Usage: node check-protocol-abi-store.mjs [output.json]');
 let containerId,networkCreated=false,client;
 const report={schemaVersion:1,status:'running',createdAt:new Date().toISOString(),run,image,checks:[],cleanup:{container:false,network:false},qualification:false};
+// Some client connection/timeout handles are unreferenced during startup. Keep
+// this owned lifecycle alive until its bounded operations and cleanup complete.
+const lifecycle=setInterval(()=>{},1000);
 try {
     docker(['network','create','--label',label,'--label',runLabel,network]);networkCreated=true;
     containerId=docker(['run','-d','--name',name,'--network',network,'--label',label,'--label',runLabel,
@@ -39,7 +43,10 @@ try {
     const url=`http://127.0.0.1:${port}`;
     client=new Client({node:url,requestTimeout:5000,maxRetries:0});
     let info;const deadline=Date.now()+90000;
-    while(Date.now()<deadline){try{info=await client.info();break;}catch{await new Promise(resolve=>setTimeout(resolve,250));}}
+    while(Date.now()<deadline){
+        try{info=await client.info({}, {signal:AbortSignal.timeout(Math.max(1,Math.min(5000,deadline-Date.now())))});break;}
+        catch{await new Promise(resolve=>setTimeout(resolve,250));}
+    }
     assert.equal(info?.version?.number,'9.5.5');assert.equal(info.cluster_name,clusterName);assert.match(info.cluster_uuid,/^[A-Za-z0-9_-]{16,64}$/);
     report.server={version:info.version.number,clusterName,clusterUuid:info.cluster_uuid};
     const chain=`hyp-abiobs-${run}`,store=new ProtocolAbiObservationStore(client,chain,0,{chunkBytes:256,maximumBytes:32768,maximumChunks:128});
@@ -227,6 +234,7 @@ try {
     const readStore=new ProtocolAbiFrontierStore(readClient,frontierChain,0,{readOnly:true});
     const proofReader=new ProtocolAbiProofReader({chainId:context.chainId,profile:context.protocol,store:readStore,maxAncestryBlocks:2});
     const secondProof=await proofReader.open(frontierSecond.input.source,frontierSecond.selected);
+    assert.equal(secondProof.nativeActionInterfaceVersion,undefined);
     assert.equal((await proofReader.action(secondProof,frontierSecond.input.observation.facts.actionInputs[0])).state.abiHex,'aa');
     const hiddenCertificate=await client.search({index:frontierStore.recordsIndex,query:{ids:{values:[secondProof.certificateId]}},size:1});
     assert.equal(hiddenCertificate.timed_out,false);assert.equal(hiddenCertificate._shards.failed,0);
@@ -247,7 +255,7 @@ try {
     report.checks.push('fork revokes existing consumer views before replacement activation and certifies the restored input ABI');
 
     const reopenedFrontier=new ProtocolAbiFrontierStore(frontierClient,frontierChain),previousControl=await reopenedFrontier.readControl();
-    const restarted=new ProtocolAbiCoordinator({...coordinatorOptions,store:reopenedFrontier,ownerId:'disposable-master-b'});
+    const restarted=new ProtocolAbiCoordinator({...coordinatorOptions,store:reopenedFrontier,ownerId:'disposable-master-b',nativeActionInterfaceVersion:1});
     await restarted.start();assert.equal((await restarted.inspect()).head.blockId,positionId(20));
     assert.equal((await restarted.openSource(frontierContextId,'frontier-session-b')).resumeFromBlock,3);
     await assert.rejects(reopenedFrontier.compareAndSet(previousControl,previousControl.value),error=>error instanceof ProtocolAbiFrontierConflictError);
@@ -261,6 +269,13 @@ try {
     const firstProof=await proofReader.open(frontierFirst.input.source,frontierFirst.selected);
     assert.equal((await proofReader.finalState(firstProof,'alpha')).abiHex,'aa');
     const thirdProof=await proofReader.open(third.input.source,third.selected);
+    assert.equal(firstProof.nativeActionInterfaceVersion,undefined);
+    assert.equal(thirdProof.nativeActionInterfaceVersion,1);
+    const coldProofReader=new ProtocolAbiProofReader({chainId:context.chainId,profile:context.protocol,
+        store:new ProtocolAbiFrontierStore(readClient,frontierChain,0,{readOnly:true}),maxAncestryBlocks:2});
+    assert.equal((await coldProofReader.open(third.input.source,third.selected)).nativeActionInterfaceVersion,1);
+    assert.equal((await coldProofReader.open(frontierFirst.input.source,frontierFirst.selected)).nativeActionInterfaceVersion,undefined);
+    report.checks.push('native-aware classification epochs survive real immutable commit/certificate storage and cold reads while legacy ancestry remains unchanged');
     const fourth=await selectedBlock(4,4,3,'frontier-session-b');await prepareBlock(fourth);
     assert.equal((await restarted.admit(fourth.selected,restartGeneration)).status,'accepted');incompleteHeadReceipt=true;
     await assert.rejects(restarted.drain(),/receipt/);
@@ -304,6 +319,7 @@ try {
     assert.equal((await client.count({index:historyIndex})).count,2);
     assert.deepEqual(await ensureProtocolActionMapping(client,historyChain),{inspected:1,updated:0});
     report.checks.push('additive opaque action mapping preserves retained history and exact new proof metadata without reindex');
+    await checkProtocolNativeJournal(client, `${chain}-native`, report, pipeline);
     report.status='passed';
 } catch(error){report.status='failed';report.error=String(error.stack??error);}
 finally {
@@ -321,6 +337,7 @@ finally {
         report.cleanup.network=true;
     } catch(error){report.cleanup.error=String(error.stack??error);report.status='failed';}
     report.completedAt=new Date().toISOString();
+    clearInterval(lifecycle);
     const text=JSON.stringify(report,null,2)+'\n';if(output)writeFileSync(output,text);process.stdout.write(text);
     if(report.status!=='passed')process.exitCode=1;
 }

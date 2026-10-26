@@ -5,7 +5,7 @@ import {hLog} from "../../../../indexer/helpers/common_functions.js";
 import {PublicKey} from "@wharfkit/antelope";
 import {request as undiciRequest} from "undici";
 import {assertProtocolProjectionReady} from '../../../helpers/protocol-state-readiness.js';
-import {markProtocolNodeResponse} from '../../../helpers/protocol-abi.js';
+import {markProtocolNodeResponse, protectProtocolAction} from '../../../helpers/protocol-abi.js';
 import {searchActions} from '../../../helpers/action-search.js';
 
 
@@ -158,12 +158,13 @@ async function getKeyAccounts(fastify: FastifyInstance, request: FastifyRequest)
     });
 
     if (results.hits.hits.length > 0) {
+        for (const hit of results.hits.hits) await protectProtocolAction(fastify, request, hit._source, {decode: true});
         response.account_names = results.hits.hits.map((v) => {
             if (v._source.act.name === 'newaccount') {
                 if (v._source['@newaccount']?.newact) {
                     return v._source['@newaccount'].newact;
-                } else if (v._source.act.data.newact) {
-                    return v._source.act.data.newact;
+                } else if (v._source.act.data.newact ?? v._source.act.data.name) {
+                    return v._source.act.data.newact ?? v._source.act.data.name;
                 } else {
                     return null;
                 }

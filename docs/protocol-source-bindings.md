@@ -55,6 +55,17 @@ Observation IDs and previously retained journal payloads stay compatible.
 
 ## Authority and recovery limits
 
+Retained reads accept an optional caller `AbortSignal` as their second argument:
+`readContext`, `readSelection`, `readQuarantine`, `readObservationLink`, and the
+ABI observation store's `read`. The same signal reaches nested selections,
+contexts, links, manifests, chunks and underlying storage requests. Pre-aborted
+calls perform no storage work. Cancellation preserves the exact caller reason
+and takes precedence over late results, validation errors and storage-error
+translation. Independent read-only consumers retain their own signal lifetime.
+Omitting the signal preserves existing read behavior. This read foundation does
+not change durable writes, source acknowledgment or canonical/progress semantics;
+it does not qualify HTTP resource handling or native-action admission.
+
 The [live-source canonical coordinator](protocol-abi-frontier.md) now consumes these exact associations.
 Its internal frontier and bindings do not by themselves activate downstream decoding or qualify recovery.
 
