@@ -46,11 +46,12 @@ session.close?.();
 const chain='hyp-p191-334334334334',profile={id:selected.id,profileId:source.profileId,components:selected.components};
 const event={kind:'native_boundary',event:'native_prepare_readback',blockNum:397,pid:process.pid,sequence:1192,
  selectionId:'h45srcsel1:'+'a'.repeat(64),linkId:'controlled-link',observationId:'controlled-native',observationDigest:'controlled-digest'};
-const events=Array.from({length:397},(_,index)=>[
+const events=Array.from({length:1244},(_,index)=>[
  {kind:'native_boundary',event:'native_prepare_readback',blockNum:index+1},
  {kind:'native_boundary',event:'source_ack_sent',blockNum:index+1},
 ]).flat().filter(value=>value.blockNum!==397);
 events.push({...event,event:'native_prepare_begin',sequence:1191},event,{...event,event:'source_ack_sent',sequence:1193});
+events.sort((a,b)=>a.blockNum-b.blockNum);
 const retained={linkId:event.linkId,link:{observationId:event.observationId,observationDigest:event.observationDigest},
  selection:{frameSha256:portableSourceHash(raw),captureSha256:captureSha},abiObservation:{capture},
  record:{source:position,protocol:profile,captureRef:{inputSha256:captureSha},inventory:protocolNativeInputInventory(inputs),observation:{status:'observed',facts:observed}}};
@@ -89,15 +90,17 @@ if(requested==='witness')events.push({kind:'native_boundary',event:'action_admit
 const witnessModes=['ready','delayed-completion','held','failed-http','failed-item','incomplete-copies','wrong-target','wrong-item',
  'wrong-canonical','wrong-native','wrong-selection','capture-held','capture-failed','capture-hash','expired','no-budget',
  'seal-pending','incomplete-seal','query-wrong','witness-timeout','witness-partial','witness-source-incomplete','refresh-partial','delayed-invalid',
- 'ready-expired','late-witness','slow-refresh','response-hash','item-bytes'];
+ 'ready-expired','late-witness','slow-refresh','response-hash','item-bytes','late-search','late-completion'];
 if(process.argv[3]){assert.ok(witnessModes.includes(process.argv[3]));witnessModes.splice(0,witnessModes.length,process.argv[3]);}
 const proofBoundary=new Error('controlled independent proof boundary reached');
 const diagnosticDirectory=join(temporary,'history-diagnostics');mkdirSync(diagnosticDirectory);
 const errors=[],historyDiagnostics=createPortableHistoryDiagnostics(diagnosticDirectory,errors),results=[];
-let reads=0,proofCalls=0,visible=false,observedSearch,refreshCalls=0,phaseBudget,historyWaitCalls=0,sealReleased=false;
+let reads=0,proofCalls=0,visible=false,observedSearch,refreshCalls=0,phaseBudget,historyWaitCalls=0,sealReleased=false,holdThrough=397;
 const deadlineBoundary=new Error('controlled original phase deadline exhausted'),captureFailure=new Error('controlled bulk capture failure');
-const client={async search(request){
+const client={async search(request,transport){
  assert.equal(request.query.term.block_num,397);reads++;
+ if(requested==='witness'){assert.ok(transport.requestTimeout>0);assert.ok(transport.requestTimeout<=1000);}
+ if(mode==='late-search')await new Promise(resolve=>setTimeout(resolve,Math.max(1,phaseBudget.deadline-performance.now()+5)));
  assert.equal(request.index,chain+'-action-*');assert.equal(request.size,1024);assert.equal(request.track_total_hits,true);
  const has=visible||mode==='wrong',body=structuredClone(physical);
  if(mode==='wrong'||mode==='query-wrong')body.trx_id='f'.repeat(64);
@@ -120,8 +123,8 @@ if(requested==='witness'){
   if(mode==='incomplete-seal')throw new ActionHistorySourceJournalReadError('incomplete','manifest','controlled-manifest','broken referenced manifest');
   return {id:'controlled-manifest',manifest:structuredClone(manifest)};};
 }
-ProtocolAbiFrontierStore.prototype.readControl=async()=>({value:{head:{blockNum:397,commitId:'controlled-commit'},profile,phase:'following'}});
-ProtocolAbiFrontierStore.prototype.readCommit=async()=>({nativeActionInterfaceVersion:1,source:{blockId:position.blockId}});
+ProtocolAbiFrontierStore.prototype.readControl=async()=>({value:{head:{blockNum:holdThrough,commitId:'controlled-commit'},profile,phase:'following'}});
+ProtocolAbiFrontierStore.prototype.readCommit=async()=>({nativeActionInterfaceVersion:1,source:{blockId:source.records[holdThrough-1].blockId}});
 ProtocolNativeObservationStore.prototype.readSelection=async id=>{assert.equal(id,event.selectionId);const copy=structuredClone(retained);
  if(['source-incomplete','witness-source-incomplete'].includes(mode)){copy.record.inventory=null;copy.record.observation={status:'incomplete',error:{code:'controlled_source_incomplete'}};}return copy;};
 ProtocolNativeActionReader.prototype.open=async()=>{proofCalls++;throw proofBoundary;};
@@ -141,14 +144,19 @@ try{
   rawHistory:async()=>assert.fail('not a full service fixture'),bulk:{directory:witnessBulk,receipts},
   ...(requested==='witness'?{refreshActions:async(_through,budget)=>{refreshCalls++;assert.equal(budget,phaseBudget);
    if(mode==='slow-refresh')await new Promise(resolve=>setTimeout(resolve,Math.max(1,phaseBudget.deadline-performance.now()+5)));
+   if(mode==='late-completion')return {_shards:{total:2,failed:0,get successful(){
+    // The actual public non-oracle hold needs no fabricated native grant. Expire while consuming the refresh result.
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,Math.max(1,phaseBudget.deadline-performance.now()+5));return 2;}}};
    visible=true;return {_shards:{total:2,successful:mode==='refresh-partial'?1:2,failed:mode==='refresh-partial'?1:0}};}}:{})});
  const bootstrapElapsedMs=performance.now()-bootstrapStarted;
  for(const next of requested==='characterize'?[...modes,'delayed']:requested==='witness'?witnessModes: [requested]){
   mode=next;reads=0;proofCalls=0;observedSearch=undefined;visible=['visible','orphan','timeout','partial'].includes(mode);
+  holdThrough=mode==='late-completion'?1244:397;
   if(requested==='witness'){refreshCalls=0;historyWaitCalls=0;sealReleased=false;phaseBudget=Object.freeze({deadline:performance.now()+(['expired','ready-expired'].includes(mode)?-1:1000)});seedWitness(mode);}
-  const started=performance.now();let error;try{await qualification.hold(397);}catch(value){error=value;}
+  const started=performance.now();let error;try{await qualification.hold(holdThrough);}catch(value){error=value;}
   const reached=error===proofBoundary;
-  const result={mode,node:process.version,reads,proofCalls,refreshCalls,historyWaitCalls,reachedIndependentProofGuard:reached,visibleAfterRead:visible,error:error?.message.slice(0,512),
+  const result={mode,node:process.version,through:holdThrough,holdAccepted:!error,acceptedHolds:qualification.held.length,
+   reads,proofCalls,refreshCalls,historyWaitCalls,reachedIndependentProofGuard:reached,visibleAfterRead:visible,error:error?.message.slice(0,512),
    originalHoldInvoked:true,originalSourceRows:source.records.length,controlledCanonicalAndStorage:true,proofSuccessFabricated:false,fullWorkerQualification:false,
    originalHoldElapsedMs:performance.now()-started,bootstrapElapsedMs,errorName:error?.name,errorCode:error?.code};
   results.push(result);
@@ -170,10 +178,12 @@ try{
    if(mode==='partial'){assert.equal(reads,1);assert.equal(proofCalls,0);assert.equal(error.actual,1);assert.equal(error.expected,0);}
    if(mode==='source-incomplete'){assert.equal(reads,0);assert.equal(proofCalls,0);}
   }else if(requested==='witness'){
-   const passes=['ready','delayed-completion','seal-pending'].includes(mode),queried=passes||['query-wrong','witness-timeout','witness-partial'].includes(mode);
+   const passes=['ready','delayed-completion','seal-pending'].includes(mode),queried=passes||['query-wrong','witness-timeout','witness-partial','late-search'].includes(mode);
    assert.equal(reached,passes,'only exact ready witnesses may reach the independent proof boundary');assert.equal(reads,queried?1:0);
-   assert.equal(refreshCalls,queried||['refresh-partial','slow-refresh'].includes(mode)?1:0);assert.equal(proofCalls,passes?1:0);
-   if(['expired','ready-expired','no-budget','failed-http','failed-item','wrong-item','incomplete-copies','wrong-canonical','wrong-native','wrong-selection','capture-hash','response-hash','item-bytes','incomplete-seal','late-witness','slow-refresh'].includes(mode))assert.equal(historyWaitCalls,0);
+   assert.equal(refreshCalls,queried||['refresh-partial','slow-refresh','late-completion'].includes(mode)?1:0);assert.equal(proofCalls,passes?1:0);
+   if(mode==='late-completion'){assert.ok(error,'an expired completed hold must reject');assert.match(error.message,/original native history phase deadline exceeded/);
+    assert.equal(qualification.held.length,0,'expired completion must not enter the accepted hold list');}
+   if(['expired','ready-expired','no-budget','failed-http','failed-item','wrong-item','incomplete-copies','wrong-canonical','wrong-native','wrong-selection','capture-hash','response-hash','item-bytes','incomplete-seal','late-witness','slow-refresh','late-search'].includes(mode))assert.equal(historyWaitCalls,0);
    if(mode==='capture-failed')assert.equal(error,captureFailure);if(['held','wrong-target','capture-held'].includes(mode))assert.equal(error,deadlineBoundary);
   }else assert.equal(reached,mode==='visible'||mode==='delayed','original native hold rejected before independently guarded source proof');
  }

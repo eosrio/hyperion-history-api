@@ -473,6 +473,9 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             ...(mode === 'alwaysOn' ? {data: {failCommands: ['update'], errorCode: 2}} : {})});
     };
     const es = new Client({node: state.core.nodes[0].url, requestTimeout: 10000, maxRetries: 0});
+    const readTimeout = (maximum: number, budget?: PortableNativePhaseBudget) =>
+        Math.min(maximum, remaining(), budget ? portableNativeHistoryRemaining(budget) : Infinity);
+    const readOptions = (maximum: number, budget?: PortableNativePhaseBudget) => budget ? {requestTimeout: readTimeout(maximum, budget)} : {};
     let lastQueues: {observed: ReturnType<typeof portableHistoryClock>; rows: any[]} | undefined;
     const refreshActions = async (through: number, phase: string, budget?: PortableNativePhaseBudget) => {
         const request = {index: chain + '-action-*'}, refresh = () => es.indices.refresh(request,
@@ -619,27 +622,34 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             description: 'Fixture-only missing required source field; healthy definitions and independent expected rows are unchanged.', observations: []};
         master = await spawnOwned('build/indexer/launcher.js', configFile); report.masterPid = master.pid;
         api = await spawnOwned('build/api/server.js', configFile); report.apiPid = api.pid;
-        const query = async (projection: string, value: ProjectionQuery = {filter: [], limit: 256, count: {upTo: 1000}}) => {
+        const query = async (projection: string, value: ProjectionQuery = {filter: [], limit: 256, count: {upTo: 1000}}, budget?: PortableNativePhaseBudget) => {
             const response = await fetch(`http://127.0.0.1:${apiPort}/v2/state/query`, {method: 'POST', headers: {'content-type': 'application/json'},
-                body: JSON.stringify({projection, query: value}), signal: AbortSignal.timeout(Math.min(5000, remaining()))});
-            return {status: response.status, headers: response.headers, body: await boundedResponse(response)};
+                body: JSON.stringify({projection, query: value}), signal: AbortSignal.timeout(readTimeout(5000, budget))});
+            const body = await boundedResponse(response); if (budget) portableNativeHistoryRemaining(budget);
+            return {status: response.status, headers: response.headers, body};
         };
         const responseReceipt = (response: Awaited<ReturnType<typeof query>>) =>
             ({status: response.status, headers: Object.fromEntries(response.headers), body: response.body});
-        const history = async (through: number) => {
+        const history = async (through: number, budget?: PortableNativePhaseBudget) => {
             const block = source.records[through - 1];
-            await es.indices.refresh({index: chain + '-block-*'});
+            await es.indices.refresh({index: chain + '-block-*'}, readOptions(10000, budget));
             await wait(`physical block replicas for ${through}`, async () => {
-                const health = await es.cluster.health({index: chain + '-block-*', wait_for_status: 'green', timeout: '5s'});
+                const timeoutMS = readTimeout(5000, budget);
+                const health = await es.cluster.health({index: chain + '-block-*', wait_for_status: 'green', timeout: budget ? `${timeoutMS}ms` : '5s'},
+                    readOptions(5000, budget));
+                if (budget) portableNativeHistoryRemaining(budget);
                 assert.equal(health.timed_out, false); assert.equal(health.status, 'green');
                 assert.equal(health.number_of_data_nodes, 2);
-            });
-            const information = await es.nodes.info(); const dataNodes = Object.entries(information.nodes).filter(([, node]) =>
+            }, 60000, budget);
+            const information = await es.nodes.info({}, readOptions(10000, budget));
+            if (budget) portableNativeHistoryRemaining(budget);
+            const dataNodes = Object.entries(information.nodes).filter(([, node]) =>
                 state.core.nodes.some((owned: any) => owned.role === 'data' && owned.name === node.name));
             assert.equal(dataNodes.length, 2); const physical: any[] = [];
             for (const [nodeId, node] of dataNodes) {
                 const result = await es.search<any>({index: chain + '-block-*', size: 2, track_total_hits: true,
-                    preference: `_only_nodes:${nodeId}`, query: {term: {block_num: through}}});
+                    preference: `_only_nodes:${nodeId}`, query: {term: {block_num: through}}}, readOptions(10000, budget));
+                if (budget) portableNativeHistoryRemaining(budget);
                 assert.equal(result.timed_out, false); assert.equal(result._shards.failed, 0);
                 assert.ok(result._shards.total > 0); assert.equal(result._shards.successful, result._shards.total);
                 assert.deepEqual(result.hits.total, {value: 1, relation: 'eq'}); const hit = result.hits.hits[0];
@@ -648,23 +658,25 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                 physical.push({nodeId, nodeName: node.name, response: result});
             }
             const response = await fetch(`http://127.0.0.1:${apiPort}/v2/history/get_block?block_num=${through}`,
-                {signal: AbortSignal.timeout(Math.min(5000, remaining()))});
+                {signal: AbortSignal.timeout(readTimeout(5000, budget))});
             const body = await boundedResponse(response); assert.equal(response.status, 200);
+            if (budget) portableNativeHistoryRemaining(budget);
             assert.equal(body.block_num, through); assert.equal(body.block_id, block.blockId); assert.equal(body.prev_id, block.headerPreviousBlockId);
             return {through, blockId: block.blockId, physical, api: {status: response.status, headers: Object.fromEntries(response.headers), body}};
         };
         await wait('API unavailable before actual block1', async () => {const response = await query(plan.definitions[0].id);
             assertPortableUnavailable(response); report.beforeSource = responseReceipt(response);});
-        const http = async (path: string) => {const response = await fetch(`http://127.0.0.1:${apiPort}` + path,
-            {signal: AbortSignal.timeout(Math.min(10000, remaining()))});
-            return {status: response.status, headers: response.headers, body: await boundedResponse(response)};};
-        const unrelated = async (height: number) => {
+        const http = async (path: string, budget?: PortableNativePhaseBudget) => {const response = await fetch(`http://127.0.0.1:${apiPort}` + path,
+            {signal: AbortSignal.timeout(readTimeout(10000, budget))});
+            const body = await boundedResponse(response); if (budget) portableNativeHistoryRemaining(budget);
+            return {status: response.status, headers: response.headers, body};};
+        const unrelated = async (height: number, budget?: PortableNativePhaseBudget) => {
             const block = source.records[height - 1], states: any[] = [];
             // Older history remains usable while state queries report the current covered head.
-            for (const [index, definition] of plan.definitions.entries()) {const response = await query(definition.id);
+            for (const [index, definition] of plan.definitions.entries()) {const response = await query(definition.id, undefined, budget);
                 assert.equal(response.status, 200); assert.equal(response.body.view.binding.projectionId, bindings[index].projectionId);
                 assert.equal(response.headers.get('hyperion-state-last-valid'), 'false'); states.push(responseReceipt(response));}
-            return {history: await history(block.blockNum), states};
+            return {history: await history(block.blockNum, budget), states};
         };
         const native = nativeOracle ? await createPortableNativeQualification({source, oracle: nativeOracle, client: es, chain, apiPort,
             events: () => observedRows(), http, unrelated, rawHistory: history,

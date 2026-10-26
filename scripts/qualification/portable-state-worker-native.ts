@@ -46,22 +46,28 @@ export function assertPortableNativePublications(confirmed: readonly any[], expe
 }
 export interface PortableNativePhaseBudget {readonly deadline: number;}
 type NativePublicationWait = (name: string, work: () => Promise<void>, budget?: PortableNativePhaseBudget) => Promise<PortableNativePhaseBudget | void>;
+const assertNativePhaseActive = (budget?: PortableNativePhaseBudget) => {if (budget) portableNativeHistoryRemaining(budget);};
 
 /** Observe publication receipts only; admission, seals and native proof authority stay with their original readers. */
 export async function observePortableNativePublications(options: {events: () => Promise<any[]>; chain: string;
     expected: NativePublicationExpectation; wait: NativePublicationWait; budget?: PortableNativePhaseBudget}) {
     const {expected, chain} = options;
     const check = async () => {
-        const confirmed = (await options.events()).filter(value => value.kind === 'native_boundary' && value.event === 'admitted_broker_confirmed'
+        assertNativePhaseActive(options.budget);
+        const events = await options.events();
+        assertNativePhaseActive(options.budget);
+        const confirmed = events.filter(value => value.kind === 'native_boundary' && value.event === 'admitted_broker_confirmed'
             && value.queue.startsWith(chain + ':index_actions:') && value.payloadSha256 === expected.payloadSha256
             && value.headers['hyperion-action-admission-v1'] === expected.admissionId);
         assertPortableNativePublications(confirmed, expected);
+        assertNativePhaseActive(options.budget);
     };
     try {await check();} catch (error) {
         // Reuse the original hold/handover deadline. Never grant each output a new polling window.
         if (!options.budget || performance.now() >= options.budget.deadline) throw error;
         await options.wait(`confirmed native publication at${expected.blockNum}`, check, options.budget);
     }
+    assertNativePhaseActive(options.budget);
 }
 export async function assertPortableNativeAction(action: any, expected: any,
     encode: (kind: string, value: unknown) => Uint8Array | Promise<Uint8Array>) {
@@ -120,9 +126,9 @@ interface NativeRunOptions {
     readonly source: PortableWorkerSource; readonly oracle: Awaited<ReturnType<typeof auditPortableNativeOracle>>;
     readonly client: Client; readonly chain: string; readonly apiPort: number;
     readonly events: () => Promise<any[]>;
-    readonly http: (path: string) => Promise<{status: number; headers: Headers; body: any}>;
-    readonly unrelated: (through: number) => Promise<unknown>;
-    readonly rawHistory: (through: number) => Promise<unknown>;
+    readonly http: (path: string, budget?: PortableNativePhaseBudget) => Promise<{status: number; headers: Headers; body: any}>;
+    readonly unrelated: (through: number, budget?: PortableNativePhaseBudget) => Promise<unknown>;
+    readonly rawHistory: (through: number, budget?: PortableNativePhaseBudget) => Promise<unknown>;
     readonly bulk: {readonly directory: string; readonly receipts: readonly any[]};
     readonly wait: NativePublicationWait;
     readonly historyDiagnostics?: PortableHistoryDiagnostics;
@@ -193,15 +199,18 @@ export async function createPortableNativeQualification(options: NativeRunOption
     const receipt = (response: {status: number; headers: Headers; body: any}) => ({status: response.status, headers: Object.fromEntries(response.headers), body: response.body});
     const completeSearch = (response: any) => {assert.equal(response.timed_out, false); assert.equal(response._shards.failed, 0);
         assert.ok(response._shards.total > 0); assert.equal(response._shards.successful, response._shards.total);};
-    const actions = async (number: number, phase: unknown = {name: 'native-history-read'}) => {
+    const actions = async (number: number, phase: unknown = {name: 'native-history-read'}, budget?: PortableNativePhaseBudget) => {
+        assertNativePhaseActive(budget);
         const request = {index: chain + '-action-*', size: 1024, track_total_hits: true, query: {term: {block_num: number}}};
         const original = originals.get(number), expected = oracle.rows.find((value: any) => value.blockNum === number);
-        const search = () => client.search<any>(request);
+        const search = () => budget ? client.search<any>(request, {requestTimeout: Math.min(10000, portableNativeHistoryRemaining(budget))})
+            : client.search<any>(request);
         const response = options.historyDiagnostics ? await options.historyDiagnostics.observe('action-search', {request, phase,
             profile, source: original?.position, frameSha256: original && portableSourceHash(original.raw),
             oracleManifestSha256: oracle.hashes['manifest.json'], expected: expected && {blockNum: expected.blockNum,
                 blockId: expected.blockId, transactionId: expected.transactionId, actionOrdinal: expected.actionOrdinal,
                 globalSequence: expected.globalSequence, nativeKind: expected.nativeKind, rawSha256: expected.rawSha256}}, search) : await search();
+        assertNativePhaseActive(budget);
         completeSearch(response);
         assert.equal(typeof response.hits.total, 'object'); assert.equal((response.hits.total as any).relation, 'eq');
         assert.equal((response.hits.total as any).value, response.hits.hits.length);
@@ -209,8 +218,10 @@ export async function createPortableNativeQualification(options: NativeRunOption
     };
     const selectionEvent = (events: any[], number: number) => {const rows = events.filter(value => value.kind === 'native_boundary'
         && value.event === 'native_prepare_readback' && value.blockNum === number); assert.equal(rows.length, 1); return rows[0];};
-    const durable = async (events: any[], number: number) => {
+    const durable = async (events: any[], number: number, budget?: PortableNativePhaseBudget) => {
+        assertNativePhaseActive(budget);
         const event = selectionEvent(events, number), retained = await nativeStore.readSelection(event.selectionId);
+        assertNativePhaseActive(budget);
         const original = originals.get(number)!; assert.equal(retained.linkId, event.linkId);
         assert.equal(retained.link.observationId, event.observationId); assert.equal(retained.link.observationDigest, event.observationDigest);
         assert.equal(retained.selection.frameSha256, portableSourceHash(original.raw)); assert.deepEqual(retained.record.source, original.position);
@@ -229,17 +240,21 @@ export async function createPortableNativeQualification(options: NativeRunOption
             assert.equal(retained.abiObservation.observation.status, 'native-genesis');
         } else {assert.deepEqual(retained.record.inventory, original.inventory);
             assert.deepEqual(retained.record.observation, {status: 'observed', facts: original.observed});}
+        assertNativePhaseActive(budget);
         return {event, retained, original, sourceAck};
     };
     const admission = async (events: any[], number: number, physical: Awaited<ReturnType<typeof actions>>,
         budget?: PortableNativePhaseBudget, publicationEvents = options.events) => {
+        assertNativePhaseActive(budget);
         const eventsForBlock = events.filter(value => value.kind === 'native_boundary' && value.event === 'action_admitted' && value.blockNum === number);
         assert.equal(eventsForBlock.length, 1); const event = eventsForBlock[0], current = await admissionStore.resolve(event.admissionId);
+        assertNativePhaseActive(budget);
         const original = originals.get(number); assert.ok(original);
         assert.equal(current.source.frameHex, original.raw.toString('hex')); assert.equal(current.source.schemaJson, source.schemaJson);
         assert.equal(current.source.inventoryInput.profileId, portableNativeProfile);
         assert.equal(current.source.producer.profileId, portableNativeProfile);
         const ingress = await admissionStore.resolveIngress(current.source.ingressId);
+        assertNativePhaseActive(budget);
         assert.equal(ingress.frameHex, current.source.frameHex); assert.equal(ingress.profileId, portableNativeProfile);
         assert.equal(ingress.schemaJson, source.schemaJson); assert.equal(ingress.captureSha256, current.source.captureSha256);
         if (number === 1) {assert.equal(current.planId, null); assert.ok(current.incomplete); assert.equal(current.source.inventoryInput.traces, null);
@@ -249,7 +264,9 @@ export async function createPortableNativeQualification(options: NativeRunOption
         assert.equal(current.source.inventoryInput.sourceSelectionId, selectionEvent(events, number).selectionId);
         assert.equal(current.source.producer.codeRevision.length, 40);
         const {manifest, id} = await admissionStore.journal.readManifest(current.planId);
+        assertNativePhaseActive(budget);
         const {plan} = await admissionStore.journal.readPlan(current.planId);
+        assertNativePhaseActive(budget);
         assert.deepEqual(plan.producer, current.source.producer); assert.equal(plan.source.blockId, source.records[number - 1].blockId);
         const expectedEffects = physical.map(value => manifests.fingerprintActionHistoryEffect(value.logical))
             .sort((a: any, b: any) => BigInt(a.globalSequence) < BigInt(b.globalSequence) ? -1 : 1);
@@ -258,6 +275,7 @@ export async function createPortableNativeQualification(options: NativeRunOption
         assert.deepEqual(actualEffects, expectedEffects, 'persisted complete action seals must fingerprint every actual stored output');
         assert.equal(current.inventory.transactions.reduce((sum: number, value: any) => sum + value.groups.length, 0), physical.length);
         for (const row of physical) {
+            assertNativePhaseActive(budget);
             // Actual admitted DS production uses actionHistoryImmutableJson for publication bytes (ds-pool.ts).
             // Its canonical sorted keys survive ES object insertion-order changes; ordinary JSON.stringify does not.
             const logicalSha256 = portableSourceHash(manifests.actionHistoryImmutableJson(row.logical));
@@ -271,9 +289,11 @@ export async function createPortableNativeQualification(options: NativeRunOption
             await observePortableNativePublications({events: publicationEvents, chain, wait, budget,
                 expected: {payloadSha256: logicalSha256, admissionId: current.id,
                     fragmentId: manifests.actionHistoryFragmentId(fragment, plan), blockNum: number, owners}});
+            assertNativePhaseActive(budget);
             persistedOutputs.set(JSON.stringify([row.index, row.id]), {index: row.index, id: row.id, logicalSha256,
                 physicalSha256: portableSourceHash(manifests.actionHistoryImmutableJson(row.physical)), blockNum: number});
         }
+        assertNativePhaseActive(budget);
         return {event, current, ingress, manifestId: id, manifest};
     };
     const auditBulk = async () => {
@@ -307,6 +327,7 @@ export async function createPortableNativeQualification(options: NativeRunOption
     };
     return {profile, oracleHashes: oracle.hashes, held, controls, originalNotifications: notifications,
         async resumedHead(budget?: PortableNativePhaseBudget) {
+            assertNativePhaseActive(budget);
             assert.equal(lastNativeThrough, 33);
             const restart = options.masterRestart?.() ?? options.readerRestart?.(); assert.ok(restart);
             let control: any, publicationEvents: () => Promise<any[]>;
@@ -320,15 +341,21 @@ export async function createPortableNativeQualification(options: NativeRunOption
                 publicationEvents = async () => wireMasterResumedEvents(restart.receipt, restart.masterPid, await options.events());
             }
             const events = await publicationEvents();
+            assertNativePhaseActive(budget);
             assert.equal(control.resumeBlockNum, 34);
             const current = await frontier.readControl(); assert.ok(current);
+            assertNativePhaseActive(budget);
             assert.equal(current.value.phase, 'following'); assert.equal(current.value.head.blockNum, 34);
             const commit = await frontier.readCommit(current.value.head.commitId);
+            assertNativePhaseActive(budget);
             assert.equal(commit.nativeActionInterfaceVersion, 1); assert.equal(commit.source.blockId, control.resumeBlockId);
-            const raw = await durable(events, 34), physical = await actions(34);
+            const raw = await durable(events, 34, budget), physical = await actions(34, undefined, budget);
             const membership = await admission(events, 34, physical, budget, publicationEvents);
             const confirmedBulk = await auditBulk();
-            return {blockNum: 34, current, commit, raw, physical, membership, confirmedBulk, history: await options.rawHistory(34)};
+            assertNativePhaseActive(budget);
+            const history = await options.rawHistory(34, budget);
+            assertNativePhaseActive(budget);
+            return {blockNum: 34, current, commit, raw, physical, membership, confirmedBulk, history};
         },
         async hold(through: number) {
             let events: any[] = [];
@@ -339,13 +366,17 @@ export async function createPortableNativeQualification(options: NativeRunOption
                 Array.from({length: through}, (_, index) => index + 1));
             });
             const budget = phase || undefined;
+            const active = () => assertNativePhaseActive(budget);
+            active();
             const control = await frontier.readControl(); assert.ok(control); assert.equal(control.value.head.blockNum, through);
+            active();
             assert.equal(control.value.profile.profileId, portableNativeProfile); assert.equal(control.value.phase, 'following');
             const commit = await frontier.readCommit(control.value.head.commitId);
+            active();
             assert.equal(commit.nativeActionInterfaceVersion, 1); assert.equal(commit.source.blockId, source.records[through - 1].blockId);
             const result: any = {through, control, commit, notifications: [], native: null};
             const target = oracle.rows.find((value: any) => value.blockNum === through);
-            const targetRaw = target ? await durable(events, through) : undefined;
+            const targetRaw = target ? await durable(events, through, budget) : undefined;
             if (options.refreshActions) {
                 if (target) result.historyWrite = await observePortableNativeHistoryWrite({chain, bulk: options.bulk, wait, budget,
                     expectation: async () => {
@@ -400,28 +431,36 @@ export async function createPortableNativeQualification(options: NativeRunOption
             }
             if (through === 34 && options.brokerRecovery?.()) {
                 // Recheck the already-held original output against its two audited physical publishers.
-                result.brokerRecoveredMembership = await admission(events, 33, await actions(33), budget);
+                result.brokerRecoveredMembership = await admission(events, 33, await actions(33, undefined, budget), budget);
             }
-            if (through === 1) {const raw = await durable(events, 1), membership = await admission(events, 1, await actions(1), budget);
+            if (through === 1) {const raw = await durable(events, 1, budget), membership = await admission(events, 1, await actions(1, undefined, budget), budget);
+                active();
                 await assert.rejects(native.open(raw.original.position, raw.event.selectionId), {code: 'native_source_incomplete'});
+                active();
                 result.genesis = {raw, membership, wholeHistoryCompleteness: false};}
             if (target) {
                 const raw = targetRaw!, physical = await actions(through, {name: 'native-oracle-hold', through,
                     control, commit, selection: raw.event, sourceAck: raw.sourceAck, historyWrite: result.historyWrite,
-                    workerEvents: events.filter(value => value.kind === 'native_boundary' && value.blockNum === through)});
+                    workerEvents: events.filter(value => value.kind === 'native_boundary' && value.blockNum === through)}, budget);
                 const row = physical.find(value => value.logical.trx_id === target.transactionId && value.logical.action_ordinal === target.actionOrdinal);
                 assert.ok(row); await assertPortableNativeAction(row.logical, target, provider.nativeActions.encodeValue.bind(provider.nativeActions));
+                assertNativePhaseActive(budget);
                 const view = await native.open(raw.original.position, raw.event.selectionId);
+                active();
                 const decision = await native.authorize(view, row.logical.protocol.input); assert.equal(decision.kind, 'native');
+                active();
                 assert.deepEqual(await native.metadata(decision.grant), row.logical.protocol);
+                active();
                 assert.deepEqual(await native.decodeValue(decision.grant), target.expectedValue);
-                const response = await options.http(path(through)); assert.equal(response.status, 200, JSON.stringify(response.body));
+                active();
+                const response = await options.http(path(through), budget); active(); assert.equal(response.status, 200, JSON.stringify(response.body));
                 const served = response.body.actions.find((value: any) => value.trx_id === target.transactionId);
                 assert.ok(served); assert.deepEqual(served.act.data, target.expectedValue); assert.equal(served.global_sequence, target.globalSequence);
                 result.native = {raw, physical, membership: await admission(events, through, physical, budget), response: receipt(response)};
                 if (through === 397) {
                     // Constructed stored-output controls are separate from the unchanged genuine replay source.
                     for (const kind of ['exact-raw-fallback', 'corrupt-raw-value', 'incomplete-native-metadata']) {
+                        active();
                         const changed = structuredClone(row.physical);
                         if (kind === 'exact-raw-fallback') {changed.act.data = target.rawHex; changed.protocol.status = 'incomplete';
                             changed.protocol.error = {code: 'qualification_constructed_raw', message: 'Constructed raw fallback remains raw-only'};}
@@ -429,30 +468,43 @@ export async function createPortableNativeQualification(options: NativeRunOption
                         else {changed.protocol.status = 'incomplete'; changed.protocol.error = {code: 'qualification_constructed_incomplete', message: 'Constructed owned-row negative control'};}
                         assert.ok(row.index.startsWith(chain + '-action-')); let negative;
                         try {
-                            await client.index({index: row.index, id: row.id, document: changed, refresh: 'wait_for'});
-                            negative = await options.http(path(through));
+                            await client.index({index: row.index, id: row.id, document: changed, refresh: 'wait_for'},
+                                budget ? {requestTimeout: Math.min(10000, portableNativeHistoryRemaining(budget))} : {});
+                            active();
+                            negative = await options.http(path(through), budget); active();
                             if (kind === 'exact-raw-fallback') {assert.equal(negative.status, 200);
                                 const rawRow = negative.body.actions.find((value: any) => value.trx_id === target.transactionId);
                                 assert.ok(rawRow); assert.equal(rawRow.act.data, target.rawHex); assert.equal(rawRow.act.data.header, undefined);}
                             else assertPortableNativeUnavailable(negative, kind === 'corrupt-raw-value'
                                 ? ['native_value_unavailable', 'native_value_mismatch'] : ['api_action_proof_unavailable']);
-                            const unrelated = await options.unrelated(through); controls.push({kind, provenance: 'constructed-owned-action-row-only',
+                            active(); const unrelated = await options.unrelated(through, budget); active(); controls.push({kind, provenance: 'constructed-owned-action-row-only',
                                 unchangedSourceSha256: portableSourceHash(raw.original.raw), response: receipt(negative), unrelated});
-                        } finally {await client.index({index: row.index, id: row.id, document: row.physical, refresh: 'wait_for'});}
-                        const restored = await client.get<any>({index: row.index, id: row.id}); assert.deepEqual(restored._source, row.physical);
-                        assert.equal((await options.http(path(through))).status, 200);
+                        } finally {
+                            // Restore an owned negative-control row even if its observation expired; this is cleanup, not acceptance.
+                            await client.index({index: row.index, id: row.id, document: row.physical, refresh: 'wait_for'});
+                        }
+                        active();
+                        const restored = await client.get<any>({index: row.index, id: row.id},
+                            budget ? {requestTimeout: Math.min(10000, portableNativeHistoryRemaining(budget))} : {});
+                        active(); assert.deepEqual(restored._source, row.physical);
+                        const restoredResponse = await options.http(path(through), budget); active(); assert.equal(restoredResponse.status, 200);
                     }
                 }
             }
             if (through <= 397) {
                 for (const number of [...new Set(notifications.filter(value => value.blockNum > lastNativeThrough && value.blockNum <= through).map(value => value.blockNum))]) {
-                    assert.ok(through - number <= 256); const raw = await durable(events, number), view = await native.open(raw.original.position, raw.event.selectionId);
-                    const canonical = await reader.open(raw.original.position, raw.event.selectionId), physical = await actions(number);
+                    active(); assert.ok(through - number <= 256); const raw = await durable(events, number, budget);
+                    const view = await native.open(raw.original.position, raw.event.selectionId); active();
+                    const canonical = await reader.open(raw.original.position, raw.event.selectionId); active();
+                    const physical = await actions(number, undefined, budget);
                     const rows: any[] = [];
                     for (const expected of notifications.filter(value => value.blockNum === number)) {
+                        active();
                         const occurrence = await reader.occurrence(canonical, expected.occurrence.input);
+                        active();
                         assert.equal(occurrence.binding.inputActionOrdinal, expected.origin.actionOrdinal);
                         assert.equal((await native.authorize(view, expected.occurrence.input)).kind, 'contract');
+                        active();
                         const grouped = physical.filter(value => value.logical.trx_id === expected.occurrence.input.transactionId
                             && value.logical.receipts.some((receipt: any) => receipt.global_sequence === expected.occurrence.input.globalSequence));
                         assert.equal(grouped.length, 1); const storedReceipt = grouped[0].logical.receipts.find((receipt: any) => receipt.global_sequence === expected.occurrence.input.globalSequence);
@@ -464,10 +516,10 @@ export async function createPortableNativeQualification(options: NativeRunOption
                     }
                     result.notifications.push({blockNum: number, raw, canonical, rows, membership: await admission(events, number, physical, budget)});
                 }
-                lastNativeThrough = through;
+                active(); lastNativeThrough = through;
             }
             if (through === 397) assert.equal(checkedNotifications.size, 25);
-            held.push(result); return result;
+            active(); held.push(result); return result;
         },
         async final() {
             assert.equal(checkedNotifications.size, 25); assert.equal(controls.length, 3);

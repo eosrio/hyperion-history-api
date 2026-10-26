@@ -741,3 +741,19 @@ boundary. It creates no successful native grant or full-worker verdict. The olde
 characterization without a write witness remains a required negative control. Fresh unchanged
 owned-service replay, strict software shutdown, physical cleanup and release acceptance are
 separate pending evidence; this qualifier change does not retroactively accept any recorded case.
+
+The same inherited phase budget continues through strict search settlement and diagnostic capture,
+value encoding, proof/metadata reads, HTTP observations, publication readiness and final hold acceptance.
+Supported Elasticsearch and HTTP read timeouts are capped to its remaining time. Pending operations
+remain awaited; their original rejections are preserved. An expired observation cannot dispatch the
+next proof or serving operation, complete a ready publication, or enter the accepted hold list.
+Restoring a constructed owned-row negative control still runs to settlement as cleanup after expiry;
+that restoration cannot accept the phase or restart proof/serving work.
+
+The native `witness` controls retain the original cases and add a strict search settling late at 397
+and a public non-oracle hold at 1244 that expires while consuming the refresh result. The latter
+exercises final hold acceptance without manufacturing a native grant. Separate ready-publication
+controls reject both already-expired and late-ready observations, keep an outstanding read awaited,
+and preserve its original rejection. Native proof guards always throw: successful proof/authorization
+tails still require real owned-service qualification; these controls do not claim dynamic coverage
+of successful grants or retroactively qualify an earlier run.

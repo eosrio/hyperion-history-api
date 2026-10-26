@@ -20,12 +20,15 @@ await observePortableNativePublications({chain, expected, budget, wait,
     events: async () => {checks++; return checks === 1 ? initialSnapshot : [confirmation()];}});
 assert.equal(checks, 2); assert.equal(waits, 1); assert.deepEqual(initialSnapshot, []);
 
-// Fresh checks still work after the phase expires; an absent receipt cannot buy a new timeout.
+// Neither ready nor absent receipts can complete an expired original phase.
 const expired = {deadline: performance.now() - 1};
 const noWait = async () => {assert.fail('No new phase deadline may be armed');};
-await observePortableNativePublications({chain, expected, budget: expired, wait: noWait, events: async () => [confirmation()]});
-for (const phase of [undefined, expired]) await assert.rejects(observePortableNativePublications({chain, expected,
-    budget: phase, wait: noWait, events: async () => []}), /exact expected confirmed publications/);
+await assert.rejects(observePortableNativePublications({chain, expected, budget: expired, wait: noWait,
+    events: async () => [confirmation()]}), /original native history phase deadline exceeded/);
+await assert.rejects(observePortableNativePublications({chain, expected, wait: noWait,
+    events: async () => []}), /exact expected confirmed publications/);
+await assert.rejects(observePortableNativePublications({chain, expected, budget: expired, wait: noWait,
+    events: async () => []}), /original native history phase deadline exceeded/);
 for (const mutate of [row => {row.queue = 'other:index_actions:1';}, row => {row.event = 'other';},
     row => {row.kind = 'other';}, row => {row.payloadSha256 = 'b'.repeat(64);},
     row => {row.canonicalPayloadSha256 = 'b'.repeat(64);}, row => {row.headers['hyperion-action-admission-v1'] = 'foreign';},
