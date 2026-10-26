@@ -92,6 +92,10 @@ process, with at most eight associations for one reused error object. Omissions,
 sink failures and missing original-method hooks fail the diagnostic audit.
 The existing 64 KiB row and 24 MiB process budgets still apply. Original return
 values, promises, throws and raw shutdown verdicts are preserved.
+Root outcome observation attaches to the original scope's native promise. It
+does not inspect or invoke the operation result's `then` property; native
+regressions compare fulfillment, rejection, throwing getters and plain values
+against the unobserved scope.
 
 ## Bounds and authority
 

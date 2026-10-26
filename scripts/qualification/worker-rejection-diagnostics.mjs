@@ -201,7 +201,7 @@ export function auditWorkerRejectionDiagnostics(rows, primaryPid) {
         assert.equal(value.failures?.maximumErrorMatches, 8, 'Failure error-object match bound changed');
         assert.equal(value.failures?.omitted, 0, 'Worker failure diagnostic events were omitted');
         assert.equal(value.failures?.omittedRoots, 0, 'Worker failure diagnostic roots were omitted');
-        for (const key of ['attempts', 'pool', 'reader', 'projection', ...(row.pid === primaryPid ? ['master', 'cluster', 'supervisor'] : [])])
+        for (const key of ['root', 'attempts', 'pool', 'reader', 'projection', ...(row.pid === primaryPid ? ['master', 'cluster', 'supervisor'] : [])])
             assert.equal(value.failures?.enabled?.[key], true, `Worker failure diagnostic ${key} is unavailable`);
         for (const key of ['client', 'host', ...(row.pid === primaryPid ? ['supervisor', 'master'] : [])])
             assert.equal(value.fences?.enabled?.[key], true, `Worker fence diagnostic ${key} is unavailable`);

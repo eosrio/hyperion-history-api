@@ -1,22 +1,27 @@
 /** Controlled callback/promise controls only; no physical fault or end authority. */
 import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {WorkerAttemptClient} from '../../build/indexer/protocol/worker-attempt-client.js';
 import {installWorkerFailureDiagnostics} from '../../scripts/qualification/worker-failure-diagnostics.mjs';
 
 async function fixture(options = {}) {
     const rows = [], originalResults = new WeakMap(); let failures = 0;
     const sentinelReturn = Object.freeze({});
-    class Client {
-        run(_handle, operation) {
-            const result = Promise.resolve().then(operation); originalResults.set(this, result); return result;
+    class Client extends WorkerAttemptClient {
+        constructor() {super({mode: 'controlled-local-only', role: 'projection'});}
+        run(handle, operation) {
+            const result = super.run(handle, operation); originalResults.set(this, result); return result;
         }
-        describe(handle) {return {marker: handle.marker};}
     }
     class Projection {handleProjectionFailure() {return sentinelReturn;}}
     const diagnostics = installWorkerFailureDiagnostics({WorkerClient: Client, Projection,
         emit(event, snapshot) {if (options.sinkFailure) throw new Error('controlled sink'); rows.push({event, ...snapshot()});},
         failed() {failures++;}, maximumFailureEvents: options.maximumFailureEvents ?? 128});
     const client = new Client(), other = new Client(), worker = Object.assign(new Projection(), {workerAttemptClient: client});
-    const error = new Error('original object'), handle = {marker: 'original handle'};
+    const capture = client => client.capture({kind: 'projection-frame', receiptId: randomUUID(),
+        payloadSha256: 'a'.repeat(64), headersSha256: 'b'.repeat(64), consumerId: null, publisherId: null,
+        queue: null, deliveryTag: null});
+    const error = new Error('original object'), handle = capture(client);
     const result = client.run(handle, () => {throw error;});
     assert.equal(result, originalResults.get(client), 'Observer retains the exact original run promise');
     await assert.rejects(result, value => value === error);
@@ -31,7 +36,7 @@ async function fixture(options = {}) {
         worker.handleProjectionFailure(error);
         assert.equal(rows.at(-1).root.runRejectionObjectMatch, false, 'An independent owner cannot borrow a root');
         worker.workerAttemptClient = client;
-        for (let index = 0; index < 8; index++) await assert.rejects(client.run({marker: index}, () => {throw error;}), value => value === error);
+        for (let index = 0; index < 8; index++) await assert.rejects(client.run(capture(client), () => {throw error;}), value => value === error);
         worker.handleProjectionFailure(error);
         assert.equal(rows.at(-1).root.ambiguous, true, 'Reused errors with multiple original runs remain ambiguous');
         assert.equal(rows.at(-1).root.attempt, null);
@@ -40,6 +45,7 @@ async function fixture(options = {}) {
     if (options.sinkFailure || options.maximumFailureEvents) assert.ok(failures > 0);
     if (options.maximumFailureEvents) assert.equal(diagnostics.snapshot().omitted, 1);
     assert.equal(diagnostics.snapshot().maximumErrorMatches, 8);
+    client.dispose(); other.dispose();
 }
 await fixture();
 await fixture({sinkFailure: true});

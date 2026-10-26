@@ -40,7 +40,7 @@ test('capture failures, omitted decisions and changed limits fail the diagnostic
         reportFailures: 0, omittedRejections: 0, fences: {maximumFenceEvents: 1024, membersPerRow: 32, omitted: 0,
             enabled: {client: true, host: true, supervisor: true, master: true}},
         failures: {maximumFailureEvents: 128, maximumErrorMatches: 8, omitted: 0, omittedRoots: 0,
-            enabled: {attempts: true, pool: true, reader: true, projection: true, master: true, cluster: true, supervisor: true}}}};
+            enabled: {root: true, attempts: true, pool: true, reader: true, projection: true, master: true, cluster: true, supervisor: true}}}};
     const starts = [{kind: 'start', pid: 101}, {kind: 'native_boundary', event: 'start', pid: 101}];
     expect(auditWorkerRejectionDiagnostics([...starts, row], 101).status).toBe('complete');
     expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics, reportFailures: 1}}], 101)).toThrow('capture failed');

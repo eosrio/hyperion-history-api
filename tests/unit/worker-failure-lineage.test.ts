@@ -26,3 +26,8 @@ test('controlled return/promise/copy/budget controls cannot create a root associ
     expect(await native('./worker-failure-controls.mjs')).toMatchObject({passed: true,
         controlledCallbacksOnly: true, physicalFaultEvidence: false});
 }, 25000);
+
+test('original scope assimilates thenables and getter failures once with unchanged outcomes', async () => {
+    expect(await native('./worker-failure-thenable.mjs')).toMatchObject({passed: true,
+        controlledLocalOnly: true, productionAuthority: false});
+}, 25000);

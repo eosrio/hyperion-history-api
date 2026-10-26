@@ -1,4 +1,6 @@
 import {randomUUID} from 'node:crypto';
+import {isPromise} from 'node:util/types';
+import {ProofConsumerScope} from '../../build/indexer/protocol/proof-consumer-scope.js';
 
 /** Bounded observations of original error, callback and Worker objects; never a fault ledger. */
 export function installWorkerFailureDiagnostics({Pool, Reader, Projection, WorkerClient, Master, Supervisor, cluster,
@@ -6,7 +8,7 @@ export function installWorkerFailureDiagnostics({Pool, Reader, Projection, Worke
     if (!Number.isSafeInteger(maximumFailureEvents) || maximumFailureEvents < 1 || maximumFailureEvents > 1024)
         throw new Error('Invalid worker failure diagnostic bound');
     let events = 0, omitted = 0, rejectedRoots = 0, omittedRoots = 0;
-    const roots = new WeakMap(), batches = new WeakMap(), readerDecisions = new WeakMap();
+    const rootContexts = new WeakMap(), roots = new WeakMap(), batches = new WeakMap(), readerDecisions = new WeakMap();
     const knownWorkers = new WeakSet(), disconnects = new WeakMap(), requests = new WeakMap(), replacements = new WeakMap();
     const launching = [];
     const observe = operation => {try {return operation();} catch {failed(); return undefined;}};
@@ -28,46 +30,58 @@ export function installWorkerFailureDiagnostics({Pool, Reader, Projection, Worke
             rootError: root?.rootResult === 'threw' ? errorDescription(root.rootError) : null,
             attempt: matches.length === 1 ? client.describe(matches[0].handle) : null};
     };
-    const enabled = {attempts: typeof WorkerClient?.prototype.run === 'function',
+    const enabled = {root: typeof WorkerClient?.prototype.run === 'function' && typeof ProofConsumerScope.prototype.run === 'function',
+        attempts: typeof WorkerClient?.prototype.run === 'function',
         pool: typeof Pool?.prototype.exitForActionProcessing === 'function' && typeof Pool?.prototype.processMessages === 'function',
         reader: typeof Reader?.prototype.exitForPublisherRecovery === 'function' && typeof Reader?.prototype.failPublisherRecovery === 'function',
         projection: typeof Projection?.prototype.handleProjectionFailure === 'function',
         master: typeof Master?.prototype.handleWorkerDisconnect === 'function' && typeof Master?.prototype.relaunchDisconnectedWorker === 'function',
         cluster: !!cluster?.isPrimary && typeof cluster.fork === 'function', supervisor: typeof Supervisor?.prototype.attach === 'function'};
-    if (enabled.attempts) {
-        const run = WorkerClient.prototype.run;
-        WorkerClient.prototype.run = function(handle, operation, ...args) {
-            const context = {id: randomUUID(), client: this, handle, operationEntered: false, rootResult: 'not-entered'};
-            const observed = function(...parameters) {
+    if (enabled.attempts && enabled.root) {
+        const scopeRun = ProofConsumerScope.prototype.run;
+        ProofConsumerScope.prototype.run = function(operation, ...args) {
+            const context = rootContexts.get(this);
+            const observed = context ? function(...parameters) {
                 context.operationEntered = true; context.rootResult = 'pending';
-                try {
-                    const result = operation.apply(this, parameters);
-                    if (result && typeof result.then === 'function') {
-                        observe(() => result.then(() => {context.rootResult = 'returned';}, error => {
-                            context.rootResult = 'threw'; context.rootError = error;
-                        }));
-                    } else context.rootResult = 'returned';
-                    return result;
-                } catch (error) {context.rootResult = 'threw'; context.rootError = error; throw error;}
-            };
-            const result = run.call(this, handle, observed, ...args);
-            observe(() => result.then(undefined, error => {
-                observe(() => {
-                    if (++rejectedRoots > maximumFailureEvents) {omittedRoots++; failed(); return;}
-                    context.parentAtRunRejection = this.authority
-                        ? {epoch: this.authority.epoch, incarnation: this.authority.incarnation} : null;
-                    record('worker_attempt_run_rejected', () => ({runFailureId: context.id,
-                        attempt: this.describe(handle), error: errorDescription(error), rootResult: context.rootResult,
-                        parentAtRunRejection: context.parentAtRunRejection,
-                        operationEntered: context.operationEntered,
-                        rootError: context.rootResult === 'threw' ? errorDescription(context.rootError) : null,
-                        sameRootErrorObject: object(error) && context.rootError === error}));
-                    if (!object(error)) return; // Primitive equality cannot establish original error-object custody.
-                    const prior = roots.get(error) ?? [];
-                    if (prior.length >= 8) {failed(); return;}
-                    roots.set(error, [...prior, context]);
+                return operation.apply(this, parameters);
+            } : operation;
+            const result = scopeRun.call(this, observed, ...args);
+            if (context) observe(() => {
+                if (!isPromise(result)) throw new Error('Original scope root promise is unavailable');
+                Promise.prototype.then.call(result, () => {context.rootResult = 'returned';}, error => {
+                    context.rootResult = 'threw'; context.rootError = error;
                 });
-            }));
+            });
+            return result;
+        };
+        const run = WorkerClient.prototype.run;
+        WorkerClient.prototype.run = function(handle, ...args) {
+            const context = {id: randomUUID(), client: this, handle, operationEntered: false, rootResult: 'not-entered'};
+            observe(() => {
+                const attempt = this.attempts?.get(handle);
+                if (attempt && !attempt.running && !attempt.ended) rootContexts.set(attempt.scope, context);
+            });
+            const result = run.call(this, handle, ...args);
+            observe(() => {
+                if (!isPromise(result)) throw new Error('Original worker run promise is unavailable');
+                Promise.prototype.then.call(result, () => {}, error => {
+                    observe(() => {
+                        if (++rejectedRoots > maximumFailureEvents) {omittedRoots++; failed(); return;}
+                        context.parentAtRunRejection = this.authority
+                            ? {epoch: this.authority.epoch, incarnation: this.authority.incarnation} : null;
+                        record('worker_attempt_run_rejected', () => ({runFailureId: context.id,
+                            attempt: this.describe(handle), error: errorDescription(error), rootResult: context.rootResult,
+                            parentAtRunRejection: context.parentAtRunRejection,
+                            operationEntered: context.operationEntered,
+                            rootError: context.rootResult === 'threw' ? errorDescription(context.rootError) : null,
+                            sameRootErrorObject: object(error) && context.rootError === error}));
+                        if (!object(error)) return;
+                        const prior = roots.get(error) ?? [];
+                        if (prior.length >= 8) {failed(); return;}
+                        roots.set(error, [...prior, context]);
+                    });
+                });
+            });
             return result;
         };
     }
@@ -75,7 +89,7 @@ export function installWorkerFailureDiagnostics({Pool, Reader, Projection, Worke
         const process = Pool.prototype.processMessages, exit = Pool.prototype.exitForActionProcessing;
         Pool.prototype.processMessages = function(payload, ...args) {
             const result = process.call(this, payload, ...args);
-            observe(() => result.then(undefined, error => {observe(() => {
+            observe(() => result.then(() => {}, error => {observe(() => {
                 if (!object(payload)) return;
                 const previous = batches.get(payload);
                 batches.set(payload, previous ? {ambiguous: true} : {worker: this, error});
