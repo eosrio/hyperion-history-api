@@ -92,6 +92,7 @@ export async function startBulkLedger(url: string, directory: string, errors: st
                             receipt.responseBody = {file: `${String(receipt.number).padStart(5, '0')}-response.json`, bytes: bytes.length, sha256: digest(bytes)};
                             await writeFile(join(directory, receipt.responseBody.file), bytes, {flag: 'wx'});
                             await retainChronology();
+                            receipt.captureComplete = !captureChronology || !!receipt.chronology;
                         }
                         outgoing.writeHead(response.statusCode!, response.headers); outgoing.end(bytes); done();
                     })().catch(reject); });

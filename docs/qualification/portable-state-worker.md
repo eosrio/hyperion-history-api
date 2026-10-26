@@ -738,3 +738,64 @@ Node 24/26. Mongo transport is controlled; the tests return no source proofs or 
 revalidation. They establish no real-server durability or historical transaction ordering.
 The original failed Linux run remains failed. Focused real Mongo checks and a fresh full
 `1..1480` worker replay, strict shutdown and physical cleanup remain separate qualification gates.
+
+### Native oracle write completion before refresh
+
+The #334 controlled original-hold loop distinguishes refresh ordering: the same exact block-397
+row and single query fail at `assert.ok(row)` when refresh precedes its write completion, and
+reach the independent proof boundary when only that order is reversed. The source-pinned
+Node 26 combined capture records refresh, then the sequence-637 bulk response, then a zero-hit
+query in one driver clock. This supports testing the ordering mechanism; it does not establish
+that capture's server-side cause or reconstruct the older missing response. All failures remain failed.
+
+The native qualifier now joins the exact original oracle output's captured write before its
+existing phase refresh. This applies to oracle targets **33, 122 and 397**, not every history
+output. Notification-only holds such as 256 retain their original strict checks and scheduling
+assumption. No global state/history barrier or query retry is added.
+
+The expectation binds original frame/schema/selection/source, the admission's original target,
+and its sealed full logical-document/sequence-metadata fingerprint. The actual ledger request
+and response files must match their retained byte counts/hashes. The original index/create
+item must match the exact target and ID, original native identity/value/raw bytes and canonical
+payload, with two successful configured copies and zero failures. A sealed record is only an
+expectation; it cannot replace the actual item response or issue a fresh-write receipt.
+
+`captureComplete` describes local observation only: it is set after raw request/response files
+and enabled chronology have completed. In-flight or failed captures cannot satisfy readiness.
+Chronology capture failure remains an explicit run error and preserves the proxy's original
+HTTP response bytes/status/headers. The marker does not establish client receipt, worker end,
+broker settlement, power-loss durability or progress authority.
+
+Only absent completion or the original not-yet-created seal may wait. Invalid/incomplete
+references, failed writes, changed bytes, wrong identities and partial copies fail. All new
+work shares the original native PREPARE hold budget, checked before/after witness work and
+refresh; refresh request timeout is capped to its remaining time. Ready-but-expired observations,
+late settlement and late refresh cannot extend that budget. The single original strict search,
+full-response capture, native proof/grant, seals, admission and fresh publication checks follow.
+
+```sh
+node --experimental-strip-types tests/unit/portable-native-history-capture.mjs witness
+```
+
+Repeat using native Node 24 and 26. The loop audits the unchanged 1..1480 source and installed
+official/native oracle, uses controlled storage/transport, and stops at an always-throwing proof
+boundary. It creates no successful native grant or full-worker verdict. The older `delayed`
+characterization without a write witness remains a required negative control. Fresh unchanged
+owned-service replay, strict software shutdown, physical cleanup and release acceptance are
+separate pending evidence; this qualifier change does not retroactively accept any recorded case.
+
+The same inherited phase budget continues through strict search settlement and diagnostic capture,
+value encoding, proof/metadata reads, HTTP observations, publication readiness and final hold acceptance.
+Supported Elasticsearch and HTTP read timeouts are capped to its remaining time. Pending operations
+remain awaited; their original rejections are preserved. An expired observation cannot dispatch the
+next proof or serving operation, complete a ready publication, or enter the accepted hold list.
+Restoring a constructed owned-row negative control still runs to settlement as cleanup after expiry;
+that restoration cannot accept the phase or restart proof/serving work.
+
+The native `witness` controls retain the original cases and add a strict search settling late at 397
+and a public non-oracle hold at 1244 that expires while consuming the refresh result. The latter
+exercises final hold acceptance without manufacturing a native grant. Separate ready-publication
+controls reject both already-expired and late-ready observations, keep an outstanding read awaited,
+and preserve its original rejection. Native proof guards always throw: successful proof/authorization
+tails still require real owned-service qualification; these controls do not claim dynamic coverage
+of successful grants or retroactively qualify an earlier run.

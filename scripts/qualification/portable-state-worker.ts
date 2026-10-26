@@ -42,6 +42,7 @@ import {createWireBrokerRecoveryControl, readWireBrokerRecoveryEvidence, assertW
 import {captureOwnedWireBroker, describeOwnedWireBroker, restartOwnedWireBroker} from './owned-wire-broker.mjs';
 import {captureOwnedWireReplica, describeOwnedWireReplica} from './owned-wire-replica.mjs';
 import {qualifyWireStorageRestart} from './portable-state-storage-recovery.mjs';
+import {portableNativeHistoryRemaining} from './portable-native-history-witness.ts';
 import {portableWorkerSourceFrame} from './portable-state-worker-source.ts';
 
 const repo = fileURLToPath(new URL('../../', import.meta.url));
@@ -474,16 +475,23 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             ...(mode === 'alwaysOn' ? {data: {failCommands: ['update'], errorCode: 2}} : {})});
     };
     const es = new Client({node: state.core.nodes[0].url, requestTimeout: 10000, maxRetries: 0});
+    const readTimeout = (maximum: number, budget?: PortableNativePhaseBudget) =>
+        Math.min(maximum, remaining(), budget ? portableNativeHistoryRemaining(budget) : Infinity);
+    const readOptions = (maximum: number, budget?: PortableNativePhaseBudget) => budget ? {requestTimeout: readTimeout(maximum, budget)} : {};
     let lastQueues: {observed: ReturnType<typeof portableHistoryClock>; rows: any[]} | undefined;
-    const refreshActions = async (through: number, phase: string) => {
-        const request = {index: chain + '-action-*'}, refresh = () => es.indices.refresh(request);
+    const refreshActions = async (through: number, phase: string, budget?: PortableNativePhaseBudget) => {
+        const request = {index: chain + '-action-*'}, refresh = () => es.indices.refresh(request,
+            budget ? {requestTimeout: Math.min(10000, portableNativeHistoryRemaining(budget))} : {});
         return historyDiagnostics ? historyDiagnostics.observe('action-refresh', {request, through, phase,
+            phaseBudget: budget && {clock: 'performance.now', deadline: budget.deadline},
             source: source.records[through - 1], replay: replay?.metrics(), queues: lastQueues, recovery: report.lastRecovery}, refresh) : refresh();
     };
     const wait = async (name: string, condition: () => Promise<void>, milliseconds = 60000, inherited?: PortableNativePhaseBudget) => {
         const end = Math.min(deadline, performance.now() + milliseconds, inherited?.deadline ?? Infinity); let last: unknown;
         while (performance.now() < end) {for (const child of [master, api]) if (child) assert.ok(child.exitCode === null && child.signalCode === null, `${name}: actual child exited`);
-            assert.deepEqual(report.errors, []); try {await condition(); return Object.freeze({deadline: end});} catch (error) {last = error;} await pause(100);}
+            assert.deepEqual(report.errors, []); try {await condition();
+                assert.ok(performance.now() < end, `${name}: original phase deadline exceeded`);
+                return Object.freeze({deadline: end});} catch (error) {last = error;} await pause(100);}
         throw new Error(`${name} did not complete: ${describeError(last)}`);
     };
     const queues = async () => {
@@ -621,24 +629,31 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             assert.ok(available > 0, 'portable query inherited isolation deadline exceeded');
             const response = await fetch(`http://127.0.0.1:${apiPort}/v2/state/query`, {method: 'POST', headers: {'content-type': 'application/json'},
                 body: JSON.stringify({projection, query: value}), signal: AbortSignal.timeout(available)});
-            return {status: response.status, headers: response.headers, body: await boundedResponse(response)};
+            const body = await boundedResponse(response); if (budget) portableNativeHistoryRemaining(budget);
+            return {status: response.status, headers: response.headers, body};
         };
         const responseReceipt = (response: Awaited<ReturnType<typeof query>>) =>
             ({status: response.status, headers: Object.fromEntries(response.headers), body: response.body});
-        const history = async (through: number) => {
+        const history = async (through: number, budget?: PortableNativePhaseBudget) => {
             const block = source.records[through - 1];
-            await es.indices.refresh({index: chain + '-block-*'});
+            await es.indices.refresh({index: chain + '-block-*'}, readOptions(10000, budget));
             await wait(`physical block replicas for ${through}`, async () => {
-                const health = await es.cluster.health({index: chain + '-block-*', wait_for_status: 'green', timeout: '5s'});
+                const timeoutMS = readTimeout(5000, budget);
+                const health = await es.cluster.health({index: chain + '-block-*', wait_for_status: 'green', timeout: budget ? `${timeoutMS}ms` : '5s'},
+                    readOptions(5000, budget));
+                if (budget) portableNativeHistoryRemaining(budget);
                 assert.equal(health.timed_out, false); assert.equal(health.status, 'green');
                 assert.equal(health.number_of_data_nodes, 2);
-            });
-            const information = await es.nodes.info(); const dataNodes = Object.entries(information.nodes).filter(([, node]) =>
+            }, 60000, budget);
+            const information = await es.nodes.info({}, readOptions(10000, budget));
+            if (budget) portableNativeHistoryRemaining(budget);
+            const dataNodes = Object.entries(information.nodes).filter(([, node]) =>
                 state.core.nodes.some((owned: any) => owned.role === 'data' && owned.name === node.name));
             assert.equal(dataNodes.length, 2); const physical: any[] = [];
             for (const [nodeId, node] of dataNodes) {
                 const result = await es.search<any>({index: chain + '-block-*', size: 2, track_total_hits: true,
-                    preference: `_only_nodes:${nodeId}`, query: {term: {block_num: through}}});
+                    preference: `_only_nodes:${nodeId}`, query: {term: {block_num: through}}}, readOptions(10000, budget));
+                if (budget) portableNativeHistoryRemaining(budget);
                 assert.equal(result.timed_out, false); assert.equal(result._shards.failed, 0);
                 assert.ok(result._shards.total > 0); assert.equal(result._shards.successful, result._shards.total);
                 assert.deepEqual(result.hits.total, {value: 1, relation: 'eq'}); const hit = result.hits.hits[0];
@@ -647,27 +662,30 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                 physical.push({nodeId, nodeName: node.name, response: result});
             }
             const response = await fetch(`http://127.0.0.1:${apiPort}/v2/history/get_block?block_num=${through}`,
-                {signal: AbortSignal.timeout(Math.min(5000, remaining()))});
+                {signal: AbortSignal.timeout(readTimeout(5000, budget))});
             const body = await boundedResponse(response); assert.equal(response.status, 200);
+            if (budget) portableNativeHistoryRemaining(budget);
             assert.equal(body.block_num, through); assert.equal(body.block_id, block.blockId); assert.equal(body.prev_id, block.headerPreviousBlockId);
             return {through, blockId: block.blockId, physical, api: {status: response.status, headers: Object.fromEntries(response.headers), body}};
         };
         await wait('API unavailable before actual block1', async () => {const response = await query(plan.definitions[0].id);
             assertPortableUnavailable(response); report.beforeSource = responseReceipt(response);});
-        const http = async (path: string) => {const response = await fetch(`http://127.0.0.1:${apiPort}` + path,
-            {signal: AbortSignal.timeout(Math.min(10000, remaining()))});
-            return {status: response.status, headers: response.headers, body: await boundedResponse(response)};};
-        const unrelated = async (height: number) => {
+        const http = async (path: string, budget?: PortableNativePhaseBudget) => {const response = await fetch(`http://127.0.0.1:${apiPort}` + path,
+            {signal: AbortSignal.timeout(readTimeout(10000, budget))});
+            const body = await boundedResponse(response); if (budget) portableNativeHistoryRemaining(budget);
+            return {status: response.status, headers: response.headers, body};};
+        const unrelated = async (height: number, budget?: PortableNativePhaseBudget) => {
             const block = source.records[height - 1], states: any[] = [];
             // Older history remains usable while state queries report the current covered head.
-            for (const [index, definition] of plan.definitions.entries()) {const response = await query(definition.id);
+            for (const [index, definition] of plan.definitions.entries()) {const response = await query(definition.id, undefined, budget);
                 assert.equal(response.status, 200); assert.equal(response.body.view.binding.projectionId, bindings[index].projectionId);
                 assert.equal(response.headers.get('hyperion-state-last-valid'), 'false'); states.push(responseReceipt(response));}
-            return {history: await history(block.blockNum), states};
+            return {history: await history(block.blockNum, budget), states};
         };
         const native = nativeOracle ? await createPortableNativeQualification({source, oracle: nativeOracle, client: es, chain, apiPort,
             events: () => observedRows(), http, unrelated, rawHistory: history,
             wait: (name, work, budget) => wait(name, work, 60000, budget), historyDiagnostics,
+            refreshActions: (through, budget) => refreshActions(through, 'native-hold', budget),
             bulk: {directory: join(output, 'bulk'), receipts: ledger.receipts},
             ...(options.workerRecovery ? {attemptRecovery: () => report.attemptRecovery?.status === 'observed'
                 ? report.attemptRecovery.evidence : undefined} : {}),
@@ -824,7 +842,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                 report.contractFailure.observations.push({...isolation, phase: 'coherent-physical'});
                 replay.assertThrough(through); mongoFixture.ownedContainer('replica');
             }
-            if (native) {await refreshActions(through, 'scheduled-prefix'); const observed = await native.hold(through);
+            if (native) {const observed = await native.hold(through);
                 const file = `prefixes/native-${through}.json`, bytes = Buffer.from(JSON.stringify(observed, null, 2) + '\n');
                 await writeFile(join(output, file), bytes, {flag: 'wx'}); report.native.holds.push({through, file, sha256: portableSourceHash(bytes)});}
             const observed = {through, blockId: block.blockId, responses, history: await history(through),
@@ -909,7 +927,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                 });
                 report.brokerRecovery.attemptAudit = brokerAttemptAudit;
                 assert.ok(counterWindows);
-                assert.ok(native); await refreshActions(through, 'broker-continuation');
+                assert.ok(native);
                 const nativePrefix = await native.hold(through);
                 const nativeFile = `prefixes/native-${through}.json`, nativeBytes = Buffer.from(JSON.stringify(nativePrefix, null, 2) + '\n');
                 await writeFile(join(output, nativeFile), nativeBytes, {flag: 'wx'});
