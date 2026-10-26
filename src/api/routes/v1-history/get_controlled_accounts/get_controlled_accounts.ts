@@ -1,6 +1,7 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {timedQuery} from "../../../helpers/functions.js";
 import {searchActions} from '../../../helpers/action-search.js';
+import {protectProtocolAction} from '../../../helpers/protocol-abi.js';
 
 async function getControlledAccounts(fastify: FastifyInstance, request: FastifyRequest) {
     let body = request.body as any;
@@ -42,12 +43,13 @@ async function getControlledAccounts(fastify: FastifyInstance, request: FastifyR
     const hits = results.hits.hits;
 
     if (hits.length > 0) {
+        for (const hit of hits) await protectProtocolAction(fastify, request, hit._source, {decode: true});
         response.controlled_accounts = hits.map((v: any) => {
             if (v._source.act.name === 'newaccount') {
                 if (v._source['@newaccount']?.newact) {
                     return v._source['@newaccount'].newact;
-                } else if (v._source.act.data.newact) {
-                    return v._source.act.data.newact;
+                } else if (v._source.act.data.newact ?? v._source.act.data.name) {
+                    return v._source.act.data.newact ?? v._source.act.data.name;
                 } else {
                     return null;
                 }

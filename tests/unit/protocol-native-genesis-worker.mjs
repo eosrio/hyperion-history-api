@@ -1,3 +1,4 @@
+import {controlledAttemptLifecycle} from './worker-attempt-fixture.mjs';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {registerHooks} from 'node:module';
@@ -69,7 +70,7 @@ try {
         irreversible: {blockNum: Number(res.last_irreversible.block_num), blockId: res.last_irreversible.block_id.toString()}})).id;
     assert.equal((await coordinator.admit(selectionId, generation)).status, 'accepted');
     const delivery = {content: frame, properties: {headers: {[protocolSourceSelectionHeader]: selectionId}}};
-    main.captureProtocolSourceDelivery(delivery, main.ch);
+    (controlledAttemptLifecycle(main, 'deserializer'), main).captureProtocolSourceDelivery(delivery, main.ch);
     await main.mLoader.parser.parseMessage(main, [delivery]); if (coordinatorFailure) throw coordinatorFailure;
     assert.equal(parsedAck, 1); assert.equal(res.prev_block, null, 'Retained source was rewritten');
     const control = await coordinator.inspect(); assert.equal(control.head.blockNum, 1); assert.equal(control.head.coverageStart, 1);
@@ -114,7 +115,7 @@ try {
             irreversible: {blockNum: Number(result.last_irreversible.block_num), blockId: result.last_irreversible.block_id.toString()}})).id;
         assert.equal((await coordinator.admit(nextSelection, generation)).status, 'accepted');
         const nextDelivery = {content: nextFrame, properties: {headers: {[protocolSourceSelectionHeader]: nextSelection}}};
-        main.captureProtocolSourceDelivery(nextDelivery, main.ch); await main.mLoader.parser.parseMessage(main, [nextDelivery]);
+        (controlledAttemptLifecycle(main, 'deserializer'), main).captureProtocolSourceDelivery(nextDelivery, main.ch); await main.mLoader.parser.parseMessage(main, [nextDelivery]);
         if (coordinatorFailure) throw coordinatorFailure;
         const nextLink = await bindings.readObservationLink(nextSelection), observed = await observations.read(nextLink.observationId);
         assert.equal(observed.observation.status, 'observed'); assert.equal(observed.observation.facts.actionInputs.length, 1);

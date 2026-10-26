@@ -1,5 +1,6 @@
 /** Owned ES/Rabbit source-admission and publication qualification; no sink or testnet authority. */
 import assert from 'node:assert/strict';
+import {assertNativeQualificationRuntime, qualificationNodeMajors} from './native-node-runtime.mjs';
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {mkdir, readFile, writeFile, stat} from 'node:fs/promises';
@@ -28,7 +29,7 @@ async function bounded(work, label, ms = 30000) {
     })]);} finally {clearTimeout(timer);}
 }
 export function wireAdmissionNames(run, major) {
-    assert.match(run, /^[a-f0-9]{12}$/); assert.ok([22, 24].includes(major), 'explicit supported Node 22/24 required');
+    assert.match(run, /^[a-f0-9]{12}$/); assert.ok(qualificationNodeMajors.includes(major), 'explicit supported Node 24/26 required');
     return ['6508', '7d', 'captured7d'].map(kind => ({kind, chain: `hyp-wire-admit-${run}-n${major}-${kind}`}));
 }
 export function validateWireAdmissionArguments(args) {
@@ -85,7 +86,7 @@ async function inspectOwnership(state) {
     return {inspections, network, volumes, users};
 }
 export async function runWireAdmissionQualification(stateFile, outputDirectory) {
-    const major = Number(process.versions.node.split('.')[0]), originalDirectory = process.cwd(), originalSend = process.send;
+    const major = assertNativeQualificationRuntime(), originalDirectory = process.cwd(), originalSend = process.send;
     const originalEnvironment = Object.fromEntries(['CONFIG_JSON', 'live_mode', 'worker_role'].map(key => [key, process.env[key]]));
     const stateBytes = await readFile(stateFile), state = JSON.parse(stateBytes), names = wireAdmissionNames(state.run, major);
     const captureBytes = await readFile(join(repo, capturePath)), captured = JSON.parse(captureBytes), capture = assertWireCapture(captured);

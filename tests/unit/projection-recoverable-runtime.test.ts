@@ -5,6 +5,7 @@ import {PROJECTION_ROLLBACK_CAPABILITIES, ProjectionContractError,
     type ProjectionRollbackRecoveryView, type ProjectionRollbackRequest} from '@eosrio/hyperion-sdk/projection';
 import {RecoverableProjectionRuntime} from '../../src/indexer/projection/recoverable-runtime.js';
 import type {ProjectionFrame} from '../../src/indexer/projection/runtime.js';
+import {ProofConsumerScope} from '../../src/indexer/protocol/proof-consumer-scope.js';
 
 const zero = '0'.repeat(64);
 const definition: ProjectionDefinition = {schemaVersion: 1, id: 'inventory', mappingRevision: 'a'.repeat(64),
@@ -79,6 +80,30 @@ const create = (adapter: ProjectionRollbackAdapter, options = {}) => Recoverable
     binding, genesis: checkpoint(0), ...options});
 const plan = (operationId: string, from: ProjectionCheckpoint, ancestor = checkpoint(0), maxBlocks = 1,
     revision = 'd'.repeat(64)): ProjectionRollbackRequest => ({binding, revision, operationId, from, ancestor, maxBlocks});
+
+test('a recovery attempt fenced while draining cannot begin a native rollback', async () => {
+    const fake = reference(1), runtime = await create(fake.adapter), scope = new ProofConsumerScope('original-rollback-attempt');
+    const work = scope.run(() => runtime.rollback(plan('original-rollback', checkpoint(1))));
+    scope.fence();
+    await expect(work).rejects.toMatchObject({code: 'worker_attempt_fenced'});
+    expect(fake.rollbacks).toHaveLength(0);
+    await scope.closeAndDrain();
+});
+
+test('a recovery initialization fenced after storage returns cannot start another native read', async () => {
+    const fake = reference(), entered = deferred(), release = deferred();
+    const initialize = fake.adapter.initialize, recovery = fake.adapter.recovery;
+    let recoveryReads = 0;
+    fake.adapter.initialize = async (...args) => {const result = await initialize(...args); entered.resolve(); await release.promise; return result;};
+    fake.adapter.recovery = async (...args) => {recoveryReads++; return recovery(...args);};
+    const scope = new ProofConsumerScope('original-recovery-initialization');
+    const work = scope.run(() => create(fake.adapter));
+    await entered.promise; scope.fence(); release.resolve();
+    await expect(work).rejects.toMatchObject({code: 'worker_attempt_fenced'});
+    expect(recoveryReads).toBe(0);
+    expect(fake.initializeCalls()).toBe(1);
+    await scope.closeAndDrain();
+});
 
 test('rollback capability, genesis and pending bounds fail before native initialization', async () => {
     for (const options of [{maximumPendingFrames: 0}, {maximumPendingBytes: 64 * 1024 * 1024 + 1}, {genesis: checkpoint(1)}]) {

@@ -27,9 +27,9 @@ let networkId, client, fixtureChain;
 // Keep owned-resource cleanup alive, including startup and failure paths.
 const keepAlive = setInterval(() => {}, 1000);
 const report = {schemaVersion: 1, status: 'running', createdAt: new Date().toISOString(), run, image,
-    purpose: 'Durable expected source-membership journal component qualification using constructed records',
+    purpose: 'Expected source-membership journal, confirmed-handoff and typed attempt-disposition storage component qualification',
     runtime: {node: process.versions.node, bun: process.versions.bun ?? null},
-    qualification: {sourceJournal: false, realTwoCopyWrites: false, replicaPeerRecovery: false,
+    qualification: {sourceJournal: false, confirmedHandoffOutcomes: false, actionAttemptDispositions: false, realTwoCopyWrites: false, replicaPeerRecovery: false,
         sourceCapture: false, productionFanout: false, sinkEffects: false, canonicalRecovery: false,
         pitCoverageAuthority: false, retainedHistoryUpgrade: false, wireTestnet: false, release: false},
     checks: [], observations: {}, cleanup: {containers: [], network: false, runnerOpenedPits: 0,
@@ -334,8 +334,17 @@ try {
         return sha256(committed);
     };
     report.source.gitScriptSha256 = gitInputHash('scripts/qualification/check-action-source-journal.mjs');
+    report.source.handoffCaseSha256 = gitInputHash('scripts/qualification/action-handoff-outcomes.mjs');
+    report.source.attemptCaseSha256 = gitInputHash('scripts/qualification/action-attempt-dispositions.mjs');
     report.source.gitLockfileSha256 = gitInputHash('package-lock.json');
     for (const [directory, name] of [['history', 'action-source-journal'], ['history', 'action-history-manifest'],
+        ['history', 'action-source-admission'], ['history', 'action-source-inventory'], ['history', 'action-confirmed-publication'],
+        ['history', 'action-attempt-disposition'],
+        ['history', 'action-producer-epoch'],
+        ['workers', 'ds-pool'], ['workers', 'deserializer'],
+        ['modules/parsers', '3.2-parser'], ['modules/parsers', 'base-parser'],
+        ['protocol', 'selection'], ['protocol', 'contract-cache'], ['protocol', 'native-action-metadata'], ['protocol', 'source-bindings'],
+        ['protocol', 'hex'], ['helpers', 'action-sequences'], ['helpers', 'uint64'], ['helpers', 'action-dedup'],
         ['history', 'action-sequence-storage'], ['protocol', 'immutable-bundle-store'], ['helpers', 'bounded-json'],
         ['definitions', 'index-templates'], ['modules', 'master']]) {
         report.source.modules[name] = {sourceSha256: sha256(readFileSync(new URL(`../../src/indexer/${directory}/${name}.ts`, import.meta.url))),
@@ -346,6 +355,8 @@ try {
     const {ActionHistorySourceJournal} = await import('../../build/indexer/history/action-source-journal.js');
     const {validateActionHistoryBlockPlan, actionHistoryPlanId, fingerprintActionHistoryEffect, actionHistoryManifestBounds,
         actionHistoryManifestId} = await import('../../build/indexer/history/action-history-manifest.js');
+    const {qualifyActionHandoffOutcomes} = await import('./action-handoff-outcomes.mjs');
+    const {qualifyActionAttemptDispositions} = await import('./action-attempt-dispositions.mjs');
     const engine = JSON.parse(docker(['version', '--format', '{{json .Server}}']));
     report.docker = Object.fromEntries(['Version', 'ApiVersion', 'GitCommit', 'Os', 'Arch'].map(key => [key, engine[key]]));
     networkId = docker(['network', 'create', '--driver', 'bridge', ...labels('network'), network]); assert.match(networkId, /^[a-f0-9]{64}$/);
@@ -673,7 +684,10 @@ try {
         return {newIndexProvisioned: false, existingMembershipObserved: true, writes: 0};
     });
 
-    await check('journal component leaves no native PIT or search context open', async () => {
+    await qualifyActionHandoffOutcomes({client, chain, targetIndex: ordinaryIndex, check, instrument, report});
+    await qualifyActionAttemptDispositions({client, chain, targetIndex: ordinaryIndex, check, instrument, report});
+
+    await check('journal, handoff and attempt components leave no native PIT or search context open', async () => {
         const stats = await client.nodes.stats({metric: ['indices'], index_metric: ['search']});
         assert.equal(stats._nodes.failed, 0);
         const counts = Object.fromEntries(Object.entries(stats.nodes).map(([id, node]) => [id, node.indices.search.open_contexts]));

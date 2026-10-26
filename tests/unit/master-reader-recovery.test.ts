@@ -2,7 +2,7 @@ import {expect, it} from 'bun:test';
 import {resolve} from 'node:path';
 
 // The native master imports uWebSockets. Exercise its emitted Node artifacts,
-// with the CI Node22/24 runtime, instead of loading that addon through Bun.
+// with the CI Node24/26 runtime, instead of loading that addon through Bun.
 it('retains current assignments, fences replaced workers and waits for all readers', async () => {
     const source = new URL('../../build/indexer/modules/master.js', import.meta.url).href;
     const script = `
@@ -89,7 +89,7 @@ it('retains current assignments, fences replaced workers and waits for all reade
         console.log('master-reader-recovery-passed');
     `;
     const node = process.env.READER_RECOVERY_NODE ?? Bun.which('node');
-    if (!node) throw new Error('Node.js22/24 is required for the native master recovery test');
+    if (!node) throw new Error('Node.js24/26 is required for the native master recovery test');
     const child = Bun.spawn([resolve(node), '--input-type=module', '--eval', script], {stdout: 'pipe', stderr: 'pipe'});
     const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
     expect({code, stderr}).toEqual({code: 0, stderr: ''});
