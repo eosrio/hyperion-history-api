@@ -302,7 +302,7 @@ reinterpret the historical sources, credit measurements or deliberately RED
 preservation assertion above. Those diagnostic modes retain their original scope.
 
 ```sh
-bun test tests/unit/protocol-native-queued-proof.test.ts
+bun test ./tests/unit/protocol-native-queued-proof.test.ts
 ```
 
 Set `HYPERION_NATIVE_NODE` to the selected native Node 24 or 26 executable;
