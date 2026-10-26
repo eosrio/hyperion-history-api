@@ -116,6 +116,7 @@ try {
                 assert.ok(sent, 'the original parent fence callback must retain its physical owner and targeted attempts');
                 assert.equal(sent.child.pid, child.process.pid); assert.equal(sent.parentEpoch, end.epoch);
                 assert.equal(sent.parentIncarnation, end.incarnation);
+                assert.ok(received, 'the original client handler must observe the production three-method transport');
                 assert.equal(received.origin.messageSha256, sent.messageSha256);
                 const members = rows.filter(row => row.event === 'worker_attempt_fence_members' && row.sendId === sent.sendId).flatMap(row => row.members);
                 assert.equal(members.length, sent.memberCount);
@@ -149,7 +150,15 @@ try {
             filters: {action_blacklist: new Set(), action_whitelist: new Set(), delta_blacklist: new Set(), delta_whitelist: new Set()},
             mLoader: {parser: {flatten: false}, snapshotActionHandlers: () => []}, ch: new EventEmitter(), cch: new EventEmitter(),
             ch_ready: true, cch_ready: true, actionAdmissionOwners: new WeakMap()});
-        client = new WorkerAttemptClient({mode: 'managed', role: 'ds_pool_worker', transport: process});
+        // Match HyperionWorker's production transport contract; it deliberately exposes no emit().
+        client = new WorkerAttemptClient({mode: 'managed', role: 'ds_pool_worker', transport: {
+            on: (event, listener) => process.on(event, listener),
+            removeListener: (event, listener) => process.removeListener(event, listener),
+            send: (value, callback) => process.send(value, callback ?? (() => {}))}});
+        const originalMessageCallback = client.onMessage, originalDisconnectCallback = client.onDisconnect;
+        const originalMessageIndex = process.rawListeners('message').indexOf(originalMessageCallback);
+        const originalDisconnectIndex = process.rawListeners('disconnect').indexOf(originalDisconnectCallback);
+        assert.ok(originalMessageIndex >= 0 && originalDisconnectIndex >= 0);
         worker.configureWorkerAttemptLifecycle(client);
         const epoch = await actionProducerEpoch(worker);
         const source = {chainId: worker.chainId, blockNum: 33, blockId: 'c'.repeat(64), producer: 'sysio', timestamp: '2026-10-22T00:00:00.000'};
@@ -174,6 +183,9 @@ try {
             properties: {headers: {[actionSourceAdmissionHeader]: admission.id, block_num: source.blockNum, block_id: source.blockId,
                 producer: source.producer, ts: source.timestamp, action_trace_ordinal: 0}}};
         worker.captureActionAdmissionDelivery(message, worker.ch);
+        assert.equal(client.options.transport.emit, undefined, 'qualification must not expand the production transport interface');
+        assert.equal(process.rawListeners('message').indexOf(originalMessageCallback), originalMessageIndex);
+        assert.equal(process.rawListeners('disconnect').indexOf(originalDisconnectCallback), originalDisconnectIndex);
         const handle = worker.workerAttemptDeliveries.get(message).handle;
         let caught;
         try {await worker.runWorkerAttemptDelivery(message, () => {rootEntered = true; return worker.beginActionAdmission(message);});}
@@ -182,7 +194,10 @@ try {
         const value = {event: 'fence_origin_fixture_result', rows, attemptId: client.describe(handle).attemptId,
             originalError: caught === sentinel, bindings, rootEntered, metrics: diagnostics.snapshot()};
         await new Promise((resolve, reject) => process.send(value, error => error ? reject(error) : resolve()));
-        client.dispose(); client = undefined; process.disconnect();
+        client.dispose();
+        assert.equal(process.rawListeners('message').includes(originalMessageCallback), false);
+        assert.equal(process.rawListeners('disconnect').includes(originalDisconnectCallback), false);
+        client = undefined; process.disconnect();
     }
 } finally {
     client?.dispose(); process.chdir(previous);

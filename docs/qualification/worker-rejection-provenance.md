@@ -43,8 +43,12 @@ Worker births are retained from original fork/attachment observations. Source
 context is realized only when a real supervisor send occurs: an unrelated no-op
 needs no process lookup, and relevant revocation after exit uses retained identity.
 
-On the child, wrappers preserve original EventEmitter dispatch and the client's
-authority validation. The first actual scope fence records accepted parent IPC,
+On the child, the existing registered callbacks delegate to named internal message
+and disconnect handlers. This extraction retains the same listener identities,
+registration/removal order and validation; the transport remains its existing
+three-method `on`/`removeListener`/`send` interface. Qualification wraps those
+original handlers and does not require or modify a transport `emit` method.
+The first actual scope fence records accepted parent IPC,
 the original channel-close callback, disconnect, disposal, supervised retirement,
 or an unclassified local call. A parent fence cached before hello is labeled
 deferred and includes its captured sequence watermark. Normal root drainage is

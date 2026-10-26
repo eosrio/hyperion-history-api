@@ -10,7 +10,7 @@ export function installWorkerFenceDiagnostics({WorkerClient, WorkerHost, Supervi
         || !Number.isSafeInteger(membersPerRow) || membersPerRow < 1 || membersPerRow > 32)
         throw new Error('Invalid fence diagnostic bounds');
     const context = new AsyncLocalStorage(), records = new WeakMap(), origins = new WeakMap();
-    const transports = new WeakMap(), channels = new WeakSet(), workers = new WeakMap(), deferred = new WeakMap();
+    const channels = new WeakSet(), workers = new WeakMap(), deferred = new WeakMap();
     const identities = new WeakMap();
     const identifyWorker = worker => {
         let identity = identities.get(worker);
@@ -26,6 +26,12 @@ export function installWorkerFenceDiagnostics({WorkerClient, WorkerHost, Supervi
         descriptorSha256: workerAttemptDigest(record.descriptor), bindingSha256: workerAttemptDigest(record.binding)});
     const authority = client => ({parentEpoch: client.authority?.epoch ?? null, parentIncarnation: client.authority?.incarnation ?? null});
     const safely = operation => {try {return operation();} catch {failed();}};
+    const hasMethods = (type, names) => !!type && names.every(name => typeof type.prototype?.[name] === 'function');
+    const enabled = {client: hasMethods(WorkerClient, ['capture','handleMessage','handleDisconnect']),
+        host: hasMethods(WorkerHost, ['attemptChannelId']), supervisor: hasMethods(Supervisor, ['attach','fenceActive','retire','stop','handle']),
+        master: hasMethods(Master, ['handleProtocolAbiCoordinatorRequest','revokeProtocolAbiReader'])};
+    for (const [name, type] of Object.entries({client: WorkerClient, host: WorkerHost, supervisor: Supervisor, master: Master}))
+        if (type && !enabled[name]) failed();
     const wrap = (prototype, name, operation) => {
         const original = prototype?.[name]; if (typeof original !== 'function') return;
         prototype[name] = function(...args) {return operation.call(this, original, args);};
@@ -33,9 +39,11 @@ export function installWorkerFenceDiagnostics({WorkerClient, WorkerHost, Supervi
     const childOrigin = (scope, record, client) => {
         const current = context.getStore();
         if (current?.draining === scope) return {kind: 'normal-root-drain'};
+        if (current?.disposing === client) return {kind: 'dispose'};
+        if (current?.retiring === client) return {kind: 'supervised-retirement'};
         const ipc = current?.ipc;
-        if (ipc?.transport === client.options.transport && ipc.event === 'disconnect') return {kind: 'ipc-disconnect'};
-        if (ipc?.transport === client.options.transport && current.client === client
+        if (ipc?.client === client && ipc.event === 'disconnect') return {kind: 'ipc-disconnect'};
+        if (ipc?.client === client && current.client === client
             && ['worker_attempt_fence', 'worker_attempt_fence_active'].includes(ipc.message?.event)
             && ipc.message.epoch === client.authority?.epoch && ipc.message.incarnation === client.authority?.incarnation)
             return {kind: 'parent-ipc', event: ipc.message.event, messageSha256: workerAttemptDigest(ipc.message), deferred: false};
@@ -47,8 +55,7 @@ export function installWorkerFenceDiagnostics({WorkerClient, WorkerHost, Supervi
         if (current?.channel && current.client === client && record.descriptor
             && [record.descriptor.consumerId, record.descriptor.publisherId].includes(current.channel.id))
             return {kind: 'channel-close', channelId: current.channel.id};
-        return {kind: current?.disposing === client ? 'dispose' : current?.retiring === client ? 'supervised-retirement' : 'unclassified-local',
-            method: current?.client === client ? current.method : null};
+        return {kind: 'unclassified-local', method: current?.client === client ? current.method : null};
     };
     wrap(ProofConsumerScope.prototype, 'closeAndDrain', function(original, args) {
         return context.run({...context.getStore(), draining: this}, () => original.apply(this, args));
@@ -67,30 +74,23 @@ export function installWorkerFenceDiagnostics({WorkerClient, WorkerHost, Supervi
                 attempt: attempt(retained.record), scope: this.snapshot()}));
         return result;
     });
-    const observeTransport = client => {
-        if (client.mode !== 'managed') return;
-        const transport = client.options.transport;
-        let clients = transports.get(transport);
-        if (clients) {clients.add(client); return;}
-        clients = new Set([client]); transports.set(transport, clients);
-        const original = transport.emit;
-        transport.emit = function(event, ...args) {
-            if (event !== 'message' && event !== 'disconnect') return original.call(this, event, ...args);
-            const ipc = {transport: this, event, message: args[0]};
-            return context.run({...context.getStore(), ipc}, () => {
-                try {return original.call(this, event, ...args);}
-                finally {if (event === 'message') for (const observed of clients) safely(() => {
-                    // The original callback caches this exact object before hello. It is not yet accepted.
-                    const pending = observed.pendingFence;
-                    if (pending && pending !== deferred.get(observed)?.value)
-                        deferred.set(observed, {value: pending, event: pending.stop ? 'worker_attempt_fence' : 'worker_attempt_fence_active',
-                            messageSha256: workerAttemptDigest(ipc.message)});
-                });}
-            });
-        };
-    };
+    wrap(WorkerClient?.prototype, 'handleMessage', function(original, args) {
+        const ipc = {client: this, event: 'message', message: args[0]};
+        return context.run({...context.getStore(), ipc}, () => {
+            try {return original.apply(this, args);}
+            finally {safely(() => {
+                // Observe the original handler's exact cached fence, not an assumed EventEmitter transport.
+                const pending = this.pendingFence;
+                if (pending && pending !== deferred.get(this)?.value)
+                    deferred.set(this, {value: pending, event: pending.stop ? 'worker_attempt_fence' : 'worker_attempt_fence_active',
+                        messageSha256: workerAttemptDigest(ipc.message)});
+            });}
+        });
+    });
+    wrap(WorkerClient?.prototype, 'handleDisconnect', function(original, args) {
+        return context.run({...context.getStore(), ipc: {client: this, event: 'disconnect'}}, () => original.apply(this, args));
+    });
     wrap(WorkerClient?.prototype, 'capture', function(original, args) {
-        safely(() => observeTransport(this));
         const handle = original.apply(this, args);
         safely(() => {const record = this.attempts.get(handle); records.set(record.scope, {client: this, record});});
         return handle;
@@ -105,7 +105,7 @@ export function installWorkerFenceDiagnostics({WorkerClient, WorkerHost, Supervi
     for (const [name, key] of [['dispose', 'disposing'], ['requestSupervisedRetirement', 'retiring']])
         wrap(WorkerClient?.prototype, name, function(original, args) {
             try {return context.run({...context.getStore(), [key]: this}, () => original.apply(this, args));}
-            finally {if (name === 'dispose') safely(() => {transports.get(this.options.transport)?.delete(this); deferred.delete(this);});}
+            finally {if (name === 'dispose') deferred.delete(this);}
         });
     wrap(WorkerHost?.prototype, 'attemptChannelId', function(original, args) {
         const id = original.apply(this, args), channel = args[0];
@@ -185,5 +185,5 @@ export function installWorkerFenceDiagnostics({WorkerClient, WorkerHost, Supervi
         const record = client.attempts.get(handle);
         return record ? origins.get(record.scope) ?? null : null;
     }, snapshot: () => ({events, omitted, normalDrains, maximumFenceEvents, membersPerRow,
-        enabled: {client: !!WorkerClient, host: !!WorkerHost, supervisor: !!Supervisor, master: !!Master}})};
+        enabled})};
 }
