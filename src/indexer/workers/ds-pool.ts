@@ -972,6 +972,7 @@ export default class DSPoolWorker extends HyperionWorker {
         reason = 'Action admission producer/channel epoch changed during attempt binding';
         equal('bound_owner_current', owner.current(), true);
         equal('bound_configuration', currentActionConfiguration(this), epoch.configuration, true);
+        this.observeProofDemandBinding(message, admission, ordinal);
     }
 
     /** Diagnostic boundary only: never grants attempt, source, retry, settlement or progress authority. */

@@ -62,13 +62,14 @@ function capturedByteLength(value: Uint8Array): number {
 const key = (value: Pick<DemandRecord, 'owner' | 'source' | 'admissionId' | 'traceOrdinal' | 'stage' | 'copyId'>) =>
     workerAttemptJson([value.owner, value.source, value.admissionId, value.traceOrdinal, value.stage, value.copyId]);
 
-function capturedHeaders(headers: unknown): Buffer {
+export function captureProofDemandHeaders(headers: unknown, maximumBytes = 64 * 1024): Buffer {
+    if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 1 || maximumBytes > 64 * 1024) throw new Error('Invalid shadow header bound');
     let bytes = 0, nodes = 0; const seen = new Set<object>();
-    const add = (amount: number) => {bytes += amount; if (bytes > 64 * 1024) throw new Error('Shadow header byte bound exceeded');};
+    const add = (amount: number) => {bytes += amount; if (bytes > maximumBytes) throw new Error('Shadow header byte bound exceeded');};
     const visit = (value: unknown, depth: number): void => {
         if (++nodes > 4096 || depth > 32) throw new Error('Shadow header structure bound exceeded');
         add(32);
-        if (typeof value === 'string') {if (value.length > 64 * 1024) throw new Error('Shadow header string excessive'); add(Buffer.byteLength(value)); return;}
+        if (typeof value === 'string') {if (value.length > maximumBytes) throw new Error('Shadow header string excessive'); add(Buffer.byteLength(value)); return;}
         // Finite shadow encoding range, not a widening of AMQP's accepted scalar types.
         if (typeof value === 'bigint') {
             if (value < -0x8000000000000000n || value > 0xffffffffffffffffn) throw new Error('Shadow bigint exceeds 64-bit range');
@@ -91,7 +92,7 @@ function capturedHeaders(headers: unknown): Buffer {
     };
     visit(headers, 0);
     const encoded = serialize(headers);
-    if (encoded.length > 64 * 1024) throw new Error('Shadow encoded headers excessive');
+    if (encoded.length > maximumBytes) throw new Error('Shadow encoded headers excessive');
     return encoded;
 }
 
@@ -143,6 +144,22 @@ export class ActionProofDemandShadow {
         return bytes;
     }
     retain(input: ActionProofDemandInput): ShadowActionProofDemand | undefined {
+        return this.retainCaptured(input, () => {
+            const captured = Object.getOwnPropertyDescriptor(input, 'headers');
+            if (captured && !Object.hasOwn(captured, 'value')) throw new Error('Captured header accessor unavailable');
+            return captured?.value === undefined ? null : captureProofDemandHeaders(captured.value);
+        });
+    }
+    /** Internal encoded observation: no deserialization, canonical authority or capacity permission. */
+    retainEncoded(input: Omit<ActionProofDemandInput, 'headers'> & {headerBytes: Uint8Array | null}): ShadowActionProofDemand | undefined {
+        return this.retainCaptured(input, () => {
+            const bytes = Object.getOwnPropertyDescriptor(input, 'headerBytes')?.value;
+            if (bytes === null) return null;
+            if (!(bytes instanceof Uint8Array) || capturedByteLength(bytes) > 64 * 1024) throw new Error('Encoded header bytes unavailable');
+            return bytes;
+        });
+    }
+    private retainCaptured(input: ActionProofDemandInput, captureHeaders: () => Uint8Array | null): ShadowActionProofDemand | undefined {
         try {
             const owner = input.owner, source = input.source, copyId = input.copyId ?? 'original';
             if (![owner.epoch, owner.incarnation, owner.attemptId].every(value => uuid.test(value))
@@ -165,15 +182,13 @@ export class ActionProofDemandShadow {
             if (this.records.has(identity)) {this.rejectedRetains = count(this.rejectedRetains); this.fail('duplicate-demand'); return;}
             if (this.records.size >= this.limits.maximumDemands) {this.omit(input, 'count-limit'); return;}
             if (payloadBytes > this.limits.maximumBytes) {this.omit(input, 'byte-limit'); return;}
-            let headers: Buffer | null = null;
+            let headers: Uint8Array | null = null;
             try {
-                const captured = Object.getOwnPropertyDescriptor(input, 'headers');
-                if (captured && !Object.hasOwn(captured, 'value')) throw new Error('Captured header accessor unavailable');
-                if (captured?.value !== undefined) headers = capturedHeaders(captured.value);
+                headers = captureHeaders();
             } catch {this.fail('headers-unavailable');}
             const record: DemandRecord = {...captured,
                 payloadBytes, payloadSha256: hash(input.payload),
-                headersBytes: headers?.length ?? null, headersSha256: headers ? hash(headers) : null,
+                headersBytes: headers ? capturedByteLength(headers) : null, headersSha256: headers ? hash(headers) : null,
                 state: 'pending', classifications: []};
             if (record.payloadBytes + (record.headersBytes ?? 0) > this.limits.maximumBytes - this.pendingBytes()) {
                 this.omit(input, 'byte-limit', record.headersBytes); return;

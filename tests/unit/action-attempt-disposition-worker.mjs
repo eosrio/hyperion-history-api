@@ -56,6 +56,9 @@ const events = [], sourceFrames = [], blockWrites = [], cache = [];
 let reader, coordinator, managedClient, snapshotPath, draining = Promise.resolve();
 let finishManaged, releaseManagedWrite, releaseManagedConfirm, releaseManagedDrain, releaseManagedOperation;
 let releaseManagedProof, retryManagedHandoff;
+const receiptBridgeEnabled = process.env.HYPERION_PROOF_DEMAND_RECEIPT_TEST === '1';
+let releaseManagedReceipt;
+const managedReceiptReleased = new Promise(resolve => {releaseManagedReceipt = resolve;});
 const managedHandoffRetry = new Promise(resolve => {retryManagedHandoff = resolve;});
 const managedProofReleased = new Promise(resolve => {releaseManagedProof = resolve;});
 let startManagedPeer;
@@ -75,6 +78,7 @@ const heldManagedEnds = [];
 let managedEndReleased = false, managedEndSendFailures = 0;
 if (managedOriginal) process.on('message', message => {
     if (message?.event === 'qualification_done') finishManaged();
+    if (message?.event === 'qualification_release_receipt') releaseManagedReceipt();
     if (message?.event === 'qualification_release_write') releaseManagedWrite();
     if (message?.event === 'qualification_release_confirm') releaseManagedConfirm();
     if (message?.event === 'qualification_release_drain') releaseManagedDrain();
@@ -114,6 +118,8 @@ class ControlledConsumer extends EventEmitter {
     acked = [];
     streamed = [];
     onAck;
+    async prefetch() {}
+    async consume(_queue, callback) {this.deliver = callback;}
     ack(message) {this.onAck?.(message); this.acked.push(message);}
     publish(_exchange, queue, payload, options) {this.streamed.push({queue, payload: Buffer.from(payload), options: structuredClone(options)}); return true;}
 }
@@ -152,7 +158,9 @@ try {
     assert.equal(hash(readFileSync(join(sourceFixture, 'source-1-1480-20261020.tar.gz'))), '42d092f3ecf6f428ecdba4825580377acdd27f2818ce445d4f197719e6ab72b7');
     const extraction = spawnSync(process.platform === 'win32' ? 'python' : 'python3', [join(sourceFixture, 'prepare.py'), join(directory, 'capture')],
         {encoding: 'utf8', timeout: 20000, maxBuffer: 1024 * 1024});
-    assert.equal(extraction.status, 0, extraction.stderr);
+    assert.equal(extraction.status, 0, JSON.stringify({status: extraction.status, signal: extraction.signal,
+        error: extraction.error ? {message: extraction.error.message, code: extraction.error.code} : null,
+        stderr: extraction.stderr, stdout: extraction.stdout}));
     const extracted = JSON.parse(extraction.stdout);
     assert.equal(extracted.files, 1488); assert.equal(extracted.bytes, 27982958); assert.equal(extracted.selectedBlocks, 1480);
     assert.equal(hash(readFileSync(extracted.plan)), extracted.planSha256);
@@ -176,6 +184,7 @@ try {
         scaling: {ds_pool_size: 1, ds_queues: 1, routing_mode: 'round_robin', indexing_queues: 1, ad_idx_queues: 2},
         whitelists: {root_only: false, actions: [], deltas: []}, blacklists: {actions: [], deltas: []},
         api: {tx_cache_mode: 'batch', disable_tx_cache: false}, plugins: {}};
+    if (receiptBridgeEnabled) config.prefetch = {block: 1}; // Single-input cargo fixture, fixed before producer epoch capture.
     mkdirSync(join(directory, 'config'));
     writeFileSync(join(directory, 'chain.json'), JSON.stringify(config));
     writeFileSync(join(directory, 'config/connections.json'), JSON.stringify({chains: {[chain]: {chain_id: chainId}}}));
@@ -367,7 +376,8 @@ try {
         assert.equal(mainConsumer.acked.at(-1), delivery);
         const messages = mainPublisher.sent.slice(mainBefore).map(sent => {
             const delivery = message(sent);
-            if (!managedOriginalDs || numberFrom(bytes) === (managedOriginalHandoff ? 33 : 36)) {
+            if ((!managedOriginalDs || numberFrom(bytes) === (managedOriginalHandoff ? 33 : 36))
+                && !(receiptBridgeEnabled && numberFrom(bytes) === 33)) {
                 attemptLifecycle(pool, 'ds_pool_worker').captureActionAdmissionDelivery(delivery, poolConsumer);
                 attemptLifecycle(pool, 'ds_pool_worker').captureProtocolActionDelivery(delivery, poolConsumer);
             }
@@ -643,6 +653,26 @@ try {
         prepared = await prepare(inputBytes);
         if (number === 33 && managedOriginalHandoff) {
             assert.equal(prepared.messages.length, 1);
+            if (receiptBridgeEnabled) {
+                // Exercise the original consume callback and cargo factory; no manual capture/retain.
+                let receiptObserver;
+                if (typeof pool.configureProofDemandObserver === 'function') {
+                    const {WorkerProofDemandObserver} = await import('../../build/indexer/history/action-proof-demand-enrollment.js');
+                    receiptObserver = new WorkerProofDemandObserver((packet, done) => {
+                        if (process.env.HYPERION_PROOF_DEMAND_RECEIPT_UNAVAILABLE_TEST === '1') throw new Error('constructed diagnostic transport failure');
+                        return previousSend.call(process, {event: 'qualification_receipt_observation', packet}, done);
+                    });
+                    pool.configureProofDemandObserver(receiptObserver);
+                }
+                pool.local_queue = chain + ':ds_pool:1';
+                pool.consumerQueue = pool.createConsumerQueue(); pool.consumerQueue.pause();
+                await pool.initConsumer();
+                poolConsumer.deliver(prepared.messages[0]);
+                await ticks();
+                previousSend.call(process, {event: 'qualification_receipt_queued', queued: pool.consumerQueue.length(),
+                    running: pool.consumerQueue.running(), originalAckCount: poolConsumer.acked.length, observer: receiptObserver?.snapshot() ?? null});
+                await managedReceiptReleased;
+            }
             if (process.env.HYPERION_PROOF_DEMAND_SHADOW_TEST === '1') {
                 const original = prepared.messages[0];
                 const transaction = prepared.admission.inventory.transactions.find(value =>
@@ -698,7 +728,8 @@ try {
                 assert(memory.documents.has(memory.key(request.index, request.id)));
                 lostHandoffReceipts++; throw handoffError;
             };
-            const processing = pool.processMessages(prepared.messages);
+            const processing = receiptBridgeEnabled ? pool.consumerQueue.drain() : pool.processMessages(prepared.messages);
+            if (receiptBridgeEnabled) pool.consumerQueue.resume();
             processing.catch(() => {});
             if (handoffFault && handoffFault !== 'held-write') {
                 await assert.rejects(processing, error => error === handoffError);
