@@ -2321,20 +2321,21 @@ export class HyperionMaster {
                 }
                 hLog(`New worker defined: ${workerReference.worker_role} for ${queueName}`);
                 setTimeout(() => {
-                    this.launchWorkers();
-                    setTimeout(() => {
-                        if (workerReference.worker_role === 'deserializer' && workerReference.wref) {
-                            workerReference.wref.send({
-                                event: 'initialize_abi',
-                                data: this.cachedInitABI
-                            });
-                        }
-                    }, 1000);
+                    this.relaunchDisconnectedWorker(worker, workerReference);
                 }, 5000);
             } else {
                 hLog(`The worker #${worker.id} has disconnected`);
             }
         }
+    }
+
+    private relaunchDisconnectedWorker(_worker: Worker, workerReference: HyperionWorkerDef): void {
+        this.launchWorkers();
+        setTimeout(() => {
+            if (workerReference.worker_role === 'deserializer' && workerReference.wref) {
+                workerReference.wref.send({event: 'initialize_abi', data: this.cachedInitABI});
+            }
+        }, 1000);
     }
 
     private async verifyMongoDbClient() {

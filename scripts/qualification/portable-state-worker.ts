@@ -26,7 +26,7 @@ import {auditPortableWorkerSource, boundedPortableFile, ordinaryPortablePath, po
     type PortableWorkerSource, type PortableSourceProfile} from './portable-state-worker-source.ts';
 import {assertPortableWorkerOracle, portableWorkerAbiAvailability} from './portable-state-worker-oracle.ts';
 import {auditPortableNativeOracle, createPortableNativeQualification, nativePortableHolds, portableLegacyProfile,
-    portableNativeProfile} from './portable-state-worker-native.ts';
+    portableNativeProfile, type PortableNativePhaseBudget} from './portable-state-worker-native.ts';
 import {auditPortablePhysicalMongo} from './portable-state-worker-mongo.ts';
 import {auditPortableWorkerProfiles, portableWorkerProfileEnvironment, portableWorkerProfileLimits} from './portable-state-worker-profiles.ts';
 import {createWireRecoveryControl, readWireRecoveryEvidence, auditWireAttemptRecovery, wireRecoveryShutdownRows} from './portable-state-worker-recovery.mjs';
@@ -478,10 +478,10 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         return historyDiagnostics ? historyDiagnostics.observe('action-refresh', {request, through, phase,
             source: source.records[through - 1], replay: replay?.metrics(), queues: lastQueues, recovery: report.lastRecovery}, refresh) : refresh();
     };
-    const wait = async (name: string, condition: () => Promise<void>, milliseconds = 60000) => {
-        const end = Math.min(deadline, performance.now() + milliseconds); let last: unknown;
+    const wait = async (name: string, condition: () => Promise<void>, milliseconds = 60000, inherited?: PortableNativePhaseBudget) => {
+        const end = Math.min(deadline, performance.now() + milliseconds, inherited?.deadline ?? Infinity); let last: unknown;
         while (performance.now() < end) {for (const child of [master, api]) if (child) assert.ok(child.exitCode === null && child.signalCode === null, `${name}: actual child exited`);
-            assert.deepEqual(report.errors, []); try {await condition(); return;} catch (error) {last = error;} await pause(100);}
+            assert.deepEqual(report.errors, []); try {await condition(); return Object.freeze({deadline: end});} catch (error) {last = error;} await pause(100);}
         throw new Error(`${name} did not complete: ${describeError(last)}`);
     };
     const queues = async () => {
@@ -662,7 +662,8 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             return {history: await history(block.blockNum), states};
         };
         const native = nativeOracle ? await createPortableNativeQualification({source, oracle: nativeOracle, client: es, chain, apiPort,
-            events: () => observedRows(), http, unrelated, rawHistory: history, wait, historyDiagnostics,
+            events: () => observedRows(), http, unrelated, rawHistory: history,
+            wait: (name, work, budget) => wait(name, work, 60000, budget), historyDiagnostics,
             bulk: {directory: join(output, 'bulk'), receipts: ledger.receipts},
             ...(options.workerRecovery ? {attemptRecovery: () => report.attemptRecovery?.status === 'observed'
                 ? report.attemptRecovery.evidence : undefined} : {}),
@@ -954,7 +955,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                 });
                 await releaseWireReaderRpc(readerCrash);
                 const resumedBlock = source.records[through - 1];
-                await wait('old canonical return rejects while the same master records a fresh source-bound association', async () => {
+                const handoverBudget = await wait('old canonical return rejects while the same master records a fresh source-bound association', async () => {
                     replay!.assertThrough(34); ledger!.assertIdle();
                     report.readerRecovery.evidence = await auditWireReaderHandover({receipt: readerCrash, masterPid: master!.pid,
                         rows: await observedDirectoryRows(), store, selections, es, queues: await queues()});
@@ -974,7 +975,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                 await writeFile(join(output, absenceFile), JSON.stringify(report.readerRecovery.evidence.absence, null, 2) + '\n', {flag: 'wx'});
                 report.readerRecovery.absenceFile = absenceFile;
                 await refreshActions(through, 'reader-handover');
-                assert.ok(native); report.readerRecovery.nativeReplay = await native.resumedHead();
+                assert.ok(native); report.readerRecovery.nativeReplay = await native.resumedHead(handoverBudget);
                 assert.equal(report.readerRecovery.nativeReplay.current.value.source.readerSessionId, report.readerRecovery.currentReader.readerSessionId);
                 assert.equal(report.readerRecovery.nativeReplay.current.value.generation, report.readerRecovery.currentReader.generation);
                 report.readerRecovery.status = 'observed';
@@ -1013,7 +1014,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                 masterRestarted = true; master = await spawnOwned('build/indexer/launcher.js', configFile);
                 report.masterPid = master.pid; report.masterRestart.status = 'restarted';
                 report.masterRestart.replacementMasterPid = master.pid;
-                await wait('replacement master rejects the old end and completes its own fresh block34 association', async () => {
+                const handoverBudget = await wait('replacement master rejects the old end and completes its own fresh block34 association', async () => {
                     replay!.assertThrough(34); ledger!.assertIdle();
                     report.masterRestart.evidence = await auditWireMasterRestart({receipt: masterCrash, newMasterPid: master!.pid,
                         rows: await observedDirectoryRows('master-restarted'), store, queues: await queues()});
@@ -1033,7 +1034,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                     }
                 });
                 await refreshActions(through, 'master-restart');
-                assert.ok(native); report.masterRestart.nativeReplay = await native.resumedHead();
+                assert.ok(native); report.masterRestart.nativeReplay = await native.resumedHead(handoverBudget);
                 report.masterRestart.status = 'observed';
                 const result = Buffer.from(JSON.stringify(report.masterRestart, null, 2) + '\n');
                 await writeFile(join(output, 'prefixes/master-restart-33.json'), result, {flag: 'wx'});

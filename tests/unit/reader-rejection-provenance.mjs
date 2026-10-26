@@ -46,6 +46,11 @@ if (mode !== 'stale-close') process.once('exit', code => {
     assert.equal(row.predicate, expected); assert.equal(row.assignmentId, reader.assignmentId);
     assert.equal(row.sourceContext.id, 'controlled-source-context');
     assert.equal(row.coordinatorSource.generation, 'controlled-generation');
+    const fatal = rows.find(value => value.event === 'worker_failure_decision');
+    assert.equal(fatal.boundary, 'reader-publisher-recovery');
+    assert.equal(fatal.originalDecisionMatch, true);
+    assert.equal(fatal.reasonStillCurrent, true);
+    assert.equal(fatal.decision.id, row.failureDecisionId);
     assert.equal(row.callbackPublisherIsCurrent, mode !== 'replaced-confirm');
     assert.equal(row.originalPublications.length, mode === 'clean-close' ? 0 : 1);
     if (mode !== 'clean-close') {

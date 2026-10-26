@@ -25,8 +25,10 @@ export function nativePortableHolds(original: readonly number[]) {
 }
 const sequence = (value: unknown) => {assert.equal(typeof value, 'string'); assert.match(value as string, /^(?:0|[1-9][0-9]*)$/);
     assert.ok(BigInt(value as string) <= 0xffffffffffffffffn);};
-export function assertPortableNativePublications(confirmed: readonly any[], expected: {
-    payloadSha256: string; admissionId: string; fragmentId: string; blockNum: number; owners?: readonly number[]}) {
+interface NativePublicationExpectation {
+    payloadSha256: string; admissionId: string; fragmentId: string; blockNum: number; owners?: readonly number[];
+}
+export function assertPortableNativePublications(confirmed: readonly any[], expected: NativePublicationExpectation) {
     if (expected.owners) {
         assert.equal(expected.owners.length, 2); assert.equal(new Set(expected.owners).size, 2);
         assert.ok(expected.owners.every(pid => Number.isSafeInteger(pid) && pid > 0));
@@ -39,6 +41,25 @@ export function assertPortableNativePublications(confirmed: readonly any[], expe
         assert.equal(value.persistent, true); assert.equal(value.mandatory, true);
         assert.equal(value.headers['hyperion-action-admission-v1'], expected.admissionId);
         assert.equal(value.headers.action_fragment_id, expected.fragmentId); assert.equal(value.headers.block_num, expected.blockNum);
+    }
+}
+export interface PortableNativePhaseBudget {readonly deadline: number;}
+type NativePublicationWait = (name: string, work: () => Promise<void>, budget?: PortableNativePhaseBudget) => Promise<PortableNativePhaseBudget | void>;
+
+/** Observe publication receipts only; admission, seals and native proof authority stay with their original readers. */
+export async function observePortableNativePublications(options: {events: () => Promise<any[]>; chain: string;
+    expected: NativePublicationExpectation; wait: NativePublicationWait; budget?: PortableNativePhaseBudget}) {
+    const {expected, chain} = options;
+    const check = async () => {
+        const confirmed = (await options.events()).filter(value => value.kind === 'native_boundary' && value.event === 'admitted_broker_confirmed'
+            && value.queue.startsWith(chain + ':index_actions:') && value.payloadSha256 === expected.payloadSha256
+            && value.headers['hyperion-action-admission-v1'] === expected.admissionId);
+        assertPortableNativePublications(confirmed, expected);
+    };
+    try {await check();} catch (error) {
+        // Reuse the original hold/handover deadline. Never grant each output a new polling window.
+        if (!options.budget || performance.now() >= options.budget.deadline) throw error;
+        await options.wait(`confirmed native publication at${expected.blockNum}`, check, options.budget);
     }
 }
 export async function assertPortableNativeAction(action: any, expected: any,
@@ -102,7 +123,7 @@ interface NativeRunOptions {
     readonly unrelated: (through: number) => Promise<unknown>;
     readonly rawHistory: (through: number) => Promise<unknown>;
     readonly bulk: {readonly directory: string; readonly receipts: readonly any[]};
-    readonly wait: (name: string, work: () => Promise<void>) => Promise<void>;
+    readonly wait: NativePublicationWait;
     readonly historyDiagnostics?: PortableHistoryDiagnostics;
     readonly attemptRecovery?: () => unknown;
     readonly brokerRecovery?: () => unknown;
@@ -208,7 +229,8 @@ export async function createPortableNativeQualification(options: NativeRunOption
             assert.deepEqual(retained.record.observation, {status: 'observed', facts: original.observed});}
         return {event, retained, original, sourceAck};
     };
-    const admission = async (events: any[], number: number, physical: Awaited<ReturnType<typeof actions>>) => {
+    const admission = async (events: any[], number: number, physical: Awaited<ReturnType<typeof actions>>,
+        budget?: PortableNativePhaseBudget, publicationEvents = options.events) => {
         const eventsForBlock = events.filter(value => value.kind === 'native_boundary' && value.event === 'action_admitted' && value.blockNum === number);
         assert.equal(eventsForBlock.length, 1); const event = eventsForBlock[0], current = await admissionStore.resolve(event.admissionId);
         const original = originals.get(number); assert.ok(original);
@@ -237,9 +259,6 @@ export async function createPortableNativeQualification(options: NativeRunOption
             // Actual admitted DS production uses actionHistoryImmutableJson for publication bytes (ds-pool.ts).
             // Its canonical sorted keys survive ES object insertion-order changes; ordinary JSON.stringify does not.
             const logicalSha256 = portableSourceHash(manifests.actionHistoryImmutableJson(row.logical));
-            const confirmed = events.filter(value => value.kind === 'native_boundary' && value.event === 'admitted_broker_confirmed'
-                && value.queue.startsWith(chain + ':index_actions:') && value.payloadSha256 === logicalSha256
-                && value.headers['hyperion-action-admission-v1'] === current.id);
             const fragment = manifest.fragments.find((fragment: any) => fragment.effects.some((effect: any) => effect.globalSequence === row.logical.global_sequence));
             assert.ok(fragment);
             const transaction = plan.transactions.find((value: any) => value.transactionId === fragment.transactionId); assert.ok(transaction);
@@ -247,8 +266,9 @@ export async function createPortableNativeQualification(options: NativeRunOption
                 traceOrdinal: transaction.traceOrdinal, blockNum: number, blockId: plan.source.blockId};
             const owners = wireRecoveryPublicationOwners(options.attemptRecovery?.(), context)
                 ?? wireBrokerRecoveryPublicationOwners(options.brokerRecovery?.(), context);
-            assertPortableNativePublications(confirmed, {payloadSha256: logicalSha256, admissionId: current.id,
-                fragmentId: manifests.actionHistoryFragmentId(fragment, plan), blockNum: number, owners});
+            await observePortableNativePublications({events: publicationEvents, chain, wait, budget,
+                expected: {payloadSha256: logicalSha256, admissionId: current.id,
+                    fragmentId: manifests.actionHistoryFragmentId(fragment, plan), blockNum: number, owners}});
             persistedOutputs.set(JSON.stringify([row.index, row.id]), {index: row.index, id: row.id, logicalSha256,
                 physicalSha256: portableSourceHash(manifests.actionHistoryImmutableJson(row.physical)), blockNum: number});
         }
@@ -284,37 +304,39 @@ export async function createPortableNativeQualification(options: NativeRunOption
         return confirmedBulk;
     };
     return {profile, oracleHashes: oracle.hashes, held, controls, originalNotifications: notifications,
-        async resumedHead() {
+        async resumedHead(budget?: PortableNativePhaseBudget) {
             assert.equal(lastNativeThrough, 33);
             const restart = options.masterRestart?.() ?? options.readerRestart?.(); assert.ok(restart);
-            let control: any, events: any[];
+            let control: any, publicationEvents: () => Promise<any[]>;
             if (options.readerRestart?.()) {
                 const {describeWireReaderCrash, wireReaderResumedEvents} = await import('./portable-state-reader-recovery.mjs');
                 control = describeWireReaderCrash(restart.receipt).control;
-                events = wireReaderResumedEvents(restart.receipt, restart.masterPid, await options.events());
+                publicationEvents = async () => wireReaderResumedEvents(restart.receipt, restart.masterPid, await options.events());
             } else {
                 const {describeWireMasterCrash, wireMasterResumedEvents} = await import('./portable-state-master-recovery.mjs');
                 control = describeWireMasterCrash(restart.receipt).control;
-                events = wireMasterResumedEvents(restart.receipt, restart.masterPid, await options.events());
+                publicationEvents = async () => wireMasterResumedEvents(restart.receipt, restart.masterPid, await options.events());
             }
+            const events = await publicationEvents();
             assert.equal(control.resumeBlockNum, 34);
             const current = await frontier.readControl(); assert.ok(current);
             assert.equal(current.value.phase, 'following'); assert.equal(current.value.head.blockNum, 34);
             const commit = await frontier.readCommit(current.value.head.commitId);
             assert.equal(commit.nativeActionInterfaceVersion, 1); assert.equal(commit.source.blockId, control.resumeBlockId);
             const raw = await durable(events, 34), physical = await actions(34);
-            const membership = await admission(events, 34, physical);
+            const membership = await admission(events, 34, physical, budget, publicationEvents);
             const confirmedBulk = await auditBulk();
             return {blockNum: 34, current, commit, raw, physical, membership, confirmedBulk, history: await options.rawHistory(34)};
         },
         async hold(through: number) {
             let events: any[] = [];
-            await wait(`native PREPARE and source ACK through${through}`, async () => {
+            const phase = await wait(`native PREPARE and source ACK through${through}`, async () => {
                 events = await options.events();
                 for (const event of ['native_prepare_readback', 'source_ack_sent']) assert.deepEqual(events.filter(value =>
                     value.kind === 'native_boundary' && value.event === event && value.blockNum <= through).map(value => value.blockNum),
                 Array.from({length: through}, (_, index) => index + 1));
             });
+            const budget = phase || undefined;
             const control = await frontier.readControl(); assert.ok(control); assert.equal(control.value.head.blockNum, through);
             assert.equal(control.value.profile.profileId, portableNativeProfile); assert.equal(control.value.phase, 'following');
             const commit = await frontier.readCommit(control.value.head.commitId);
@@ -322,9 +344,9 @@ export async function createPortableNativeQualification(options: NativeRunOption
             const result: any = {through, control, commit, notifications: [], native: null};
             if (through === 34 && options.brokerRecovery?.()) {
                 // Recheck the already-held original output against its two audited physical publishers.
-                result.brokerRecoveredMembership = await admission(events, 33, await actions(33));
+                result.brokerRecoveredMembership = await admission(events, 33, await actions(33), budget);
             }
-            if (through === 1) {const raw = await durable(events, 1), membership = await admission(events, 1, await actions(1));
+            if (through === 1) {const raw = await durable(events, 1), membership = await admission(events, 1, await actions(1), budget);
                 await assert.rejects(native.open(raw.original.position, raw.event.selectionId), {code: 'native_source_incomplete'});
                 result.genesis = {raw, membership, wholeHistoryCompleteness: false};}
             const target = oracle.rows.find((value: any) => value.blockNum === through);
@@ -341,7 +363,7 @@ export async function createPortableNativeQualification(options: NativeRunOption
                 const response = await options.http(path(through)); assert.equal(response.status, 200, JSON.stringify(response.body));
                 const served = response.body.actions.find((value: any) => value.trx_id === target.transactionId);
                 assert.ok(served); assert.deepEqual(served.act.data, target.expectedValue); assert.equal(served.global_sequence, target.globalSequence);
-                result.native = {raw, physical, membership: await admission(events, through, physical), response: receipt(response)};
+                result.native = {raw, physical, membership: await admission(events, through, physical, budget), response: receipt(response)};
                 if (through === 397) {
                     // Constructed stored-output controls are separate from the unchanged genuine replay source.
                     for (const kind of ['exact-raw-fallback', 'corrupt-raw-value', 'incomplete-native-metadata']) {
@@ -385,7 +407,7 @@ export async function createPortableNativeQualification(options: NativeRunOption
                         const identity = `${number}:${expected.occurrence.input.transactionId}:${expected.occurrence.input.actionOrdinal}`;
                         assert.ok(!checkedNotifications.has(identity)); checkedNotifications.add(identity); rows.push({expected, occurrence, stored: grouped[0]});
                     }
-                    result.notifications.push({blockNum: number, raw, canonical, rows, membership: await admission(events, number, physical)});
+                    result.notifications.push({blockNum: number, raw, canonical, rows, membership: await admission(events, number, physical, budget)});
                 }
                 lastNativeThrough = through;
             }

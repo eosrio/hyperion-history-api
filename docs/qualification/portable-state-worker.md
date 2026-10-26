@@ -661,3 +661,26 @@ An actual owned Linux run must still retain the failed query and correlated
 write/refresh chronology before choosing a behavioral change. Keep the historical
 failure failed and preserve the original oracles, single search, default ancestry,
 queues, budgets, deadlines and separate full-replay/shutdown/cleanup verdicts.
+
+The later `f9a27adb` Linux capture failed a different comparison: the exact
+publication count at block 397. Its retained query contains row 637, and terminal
+worker evidence contains one confirmation matching its canonical payload hash,
+admission, fragment, block and owned queue. The earlier event array and the
+confirmation's arrival relative to that array were not retained. The native
+checker reused a snapshot taken before its asynchronous storage and proof reads.
+
+Publication checks now read observations again after those reads. If a receipt is
+still absent, they reuse the original hold or handover deadline; no output gets a
+fresh timeout. Handover reads retain their original restarted-worker filter.
+Count, publisher, payload, admission, fragment, queue, persistence and mandatory
+checks remain strict. Missing or duplicate confirmations still fail. The native
+component regression exercises the receipt matcher without constructing proof
+authority:
+
+```sh
+node --experimental-strip-types tests/unit/portable-native-publications.mjs
+```
+
+This fixes the stale publication observation. It does not retroactively accept
+the failed run, establish when its confirmation arrived, or resolve the older
+missing-row case. Fresh full-worker Linux qualification remains required.

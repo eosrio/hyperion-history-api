@@ -10,7 +10,7 @@ test('native worker rejection provenance retains original decisions, custody, re
     const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
     expect({code, stderr}).toEqual({code: 0, stderr: ''});
     const result = JSON.parse(stdout.trim());
-    expect(result.status).toBe('passed'); expect(result.checks).toBe(31); expect(result.rows).toBe(39);
+    expect(result.status).toBe('passed'); expect(result.checks).toBe(31); expect(result.rows).toBe(48);
 }, 50000);
 
 test('diagnostic copies cannot normalize failed shutdowns, extra deaths or a nonzero master exit', () => {
@@ -38,7 +38,9 @@ test('capture failures, omitted decisions and changed limits fail the diagnostic
     const row = {kind: 'native_boundary', event: 'observer_metrics', pid: 101, rejectionDiagnostics: {
         observationOnly: true, maximumRejections: 32, maximumPendingPublications: 64, maximumWorkers: 256,
         reportFailures: 0, omittedRejections: 0, fences: {maximumFenceEvents: 1024, membersPerRow: 32, omitted: 0,
-            enabled: {client: true, host: true, supervisor: true, master: true}}}};
+            enabled: {client: true, host: true, supervisor: true, master: true}},
+        failures: {maximumFailureEvents: 128, maximumErrorMatches: 8, omitted: 0, omittedRoots: 0,
+            enabled: {root: true, attempts: true, pool: true, reader: true, projection: true, master: true, cluster: true, supervisor: true}}}};
     const starts = [{kind: 'start', pid: 101}, {kind: 'native_boundary', event: 'start', pid: 101}];
     expect(auditWorkerRejectionDiagnostics([...starts, row], 101).status).toBe('complete');
     expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics, reportFailures: 1}}], 101)).toThrow('capture failed');
@@ -47,6 +49,11 @@ test('capture failures, omitted decisions and changed limits fail the diagnostic
     expect(() => auditWorkerRejectionDiagnostics([row, structuredClone(row)], 101)).toThrow('Duplicated');
     expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: undefined}], 101)).toThrow('unavailable');
     expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics, fences: undefined}}], 101)).toThrow('Fence diagnostic bounds');
+    expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics, failures: undefined}}], 101)).toThrow('Failure diagnostic bounds');
+    expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics,
+        failures: {...row.rejectionDiagnostics.failures, omittedRoots: 1}}}], 101)).toThrow('roots were omitted');
+    expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics,
+        failures: {...row.rejectionDiagnostics.failures, enabled: {...row.rejectionDiagnostics.failures.enabled, master: false}}}}], 101)).toThrow('master is unavailable');
     expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics,
         fences: {...row.rejectionDiagnostics.fences, omitted: 1}}}], 101)).toThrow('fence diagnostic events were omitted');
     expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics,

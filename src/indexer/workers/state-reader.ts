@@ -1606,8 +1606,10 @@ export default class StateReader extends HyperionWorker {
         process.send?.({event: 'reader_recovery_required', error: reason, assignment_id: this.assignmentId});
         hLog(`Reader publication outcome incomplete; supervised source replay required: ${reason}`);
         this.ship?.close(true);
-        setImmediate(() => process.exit(1));
+        setImmediate(() => this.exitForPublisherRecovery());
     }
+
+    private exitForPublisherRecovery(): void { process.exit(1); }
 
     private failSourceRecovery(reason: string) {
         process.send?.({event: 'reader_source_incomplete', error: reason, assignment_id: this.assignmentId});

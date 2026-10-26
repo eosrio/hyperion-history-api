@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs';
 import {serialize} from 'node:v8';
 import assert from 'node:assert/strict';
 import {installWorkerFenceDiagnostics} from './worker-fence-diagnostics.mjs';
+import {installWorkerFailureDiagnostics} from './worker-failure-diagnostics.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 function physical(pid) {
@@ -14,7 +15,7 @@ function physical(pid) {
 }
 
 /** Qualification observations only. No fault membership, retry, ACK, end, restart or shutdown authority. */
-export function installWorkerRejectionDiagnostics({Pool, Reader, Supervisor, WorkerClient, WorkerHost, Master, cluster, record, maximumRejections = 32,
+export function installWorkerRejectionDiagnostics({Pool, Reader, Projection, Supervisor, WorkerClient, WorkerHost, Master, cluster, record, maximumRejections = 32,
     maximumPendingPublications = 64, maximumWorkers = 256, maximumFenceEvents = 1024}) {
     for (const limit of [maximumRejections, maximumPendingPublications, maximumWorkers])
         if (!Number.isSafeInteger(limit) || limit < 1 || limit > 256) throw new Error('Invalid rejection diagnostic bounds');
@@ -132,7 +133,8 @@ export function installWorkerRejectionDiagnostics({Pool, Reader, Supervisor, Wor
     const recover = Reader.prototype.failPublisherRecovery;
     Reader.prototype.failPublisherRecovery = function(reason, decision) {
         if (!this.publisherFailure) rejection('reader_publisher_recovery_required', () => ({
-            reason, predicate: decision.predicate, callbackPublisherId: channelId(decision.publisher),
+            reason, predicate: decision.predicate, failureDecisionId: failures.describeReaderDecision(this)?.id ?? null,
+            callbackPublisherId: channelId(decision.publisher),
             callbackPublisherIsCurrent: !!decision.publisher && decision.publisher === this.cch,
             currentPublisherId: channelId(this.cch), publisherReady: this.cch_ready,
             blockNum: decision.blockNum ?? null, assignmentId: this.assignmentId ?? null,
@@ -164,9 +166,11 @@ export function installWorkerRejectionDiagnostics({Pool, Reader, Supervisor, Wor
             return result;
         };
     }
+    const failures = installWorkerFailureDiagnostics({Pool, Reader, Projection, WorkerClient, Master, Supervisor, cluster,
+        emit, physical, workerIdentity, failed: () => {reportFailures++;}});
     return {snapshot: () => ({observationOnly: true, rejections, omittedRejections, workerCount,
         pendingPublications: pending.size, reportFailures, maximumRejections, maximumPendingPublications, maximumWorkers,
-        fences: fences.snapshot()})};
+        fences: fences.snapshot(), failures: failures.snapshot()})};
 }
 
 /** Capture integrity only. Successful validation never changes or excuses a raw worker outcome. */
@@ -193,6 +197,12 @@ export function auditWorkerRejectionDiagnostics(rows, primaryPid) {
         assert.equal(value.fences?.maximumFenceEvents, 1024, 'Fence diagnostic bounds are unavailable or changed');
         assert.equal(value.fences?.membersPerRow, 32, 'Fence diagnostic member bound changed');
         assert.equal(value.fences?.omitted, 0, 'Worker fence diagnostic events were omitted');
+        assert.equal(value.failures?.maximumFailureEvents, 128, 'Failure diagnostic bounds are unavailable or changed');
+        assert.equal(value.failures?.maximumErrorMatches, 8, 'Failure error-object match bound changed');
+        assert.equal(value.failures?.omitted, 0, 'Worker failure diagnostic events were omitted');
+        assert.equal(value.failures?.omittedRoots, 0, 'Worker failure diagnostic roots were omitted');
+        for (const key of ['root', 'attempts', 'pool', 'reader', 'projection', ...(row.pid === primaryPid ? ['master', 'cluster', 'supervisor'] : [])])
+            assert.equal(value.failures?.enabled?.[key], true, `Worker failure diagnostic ${key} is unavailable`);
         for (const key of ['client', 'host', ...(row.pid === primaryPid ? ['supervisor', 'master'] : [])])
             assert.equal(value.fences?.enabled?.[key], true, `Worker fence diagnostic ${key} is unavailable`);
         summaries.push({pid: row.pid, ...value});

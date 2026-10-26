@@ -161,6 +161,31 @@ export default class DSPoolWorker extends HyperionWorker {
     private readonly ioRedisClient: Redis;
     txCacheExpiration = 3600;
 
+    private createConsumerQueue() {
+        return cargo((payload: ConsumeMessage[], cb) => {
+            this.processMessages(payload).then(() => cb()).catch((error) =>
+                this.handleActionProcessingFailure(error, payload, cb));
+        }, this.conf.prefetch.block);
+    }
+
+    private handleActionProcessingFailure(error: any, _payload: ConsumeMessage[], callback: () => void) {
+        if (this.usesExtensionProtocol || this.actionSourceAdmissionEnabled) {
+            return this.exitForActionProcessing(error, _payload);
+        }
+        hLog('NackAll:', error);
+        if (this.ch && this.ch_ready) {
+            try {this.ch.nackAll();} catch (e: any) {hLog(e.message);}
+        }
+        callback();
+    }
+
+    private exitForActionProcessing(error: any, _payload: ConsumeMessage[]): never {
+        hLog('Protocol action processing failed; supervised replacement required:', error.message);
+        this.ch_ready = false;
+        this.consumerQueue.kill();
+        return process.exit(1);
+    }
+
     constructor() {
         super();
 
@@ -173,26 +198,7 @@ export default class DSPoolWorker extends HyperionWorker {
             }
         }
 
-        this.consumerQueue = cargo((payload: ConsumeMessage[], cb) => {
-            // hLog(`Processing ${payload.length} messages`);
-            this.processMessages(payload).then(() => cb()).catch((err) => {
-                if (this.usesExtensionProtocol || this.actionSourceAdmissionEnabled) {
-                    hLog('Protocol action processing failed; supervised replacement required:', err.message);
-                    this.ch_ready = false;
-                    this.consumerQueue.kill();
-                    return process.exit(1);
-                }
-                hLog('NackAll:', err);
-                if (this.ch && this.ch_ready) {
-                    try {
-                        this.ch.nackAll();
-                    } catch (e: any) {
-                        hLog(e.message);
-                    }
-                }
-                cb();
-            });
-        }, this.conf.prefetch.block);
+        this.consumerQueue = this.createConsumerQueue();
 
         this.preIndexingQueue = queue((data: any, cb) => {
             if (data.publish) {try {data.publish(); cb();} catch (error) {cb(error instanceof Error ? error : new Error(String(error)));} return;}

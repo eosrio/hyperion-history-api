@@ -63,3 +63,13 @@ test('original native hold captures missing/wrong/orphan and shard failures befo
     expect(report.results.filter(row => row.mode === 'delayed')).toHaveLength(2);
     expect(report.results.filter(row => row.reachedIndependentProofGuard).map(row => row.mode)).toEqual(['visible']);
 }, 95000);
+
+test('native publication checks refresh receipts within the original phase deadline', async () => {
+    const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node', '--experimental-strip-types',
+        fileURLToPath(new URL('./portable-native-publications.mjs', import.meta.url))],
+    {stdout: 'pipe', stderr: 'pipe', timeout: 20000});
+    const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
+    expect({code, error: code ? stderr : undefined}).toEqual({code: 0, error: undefined});
+    expect(JSON.parse(stdout)).toMatchObject({passed: true, freshReads: 2, inheritedDeadline: true,
+        strictPublicationControls: true, proofSuccessFabricated: false, fullWorkerQualification: false});
+}, 25000);

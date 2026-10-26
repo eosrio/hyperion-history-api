@@ -51,9 +51,13 @@ export default class ProjectionWorker extends HyperionWorker {
             this.profiler.stopReporting();
             process.exit(0);
         } catch (error) {
-            hLog('Portable state worker failed; history indexing remains independent:', error);
-            this.profiler.stopReporting();
-            process.exit(1);
+            this.handleProjectionFailure(error);
         }
+    }
+
+    private handleProjectionFailure(error: unknown): void {
+        hLog('Portable state worker failed; history indexing remains independent:', error);
+        this.profiler.stopReporting();
+        process.exit(1);
     }
 }
