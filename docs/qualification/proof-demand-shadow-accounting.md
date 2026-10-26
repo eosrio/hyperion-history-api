@@ -40,6 +40,9 @@ or byte exhaustion records incomplete accounting and bounded omitted-byte lower
 bounds; it does not evict an unresolved demand. A DS-input transition cannot release
 retained copies, downstream or recovery charges. Incomplete contract/source output
 stays charged because a durable isolated-recovery handoff is outside this slice.
+Both budget primitives are captured once, validated and frozen. Later changes to
+the supplied configuration cannot expand the window; unrelated configuration
+properties are not retained or evaluated.
 
 ## Validation and remaining gates
 
@@ -60,8 +63,13 @@ and original callbacks with controlled broker/storage/RPC boundaries.
 The focused source controls cover finite quotas/tombstones, other stages/copies,
 observer failure and source revocation, incomplete classifications, unsafe typed
 headers and unknown-byte diagnostics. Complete application and qualification checks
-and normal emission pass. The full suite, final independent reviews and CI remain
-pending and must be recorded before merging.
+and normal emission pass. Record the final full-suite result, independent reviews
+and CI on the pull request before merging.
+
+Use `npm test`, which selects `./tests/unit` explicitly. The initial unqualified
+`bun test tests/unit` run passed both tracked queued-proof cases but also discovered
+an old partial copy under `out/`; that copy failed because its transport helper was
+absent. Preserve that failed result separately from the intended-suite rerun.
 
 Active admission still requires all relevant producer/sink/projection stages,
 isolated durable recovery handoff and compaction, fork/restart reconstruction,

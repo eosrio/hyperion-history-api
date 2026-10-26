@@ -113,11 +113,12 @@ export class ActionProofDemandShadow {
     private lastFailure: string | null = null;
     constructor(private readonly adjudicator: ActionAttemptAdjudicator,
                 private readonly limits: {maximumDemands: number; maximumBytes: number}) {
+        const maximumDemands = limits.maximumDemands, maximumBytes = limits.maximumBytes;
         if (!(adjudicator instanceof ActionAttemptAdjudicator)
-            || !Number.isSafeInteger(limits.maximumDemands) || limits.maximumDemands < 1 || limits.maximumDemands > 4096
-            || !Number.isSafeInteger(limits.maximumBytes) || limits.maximumBytes < 1 || limits.maximumBytes > 128 * 1024 * 1024)
+            || !Number.isSafeInteger(maximumDemands) || maximumDemands < 1 || maximumDemands > 4096
+            || !Number.isSafeInteger(maximumBytes) || maximumBytes < 1 || maximumBytes > 128 * 1024 * 1024)
             throw new Error('Invalid bounded shadow accounting configuration');
-        this.limits = Object.freeze({...limits});
+        this.limits = Object.freeze({maximumDemands, maximumBytes});
     }
     private fail(reason: string): void {this.incomplete = true; this.lastFailure = reason;}
     private omit(input: ActionProofDemandInput, reason: string, headerBytes: number | null = null): void {

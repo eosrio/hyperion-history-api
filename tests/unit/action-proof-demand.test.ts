@@ -324,6 +324,89 @@ test('an async observer cannot resolve charges after its synchronous callback sc
     } finally {value.close();}
 });
 
+test('a stateful count ceiling cannot admit more than the captured limit', async () => {
+    const value = await fixture(() => {}); let reads = 0;
+    try {
+        const shadow = new demand.ActionProofDemandShadow(value.adjudicator, {
+            get maximumDemands() {return ++reads <= 3 ? 1 : Infinity;}, maximumBytes: 1024,
+        });
+        const input = {owner: value.owner, source: {...value.source, selectionId: null}, admissionId: value.admissionId,
+            traceOrdinal: 0, payload: value.payload, headers: value.headers, stage: 'ds-input' as const};
+        expect(shadow.retain(input)).toBeDefined();
+        const bytes = shadow.snapshot().knownPendingBytes;
+        expect(shadow.retain({...input, owner: {...value.owner, attemptId: randomUUID()}})).toBeUndefined();
+        expect(shadow.snapshot()).toMatchObject({limits: {maximumDemands: 1, maximumBytes: 1024},
+            retainedDemands: 1, pendingDemands: 1, knownPendingBytes: bytes, omittedDemands: 1,
+            accounting: 'incomplete', lastFailure: 'count-limit'});
+        expect(reads).toBe(1);
+    } finally {value.close();}
+});
+
+test('a stateful byte ceiling cannot admit bytes beyond the captured limit', async () => {
+    const value = await fixture(() => {}); let reads = 0;
+    try {
+        const maximumBytes = value.payload.byteLength + serialize(value.headers).byteLength;
+        const shadow = new demand.ActionProofDemandShadow(value.adjudicator, {
+            maximumDemands: 4, get maximumBytes() {return ++reads <= 3 ? maximumBytes : Infinity;},
+        });
+        const input = {owner: value.owner, source: {...value.source, selectionId: null}, admissionId: value.admissionId,
+            traceOrdinal: 0, payload: value.payload, headers: value.headers, stage: 'ds-input' as const};
+        expect(shadow.retain(input)).toBeDefined();
+        expect(shadow.retain({...input, owner: {...value.owner, attemptId: randomUUID()}})).toBeUndefined();
+        expect(shadow.snapshot()).toMatchObject({limits: {maximumDemands: 4, maximumBytes},
+            retainedDemands: 1, pendingDemands: 1, knownPendingBytes: maximumBytes, omittedDemands: 1,
+            accounting: 'incomplete', lastFailure: 'byte-limit'});
+        expect(reads).toBe(1);
+    } finally {value.close();}
+});
+
+test('mutating the input or returned snapshot cannot expand captured ceilings', async () => {
+    const value = await fixture(() => {});
+    try {
+        const maximumBytes = value.payload.byteLength + serialize(value.headers).byteLength;
+        const limits = {maximumDemands: 1, maximumBytes};
+        const shadow = new demand.ActionProofDemandShadow(value.adjudicator, limits);
+        limits.maximumDemands = Infinity; limits.maximumBytes = Infinity;
+        const snapshot = shadow.snapshot();
+        snapshot.limits.maximumDemands = Infinity; snapshot.limits.maximumBytes = Infinity;
+        const input = {owner: value.owner, source: {...value.source, selectionId: null}, admissionId: value.admissionId,
+            traceOrdinal: 0, payload: value.payload, headers: value.headers, stage: 'ds-input' as const};
+        expect(shadow.retain(input)).toBeDefined();
+        expect(shadow.retain({...input, owner: {...value.owner, attemptId: randomUUID()}})).toBeUndefined();
+        expect(shadow.snapshot()).toMatchObject({limits: {maximumDemands: 1, maximumBytes},
+            retainedDemands: 1, knownPendingBytes: maximumBytes, omittedDemands: 1, lastFailure: 'count-limit'});
+    } finally {value.close();}
+});
+
+test('unrelated enumerable configuration properties are never read or retained', async () => {
+    const value = await fixture(() => {}); let reads = 0;
+    const limits = Object.defineProperty({maximumDemands: 1, maximumBytes: 1024, extra: 'unrelated'}, 'unavailable', {
+        enumerable: true, get() {reads++; throw new Error('unrelated configuration must not be read');},
+    });
+    try {
+        const shadow = new demand.ActionProofDemandShadow(value.adjudicator, limits);
+        expect(shadow.snapshot().limits).toEqual({maximumDemands: 1, maximumBytes: 1024});
+        expect(shadow.retain({owner: value.owner, source: {...value.source, selectionId: null}, admissionId: value.admissionId,
+            traceOrdinal: 0, payload: value.payload, headers: value.headers, stage: 'ds-input'})).toBeDefined();
+        expect(shadow.snapshot().limits).toEqual({maximumDemands: 1, maximumBytes: 1024});
+        expect(reads).toBe(0);
+    } finally {value.close();}
+});
+
+test('an invalid captured ceiling is rejected without re-reading the getter', async () => {
+    const value = await fixture(() => {});
+    try {
+        for (const property of ['maximumDemands', 'maximumBytes']) {
+            let reads = 0;
+            const limits = Object.defineProperty({maximumDemands: 1, maximumBytes: 1024}, property, {
+                get() {return ++reads === 1 ? NaN : 1;},
+            });
+            expect(() => new demand.ActionProofDemandShadow(value.adjudicator, limits)).toThrow('Invalid bounded');
+            expect(reads).toBe(1);
+        }
+    } finally {value.close();}
+});
+
 test('invalid bounds and unsafe source accounting cannot create a tracked demand', async () => {
     const value = await fixture(() => {});
     try {
