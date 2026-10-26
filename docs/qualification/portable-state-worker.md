@@ -684,3 +684,15 @@ node --experimental-strip-types tests/unit/portable-native-publications.mjs
 This fixes the stale publication observation. It does not retroactively accept
 the failed run, establish when its confirmation arrived, or resolve the older
 missing-row case. Fresh full-worker Linux qualification remains required.
+
+### Storage-cut owner and terminal records
+
+The storage qualifier receives the actual captured master PID from the driver. It validates
+the held child's parent against that PID, then checks the original attempt's child operation
+records and the master's `end`/`adjudicated` records separately. The precondition runs before
+storage inspection, again before issuing the restart capability, and after recovery. Missing
+or foreign owners and any original terminal evidence fail the cut; unrelated attempts and
+foreign process records do not count as the held original's terminal state.
+
+The native controlled-record regression exercises both pre-inspection and post-snapshot
+guards without Docker or service actions. It establishes no source, end or restart authority.

@@ -3,12 +3,16 @@ import assert from 'node:assert/strict';
 import {captureOwnedWireReplica, describeOwnedWireReplica, restartOwnedWireReplica, describeOwnedWireReplicaRestart} from './owned-wire-replica.mjs';
 import {describeIssuedWireBrokerControl, readWireBrokerRecoveryEvidence, assertWireBrokerHeldReceipt} from './portable-state-broker-recovery.mjs';
 
-function heldReturn(control, expected) {
+function heldReturn(control, masterPid, expected) {
     describeIssuedWireBrokerControl(control);
     const evidence = readWireBrokerRecoveryEvidence(control), held = evidence.held;
     assertWireBrokerHeldReceipt(control, held);
-    const selected = evidence.events.filter(row => row.pid === held.pid &&
-        (row.attemptId ?? row.attempt?.attemptId ?? row.end?.attemptId) === held.attempt.attemptId);
+    assert.ok(Number.isSafeInteger(masterPid) && masterPid > 0, 'captured storage recovery master PID is required');
+    assert.equal(held.parentPid, masterPid, 'original storage return belongs to another master');
+    assert.notEqual(held.pid, masterPid, 'original storage return owner must differ from its master');
+    const selected = evidence.events.filter(row =>
+        (row.pid === held.pid && (row.attemptId ?? row.attempt?.attemptId ?? row.end?.attemptId) === held.attempt.attemptId)
+        || (row.pid === masterPid && ['end', 'adjudicated'].includes(row.event) && row.end?.attemptId === held.attempt.attemptId));
     assert.equal(selected.filter(row => row.event === 'handoff-receipt-held').length, 1);
     assert.ok(!selected.some(row => ['fresh-observation-attempt', 'fresh-observation-return', 'ack-intent', 'ack-sent',
         'handoff-receipt-released', 'held-attempt-fenced', 'end', 'adjudicated'].includes(row.event)), 'original return settled or lost its current owner before broker handover');
@@ -60,12 +64,12 @@ export async function snapshotWireStorage(es, core, held) {
     return {clusterName: identity.cluster_name, clusterUuid: identity.cluster_uuid, indices, copies};
 }
 
-export async function qualifyWireStorageRestart({core, docker, es, control, replay, wait, evidence = {}}) {
+export async function qualifyWireStorageRestart({core, docker, es, control, masterPid, replay, wait, evidence = {}}) {
     Object.assign(evidence, {status: 'pending', freshWriteAuthority: false, capacityAuthority: false, releaseQualified: false});
     try {
-        const held = heldReturn(control); replay.assertThrough(33); evidence.held = held;
+        const held = heldReturn(control, masterPid); replay.assertThrough(33); evidence.held = held;
         const before = await snapshotWireStorage(es, core, held); evidence.before = before;
-        heldReturn(control, held); replay.assertThrough(33);
+        heldReturn(control, masterPid, held); replay.assertThrough(33);
         const token = captureOwnedWireReplica(core, docker); evidence.originalIncarnation = describeOwnedWireReplica(token);
         const restart = restartOwnedWireReplica(token); evidence.restart = describeOwnedWireReplicaRestart(restart);
         evidence.status = 'restart-observed';
@@ -78,7 +82,7 @@ export async function qualifyWireStorageRestart({core, docker, es, control, repl
             assert.equal(current.clusterUuid, before.clusterUuid); assert.deepEqual(current.indices, before.indices);
             assert.deepEqual(current.copies.map(copy => [copy.nodeId, copy.name]).sort(), before.copies.map(copy => [copy.nodeId, copy.name]).sort());
         });
-        heldReturn(control, held); replay.assertThrough(33);
+        heldReturn(control, masterPid, held); replay.assertThrough(33);
         Object.assign(evidence, {status: 'observed', originalReturnStillHeld: true, originalResponseUnchanged: true, existingTwoCopyWriteOnly: true});
         return evidence;
     } catch (error) {

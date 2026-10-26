@@ -2,6 +2,7 @@ import {expect, test} from 'bun:test';
 import {mkdtempSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {basename, dirname, join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {snapshotWireStorage, qualifyWireStorageRestart} from '../../scripts/qualification/portable-state-storage-recovery.mjs';
 import {parsePortableWorkerArguments, validatePortableWorkerOptions} from '../../scripts/qualification/portable-state-worker.ts';
 import {createWireBrokerRecoveryControl, wireBrokerRecoveryDigest} from '../../scripts/qualification/portable-state-broker-recovery.mjs';
@@ -41,6 +42,15 @@ test('combined replica and broker restart requires explicit native authority and
         expect(() => validatePortableWorkerOptions(options)).toThrow();
     expect(() => parsePortableWorkerArguments([...args, '--broker-storage-recovery'])).toThrow();
 });
+
+test('native storage-cut ownership rejects original master terminals and preserves unrelated records', async () => {
+    const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node',
+        fileURLToPath(new URL('./storage-held-owner.mjs', import.meta.url))], {stdout: 'pipe', stderr: 'pipe', timeout: 15000});
+    const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
+    expect({code, stderr}).toEqual({code: 0, stderr: ''});
+    expect(JSON.parse(stdout)).toMatchObject({passed: true, scenarios: 15, controlledRecordsOnly: true,
+        realDockerCalls: 0, sourceAuthority: false, restartAuthority: false, serviceQualification: false});
+}, 20000);
 
 test('storage census rejects an unrelated index before any client call', async () => {
     for (const mutate of [(v: any) => {v.held.request.index = 'incumbent-history-source-admission-v1';},
@@ -117,7 +127,7 @@ test('a changed held response or an early ACK rejects before issuing a replica r
         };
         let mutations = 0;
         try {
-            await expect(qualifyWireStorageRestart({core: value.core, es: value.es, control,
+            await expect(qualifyWireStorageRestart({core: value.core, es: value.es, control, masterPid: process.ppid,
                 docker: () => {mutations++; throw Error('unexpected Docker call');}, replay: {assertThrough: (block: number) => expect(block).toBe(33)},
                 wait: () => {throw Error('unexpected storage restart wait');}})).rejects.toThrow(mutation === 'response' ? 'original held receipt changed' : 'original return settled');
             expect(mutations).toBe(0);
