@@ -50,6 +50,7 @@ import {ProtocolAbiObservationStore} from '../protocol/abi-observation-store.js'
 import {isProtocolAbiCoordinatorRequest, type ProtocolAbiCoordinatorReply} from '../protocol/abi-coordinator-rpc.js';
 import {ensureProtocolActionMapping} from '../protocol/action-proof-mapping.js';
 import {resolvePortableStateConfiguration} from '../projection/config.js';
+import {portableLiveReaderStart} from '../helpers/reader-progress.js';
 import {WorkerAttemptSupervisor, type WorkerAttemptRole} from '../protocol/worker-attempt-supervisor.js';
 import {assertActionSequenceTemplateReadback, ensureActionSequenceMappings,
     ensureActionSequenceWriteTemplate} from '../history/action-sequence-storage.js';
@@ -1189,12 +1190,15 @@ export class HyperionMaster {
         // Setup live workers
         if (this.conf.indexer.live_reader && this.chain_data) {
             const _head = this.chain_data.head_block_num.toNumber();
-            hLog(`Setting live reader at head = ${_head}`);
+            const replayFrom = this.conf.settings.protocol?.provider === 'extension' && this.conf.features.portable_state
+                ? portableLiveReaderStart({blockNum: _head, blockId: this.chain_data.head_block_id.toString()},
+                    {blockNum: this.chain_data.last_irreversible_block_num.toNumber(), blockId: this.chain_data.last_irreversible_block_id.toString()}) : _head;
+            hLog(`Setting live reader replay boundary = ${replayFrom}`);
 
             // live block reader
             this.liveReader = this.addWorker({
                 worker_role: 'continuous_reader',
-                worker_last_processed_block: _head,
+                worker_last_processed_block: replayFrom,
                 ws_router: '',
                 validated_ship_servers: JSON.stringify(this.validatedShipServers)
             });

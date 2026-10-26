@@ -10,7 +10,7 @@ import {ProofConsumerScope, currentProofConsumerScope} from '../../src/indexer/p
 import ProjectionWorker from '../../src/indexer/workers/projection.js';
 import {PortableStateController} from '../../src/indexer/projection/controller.js';
 import {resolvePortableStateConfiguration} from '../../src/indexer/projection/config.js';
-import {PROJECTION_CAPABILITIES} from '@eosrio/hyperion-sdk/projection';
+import {PROJECTION_ROLLBACK_CAPABILITIES, PROJECTION_RECOVERY_CAPABILITIES} from '@eosrio/hyperion-sdk/projection';
 
 const descriptor = () => ({kind: 'source-delivery' as const, receiptId: randomUUID(), payloadSha256: '1'.repeat(64), headersSha256: '2'.repeat(64),
     consumerId: randomUUID(), publisherId: randomUUID(), queue: 'fixture:source', deliveryTag: 1});
@@ -88,12 +88,16 @@ it('fences a held projection initialization before a following definition can st
         projections: [definition('first'), definition('second')]}, chainId)!;
     let enter!: () => void, release!: () => void;
     const entered = new Promise<void>(yes => {enter = yes;}), held = new Promise<void>(yes => {release = yes;});
-    const adapter: any = {capabilities: {interfaceVersion: 1, supported: [...PROJECTION_CAPABILITIES]},
-        async initialize(definition: any) {initialized.push(definition.id); if (definition.id === 'first') {enter(); await held;}},
-        recovery: async () => {}};
+    const adapter: any = {capabilities: {interfaceVersion: 2, supported: PROJECTION_ROLLBACK_CAPABILITIES},
+        recoveryCapabilities: {interfaceVersion: 1, supported: PROJECTION_RECOVERY_CAPABILITIES},
+        async initialize(definition: any, binding: any) {initialized.push(definition.id); if (definition.id === 'first') {enter(); await held;}
+            return {binding, checkpoint: {blockNum: 0, blockId: '0'.repeat(64)}, revision: 'd'.repeat(64)};},
+        recovery: async () => {throw new Error('Fenced initialization cannot read recovery');},
+        retainedCheckpoints: async () => {throw new Error('Fenced initialization cannot inspect retained state');}};
     const scope = new ProofConsumerScope('projection-initialization-control');
     const work = scope.run(() => PortableStateController.create({chainId, configuration, adapter,
-        source: {frame: async () => {throw new Error('No canonical source in this controlled initialization');}, revalidate: async () => {}}}));
+        source: {frame: async () => {throw new Error('No canonical source in this controlled initialization');}, revalidate: async () => {},
+            planRecovery: async () => {throw new Error('Initialization has no canonical plan');}, revalidateRecovery: async () => {}}}));
     void work.catch(() => {}); await entered; scope.fence(); release();
     await expect(work).rejects.toThrow('Original worker attempt'); await scope.closeAndDrain();
     expect(initialized).toEqual(['first']);
@@ -106,13 +110,22 @@ it('does not dispatch a projection marker or apply after a held source revalidat
     const configuration = resolvePortableStateConfiguration({backend: {kind: 'mongodb', id: 'fixture', database: 'fixture'}, projections: [selected]}, chainId)!;
     let enter!: () => void, release!: () => void, binding: any;
     const entered = new Promise<void>(yes => {enter = yes;}), held = new Promise<void>(yes => {release = yes;});
-    const adapter: any = {capabilities: {interfaceVersion: 1, supported: [...PROJECTION_CAPABILITIES]},
-        async initialize(_definition: any, value: any) {binding = value;},
-        async recovery() {return {binding, initialized: true, checkpoint: {blockNum: 0, blockId: '0'.repeat(64)}, pending: null, gap: null};},
+    const recovery = () => ({binding, initialized: true, checkpoint: {blockNum: 0, blockId: '0'.repeat(64)},
+        revision: 'd'.repeat(64), pending: null, gap: null, rollback: null,
+        coverage: {floor: {blockNum: 0, blockId: '0'.repeat(64)}, retainedBlocks: 0, retainedBytes: 0, maxBlocks: 256, maxBytes: 1024 * 1024}});
+    const adapter: any = {capabilities: {interfaceVersion: 2, supported: PROJECTION_ROLLBACK_CAPABILITIES},
+        recoveryCapabilities: {interfaceVersion: 1, supported: PROJECTION_RECOVERY_CAPABILITIES},
+        async initialize(_definition: any, value: any) {binding = value; return this.open();},
+        async open() {const {checkpoint, revision} = recovery(); return {binding, checkpoint, revision};},
+        async recovery() {return recovery();},
+        async retainedCheckpoints() {return {recovery: recovery(), checkpoints: [recovery().checkpoint]};},
         async markIncomplete() {effects.push('mark');}, async apply() {effects.push('apply');}};
     const controller = await PortableStateController.create({chainId, configuration, adapter, maximumFramesPerProjection: 1,
         source: {async frame() {return {frame: {chainId, block: {blockNum: 1, blockId: '1'.repeat(64), previousBlockId: '0'.repeat(64)}, changes: []},
-            proof: {} as any, evidence: {} as any};}, async revalidate() {enter(); await held;}}});
+            proof: {} as any, evidence: {} as any};}, async revalidate() {enter(); await held;},
+            async planRecovery(_retained, finality) {return {target: {blockNum: 1, blockId: '1'.repeat(64)},
+                reportedIrreversible: {blockNum: 0, blockId: '0'.repeat(64)}, finality, checkpointStatus: 'canonical',
+                intents: {pending: 'absent', gap: 'absent'}, rollback: null};}, async revalidateRecovery() {}}});
     const scope = new ProofConsumerScope('projection-frame-control'), work = scope.run(() => controller.drain());
     void work.catch(() => {}); await entered; scope.fence(); release();
     await expect(work).rejects.toThrow('Original worker attempt'); await scope.closeAndDrain();

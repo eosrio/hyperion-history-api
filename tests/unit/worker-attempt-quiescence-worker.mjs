@@ -347,7 +347,7 @@ async function projectionRoles(fenceAt = null) {
     const {HyperionWorker} = await import('../../build/indexer/workers/hyperionWorker.js');
     const {PortableStateController} = await import('../../build/indexer/projection/controller.js');
     const {resolvePortableStateConfiguration} = await import('../../build/indexer/projection/config.js');
-    const {PROJECTION_CAPABILITIES} = await import('@eosrio/hyperion-sdk/projection');
+    const {PROJECTION_ROLLBACK_CAPABILITIES, PROJECTION_RECOVERY_CAPABILITIES} = await import('@eosrio/hyperion-sdk/projection');
     const worker = Object.create(HyperionWorker.prototype); worker.installControlledAttemptLifecycle('projection');
     const definitions = ['first', 'other'].map(id => ({schemaVersion: 1, id, mappingRevision: 'a'.repeat(64),
         source: {contract: 'items', table: id, abiDeployment: 'constructed-source-epoch', abiSha256: 'b'.repeat(64)},
@@ -365,25 +365,42 @@ async function projectionRoles(fenceAt = null) {
         io.push({name, state: scope.snapshot().state, id: scope.id}); return scope;
     };
     const adapter = {
-        capabilities: {interfaceVersion: 1, supported: [...PROJECTION_CAPABILITIES]},
+        capabilities: {interfaceVersion: 2, supported: PROJECTION_ROLLBACK_CAPABILITIES},
+        recoveryCapabilities: {interfaceVersion: 1, supported: PROJECTION_RECOVERY_CAPABILITIES},
         async initialize(_definition, binding) {
             const scope = record('initialize:' + binding.projectionId); initializationScope ??= scope;
-            slots.set(binding.projectionId, {binding, checkpoint: {blockNum: 0, blockId: '0'.repeat(64)}, initialized: true, pending: null, gap: null});
+            slots.set(binding.projectionId, {binding, checkpoint: {blockNum: 0, blockId: '0'.repeat(64)}, initialized: true,
+                pending: null, gap: null, revision: 'd'.repeat(64), rollback: null,
+                coverage: {floor: {blockNum: 0, blockId: '0'.repeat(64)}, retainedBlocks: 0, retainedBytes: 0,
+                    maxBlocks: 256, maxBytes: 64 * 1024 * 1024}});
             return this.open(binding);
         },
-        async open(binding) {const value = slots.get(binding.projectionId); return structuredClone({binding, checkpoint: value.checkpoint});},
+        async open(binding) {const value = slots.get(binding.projectionId); return structuredClone({binding, checkpoint: value.checkpoint, revision: value.revision});},
         async recovery(binding) {record('recovery:' + binding.projectionId); return structuredClone(slots.get(binding.projectionId));},
-        async apply(request) {
-            record('apply:' + request.binding.projectionId); const value = slots.get(request.binding.projectionId);
-            value.checkpoint = {blockNum: request.block.blockNum, blockId: request.block.blockId}; value.pending = null;
-            return {status: 'applied', view: structuredClone({binding: value.binding, checkpoint: value.checkpoint})};
+        async retainedCheckpoints({binding, revision}) {
+            record('retained:' + binding.projectionId); const value = slots.get(binding.projectionId);
+            assert.equal(revision, value.revision);
+            return structuredClone({recovery: value, checkpoints: [value.checkpoint]});
         },
-        async markIncomplete(binding, block, reason) {record('mark:' + binding.projectionId);
+        async apply({revision, batch: request}) {
+            record('apply:' + request.binding.projectionId); const value = slots.get(request.binding.projectionId);
+            assert.equal(revision, value.revision);
+            value.checkpoint = {blockNum: request.block.blockNum, blockId: request.block.blockId}; value.pending = null;
+            value.coverage.retainedBlocks = 1; value.coverage.retainedBytes = 128;
+            return {status: 'applied', view: structuredClone({binding: value.binding, checkpoint: value.checkpoint, revision})};
+        },
+        async markIncomplete({binding, revision, block, reason}) {record('mark:' + binding.projectionId);
+            assert.equal(revision, slots.get(binding.projectionId).revision);
             if (fenceAt === 'admission') {entered.release(); await held.promise;}
             slots.get(binding.projectionId).pending = {block, reason, digest: null};},
         async query(view) {return {view, rows: []};},
+        async rollback() {throw new Error('This ownership fixture supplies no fork authority');},
     };
-    const source = {async frame(height, definition) {
+    const source = {async planRecovery(retained, finality) {
+        record('plan:' + retained.recovery.binding.projectionId);
+        return {target: {blockNum: 1, blockId: blockId(1)}, reportedIrreversible: {blockNum: 0, blockId: '0'.repeat(64)},
+            finality, checkpointStatus: 'canonical', intents: {pending: 'absent', gap: 'absent'}, rollback: null};
+    }, async revalidateRecovery() {record('revalidate-recovery');}, async frame(height, definition) {
         const scope = currentProofConsumerScope(true); frameScope ??= scope; scopeAt.push({projectionId: definition.id, scope});
         assert.equal(height, 1);
         return {frame: {chainId, block: {blockNum: 1, blockId: blockId(1), previousBlockId: '0'.repeat(64)},

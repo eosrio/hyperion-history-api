@@ -1,11 +1,12 @@
 import {expect, test} from 'bun:test';
-import {PROJECTION_CAPABILITIES, ProjectionContractError, type ProjectionAdapter, type ProjectionBinding,
-    type ProjectionCheckpoint, type ProjectionDefinition} from '@eosrio/hyperion-sdk/projection';
+import {PROJECTION_ROLLBACK_CAPABILITIES, PROJECTION_RECOVERY_CAPABILITIES, ProjectionContractError,
+    type ProjectionRecoveryAdapter, type ProjectionBinding, type ProjectionDefinition} from '@eosrio/hyperion-sdk/projection';
 import {PortableStateController} from '../../src/indexer/projection/controller.js';
 import {resolvePortableStateConfiguration} from '../../src/indexer/projection/config.js';
 import {PortableProjectionFrameError} from '../../src/indexer/projection/source.js';
 import {createPortableStateReadGate} from '../../src/indexer/projection/production.js';
 import {createPortableStateQueryService} from '../../src/indexer/projection/query-service.js';
+import {ProofConsumerScope, currentProofConsumerScope} from '../../src/indexer/protocol/proof-consumer-scope.js';
 
 const zero = '0'.repeat(64), chainId = 'c'.repeat(64);
 const block = (height: number) => ({blockNum: height, blockId: String(height).padStart(64, '0'),
@@ -21,26 +22,85 @@ const deferred = () => {let resolve!: () => void; const promise = new Promise<vo
 function reference(initial = 0) {
     const slots = new Map<string, any>(), applied: any[] = [], marked: any[] = [], calls: any[] = [];
     const slot = (binding: ProjectionBinding) => slots.get(binding.projectionId);
-    let failApply = 0, failMark = 0;
-    const adapter: ProjectionAdapter = {
-        capabilities: {interfaceVersion: 1, supported: [...PROJECTION_CAPABILITIES]},
+    let failApply = 0, failMark = 0, rotations = 0;
+    const rollbacks: any[] = [];
+    const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+    const view = (value: any) => ({binding: value.binding, checkpoint: value.checkpoint, revision: value.revision});
+    const available = (value: any) => {
+        if (value.pending || value.gap || (value.rollback && value.rollback.status !== 'complete'))
+            throw new ProjectionContractError('projection.incomplete', 'pending fixture source');
+    };
+    const fence = (value: any, revision: string) => {
+        if (value.revision !== revision) throw new ProjectionContractError('projection.stale-revision', 'Old fixture revision');
+    };
+    const adapter: ProjectionRecoveryAdapter = {
+        capabilities: {interfaceVersion: 2, supported: PROJECTION_ROLLBACK_CAPABILITIES},
+        recoveryCapabilities: {interfaceVersion: 1, supported: PROJECTION_RECOVERY_CAPABILITIES},
         async initialize(_definition, binding) {calls.push('initialize');
             if (!slot(binding)) slots.set(binding.projectionId, {binding, checkpoint: {blockNum: initial, blockId: initial ? block(initial).blockId : zero},
-                initialized: true, pending: null, gap: null});
+                initialized: true, pending: null, gap: null, revision: 'd'.repeat(64), rollback: null,
+                coverage: {floor: {blockNum: initial, blockId: initial ? block(initial).blockId : zero}, retainedBlocks: 0,
+                    retainedBytes: 0, maxBlocks: 256, maxBytes: 1024 * 1024}});
             return this.open(binding);},
         async open(binding) {calls.push('open'); const value = slot(binding);
-            if (value.pending || value.gap) throw new ProjectionContractError('projection.incomplete', 'pending fixture source');
-            return structuredClone({binding: value.binding, checkpoint: value.checkpoint});},
+            available(value); return structuredClone(view(value));},
         async recovery(binding) {calls.push('recovery'); return structuredClone(slot(binding));},
-        async apply(request) {calls.push('apply'); if (failApply-- > 0) throw new Error('transient fixture write');
-            const value = slot(request.binding); applied.push(structuredClone(request));
+        async retainedCheckpoints(request) {const value = slot(request.binding); fence(value, request.revision);
+            const points = [value.checkpoint];
+            for (let height = value.checkpoint.blockNum - 1; height >= value.coverage.floor.blockNum; height--)
+                points.push({blockNum: height, blockId: height ? block(height).blockId : zero});
+            return structuredClone({recovery: value, checkpoints: points});},
+        async apply(input) {calls.push('apply'); const request = input.batch;
+            const value = slot(request.binding); fence(value, input.revision);
+            if (failApply-- > 0) throw new Error('transient fixture write');
+            applied.push(structuredClone(request));
             value.checkpoint = {blockNum: request.block.blockNum, blockId: request.block.blockId}; value.pending = null;
-            return {status: 'applied', view: {binding: value.binding, checkpoint: structuredClone(value.checkpoint)}};},
-        async markIncomplete(binding, failedBlock, reason) {calls.push('markIncomplete'); if (failMark-- > 0) throw new Error('fixture marker unavailable');
-            marked.push({binding, failedBlock, reason}); slot(binding).pending = {block: failedBlock, reason, digest: null};},
+            value.coverage.retainedBlocks = value.checkpoint.blockNum - value.coverage.floor.blockNum;
+            value.coverage.retainedBytes = value.coverage.retainedBlocks * 128;
+            if (value.gap && same(value.gap.block, request.block)) value.gap = null;
+            return {status: 'applied', view: structuredClone(view(value))};},
+        async markIncomplete({binding, revision, block: failedBlock, reason}) {calls.push('markIncomplete');
+            const value = slot(binding); fence(value, revision);
+            if (failMark-- > 0) throw new Error('fixture marker unavailable');
+            marked.push({binding, failedBlock, reason}); value[failedBlock.blockNum > value.checkpoint.blockNum + 1 ? 'gap' : 'pending'] = {block: failedBlock, reason, digest: null};},
+        async rollback(request) {const value = slot(request.binding); rollbacks.push(structuredClone(request));
+            if (value.rollback?.operationId !== request.operationId) {
+                fence(value, request.revision);
+                if (!same(value.checkpoint, request.from)) throw new ProjectionContractError('projection.stale-view', 'Old checkpoint');
+                value.revision = String(++rotations).padStart(64, '0');
+                value.rollback = {operationId: request.operationId, sourceRevision: request.revision, from: request.from,
+                    ancestor: request.ancestor, status: 'running', reason: null};
+                value.pending = null; value.gap = null;
+            }
+            if (value.rollback.status === 'complete') return {status: 'duplicate', recovery: structuredClone(value)};
+            const height = Math.max(request.ancestor.blockNum, value.checkpoint.blockNum - request.maxBlocks);
+            value.checkpoint = height === request.ancestor.blockNum ? request.ancestor : {blockNum: height, blockId: block(height).blockId};
+            value.coverage.retainedBlocks = height - value.coverage.floor.blockNum;
+            value.coverage.retainedBytes = value.coverage.retainedBlocks * 128;
+            if (height === request.ancestor.blockNum) value.rollback.status = 'complete';
+            return {status: value.rollback.status === 'complete' ? 'rolled-back' : 'in-progress', recovery: structuredClone(value)};},
         async query(view) {calls.push('query'); return {view, rows: []};},
     };
-    return {adapter, applied, marked, calls, slots, failApply: () => {failApply = 1;}, failMark: () => {failMark = 1;}};
+    return {adapter, applied, marked, calls, slots, rollbacks, failApply: () => {failApply = 1;}, failMark: () => {failMark = 1;}};
+}
+function recoverySource(source: Pick<import('../../src/indexer/projection/source.js').PortableProjectionSource, 'frame' | 'revalidate'>): Pick<import('../../src/indexer/projection/source.js').PortableProjectionSource,
+    'frame' | 'revalidate' | 'planRecovery' | 'revalidateRecovery'> {
+    return {...source, async planRecovery(retained, finality) {
+        return {target: {blockNum: retained.recovery.checkpoint.blockNum + 32, blockId: 'f'.repeat(64)},
+            reportedIrreversible: {blockNum: 0, blockId: zero}, finality, checkpointStatus: 'canonical',
+            intents: {pending: retained.recovery.pending ? 'canonical' : 'absent', gap: retained.recovery.gap ? 'canonical' : 'absent'}, rollback: null};
+    }, async revalidateRecovery() {}};
+}
+function stateReadSource(source: Pick<import('../../src/indexer/projection/source.js').PortableProjectionSource, 'open' | 'revalidate' | 'assertDefinition'>) {
+    const issued = new WeakMap<object, any>();
+    return {...source, async openState(checkpoint: any, finality: any) {
+        const proof = await source.open(checkpoint), state = {checkpoint, target: checkpoint, reportedIrreversible: checkpoint, finality};
+        issued.set(state, proof); return state;
+    }, async assertState(state: any, selected: ProjectionDefinition) {
+        const proof = issued.get(state);
+        if (!proof) throw new Error('Unissued fixture source state');
+        await source.revalidate(proof); await source.assertDefinition(proof, selected);
+    }};
 }
 function input(height: number, selected: ProjectionDefinition, value: unknown = {owner: 'alice'}) {
     return {frame: {chainId, block: block(height), changes: [{contract: selected.source.contract, table: selected.source.table,
@@ -50,16 +110,40 @@ function input(height: number, selected: ProjectionDefinition, value: unknown = 
 }
 
 test('production scheduling requires recovery capability before adapter initialization', async () => {
-    const r = reference(); delete r.adapter.recovery;
+    const r = reference(); delete (r.adapter as any).retainedCheckpoints;
     await expect(PortableStateController.create({chainId, configuration: config(definition()), adapter: r.adapter,
-        source: {frame: async () => input(1, definition()), revalidate: async () => {}}})).rejects.toMatchObject({code: 'projection.capability-unavailable'});
+        source: recoverySource({frame: async () => input(1, definition()), revalidate: async () => {}})})).rejects.toMatchObject({code: 'projection.capability-unavailable'});
     expect(r.calls).toEqual([]);
+});
+
+test('canonical recovery drains inside its original worker attempt and binds the selected frame', async () => {
+    const r = reference(), selected = definition(), bindings: any[] = [], scopes: ProofConsumerScope[] = [];
+    const source = recoverySource({frame: async () => {
+        expect(currentProofConsumerScope()?.id).toBe('original-recovery-attempt');
+        return input(1, selected);
+    }, revalidate: async () => {}});
+    const originalPlan = source.planRecovery;
+    source.planRecovery = async (...args) => {
+        expect(currentProofConsumerScope()?.id).toBe('original-recovery-attempt');
+        return originalPlan(...args);
+    };
+    const worker = await PortableStateController.create({chainId, configuration: config(selected), adapter: r.adapter,
+        source, maximumFramesPerProjection: 1, attempts: {
+            async run(_metadata, operation) {const scope = new ProofConsumerScope('original-recovery-attempt'); scopes.push(scope);
+                try {return await scope.run(operation);} finally {await scope.closeAndDrain();}},
+            async bind(fields) {bindings.push(fields);},
+        }});
+    await worker.drain(); await worker.stop();
+    expect(scopes).toHaveLength(1);
+    expect(r.applied).toHaveLength(1);
+    expect(bindings).toMatchObject([{projectionId: selected.id, checkpointBlockNum: 0, checkpointBlockId: zero},
+        {blockNum: 1, blockId: block(1).blockId}]);
 });
 
 test('restart resumes checkpoint+1 rather than replaying beyond retained source receipts; transport retry repeats exact height', async () => {
     const r = reference(500), seen: number[] = [], progress: any[] = [], selected = definition(); r.failApply();
     const options = {chainId, configuration: config(selected), adapter: r.adapter, maximumFramesPerProjection: 1,
-        source: {frame: async (height: number) => {seen.push(height); return input(height, selected);}, revalidate: async () => {}},
+        source: recoverySource({frame: async (height: number) => {seen.push(height); return input(height, selected);}, revalidate: async () => {}}),
         onProgress: (value: any) => progress.push(value)};
     const worker = await PortableStateController.create(options);
     await worker.drain(); expect(r.applied).toHaveLength(0);
@@ -69,21 +153,121 @@ test('restart resumes checkpoint+1 rather than replaying beyond retained source 
     expect(seen).toEqual([501, 501, 502]); expect(progress.at(-1).checkpoint.blockNum).toBe(502);
 });
 
+test('an aged nonzero checkpoint is durably incomplete while a separate projection continues', async () => {
+    const r = reference(500), aged = definition('aged'), healthy = definition('healthy'), progress: any[] = [];
+    const source = recoverySource({frame: async (height, selected) => {
+        expect(selected.id).toBe('healthy'); return input(height, selected);
+    }, revalidate: async () => {}});
+    const ordinary = source.planRecovery;
+    source.planRecovery = async (retained, finality) => retained.recovery.binding.projectionId === 'aged'
+        ? {...await ordinary(retained, finality), target: block(1000), checkpointStatus: 'unresolved',
+            unavailableSource: {block: block(1000), reason: 'Historical recovery input is required'}} as any
+        : ordinary(retained, finality);
+    const worker = await PortableStateController.create({chainId, configuration: config(aged, healthy), adapter: r.adapter,
+        source, maximumFramesPerProjection: 1, onProgress: value => progress.push(value)});
+    await worker.drain();
+    expect(r.slots.get('aged').checkpoint).toEqual({blockNum: 500, blockId: block(500).blockId});
+    expect(r.slots.get('aged').gap).toEqual({block: block(1000), digest: null, reason: 'Historical recovery input is required'});
+    expect(r.applied.map(value => value.binding.projectionId)).toEqual(['healthy']);
+    expect(r.rollbacks).toEqual([]);
+    expect(progress.find(value => value.projectionId === 'aged').status).toBe('incomplete');
+    await expect(r.adapter.open(r.slots.get('aged').binding)).rejects.toMatchObject({code: 'projection.incomplete'});
+    await worker.drain();
+    expect(r.marked.filter(value => value.binding.projectionId === 'aged')).toHaveLength(1);
+    expect(r.slots.get('aged').gap).toEqual({block: block(1000), digest: null, reason: 'Historical recovery input is required'});
+    await worker.stop();
+});
+
+test('a completed rollback with a lost response heals on the next drain even if its immediate recovery inspection fails', async () => {
+    for (const loseInspection of [false, true]) {
+        const r = reference(), selected = definition(), progress: any[] = [];
+        let fork = false, failInspection = false, lost = false;
+        const source = recoverySource({frame: async (height, definition) => {
+            const value = input(height, definition);
+            if (fork) value.frame.block.blockId = 'b'.repeat(64);
+            return value;
+        }, revalidate: async () => {}});
+        const ordinary = source.planRecovery;
+        source.planRecovery = async (retained, finality) => ({...await ordinary(retained, finality),
+            target: {blockNum: 3, blockId: fork ? 'b'.repeat(64) : block(3).blockId},
+            rollback: fork && retained.recovery.rollback === null
+                ? {ancestor: {blockNum: 2, blockId: block(2).blockId}, reason: 'orphaned-checkpoint'} : null});
+        const worker = await PortableStateController.create({chainId, configuration: config(selected), adapter: r.adapter,
+            source, maximumFramesPerProjection: 1, onProgress: value => progress.push(value)});
+        await worker.drain(); await worker.drain(); await worker.drain();
+        const rollback = r.adapter.rollback.bind(r.adapter), recovery = r.adapter.recovery.bind(r.adapter);
+        r.adapter.rollback = async request => {
+            const result = await rollback(request);
+            if (!lost) {lost = true; failInspection = loseInspection; throw new Error('Lost rollback completion response');}
+            return result;
+        };
+        r.adapter.recovery = async binding => {
+            if (failInspection) {failInspection = false; throw new Error('Transient recovery inspection failure');}
+            return recovery(binding);
+        };
+        fork = true; await worker.drain();
+        const committed = structuredClone(r.slots.get(selected.id).rollback);
+        expect(committed.status).toBe('complete'); expect(r.slots.get(selected.id).checkpoint.blockNum).toBe(2);
+        await worker.drain();
+        expect(r.slots.get(selected.id).checkpoint).toEqual({blockNum: 3, blockId: 'b'.repeat(64)});
+        expect(r.slots.get(selected.id).rollback).toEqual(committed);
+        expect(r.rollbacks).toHaveLength(1);
+        expect(r.rollbacks[0]).toMatchObject({revision: committed.sourceRevision, operationId: committed.operationId,
+            from: {blockNum: 3, blockId: block(3).blockId}, ancestor: {blockNum: 2, blockId: block(2).blockId}});
+        const initialized = r.calls.filter(call => call === 'initialize').length;
+        await worker.drain();
+        expect(r.calls.filter(call => call === 'initialize')).toHaveLength(initialized);
+        expect(r.rollbacks).toHaveLength(1); expect(progress.at(-1).status).toBe('waiting');
+        await worker.stop();
+    }
+});
+
+test('an unadmitted rollback with failed inspection is discarded before a fresh canonical plan is admitted', async () => {
+    const r = reference(), selected = definition(), attempts: any[] = [];
+    let fork = false, ancestor = 2, rejectInspection = false;
+    const source = recoverySource({frame: async (height, definition) => input(height, definition), revalidate: async () => {}});
+    const ordinary = source.planRecovery;
+    source.planRecovery = async (retained, finality) => ({...await ordinary(retained, finality), target: block(3),
+        rollback: fork && retained.recovery.rollback === null
+            ? {ancestor: {blockNum: ancestor, blockId: block(ancestor).blockId}, reason: 'orphaned-checkpoint'} : null});
+    const worker = await PortableStateController.create({chainId, configuration: config(selected), adapter: r.adapter, source,
+        maximumFramesPerProjection: 1});
+    await worker.drain(); await worker.drain(); await worker.drain();
+    const rollback = r.adapter.rollback.bind(r.adapter), recovery = r.adapter.recovery.bind(r.adapter);
+    r.adapter.rollback = async request => {
+        attempts.push(structuredClone(request));
+        if (attempts.length === 1) {rejectInspection = true; throw new Error('Rollback was never admitted');}
+        return rollback(request);
+    };
+    r.adapter.recovery = async binding => {
+        if (rejectInspection) {rejectInspection = false; throw new Error('Transient inspection failure');}
+        return recovery(binding);
+    };
+    fork = true; await worker.drain();
+    expect(r.rollbacks).toHaveLength(0); expect(r.slots.get(selected.id).checkpoint.blockNum).toBe(3);
+    ancestor = 1; await worker.drain();
+    expect(attempts).toHaveLength(2);
+    expect(attempts[0].ancestor.blockNum).toBe(2); expect(attempts[1].ancestor.blockNum).toBe(1);
+    expect(attempts[1].operationId).not.toBe(attempts[0].operationId);
+    expect(r.rollbacks[0]).toEqual(attempts[1]);
+    await worker.stop();
+});
+
 test('selected contract failure is durably incomplete while an independent lane progresses; recovery retries the original block', async () => {
     const r = reference(), first = definition('first'), other = definition('other'), seen: any[] = [];
     let invalid = true;
     const worker = await PortableStateController.create({chainId, configuration: config(first, other), adapter: r.adapter,
-        maximumFramesPerProjection: 1, source: {frame: async (height, selected) => {
+        maximumFramesPerProjection: 1, source: recoverySource({frame: async (height, selected) => {
             seen.push([selected.id, height]); return input(height, selected, invalid && selected.id === first.id ? {} : {owner: 'alice'});
-        }, revalidate: async () => {}}});
+        }, revalidate: async () => {}})});
     await worker.drain();
     const admitted = r.marked.filter(value => value.reason === 'Canonical projection source admitted; durable application is pending');
     expect(admitted.map(value => value.binding.projectionId)).toEqual(['first', 'other']);
     expect(r.marked.filter(value => !admitted.includes(value)).map(value => value.binding.projectionId)).toEqual(['first']);
     expect(r.applied.map(value => value.binding.projectionId)).toEqual(['other']);
     const restarted = await PortableStateController.create({chainId, configuration: config(first, other), adapter: r.adapter,
-        maximumFramesPerProjection: 1, source: {frame: async (height, selected) => {seen.push([selected.id, height]);
-            return input(height, selected, {owner: 'alice'});}, revalidate: async () => {}}});
+        maximumFramesPerProjection: 1, source: recoverySource({frame: async (height, selected) => {seen.push([selected.id, height]);
+            return input(height, selected, {owner: 'alice'});}, revalidate: async () => {}})});
     invalid = false; await restarted.drain();
     expect(seen).toContainEqual(['first', 1]); expect(r.slots.get('first').checkpoint.blockNum).toBe(1);
     expect(r.slots.get('other').checkpoint.blockNum).toBe(2); expect(r.slots.get('first').pending).toBeNull();
@@ -92,7 +276,7 @@ test('selected contract failure is durably incomplete while an independent lane 
 test('missing/corrupt known source is fenced before any apply and failed incomplete durability is retried', async () => {
     const r = reference(), selected = definition(); r.failMark();
     const worker = await PortableStateController.create({chainId, configuration: config(selected), adapter: r.adapter,
-        source: {frame: async () => {throw new PortableProjectionFrameError(block(1), new Error('retained input missing'));}, revalidate: async () => {}}});
+        source: recoverySource({frame: async () => {throw new PortableProjectionFrameError(block(1), new Error('retained input missing'));}, revalidate: async () => {}})});
     await worker.drain(); expect(r.applied).toHaveLength(0); expect(r.marked).toHaveLength(0);
     await worker.drain(); expect(r.marked).toHaveLength(1); expect(r.slots.get(selected.id).checkpoint.blockNum).toBe(0);
 });
@@ -101,10 +285,52 @@ test('stop during source resolution prevents any later apply and concurrent drai
     const r = reference(), selected = definition(), held = deferred(), entered = deferred();
     let frames = 0;
     const worker = await PortableStateController.create({chainId, configuration: config(selected), adapter: r.adapter,
-        source: {frame: async () => {frames++; entered.resolve(); await held.promise; return input(1, selected);}, revalidate: async () => {}}});
+        source: recoverySource({frame: async () => {frames++; entered.resolve(); await held.promise; return input(1, selected);}, revalidate: async () => {}})});
     const work = worker.drain(); await entered.promise; expect(worker.drain()).toBe(work);
     const stopped = worker.stop(); held.resolve(); await Promise.all([work, stopped]);
     expect(frames).toBe(1); expect(r.applied).toHaveLength(0);
+});
+
+test('production restart resumes the original durable rollback before asking for a newer canonical plan', async () => {
+    const r = reference(), selected = definition();
+    let fork = false, planned = 0;
+    const source = recoverySource({frame: async height => input(height, selected), revalidate: async () => {}});
+    const ordinaryPlan = source.planRecovery;
+    source.planRecovery = async (retained, finality) => {
+        planned++;
+        if (!fork) return ordinaryPlan(retained, finality);
+        expect(retained.checkpoints.map(point => point.blockNum)).toEqual([5, 4, 3, 2, 1, 0]);
+        return {target: {blockNum: 5, blockId: block(5).blockId}, reportedIrreversible: {blockNum: 2, blockId: block(2).blockId},
+            finality, checkpointStatus: 'orphaned', intents: {pending: 'absent', gap: 'absent'},
+            rollback: {ancestor: {blockNum: 2, blockId: block(2).blockId}, reason: 'orphaned-checkpoint'}};
+    };
+    const options = {chainId, configuration: config(selected), adapter: r.adapter, source, maximumFramesPerProjection: 1};
+    const worker = await PortableStateController.create(options);
+    for (let count = 0; count < 5; count++) await worker.drain();
+    fork = true; await worker.drain(); await worker.stop();
+    expect(r.rollbacks).toHaveLength(1);
+    const original = r.rollbacks[0], plannedBeforeRestart = planned;
+    expect(original).toMatchObject({from: {blockNum: 5}, ancestor: {blockNum: 2}, revision: 'd'.repeat(64)});
+    const restarted = await PortableStateController.create(options);
+    await restarted.drain(); await restarted.drain(); await restarted.stop();
+    expect(r.rollbacks).toEqual([original, original, original]);
+    expect(planned).toBe(plannedBeforeRestart);
+    expect(r.slots.get(selected.id).checkpoint.blockNum).toBe(2);
+    expect(r.slots.get(selected.id).rollback.status).toBe('complete');
+});
+
+test('a source generation change before early admission cannot mark or apply a frame under the old plan', async () => {
+    const r = reference(), selected = definition();
+    let revoked = false;
+    const source = recoverySource({frame: async (height, _definition, admit) => {
+        revoked = true; await admit!(block(height)); return input(height, selected);
+    }, revalidate: async () => {}});
+    source.revalidateRecovery = async () => {if (revoked) throw new Error('Captured source generation retired');};
+    const worker = await PortableStateController.create({chainId, configuration: config(selected), adapter: r.adapter,
+        source, maximumFramesPerProjection: 1});
+    await worker.drain(); await worker.stop();
+    expect(r.marked).toHaveLength(0); expect(r.applied).toHaveLength(0); expect(r.rollbacks).toHaveLength(0);
+    expect(r.slots.get(selected.id).checkpoint.blockNum).toBe(0);
 });
 
 test('canonical gate refuses checkpoint0 and forged contexts, initializes nothing, and fences late authority or checkpoint changes', async () => {
@@ -114,8 +340,8 @@ test('canonical gate refuses checkpoint0 and forged contexts, initializes nothin
     await r.adapter.initialize(selected, binding, {blockNum: 0, blockId: zero}); r.calls.length = 0;
     let revoked = false, opens = 0;
     const gate = createPortableStateReadGate({chainId, configuration, adapter: r.adapter,
-        source: {open: async () => {opens++; return {} as any;}, assertDefinition: async () => {},
-            revalidate: async () => {if (revoked) throw new Error('source revoked');}}});
+        source: stateReadSource({open: async () => {opens++; return {} as any;}, assertDefinition: async () => {},
+            revalidate: async () => {if (revoked) throw new Error('source revoked');}})});
     await expect(gate.readReady(selected.id)).rejects.toMatchObject({code: 'projection.incomplete'}); expect(opens).toBe(0);
     r.slots.get(selected.id).checkpoint = {blockNum: 1, blockId: block(1).blockId};
     const context = await gate.readReady(selected.id);
@@ -132,11 +358,11 @@ test('pre-deployment ABI refuses public queries and a no-row ABI change during a
     const binding = portableStateBinding(configuration, selected, chainId);
     await r.adapter.initialize(selected, binding, {blockNum: 0, blockId: zero});
     let deployed = false, changedDuringQuery = false;
-    const gate = createPortableStateReadGate({chainId, configuration, adapter: r.adapter, source: {
+    const gate = createPortableStateReadGate({chainId, configuration, adapter: r.adapter, source: stateReadSource({
         open: async () => ({} as any), revalidate: async () => {}, assertDefinition: async () => {
             if (!deployed || changedDuringQuery) throw new ProjectionContractError('projection.incomplete', 'ABI epoch unavailable');
         },
-    }});
+    })});
     const service = createPortableStateQueryService({chainId, configuration, adapter: r.adapter, gate});
     await expect(service.query(selected.id, {filter: [], limit: 1})).rejects.toMatchObject({statusCode: 503});
     expect(r.calls).not.toContain('query');

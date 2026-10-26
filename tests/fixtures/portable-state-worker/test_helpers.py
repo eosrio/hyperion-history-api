@@ -110,6 +110,25 @@ class FixtureHelpers(unittest.TestCase):
         self.assertTrue(result["redis"]["redisVerifiedAbsent"])
         self.assertEqual(operations[-1], ("core", "cleanup"))
 
+    def test_disposable_disk_profile_is_an_explicit_create_only_allowlist(self):
+        for profile in ["20-10-5gb", "8-4-2gb"]:
+            with patch.object(services.subprocess, "run") as run:
+                services.core_command("create", self.directory, "fixture-pwsh", profile)
+                arguments = run.call_args.args[0]
+                self.assertEqual(arguments[arguments.index("-DiskWatermarkProfile") + 1], profile)
+                self.assertEqual(arguments[arguments.index("-IndexingPressureLimitMb") + 1], "64")
+        with patch.object(services.subprocess, "run") as run:
+            services.core_command("cleanup", self.directory, "fixture-pwsh")
+            self.assertNotIn("-DiskWatermarkProfile", run.call_args.args[0])
+        with patch.object(services.subprocess, "run") as run:
+            with self.assertRaisesRegex(ValueError, "Unsupported disposable"):
+                services.core_command("create", self.directory, "fixture-pwsh", "1-1-1gb")
+            run.assert_not_called()
+        new_directory = self.directory / "must-not-create"
+        with self.assertRaisesRegex(ValueError, "Unsupported disposable"):
+            services.create(new_directory, "fixture-pwsh", "unsafe")
+        self.assertFalse(new_directory.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,15 +1,18 @@
 import { createHash, randomBytes } from 'node:crypto';
 import {
-    canonicalProjectionBatch, PROJECTION_ROLLBACK_CAPABILITIES, PROJECTION_ROLLBACK_LIMITS,
+    canonicalProjectionBatch, PROJECTION_ROLLBACK_CAPABILITIES, PROJECTION_ROLLBACK_LIMITS, PROJECTION_RECOVERY_CAPABILITIES,
     ProjectionContractError, validateProjectionDefinition, validateProjectionQuery, validateProjectionQueryInput, validateProjectionView,
     validateProjectionRollbackActivation, validateProjectionRollbackApply, validateProjectionRollbackApplyInput, validateProjectionRollbackIncomplete,
     validateProjectionRollbackRequest, validateProjectionRollbackView,
+    validateProjectionRetainedCheckpointRequest, validateProjectionRetainedCheckpoints,
     type ProjectionApplyRequest, type ProjectionBinding, type ProjectionBlock, type ProjectionCheckpoint,
     type ProjectionDefinition, type ProjectionQuery, type ProjectionRollbackAdapter,
     type ProjectionRollbackAdapterCapabilities, type ProjectionRollbackApplyRequest, type ProjectionRollbackApplyResult,
     type ProjectionRollbackIncompleteRequest, type ProjectionRollbackQueryResult, type ProjectionRollbackReadView,
     type ProjectionRollbackRecoveryView, type ProjectionRollbackRequest, type ProjectionRollbackResult,
     type ProjectionRollbackState,
+    type ProjectionRecoveryAdapter, type ProjectionRecoveryCapabilities,
+    type ProjectionRetainedCheckpointRequest, type ProjectionRetainedCheckpointView,
 } from '@eosrio/hyperion-sdk/projection';
 import { type Collection, type Document, type Filter } from 'mongodb';
 import {
@@ -443,4 +446,38 @@ class MongoDbRollbackAdapter extends MongoProjectionStorage<RollbackMetadata> im
 /** Explicit opt-in: initialization upgrades only the selected immutable projection instance. */
 export function createMongoDbRollbackAdapter(options: MongoDbRollbackAdapterOptions): ProjectionRollbackAdapter {
     return new MongoDbRollbackAdapter(options);
+}
+
+class MongoDbRecoveryAdapter extends MongoDbRollbackAdapter implements ProjectionRecoveryAdapter {
+    readonly recoveryCapabilities: ProjectionRecoveryCapabilities = Object.freeze({
+        interfaceVersion: 1, supported: PROJECTION_RECOVERY_CAPABILITIES,
+    });
+
+    async retainedCheckpoints(input: ProjectionRetainedCheckpointRequest): Promise<ProjectionRetainedCheckpointView> {
+        const captured = validateProjectionRetainedCheckpointRequest(input);
+        if (!captured.valid) {
+            throw new ProjectionContractError('projection.invalid-contract', captured.errors.map(error => error.message).join('; '));
+        }
+        const request = captured.value;
+        checkBinding(request.binding, this.backendId);
+        return this.guarded(async () => {
+            // Both progress and its exact applied branch come from this one durable metadata read.
+            const metadata = await this.load(request.binding);
+            assertRevision(metadata, request.revision);
+            const checkpoints = metadata.undo.length === 0
+                ? [checkpointOf(metadata.checkpoint)]
+                : [...metadata.undo].reverse().map(descriptor => checkpointOf(descriptor.block))
+                    .concat([checkpointOf(metadata.coverageFloor)]);
+            const result = validateProjectionRetainedCheckpoints({recovery: rollbackRecovery(metadata), checkpoints});
+            if (!result.valid) {
+                throw new ProjectionContractError('projection.invalid-contract', result.errors.map(error => error.message).join('; '));
+            }
+            return result.value;
+        });
+    }
+}
+
+/** Explicit additive inspection; existing v1/v2 factories retain their exact interfaces. */
+export function createMongoDbRecoveryAdapter(options: MongoDbRollbackAdapterOptions): ProjectionRecoveryAdapter {
+    return new MongoDbRecoveryAdapter(options);
 }

@@ -1128,13 +1128,14 @@ export default class StateReader extends HyperionWorker {
             this.assertCurrentIngress(context.generation);
             if (this.coordinatorSource !== source) throw new StaleProtocolIngress('Reader source changed while coordinator opened');
             source.generation = opened.generation;
-            this.coordinatorResumeFromBlock = opened.resumeFromBlock;
-            if (opened.resumeFromBlock !== null) {
-                this.local_block_num = opened.resumeFromBlock - 1;
-                // This is a new local publication epoch, not a fabricated master checkpoint.
-                // Only fresh confirmed irreversible publications may emit live_checkpoint.
-                this.liveCheckpoint = new LiveReaderCheckpoint(opened.resumeFromBlock, '', this.conf.settings.reader_recovery_window_blocks);
-            }
+            const needsGenesis = this.conf.features.portable_state?.projections.some(definition => definition.initialization.kind === 'genesis') ?? false;
+            this.liveCheckpoint ??= new LiveReaderCheckpoint(Math.max(1, this.local_block_num + 1), '', this.conf.settings.reader_recovery_window_blocks);
+            this.liveCheckpoint = this.liveCheckpoint.reopen(opened.resumeFromBlock, needsGenesis);
+            const replay = this.liveCheckpoint.position;
+            this.coordinatorResumeFromBlock = replay.nextBlock;
+            this.local_block_num = replay.nextBlock - 1;
+            // Reopening retires old callbacks. The RPC/ABI resume boundary does not
+            // publish progress; only fresh confirmed irreversible input may do so.
         } catch (error) {
             this.assertCurrentIngress(context.generation);
             throw error;
@@ -1205,7 +1206,9 @@ export default class StateReader extends HyperionWorker {
         const last_block = start > 0 ? 0xffffffff : process.env.last_block ? process.env.last_block : 0xffffffff;
         const request = this.baseRequest;
         if (this.isLiveReader && this.usesExtensionProtocol) {
-            request.have_positions = [];
+            const confirmed = this.liveCheckpoint?.position;
+            request.have_positions = confirmed?.blockId && confirmed.nextBlock === Number(first_block)
+                ? [{block_num: confirmed.nextBlock - 1, block_id: confirmed.blockId}] : [];
         } else if (this.isLiveReader && process.env.worker_last_processed_block_id) {
             request.have_positions = [{block_num: Number(process.env.worker_last_processed_block) - 1,
                 block_id: process.env.worker_last_processed_block_id}];

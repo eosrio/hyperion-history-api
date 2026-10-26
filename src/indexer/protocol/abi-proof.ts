@@ -58,7 +58,8 @@ interface CanonicalCommit {
     nativeGenesis?:ProtocolNativeGenesisCoverage;
     nativeActionInterfaceVersion?:1;
 }
-interface Issued {certificate:ProtocolAbiHeadCertificate;commit:CanonicalCommit;scope?:ProofConsumerScope}
+interface AncestryEntry {commitId:string;commit:CanonicalCommit}
+interface Issued {certificate:ProtocolAbiHeadCertificate;commit:CanonicalCommit;ancestry:Map<number,AncestryEntry>;scope?:ProofConsumerScope}
 type OriginalActionInput=Omit<ProtocolAbiActionInput,'inputActionOrdinal'> & {inputActionOrdinal?:number};
 const hex64=/^[0-9a-f]{64}$/;
 const text=(value:unknown):value is string=>typeof value==='string'&&value.length>0&&value.length<=256&&value.isWellFormed();
@@ -198,6 +199,7 @@ export class ProtocolAbiProofReader {
         const certificateId=this.options.store.certificateId(certificate);
         const stored=await this.retained(()=>this.options.store.readCertificate(certificateId,signal),'certificate_unavailable',signal);
         requireProof(json(stored)===json(certificate),'Settled ABI certificate does not match the observed authority');
+        const ancestry=new Map<number,AncestryEntry>();
         let commitId=certificate.head.commitId,commit:CanonicalCommit|undefined,child:CanonicalCommit|undefined;
         for(let distance=0;distance<=this.maximumAncestry;distance++){
             commit=this.validateCommit(await this.retained(()=>this.options.store.readCommit(commitId,signal),'ancestry_unavailable',signal));
@@ -207,6 +209,7 @@ export class ProtocolAbiProofReader {
                     'Certified ABI head does not match its immutable commit');
             }else requireProof(commit.source.blockNum+1===child.source.blockNum&&child.source.previousBlockId===commit.source.blockId,
                 'Certified ABI ancestry is not contiguous');
+            ancestry.set(commit.source.blockNum,{commitId,commit:freeze(copy(commit))});
             if(commit.source.blockNum===source.blockNum)break;
             if(commit.source.blockNum<source.blockNum||!commit.previousCommitId||distance===this.maximumAncestry)
                 unavailable('ancestry_unavailable','Requested ABI source has no retained canonical membership');
@@ -218,8 +221,49 @@ export class ProtocolAbiProofReader {
         if(commit.status!=='complete')unavailable('source_incomplete','Requested ABI source has incomplete knowledge');
         const view=freeze(copy({certificateId,commitId,selectionId:commit.selectionId,source:commit.source,bindings:commit.bindings,
             ...(commit.nativeActionInterfaceVersion===1?{nativeActionInterfaceVersion:1 as const}:{})}));
-        this.issued.set(view,{certificate:freeze(copy(certificate)),commit:freeze(copy(commit)),scope:currentProofConsumerScope()});
+        this.issued.set(view,{certificate:freeze(copy(certificate)),commit:freeze(copy(commit)),ancestry,scope:currentProofConsumerScope()});
         await this.revalidate(view,{signal});return view;
+        });
+    }
+    /** A head grant must name the exact settled certificate head, never an older source under a newer head. */
+    async openHead(options:ProtocolAbiProofReadOptions={}):Promise<ProtocolAbiProofView> {
+        const certificate=await this.authority(options.signal);
+        const view=await this.open({chainId:this.options.chainId,blockNum:certificate.head.blockNum,blockId:certificate.head.blockId},undefined,options);
+        const issued=this.issued.get(view)!;
+        if(json(issued.certificate)!==json(certificate))unavailable('authority_changed','Canonical ABI head changed while opening its grant');
+        return view;
+    }
+    /** Resolve an exact height through one issued certificate, reusing only its validated immutable links. */
+    async ancestor(view:ProtocolAbiProofView,blockNum:number,options:ProtocolAbiProofReadOptions={}):Promise<ProtocolAbiProofView> {
+        return this.consume(view,async()=>{
+        options={...options,signal:proofConsumerSignal(options.signal)};
+        const issued=this.issued.get(view);if(!issued)unavailable('invalid_proof','ABI proof view was not issued by this reader');
+        requireProof(uint(blockNum,1)&&blockNum<=view.source.blockNum,'Invalid requested ABI ancestor');
+        if(issued.certificate.head.blockNum-blockNum>this.maximumAncestry)
+            unavailable('ancestry_unavailable','Requested ABI ancestor is outside verified ancestry');
+        let current=issued.ancestry.get(view.source.blockNum)!;
+        while(current.commit.source.blockNum>blockNum){
+            const child=current.commit;
+            if(!child.previousCommitId)unavailable('ancestry_unavailable','Requested ABI ancestor is not retained');
+            let previous=issued.ancestry.get(child.source.blockNum-1);
+            if(!previous){
+                const commit=this.validateCommit(await this.retained(()=>this.options.store.readCommit(child.previousCommitId!,options.signal),
+                    'ancestry_unavailable',options.signal));
+                requireProof(commit.source.blockNum+1===child.source.blockNum&&commit.source.blockId===child.source.previousBlockId,
+                    'Certified ABI ancestry is not contiguous');
+                previous={commitId:child.previousCommitId,commit:freeze(copy(commit))};
+                issued.ancestry.set(commit.source.blockNum,previous);
+            }
+            requireProof(previous.commitId===child.previousCommitId&&previous.commit.source.blockId===child.source.previousBlockId,
+                'Certified ABI ancestry changed');
+            current=previous;
+        }
+        if(current.commit.status!=='complete')unavailable('source_incomplete','Requested ABI ancestor has incomplete knowledge');
+        const result=freeze(copy({certificateId:view.certificateId,commitId:current.commitId,selectionId:current.commit.selectionId,
+            source:current.commit.source,bindings:current.commit.bindings,
+            ...(current.commit.nativeActionInterfaceVersion===1?{nativeActionInterfaceVersion:1 as const}:{})}));
+        this.issued.set(result,{certificate:issued.certificate,commit:current.commit,ancestry:issued.ancestry,scope:issued.scope});
+        await this.revalidate(result,options);return result;
         });
     }
     async waitForOpen(source:ProtocolAbiProofSource,selectionId?:string,

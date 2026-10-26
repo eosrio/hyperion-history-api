@@ -22,9 +22,11 @@ export function portableStateQueryHandler(fastify: FastifyInstance) {
         reply.header('cache-control', 'no-store');
         try {
             const body = validatePortableStateQueryBody(request.body);
-            if (!fastify.portableState) throw new PortableStateQueryError(503, 'projection.query-unavailable', 'Portable state is unavailable; retry later.');
-            const result = await fastify.portableState.query(body.projection, body.query);
-            reply.headers(stateResponseHeaders(result.view)).send(result);
+            const host = fastify.portableState;
+            if (!host) throw new PortableStateQueryError(503, 'projection.query-unavailable', 'Portable state is unavailable; retry later.');
+            const finality = host.finality;
+            const result = await host.query(body.projection, body.query);
+            reply.headers(stateResponseHeaders(result.view, finality)).send(result);
         } catch (error) {
             const failure = error instanceof PortableStateQueryError ? error
                 : new PortableStateQueryError(503, 'projection.query-unavailable', 'Portable state is unavailable; retry later.');

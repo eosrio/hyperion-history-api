@@ -5,6 +5,7 @@ import {PROJECTION_ROLLBACK_CAPABILITIES, ProjectionContractError,
     type ProjectionRollbackRecoveryView, type ProjectionRollbackRequest} from '@eosrio/hyperion-sdk/projection';
 import {RecoverableProjectionRuntime} from '../../src/indexer/projection/recoverable-runtime.js';
 import type {ProjectionFrame} from '../../src/indexer/projection/runtime.js';
+import {ProofConsumerScope} from '../../src/indexer/protocol/proof-consumer-scope.js';
 
 const zero = '0'.repeat(64);
 const definition: ProjectionDefinition = {schemaVersion: 1, id: 'inventory', mappingRevision: 'a'.repeat(64),
@@ -80,6 +81,30 @@ const create = (adapter: ProjectionRollbackAdapter, options = {}) => Recoverable
 const plan = (operationId: string, from: ProjectionCheckpoint, ancestor = checkpoint(0), maxBlocks = 1,
     revision = 'd'.repeat(64)): ProjectionRollbackRequest => ({binding, revision, operationId, from, ancestor, maxBlocks});
 
+test('a recovery attempt fenced while draining cannot begin a native rollback', async () => {
+    const fake = reference(1), runtime = await create(fake.adapter), scope = new ProofConsumerScope('original-rollback-attempt');
+    const work = scope.run(() => runtime.rollback(plan('original-rollback', checkpoint(1))));
+    scope.fence();
+    await expect(work).rejects.toMatchObject({code: 'worker_attempt_fenced'});
+    expect(fake.rollbacks).toHaveLength(0);
+    await scope.closeAndDrain();
+});
+
+test('a recovery initialization fenced after storage returns cannot start another native read', async () => {
+    const fake = reference(), entered = deferred(), release = deferred();
+    const initialize = fake.adapter.initialize, recovery = fake.adapter.recovery;
+    let recoveryReads = 0;
+    fake.adapter.initialize = async (...args) => {const result = await initialize(...args); entered.resolve(); await release.promise; return result;};
+    fake.adapter.recovery = async (...args) => {recoveryReads++; return recovery(...args);};
+    const scope = new ProofConsumerScope('original-recovery-initialization');
+    const work = scope.run(() => create(fake.adapter));
+    await entered.promise; scope.fence(); release.resolve();
+    await expect(work).rejects.toMatchObject({code: 'worker_attempt_fenced'});
+    expect(recoveryReads).toBe(0);
+    expect(fake.initializeCalls()).toBe(1);
+    await scope.closeAndDrain();
+});
+
 test('rollback capability, genesis and pending bounds fail before native initialization', async () => {
     for (const options of [{maximumPendingFrames: 0}, {maximumPendingBytes: 64 * 1024 * 1024 + 1}, {genesis: checkpoint(1)}]) {
         const fake = reference();
@@ -89,6 +114,22 @@ test('rollback capability, genesis and pending bounds fail before native initial
     const fake = reference(); Object.assign(fake.adapter, {capabilities: {interfaceVersion: 2, supported: []}});
     await expect(create(fake.adapter)).rejects.toMatchObject({code: 'projection.capability-unavailable'});
     expect(fake.initializeCalls()).toBe(0);
+});
+
+test('production admission runs before mapping and remains fenced while an asynchronous callback is pending', async () => {
+    const fake = reference(), runtime = await create(fake.adapter), entered = deferred(), release = deferred();
+    const work = runtime.process(frame(1), async block => {
+        expect(block).toEqual(frame(1).block);
+        entered.resolve(); await release.promise;
+    });
+    const observed = Promise.allSettled([work]);
+    await entered.promise;
+    const recovery = runtime.rollback(plan('admission-race', checkpoint(0)));
+    expect(fake.batches).toHaveLength(0);
+    release.resolve();
+    expect((await observed)[0].status).toBe('rejected');
+    expect((await recovery).status).toBe('rolled-back');
+    expect(fake.batches).toHaveLength(0);
 });
 
 test('rollback invalidates queued work, drains an in-flight commit and inspects its actual checkpoint', async () => {
@@ -174,6 +215,30 @@ test('a retired rollback retry preserves its original fence and cannot rewind a 
     expect(fake.rollbacks.at(-1)).toEqual(first);
     expect(await runtime.open()).toEqual(before);
     expect((await runtime.query({filter: [], limit: 1})).view).toEqual(before);
+});
+
+test('lost completion cannot adopt a rotated revision from a different or retired durable operation tuple', async () => {
+    for (const different of ['operationId', 'sourceRevision', 'from', 'ancestor'] as const) {
+        const fake = reference(2), runtime = await create(fake.adapter), original = plan('lost-completion', checkpoint(2), checkpoint(1), 1);
+        const rollback = fake.adapter.rollback.bind(fake.adapter), recovery = fake.adapter.recovery.bind(fake.adapter);
+        let committed = false;
+        fake.adapter.rollback = async request => {await rollback(request); committed = true; throw new Error('Lost response');};
+        fake.adapter.recovery = async () => {
+            const value = await recovery(binding);
+            if (committed) {
+                const replacement: any = {...value.rollback};
+                replacement[different] = different === 'operationId' ? 'different-operation'
+                    : different === 'sourceRevision' ? 'f'.repeat(64)
+                        : different === 'from' ? {blockNum: 2, blockId: '9'.repeat(64)} : checkpoint(0);
+                return {...value, rollback: replacement};
+            }
+            return value;
+        };
+        await expect(runtime.rollback(original)).rejects.toThrow('Lost response');
+        await expect(runtime.resumeRecovery()).rejects.toMatchObject({code: 'projection.stale-revision'});
+        await expect(runtime.open()).rejects.toMatchObject({code: 'projection.incomplete'});
+        expect(fake.rollbacks).toEqual([original]);
+    }
 });
 
 test('a source checkpoint changed by an in-flight commit is refused rather than silently replanned', async () => {

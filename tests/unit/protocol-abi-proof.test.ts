@@ -7,6 +7,7 @@ import {ProtocolAbiObservationStore,protocolAbiCaptureDigest,type ProtocolAbiObs
 import {ProtocolSourceBindingStore,type ProtocolSourceProfile} from '../../src/indexer/protocol/source-bindings.js';
 import {ProtocolAbiProofReader,ProtocolAbiProofUnavailableError,protocolAbiCertificateForControl,type ProtocolAbiProofSource} from '../../src/indexer/protocol/abi-proof.js';
 import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
+import {ProofConsumerScope} from '../../src/indexer/protocol/proof-consumer-scope.js';
 
 const chainId='1'.repeat(64),transactionId='a'.repeat(64),chain='proof-fixture';
 const block=(value:number)=>value.toString(16).padStart(64,'0');
@@ -84,6 +85,15 @@ async function fixture(){
 }
 
 describe('source-bound canonical ABI consumers',()=>{
+    it('a retained recovery ancestor keeps the original worker attempt fence',async()=>{
+        const f=await fixture();await seed(f);await f.append(2);
+        const reader=f.reader(),scope=new ProofConsumerScope('original-recovery-ancestry');
+        const ancestor=await scope.run(async()=>reader.ancestor(await reader.openHead(),1));
+        expect(ancestor.source.blockNum).toBe(1);
+        await scope.closeAndDrain();
+        expect(()=>reader.assertConsumerScope(ancestor)).toThrow('no longer permits');
+        await expect(reader.revalidate(ancestor)).rejects.toMatchObject({code:'worker_attempt_fenced'});
+    });
     it('certifies original occurrence without consulting an unknown input ABI or a later final state',async()=>{
         const f=await fixture(),observed=facts();observed.actionInputs=[action(1,'9007199254740993')];
         const first=await f.append(1,observed),known=facts();

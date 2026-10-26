@@ -7,7 +7,7 @@ import {ProtocolAbiFrontierStore} from '../../src/indexer/protocol/abi-frontier-
 import {ProtocolAbiObservationStore} from '../../src/indexer/protocol/abi-observation-store.js';
 import {ProtocolSourceBindingStore} from '../../src/indexer/protocol/source-bindings.js';
 import {PortableProjectionSource} from '../../src/indexer/projection/source.js';
-import type {ProjectionAdapter, ProjectionDefinition} from '@eosrio/hyperion-sdk/projection';
+import {PROJECTION_CAPABILITIES, type ProjectionAdapter, type ProjectionDefinition} from '@eosrio/hyperion-sdk/projection';
 import {resolvePortableStateConfiguration} from '../../src/indexer/projection/config.js';
 import {createPortableStateReadGate} from '../../src/indexer/projection/production.js';
 import {createPortableStateQueryService} from '../../src/indexer/projection/query-service.js';
@@ -226,24 +226,20 @@ test('actual public query gate permits a stable head and refuses a late ABI clea
     const p = await prepared({2: {abiHex: abiA, publish: true}, 3: {abiHex: '', publish: true}}, 2), selected = pinned(p, 2, abiA);
     const configuration = resolvePortableStateConfiguration({backend: {kind: 'mongodb', id: 'fixture-mongo', database: 'fixture_state'},
         projections: [selected]}, capture.chainId)!;
-    let arm = false, finalRevalidations = 0, queries = 0;
+    let queries = 0;
     const adapter = {
+        capabilities: {interfaceVersion: 1, supported: PROJECTION_CAPABILITIES},
         async open(binding: any) {return {binding, checkpoint: {blockNum: 2, blockId: p.positions[1].blockId}};},
-        async query(view: any) {queries++; arm = queries === 2; return {view, rows: [{key: 'old', value: {owner: 'alice'}}]};},
+        async query(view: any) {
+            if (++queries === 2) await p.advance(4);
+            return {view, rows: [{key: 'old', value: {owner: 'alice'}}]};
+        },
     } as unknown as ProjectionAdapter;
-    const revalidate = p.source.revalidate.bind(p.source);
-    p.source.revalidate = async proof => {
-        // The final real gate first revalidates the source, then calls assertDefinition. Advance only inside
-        // assertDefinition's own final revalidation, after its checked ABI head has been selected.
-        if (arm && ++finalRevalidations === 2) await p.advance(4);
-        await revalidate(proof);
-    };
     const gate = createPortableStateReadGate({chainId: capture.chainId, configuration, adapter, source: p.source});
     const service = createPortableStateQueryService({chainId: capture.chainId, configuration, adapter, gate});
     expect((await service.query(selected.id, {filter: [], limit: 1})).rows).toEqual([{key: 'old', value: {owner: 'alice'}}]);
     await expect(service.query(selected.id, {filter: [], limit: 1})).rejects.toMatchObject({statusCode: 503,
-        code: 'projection.stale-view', retryable: true});
-    expect(finalRevalidations).toBe(2);
+        code: 'projection.incomplete', retryable: true});
     expect(queries).toBe(2);
     expect(p.positions).toHaveLength(4);
 });
@@ -251,7 +247,7 @@ test('actual public query gate permits a stable head and refuses a late ABI clea
 test('actual canonical source reserves before provider decode and a rejected failure marker cannot serve old state', async () => {
     const p = await prepared({2: {abiHex: abiA, publish: true}}), selected = pinned(p, 2, abiA);
     const checkpoint = {blockNum: 2, blockId: p.positions[1].blockId};
-    const fixture = projectionFailureFixture(selected, capture.chainId, checkpoint), progress: any[] = [];
+    const fixture = projectionFailureFixture(selected, capture.chainId, checkpoint, true), progress: any[] = [];
     fixture.faults.rejectDetailedMarker = true;
     let rejectDecode = true, decodes = 0;
     const admittedProvider = p.options.provider, originalSource = p.source;
@@ -274,14 +270,15 @@ test('actual canonical source reserves before provider decode and a rejected fai
         const failure = await api.query(); expect(failure.statusCode).toBe(503); expect(failure.json().retryable).toBe(true);
         expect(fixture.metadata().pending).toEqual({block: {blockNum: 3, blockId: p.positions[2].blockId,
             previousBlockId: checkpoint.blockId}, digest: null, reason: admissionReason});
-        expect(fixture.metadata().checkpoint).toEqual(checkpoint);
+        expect(fixture.metadata().checkpoint).toMatchObject(checkpoint);
+        expect(fixture.metadata().checkpoint.revision).toBe(fixture.metadata().revision);
         expect(progress.at(-1).status).toBe('incomplete'); expect(decodes).toBe(1);
         expect(fixture.calls.some(call => call.command === 'replace')).toBe(false);
         await controller.stop(); rejectDecode = false; fixture.faults.rejectDetailedMarker = false;
         const restarted = await PortableStateController.create({...options, adapter: fixture.createAdapter()});
         await restarted.drain();
         expect((await api.query()).statusCode).toBe(200);
-        expect(fixture.metadata().checkpoint).toEqual({blockNum: 3, blockId: p.positions[2].blockId});
+        expect(fixture.metadata().checkpoint).toMatchObject({blockNum: 3, blockId: p.positions[2].blockId});
         expect(fixture.metadata().pending).toBeNull(); await restarted.stop();
     } finally {p.source = originalSource; await controller.stop(); await api.app.close();}
 });

@@ -114,7 +114,7 @@ try {
     assert.deepEqual(live.commands.map(value=>value[0]),['get_status_request_v0']);assert.equal(publications.length,0);
     openRelease.release();await live.drain();delete memory.faults.beforeWrite;
     assert.equal(live.commands.at(-1)[0],'get_blocks_request_v0');assert.equal(live.commands.at(-1)[1].start_block_num,100);
-    assert.deepEqual(live.commands.at(-1)[1].have_positions,[]);
+    assert.deepEqual(live.commands.at(-1)[1].have_positions,[{block_num:99,block_id:blockId(99)}]);
     const admissionEntered=gate(),admissionRelease=gate();
     memory.faults.beforeWrite=async request=>{if(request.index===frontier.controlIndex&&JSON.parse(Buffer.from(request.document.payload,'base64')).pending?.length){admissionEntered.release();await admissionRelease.promise;}};
     live.connection.message(frame(100));await admissionEntered.promise;assert.equal(publications.length,0,'Rabbit publication preceded durable source admission');
@@ -185,8 +185,20 @@ try {
     await until(async()=>(await frontier.readControl()).value.source===null);
     assert.equal(currentMaster.shutdownStarted,false,'Normal physical revocation became a master infrastructure failure');
     currentSocket.message(Buffer.from(schemaJson));await resumed.drain();currentSocket.message(status());await resumed.drain();
-    assert.equal(resumed.commands.at(-1)[1].start_block_num,106,'Coordinator-ahead resume reused the older Rabbit checkpoint');
-    assert.deepEqual(resumed.commands.at(-1)[1].have_positions,[]);assert.equal(currentMaster.liveReader.worker_last_processed_block,103);
+    assert.equal(resumed.commands.at(-1)[1].start_block_num,103,'A reversible coordinator tip skipped the confirmed irreversible replay boundary');
+    assert.deepEqual(resumed.commands.at(-1)[1].have_positions,[{block_num:102,block_id:blockId(102)}]);
+    assert.equal(currentMaster.liveReader.worker_last_processed_block,103);
+    // The real source honors start103. Replay its replacement prefix before106;
+    // sending106 directly would conceal the skip this recovery boundary prevents.
+    for(const number of [103,104,105]){
+        currentSocket.message(frame(number,number===103?{this_block:{block_num:103,block_id:replacementId}}
+            :number===104?{prev_block:{block_num:103,block_id:replacementId}}:{}));
+        await resumed.drain();
+        const replayProvider=a.worker.protocol;
+        if(number===104)a.worker.protocol={...replayProvider,observeBlockAbi(){throw new Error('Unsupported contract observation');}};
+        try{await a.consume(publications.at(-1));}finally{a.worker.protocol=replayProvider;}
+        await until(async()=>(await frontier.readControl()).value.head?.blockNum===number);
+    }
     resumed.worker.holdPublisherConfirms=true;const beforeFresh=publications.length;
     currentSocket.message(frame(106,{last_irreversible:{block_num:106,block_id:blockId(106)}}));await until(()=>publications.length===beforeFresh+1);
     assert.equal(currentMaster.liveReader.worker_last_processed_block,103,'Opening a source fabricated a broker checkpoint');
@@ -245,7 +257,8 @@ try {
         assert.equal(rotatedUrls,1);assert.equal(rotationTimers.length,1);assert.equal(resumed.commands.length,rotationCommands);
         assert.equal(publications.length,rotationPublications);
         rotated.message(Buffer.from(schemaJson));await resumed.drain();rotated.message(status());await resumed.drain();
-        assert.equal(resumed.commands.at(-1)[1].start_block_num,108);
+        assert.equal(resumed.commands.at(-1)[1].start_block_num,107);
+        assert.deepEqual(resumed.commands.at(-1)[1].have_positions,[{block_num:106,block_id:blockId(106)}]);
         assert.notEqual(resumed.worker.coordinatorSource.generation,rotationGeneration);
         assert.equal((await frontier.readControl()).value.source.readerSessionId,resumed.worker.sourceContext.readerSessionId);
         assert.equal(rotatedUrls,1);assert.equal(rotationTimers.length,1);

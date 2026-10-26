@@ -1,7 +1,8 @@
 import {createHash} from 'node:crypto';
 import type {Client} from '@elastic/elasticsearch';
 import type {ProtocolProvider} from '@eosrio/hyperion-sdk/protocol';
-import {ProjectionContractError, type ProjectionBlock, type ProjectionCheckpoint, type ProjectionDefinition} from '@eosrio/hyperion-sdk/projection';
+import {ProjectionContractError, type ProjectionBlock, type ProjectionCheckpoint, type ProjectionDefinition,
+    type ProjectionRetainedCheckpointView} from '@eosrio/hyperion-sdk/projection';
 import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
 import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, type ProtocolAbiProofView} from '../protocol/abi-proof.js';
 import {ProtocolAbiObservationStore, protocolAbiObservationId} from '../protocol/abi-observation-store.js';
@@ -10,6 +11,9 @@ import {protocolImmutableJson} from '../protocol/immutable-bundle-store.js';
 import {protocolDeployment} from '../protocol/deployments.js';
 import {verifyNativeGenesisRecord} from '../protocol/native-genesis.js';
 import type {ProjectionFrame, ProjectionTableChange} from './runtime.js';
+import type {PortableStateFinality} from './config.js';
+import {PortableProjectionRecoverySource, type PortableProjectionRecoveryPlan, type PortableProjectionSourceState} from './source-recovery.js';
+export type {PortableProjectionRecoveryPlan, PortableProjectionSourceState} from './source-recovery.js';
 import {currentProofConsumerScope, trackProofConsumerOperation} from '../protocol/proof-consumer-scope.js';
 
 const json = protocolImmutableJson;
@@ -44,6 +48,7 @@ export class PortableProjectionSource {
     private readonly reader: ProtocolAbiProofReader;
     private readonly options: PortableProjectionSourceOptions;
     private readonly maximumAncestry: number;
+    private readonly recoverySource: PortableProjectionRecoverySource;
     constructor(options: PortableProjectionSourceOptions) {
         this.maximumAncestry = options.maxAncestryBlocks ?? 256;
         this.options = {...options, profile: JSON.parse(json(options.profile))};
@@ -52,6 +57,9 @@ export class PortableProjectionSource {
         this.observations = new ProtocolAbiObservationStore(options.client, options.chain, options.replicas ?? 0, undefined, {readOnly: true});
         this.reader = new ProtocolAbiProofReader({chainId: options.chainId, profile: this.options.profile,
             store: this.store, maxAncestryBlocks: this.maximumAncestry, requireAttemptScope: options.requireAttemptScope});
+        this.recoverySource = new PortableProjectionRecoverySource({reader: this.reader, bindings: this.bindings,
+            profile: this.options.profile, maximumAncestry: this.maximumAncestry, assertCoverage: () => this.control(),
+            assertDefinition: (proof, definition) => this.definitionState(proof, definition, false)});
     }
     private async retained<T>(operation: () => Promise<T>): Promise<T> {
         const scope = currentProofConsumerScope(this.options.requireAttemptScope);
@@ -74,6 +82,16 @@ export class PortableProjectionSource {
         this.reader.assertConsumerScope(proof);
         await this.control();
         await this.reader.revalidate(proof);
+    }
+    planRecovery(retained: ProjectionRetainedCheckpointView, finality: PortableStateFinality): Promise<PortableProjectionRecoveryPlan> {
+        return this.retained(() => this.recoverySource.planRecovery(retained, finality));
+    }
+    revalidateRecovery(plan: PortableProjectionRecoveryPlan): Promise<void> {return this.retained(() => this.recoverySource.revalidateRecovery(plan));}
+    openState(checkpoint: ProjectionCheckpoint, finality: PortableStateFinality): Promise<PortableProjectionSourceState> {
+        return this.retained(() => this.recoverySource.openState(checkpoint, finality));
+    }
+    assertState(state: PortableProjectionSourceState, definition: ProjectionDefinition): Promise<void> {
+        return this.retained(() => this.recoverySource.assertState(state, definition));
     }
     private async definitionState(proof: ProtocolAbiProofView, definition: ProjectionDefinition, allowBeforeDeployment: boolean) {
         const state = await this.reader.inspectFinalState(proof, definition.source.contract);
@@ -114,12 +132,17 @@ export class PortableProjectionSource {
     }
     /** Bounded certified ancestry; missing old input never becomes an empty frame. */
     async frame(blockNum: number, definition: ProjectionDefinition,
-                admitCanonicalTarget?: (block: ProjectionBlock) => Promise<void>): Promise<PortableProjectionFrame> {
+                admitCanonicalTarget?: (block: ProjectionBlock) => Promise<void>,
+                eligibleTarget?: ProjectionCheckpoint): Promise<PortableProjectionFrame> {
         if (!Number.isSafeInteger(blockNum) || blockNum < 1) unavailable('Invalid source height');
+        if (eligibleTarget && (!Number.isSafeInteger(eligibleTarget.blockNum) || eligibleTarget.blockNum < blockNum))
+            unavailable('Projection frame exceeds the eligible finality target');
+        // Caller-owned eligibility is a bound, never a substitute for exact certified membership.
+        eligibleTarget = eligibleTarget && {blockNum: eligibleTarget.blockNum, blockId: eligibleTarget.blockId};
         const control = await this.control();
         if (blockNum > control.head.blockNum) unavailable('Next projection source has not committed');
         if (control.head.blockNum - blockNum > this.maximumAncestry) {
-            const head = await this.open({blockNum: control.head.blockNum, blockId: control.head.blockId});
+            const head = await this.open(eligibleTarget ?? {blockNum: control.head.blockNum, blockId: control.head.blockId});
             const target = Object.freeze({blockNum: head.source.blockNum, blockId: head.source.blockId,
                 previousBlockId: head.source.previousBlockId ?? zero});
             await admitCanonicalTarget?.(target);

@@ -84,7 +84,7 @@ Definition changes, corrupt metadata and incomplete initialization retain distin
 errors and cannot enter this recovery path.
 
 From this directory, run `npm run typecheck`, `npm run build`, and `npm test` using
-the repository's pinned TypeScript 7.0.2, Bun 1.4.3 and committed npm dependency
+the repository's pinned TypeScript 7.0.2, Bun 1.4.4 and committed npm dependency
 tree. The root qualification runner additionally exercises the adapter against a
 real MongoDB service; unit fixtures do not replace that evidence.
 
@@ -165,3 +165,26 @@ The integration fixture under `scripts/qualification/projection-rollback*` tests
 the portable runtime/adapter seam against real MongoDB with native process
 termination; it does not establish live SHiP fork/reconnect, complete state-route
 migration, irreversible-only behavior or release qualification.
+
+## Opt-in retained-checkpoint inspection
+
+`createMongoDbRecoveryAdapter` returns the SDK's additive `ProjectionRecoveryAdapter`.
+It accepts the same options as `createMongoDbRollbackAdapter`, with the same v2
+writer/rollback behavior, and separately declares
+`recoveryCapabilities: {interfaceVersion: 1, supported: ['retained-checkpoints']}`.
+Existing v1/v2 factories and their exact capability manifests remain unchanged.
+
+`retainedCheckpoints({binding, revision})` returns `{recovery, checkpoints}` from
+one validated primary/majority metadata read after capturing the inert request.
+`recovery` is the existing v2 progress snapshot. `checkpoints` lists the actual
+applied branch from its current completed checkpoint down through its retained
+floor, inclusive, in descending height. Its length is `retainedBlocks + 1`, even
+for an empty retained window or migrated v1 state. No undo images are read or
+returned. The result is detached and recursively frozen.
+
+The current persisted revision is required; a changed revision reports retryable
+`projection.stale-revision`. Missing, unavailable and corrupt metadata retain
+their existing errors. Inspection stays available during pending/gap work and
+running or unavailable rollback, while ordinary serving remains fenced. It is
+applied-branch evidence only: the runtime must compare it with qualified canonical
+source evidence and coordinate recovery before exposing a serving view.

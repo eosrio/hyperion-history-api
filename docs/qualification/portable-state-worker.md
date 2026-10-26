@@ -100,6 +100,13 @@ directly or move an already generated plan; prepare a new directory instead.
 python tests/fixtures/portable-state-worker/services.py create out/p191-services
 ```
 
+The default disposable disk watermarks remain20/10/5GiB. A host with less free
+space can explicitly choose `--disk-watermark-profile 8-4-2gb` when creating a
+fresh fixture. These two profiles are allowlisted and persisted in its state;
+cleanup always uses preserved ownership state. Replicas and required write
+acknowledgments remain unchanged. The canonical recovery driver additionally
+verifies effective node settings and available disk headroom after Mongo startup.
+
 This helper invokes the existing `es955-replica-fixture.ps1` with
 `-ExposeRabbitManagement -IndexingPressureLimitMb 64`. It then creates one
 labelled, pinned Redis container/volume on

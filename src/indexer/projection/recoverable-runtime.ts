@@ -2,14 +2,15 @@ import {
     PROJECTION_CAPABILITIES, ProjectionContractError,
     validateProjectionRollbackActivation, validateProjectionRollbackRecovery,
     validateProjectionRollbackRequest, validateProjectionRollbackView, validateProjectionView,
-    type ProjectionAdapter, type ProjectionBinding, type ProjectionCheckpoint,
+    type ProjectionAdapter, type ProjectionBinding, type ProjectionBlock, type ProjectionCheckpoint,
     type ProjectionDefinition, type ProjectionQuery, type ProjectionReadView,
     type ProjectionRollbackAdapter, type ProjectionRollbackApplyResult,
     type ProjectionRollbackQueryResult, type ProjectionRollbackReadView,
     type ProjectionRollbackRecoveryView, type ProjectionRollbackRequest,
-    type ProjectionRollbackResult, type ProjectionValidationResult,
+    type ProjectionRollbackResult, type ProjectionRollbackState, type ProjectionValidationResult,
 } from '@eosrio/hyperion-sdk/projection';
 import {DeclarativeProjectionRuntime, type ProjectionFrame} from './runtime.js';
+import {currentProofConsumerScope} from '../protocol/proof-consumer-scope.js';
 
 export interface RecoverableProjectionRuntimeOptions {
     readonly adapter: ProjectionRollbackAdapter;
@@ -31,6 +32,11 @@ function sameBinding(a: ProjectionBinding, b: ProjectionBinding): boolean {
     return (['chainId', 'backendId', 'projectionId', 'mappingRevision', 'abiDeployment', 'abiSha256', 'generation'] as const)
         .every(field => a[field] === b[field]);
 }
+function sameOperation(state: ProjectionRollbackState, request: ProjectionRollbackRequest): boolean {
+    return state.operationId === request.operationId && state.sourceRevision === request.revision
+        && state.from.blockNum === request.from.blockNum && state.from.blockId === request.from.blockId
+        && state.ancestor.blockNum === request.ancestor.blockNum && state.ancestor.blockId === request.ancestor.blockId;
+}
 function bounded(value: number | undefined, maximum: number): void {
     if (value !== undefined && (!Number.isSafeInteger(value) || value < 1 || value > maximum))
         throw new ProjectionContractError('projection.invalid-contract', 'Projection pending-work budget is invalid');
@@ -43,6 +49,7 @@ class RevisionLane {
         private readonly binding: ProjectionBinding) {}
     invalidate(): void {this.active = false;}
     assertActive(): void {
+        currentProofConsumerScope()?.assertActive();
         if (!this.active)
             throw new ProjectionContractError('projection.stale-revision', 'Projection work belongs to an invalidated revision');
     }
@@ -94,18 +101,21 @@ class RevisionLane {
 /**
  * Runtime-owned recovery of one projection. The caller establishes canonical ancestry before
  * supplying an ancestor; this seam does not infer chain authority from a matching block number.
- * The existing production SHiP/controller path remains on v1 until its own recovery integration.
+ * Production canonical selection remains the source/controller's responsibility.
  */
 export class RecoverableProjectionRuntime {
     private lane!: {revision: RevisionLane; runtime: DeclarativeProjectionRuntime};
     private readonly pending = new Set<Promise<unknown>>();
     private rollbackWork?: Promise<ProjectionRollbackResult>;
+    private resumeWork?: Promise<ProjectionRollbackRecoveryView>;
+    private interruptedRollback?: {request: ProjectionRollbackRequest; previousRevision: string};
     private recovering = false;
     private constructor(private readonly options: RecoverableProjectionRuntimeOptions,
         readonly definition: ProjectionDefinition, readonly binding: ProjectionBinding,
         private readonly genesis: ProjectionCheckpoint) {}
 
     static async create(options: RecoverableProjectionRuntimeOptions): Promise<RecoverableProjectionRuntime> {
+        currentProofConsumerScope()?.assertActive();
         const activation = checked(validateProjectionRollbackActivation(options.definition, options.binding, options.adapter.capabilities));
         const genesis = checked(validateProjectionView({binding: activation.binding, checkpoint: options.genesis})).checkpoint;
         if (genesis.blockNum !== 0 || genesis.blockId !== zero)
@@ -115,8 +125,10 @@ export class RecoverableProjectionRuntime {
         const selected = new RecoverableProjectionRuntime({...options}, activation.definition, activation.binding, genesis);
         try {checked(validateProjectionRollbackView(await options.adapter.initialize(activation.definition, activation.binding, genesis)));}
         catch (error) {
+            currentProofConsumerScope()?.assertActive();
             if (!(error instanceof Error) || !('code' in error) || error.code !== 'projection.incomplete') throw error;
         }
+        currentProofConsumerScope()?.assertActive();
         const recovery = await selected.recovery();
         await selected.attach(recovery.revision);
         selected.recovering = recovery.rollback !== null && recovery.rollback.status !== 'complete';
@@ -131,14 +143,19 @@ export class RecoverableProjectionRuntime {
         this.lane = {revision: lane, runtime};
     }
     private available(): void {
+        currentProofConsumerScope()?.assertActive();
         if (this.recovering)
             throw new ProjectionContractError('projection.incomplete', 'Projection canonical recovery is pending');
     }
-    process(frame: ProjectionFrame): Promise<ProjectionRollbackApplyResult> {
+    process(frame: ProjectionFrame, admitSource?: (block: ProjectionBlock) => Promise<void>): Promise<ProjectionRollbackApplyResult> {
         try {this.available();} catch (error) {return Promise.reject(error);}
         const lane = this.lane;
         // The callback runs before mapping inside the old queue. It never adopts a newer revision.
-        const work = lane.runtime.process(frame, async () => lane.revision.assertActive())
+        const work = lane.runtime.process(frame, async block => {
+            lane.revision.assertActive();
+            await admitSource?.(block);
+            lane.revision.assertActive();
+        })
             .then(result => ({status: result.status, view: lane.revision.fenced(result.view)}));
         this.pending.add(work);
         work.then(() => this.pending.delete(work), () => this.pending.delete(work));
@@ -158,23 +175,52 @@ export class RecoverableProjectionRuntime {
         return {...result, view: lane.revision.fenced(result.view)};
     }
     async recovery(): Promise<ProjectionRollbackRecoveryView> {
+        currentProofConsumerScope()?.assertActive();
         const result = checked(validateProjectionRollbackRecovery(await this.options.adapter.recovery(this.binding)));
+        currentProofConsumerScope()?.assertActive();
         if (!sameBinding(result.binding, this.binding) || result.initialized !== true)
             throw new ProjectionContractError('projection.incomplete', 'Projection recovery belongs to another initialized instance');
         return result;
+    }
+
+    /** A rotated revision requires the exact interrupted operation receipt; refused work keeps its known lane. */
+    resumeRecovery(): Promise<ProjectionRollbackRecoveryView> {
+        if (this.resumeWork) return this.resumeWork;
+        const work = (async () => {
+            const recovery = await this.recovery(), attempt = this.interruptedRollback;
+            if (!this.recovering || !attempt || this.rollbackWork) return recovery;
+            const matching = recovery.rollback !== null && sameOperation(recovery.rollback, attempt.request);
+            const completed = matching && recovery.rollback!.status === 'complete';
+            // No admitted recovery rotated this known lane. Discard the refused request so the
+            // controller obtains a fresh canonical plan, including after an in-flight commit.
+            const unchanged = recovery.revision === attempt.previousRevision
+                && (recovery.rollback === null || recovery.rollback.status === 'complete');
+            if (!matching && !unchanged)
+                throw new ProjectionContractError('projection.stale-revision', 'Another recovery operation owns this projection revision');
+            if (completed || unchanged) {
+                await this.attach(completed ? recovery.revision : attempt.previousRevision);
+                this.recovering = false;
+                this.interruptedRollback = undefined;
+            }
+            return recovery;
+        })();
+        this.resumeWork = work.finally(() => {this.resumeWork = undefined;});
+        return this.resumeWork;
     }
 
     /** Preserve this complete original request on retry, including after a runtime restart. */
     rollback(input: ProjectionRollbackRequest): Promise<ProjectionRollbackResult> {
         let captured: ProjectionRollbackRequest;
         try {
+            currentProofConsumerScope()?.assertActive();
             captured = checked(validateProjectionRollbackRequest(input));
             if (!sameBinding(captured.binding, this.binding))
                 throw new ProjectionContractError('projection.invalid-contract', 'Rollback request belongs to another projection instance');
         } catch (error) {return Promise.reject(error);}
-        if (this.rollbackWork)
+        if (this.rollbackWork || this.resumeWork)
             return Promise.reject(new ProjectionContractError('projection.apply-unavailable', 'A projection recovery call is already running'));
         const previousRevision = this.lane.revision.revision;
+        this.interruptedRollback = {request: captured, previousRevision};
         this.recovering = true;
         this.lane.revision.invalidate();
         const inflight = [...this.pending];
@@ -182,9 +228,11 @@ export class RecoverableProjectionRuntime {
             // In-flight durable work may finish; queued old frames fail before mapping. A stale
             // planned source must be refused, never rewritten with a newer revision/checkpoint.
             await Promise.allSettled(inflight);
+            currentProofConsumerScope()?.assertActive();
             let result: ProjectionRollbackResult;
-            try {result = await this.options.adapter.rollback(captured);}
+            try {result = await this.options.adapter.rollback(captured); currentProofConsumerScope()?.assertActive();}
             catch (error) {
+                currentProofConsumerScope()?.assertActive();
                 // A refused old request must not disable a still-current lane. Reattach only the
                 // same durable revision; pending/rotated recovery still stays fenced. Initialization
                 // and later open/query enforce readiness independently from recovery inspection.
@@ -194,18 +242,20 @@ export class RecoverableProjectionRuntime {
                         && (unchanged.rollback === null || unchanged.rollback.status === 'complete')) {
                         await this.attach(previousRevision);
                         this.recovering = false;
+                        this.interruptedRollback = undefined;
                     }
                 } catch {}
                 throw error;
             }
             const recovery = checked(validateProjectionRollbackRecovery(result.recovery));
-            if (!sameBinding(recovery.binding, this.binding) || recovery.rollback?.operationId !== captured.operationId
+            if (!sameBinding(recovery.binding, this.binding) || !recovery.rollback || !sameOperation(recovery.rollback, captured)
                 || (result.status === 'in-progress' ? recovery.rollback.status !== 'running'
                     : !['rolled-back', 'duplicate'].includes(result.status) || recovery.rollback.status !== 'complete'))
                 throw new ProjectionContractError('projection.incomplete', 'Adapter did not return the requested durable rollback operation');
             if (result.status !== 'in-progress') {
                 await this.attach(recovery.revision);
                 this.recovering = false;
+                this.interruptedRollback = undefined;
             }
             return {...result, recovery};
         })();
