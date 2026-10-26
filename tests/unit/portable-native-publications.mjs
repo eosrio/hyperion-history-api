@@ -53,7 +53,16 @@ await assert.rejects(observePortableNativePublications({chain, expected, budget:
         assert.equal(inherited, bounded); let last;
         while (performance.now() < inherited.deadline) {try {await check(); return inherited;} catch (error) {last = error;} await delay(2);}
         throw last;
-    }}), /exact expected confirmed publications/);
+    }}), error => {
+        if (!(error instanceof assert.AssertionError)) return false;
+        if (error.message === 'original native history phase deadline exceeded') {
+            assert.ok(Math.floor(bounded.deadline - performance.now()) <= 0,
+                'deadline rejection requires the original phase to have no whole milliseconds left');
+            return true;
+        }
+        return error.message.split('\n')[0] === 'stored output lacks its exact expected confirmed publications'
+            && error.actual === 0 && error.expected === 1 && error.operator === 'strictEqual';
+    });
 assert.ok(boundedChecks >= 2);
 // A handover reader must keep filtering old physical-generation receipts on every fresh read.
 const old = confirmation(), current = confirmation(43);
