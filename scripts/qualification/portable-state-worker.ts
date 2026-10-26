@@ -27,7 +27,7 @@ import {auditPortableWorkerSource, boundedPortableFile, ordinaryPortablePath, po
 import {assertPortableWorkerOracle, portableWorkerAbiAvailability} from './portable-state-worker-oracle.ts';
 import {auditPortableNativeOracle, createPortableNativeQualification, nativePortableHolds, portableLegacyProfile,
     portableNativeProfile, type PortableNativePhaseBudget} from './portable-state-worker-native.ts';
-import {auditPortablePhysicalMongo} from './portable-state-worker-mongo.ts';
+import {createPortableMongoSamples, samplePortableMongoIsolation} from './portable-state-mongo-sampling.ts';
 import {auditPortableWorkerProfiles, portableWorkerProfileEnvironment, portableWorkerProfileLimits} from './portable-state-worker-profiles.ts';
 import {createWireRecoveryControl, readWireRecoveryEvidence, auditWireAttemptRecovery, wireRecoveryShutdownRows} from './portable-state-worker-recovery.mjs';
 import {createWireMasterRestartControl, inspectWireMasterCheckpoint, crashWireMaster, describeWireMasterCrash,
@@ -451,6 +451,8 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         prefixes: [], cleanup: [], errors: [], limits: {releaseQualified: false, forkRecoveryQualified: false, rustQualified: false,
             processCrashRecoveryQualified: false, writeFailureIsolationQualified: false,
             note: 'Actual Node worker/Mongo/HTTP tracer; no AtomicAssets, full release, fork or Bun qualification.'}};
+    const mongoSamples = createPortableMongoSamples(join(output, 'mongo-physical-samples'));
+    report.mongoPhysicalSamples = mongoSamples.evidence;
     const historyDiagnostics = options.native ? createPortableHistoryDiagnostics(join(output, 'history-diagnostics'), report.errors) : undefined;
     const chain = `hyp-p191-${state.run}`, database = `h45_p191_${state.run}`;
     const invalidDefinition = portableWorkerFaultDefinition(plan), faultThrough = plan.barriers[0].through;
@@ -614,9 +616,11 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             description: 'Fixture-only missing required source field; healthy definitions and independent expected rows are unchanged.', observations: []};
         master = await spawnOwned('build/indexer/launcher.js', configFile); report.masterPid = master.pid;
         api = await spawnOwned('build/api/server.js', configFile); report.apiPid = api.pid;
-        const query = async (projection: string, value: ProjectionQuery = {filter: [], limit: 256, count: {upTo: 1000}}) => {
+        const query = async (projection: string, value: ProjectionQuery = {filter: [], limit: 256, count: {upTo: 1000}}, budget?: PortableNativePhaseBudget) => {
+            const available = Math.min(5000, remaining(), budget ? Math.floor(budget.deadline - performance.now()) : Infinity);
+            assert.ok(available > 0, 'portable query inherited isolation deadline exceeded');
             const response = await fetch(`http://127.0.0.1:${apiPort}/v2/state/query`, {method: 'POST', headers: {'content-type': 'application/json'},
-                body: JSON.stringify({projection, query: value}), signal: AbortSignal.timeout(Math.min(5000, remaining()))});
+                body: JSON.stringify({projection, query: value}), signal: AbortSignal.timeout(available)});
             return {status: response.status, headers: response.headers, body: await boundedResponse(response)};
         };
         const responseReceipt = (response: Awaited<ReturnType<typeof query>>) =>
@@ -751,8 +755,8 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                     replay!.assertThrough(through); report.lastRecovery = recoveries;
                 });
             }
-            let isolation: any;
-            if (through >= faultThrough) await wait(`invalid mapping remains durably isolated at${through}`, async () => {
+            let isolation: any, isolationBudget: PortableNativePhaseBudget | undefined;
+            if (through >= faultThrough) isolationBudget = await wait(`invalid mapping remains durably isolated at${through}`, async () => {
                 const recovery = await invalidAdapter.recovery(invalidBinding);
                 assertPortablePending(recovery, invalidBinding,
                     {blockNum: faultThrough - 1, blockId: source.records[faultThrough - 2].blockId},
@@ -799,14 +803,25 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             let physicalMongo;
             if (plan.barriers.some(value => value.through === through)) {
                 replay.assertThrough(through); mongoFixture.ownedContainer('replica');
-                physicalMongo = await auditPortablePhysicalMongo({client: mongo, database, backendId: config.features.portable_state.backend.id,
+                assert.ok(isolationBudget, 'physical Mongo barrier requires the original isolation phase budget');
+                const sampled = await samplePortableMongoIsolation({input: {client: mongo, database, backendId: config.features.portable_state.backend.id,
                     chainId: source.chainId, replicaSet: mongoFixture.replicaSet, version: MONGODB_VERSION, through, source: source.records,
                     expectations: [...plan.definitions.map((definition, index) => ({definition, binding: bindings[index],
                         checkpoint: {blockNum: through, blockId: block.blockId}, rows: barrier.rows[definition.id]})),
                     {definition: invalidDefinition, binding: invalidBinding, rows: [],
                         checkpoint: {blockNum: faultThrough - 1, blockId: source.records[faultThrough - 2].blockId},
                         failedBlock: {blockNum: faultThrough, blockId: source.records[faultThrough - 1].blockId,
-                            previousBlockId: source.records[faultThrough - 2].blockId}}]});
+                            previousBlockId: source.records[faultThrough - 2].blockId}}]}, budget: isolationBudget,
+                    recovery: operationTimeoutMS => backendModule.createMongoDbProjectionAdapter({client: mongo, databaseName: database,
+                        backendId: config.features.portable_state.backend.id, operationTimeoutMS}).recovery(invalidBinding),
+                    query: async budget => responseReceipt(await query(invalidDefinition.id, undefined, budget)),
+                    capture: sample => mongoSamples.record(sample),
+                    guard: () => {
+                        for (const child of [master, api]) if (child) assert.ok(child.exitCode === null && child.signalCode === null, 'physical Mongo sampling: actual child exited');
+                        assert.deepEqual(report.errors, []); replay!.assertThrough(through); mongoFixture.ownedContainer('replica');
+                    }});
+                physicalMongo = sampled.physical; isolation = sampled.isolation;
+                report.contractFailure.observations.push({...isolation, phase: 'coherent-physical'});
                 replay.assertThrough(through); mongoFixture.ownedContainer('replica');
             }
             if (native) {await refreshActions(through, 'scheduled-prefix'); const observed = await native.hold(through);
@@ -1066,6 +1081,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         if (recoveryControl) assert.equal(report.attemptRecovery.status, 'observed');
         if (masterControl) assert.equal(report.masterRestart.status, 'observed');
         if (readerControl) assert.equal(report.readerRecovery.status, 'observed');
+        assert.equal(mongoSamples.evidence.failedCaptures, 0, 'physical Mongo sample capture incomplete');
         if (historyDiagnostics) assert.deepEqual(report.errors, []);
         report.limits.writeFailureIsolationQualified = true;
         report.status = 'passed';
@@ -1143,6 +1159,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             } catch (error) {report.status = 'failed'; report.cleanup.push({name, ok: false, error: describeError(error)});}
         }
         if (ledger) report.bulkCapture = {...ledger.limits, recordedRequests: ledger.receipts.length};
+        if (mongoSamples.evidence.failedCaptures > 0) report.status = 'failed';
         if (historyDiagnostics && (historyDiagnostics.evidence.failedCaptures > 0 || report.errors.length > 0)) report.status = 'failed';
         if (brokerControl) {
             try {report.brokerRecovery.terminalEvidence = readWireBrokerRecoveryEvidence(brokerControl.control);}
