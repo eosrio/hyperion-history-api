@@ -697,6 +697,48 @@ foreign process records do not count as the held original's terminal state.
 The native controlled-record regression exercises both pre-inspection and post-snapshot
 guards without Docker or service actions. It establishes no source, end or restart authority.
 
+## Coherent logical/API/physical Mongo sampling (#341)
+
+At physical barriers, the driver carries the deadline returned by the original invalid-mapping
+isolation phase into the complete logical/API/physical sample. It never starts a fresh physical
+window or resets the phase on a retry. A qualification-only recovery adapter caps its read timeout
+to the remaining phase budget; API requests and every supported native read use that same remainder.
+The original worker liveness, diagnostic-error, source hold and exact replica ownership guards still
+run. A read stays awaited through settlement; completion or capture/fsync after expiration cannot
+pass the phase.
+
+Each sample obtains a fresh detached recovery view and an actual unavailable API response before
+the strict physical inspection. Rows, keys/values, receipts, bindings/generations, source/digest,
+checkpoint, storage version, namespace/read consistency and server identity remain strict. An exact
+same-source generic admission reason, or the corresponding reason-only change between snapshots,
+is classified only after the complete physical checks. Every other mismatch is fatal. A later
+required-field-error sample must pass using its own logical/API observations. Earlier views cannot
+satisfy it, and permanent admission-pending still fails within the inherited deadline.
+
+`mongo-physical-samples/NNN-physical-mongo.json` retains every attempted physical sample, including
+rejected samples, completed bounded server/namespace/metadata/snapshot/row observations, timeout
+bounds and original errors/causes. Early fatal failures retain the partial observations and mark
+the inspection incomplete. `report.mongoPhysicalSamples` records attempt/rejection/coherent-sample
+counts, file bytes/hashes and explicit capture failures. Records are exclusive and synced; none is
+silently dropped or overwritten. Diagnostic capture allows 64 records, 8 MiB per record and 64 MiB
+in total; exhaustion/serialization/write failure is fatal. The original physical read bounds
+(9 projections, 256 rows, 4,096 receipts, 1 MiB per document, 4 MiB total, at most 5 seconds per
+operation) remain unchanged. A coherent-sample count is not a phase or run acceptance verdict.
+
+```sh
+node --experimental-strip-types tests/unit/portable-state-mongo-sampling.mjs
+node --experimental-strip-types tests/unit/portable-state-mongo-admission-red.mjs characterize
+```
+
+The second command preserves the original red-capable 1243/1244 controller/runtime/adapter/auditor
+loop; use `red` instead of `characterize` for its intentional nonzero assertion. The first also
+uses the real Fastify query handler and tests transient/snapshot settlement, permanent pending,
+expired/held/timed-out reads, each independent invariant, and capture limits/failures on native
+Node 24/26. Mongo transport is controlled; the tests return no source proofs or successful
+revalidation. They establish no real-server durability or historical transaction ordering.
+The original failed Linux run remains failed. Focused real Mongo checks and a fresh full
+`1..1480` worker replay, strict shutdown and physical cleanup remain separate qualification gates.
+
 ### Native oracle write completion before refresh
 
 The #334 controlled original-hold loop distinguishes refresh ordering: the same exact block-397
