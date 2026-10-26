@@ -35,9 +35,10 @@ export function recoveryExpectedRows(plan: PortableWorkerPlan, branch: RecoveryB
 }
 
 export function assertRecoveryHttp(result: any, headers: Headers, binding: ProjectionBinding,
-    checkpoint: ProjectionCheckpoint, rows: readonly Row[], finality: 'reversible' | 'irreversible') {
+    checkpoint: ProjectionCheckpoint, rows: readonly Row[], finality: 'reversible' | 'irreversible', physicalRevision?: string) {
     assert.deepEqual(result.view.binding, {...binding}); assert.deepEqual(result.view.checkpoint, checkpoint);
     assert.match(result.view.revision, /^[a-f0-9]{64}$/);
+    if (physicalRevision !== undefined) assert.equal(result.view.revision, physicalRevision, 'Stable API revision differs from its paired physical view');
     assert.deepEqual(result.rows, rows); assert.deepEqual(result.count, {value: rows.length, exact: true});
     assert.equal(result.nextAfterKey, undefined);
     assert.equal(headers.get('hyperion-state-block-num'), String(checkpoint.blockNum));

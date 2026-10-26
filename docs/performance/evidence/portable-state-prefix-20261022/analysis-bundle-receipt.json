@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "publicOnly": true,
+  "manifestSha256": "53d92ad56151ef40c16c758c722c41b41ed87350ade19c4782fd29f71f5c3014",
+  "encodedBundleSha256": "c2c3f7bc2b3db832f1dc1f138291f58862ae27344c75fcbdfe3645eb4065e033",
+  "files": 25,
+  "uncompressedFrozenBytes": 53065112,
+  "archive": "analysis-evidence.tar.gz",
+  "archiveBytes": 5526951,
+  "archiveSha256": "b856600c5bf5b3d4ffb587192998b28ac7114203b643b87c6461edd7833138d3",
+  "archiveMembers": 26,
+  "smallFilesAreExactByteAliases": true,
+  "completeResultsRetained": true,
+  "runtimeOrPrivateInputsIncluded": false
+}

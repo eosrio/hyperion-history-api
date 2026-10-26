@@ -56,6 +56,14 @@ physical Mongo observations, service ownership and cleanup reports. Revalidate t
 original source after each run. Clean services with the original ownership-checked
 helper. The driver limits itself to15minutes plus90seconds for cleanup.
 
+For the separate [prefix CPU experiment](../../../docs/performance/portable-state-prefix-profiling.md),
+append `--profile-prefix 288` to stop after stable common288 and capture the existing
+bounded native CPU profiles. `--cpu-profile off` adds a matching observer-only
+prefix control. These runs return `profiled-prefix`, never full recovery `passed`;
+the ordinary complete scenario and timeout are unchanged.
+The prefix source re-audit and profile completion use that same original run deadline;
+neither starts a new budget or earns a prefix verdict after it expires.
+
 The SHiP server obeys requested ranges, anchors, credits and reconnect sessions; it
 never supplies a skipped replacement prefix to conceal a faulty reader resume.
 The reversible run records a real successful majority+journal rollback-intent

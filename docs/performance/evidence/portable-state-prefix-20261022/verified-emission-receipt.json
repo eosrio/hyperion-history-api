@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "head": "03dd3e9758473bc563bf8d7cbbbc0557232f17dc",
+  "preparedPinSha256": "007c0e22cc0ada543972ecce0619bf19a966135afa0611937323a430bd95d3af",
+  "verifiedAfterBothPrefixRuns": true,
+  "archivedAt": 1792629970.8432167,
+  "matchesPreRunPins": true,
+  "memberCount": 602,
+  "emissionBytes": 4171166,
+  "archive": "verified-emission-03dd3e9758473bc563bf8d7cbbbc0557232f17dc.tar.gz",
+  "archiveBytes": 890259,
+  "archiveSha256": "25aad00b3766db8918259a6907b99ab26d765b96e4c4d6fec2e958605e29a093",
+  "runtimeBinariesIncluded": false,
+  "scope": "Exact 602 pre-run pinned emission/collector/lockfile/package metadata bytes. Not the complete dependency tree or runtime."
+}

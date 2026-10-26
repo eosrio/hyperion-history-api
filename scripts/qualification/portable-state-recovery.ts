@@ -26,6 +26,133 @@ const repo = fileURLToPath(new URL('../../', import.meta.url));
 const pause = (ms: number) => new Promise(done => setTimeout(done, ms));
 const point = (value: {blockNum: number; blockId: string}) => ({blockNum: value.blockNum, blockId: value.blockId});
 const describe = describePortableWorkerError;
+type RecoverySourceAudit = {inputHashes: Readonly<Record<string, string>>};
+export interface RecoveryRunOptions {readonly profilePrefix?: 288; readonly cpuProfile?: boolean;}
+export function validateRecoveryRunOptions(options: RecoveryRunOptions = {}) {
+    assert.ok(options && typeof options === 'object' && !Array.isArray(options));
+    assert.ok(Object.keys(options).every(key => key === 'profilePrefix' || key === 'cpuProfile'), 'Unknown recovery run option');
+    assert.ok(options.profilePrefix === undefined || options.profilePrefix === 288, 'Only the audited profiling prefix288 is supported');
+    assert.ok(options.cpuProfile === undefined || typeof options.cpuProfile === 'boolean' && options.profilePrefix === 288,
+        'CPU capture can only be selected explicitly with profiling prefix288');
+    return options.profilePrefix;
+}
+
+/** Retain signed protocol deltas; only chronological, bounded intervals can supply elapsed weights. */
+export function recoveryCpuProfileEvidence(profile: any) {
+    assert.ok(profile && typeof profile === 'object' && !Array.isArray(profile));
+    assert.ok(Array.isArray(profile.nodes) && profile.nodes.length > 0 && profile.nodes.length <= 100000);
+    assert.ok(Array.isArray(profile.samples) && profile.samples.length > 0 && profile.samples.length <= 200000);
+    assert.ok(Number.isSafeInteger(profile.startTime) && profile.startTime >= 0 &&
+        Number.isSafeInteger(profile.endTime) && profile.endTime > profile.startTime);
+    assert.ok(Array.isArray(profile.timeDeltas) && profile.timeDeltas.length === profile.samples.length);
+    const ids = new Set<number>();
+    for (const node of profile.nodes) {
+        assert.ok(node && Number.isSafeInteger(node.id) && node.id > 0 && !ids.has(node.id)); ids.add(node.id);
+    }
+    assert.ok(profile.samples.every((id: unknown) => Number.isSafeInteger(id) && ids.has(id as number)));
+    const elapsedMicros = profile.endTime - profile.startTime;
+    let total = 0, minimumOffset = 0, maximumOffset = 0, minimumDelta = Infinity;
+    let negativeCount = 0, negativeTotal = 0, outsideExtent = 0;
+    const firstNegativeDeltas: {index: number; deltaMicros: number}[] = [];
+    for (let index = 0; index < profile.timeDeltas.length; index++) {
+        const delta = profile.timeDeltas[index];
+        assert.ok(Number.isSafeInteger(delta), 'Profile deltas must be integer protocol microseconds');
+        total += delta; assert.ok(Number.isSafeInteger(total), 'Reconstructed profile timestamp exceeds exact arithmetic');
+        minimumDelta = Math.min(minimumDelta, delta);
+        minimumOffset = Math.min(minimumOffset, total); maximumOffset = Math.max(maximumOffset, total);
+        if (total < 0 || total > elapsedMicros) outsideExtent++;
+        if (delta < 0) {
+            negativeCount++; negativeTotal += delta; assert.ok(Number.isSafeInteger(negativeTotal));
+            if (firstNegativeDeltas.length < 16) firstNegativeDeltas.push({index, deltaMicros: delta});
+        }
+    }
+    const unavailableReasons: string[] = [];
+    if (negativeCount) unavailableReasons.push('out-of-order-samples');
+    if (outsideExtent) unavailableReasons.push('sample-outside-recording-extent');
+    if (total <= 0) unavailableReasons.push('no-positive-sampled-interval');
+    const intervalWeightsAvailable = unavailableReasons.length === 0;
+    const lastSampleToEnd = elapsedMicros - total; assert.ok(Number.isSafeInteger(lastSampleToEnd));
+    return {samples: profile.samples.length, startTime: profile.startTime, endTime: profile.endTime,
+        timing: {elapsedMicros, rawSignedDeltaSumMicros: total, rawLastSampleToEndMicros: lastSampleToEnd,
+            reconstructedOffsetRangeMicros: {min: minimumOffset, max: maximumOffset}, outsideExtentSampleCount: outsideExtent,
+            negativeDeltaCount: negativeCount, negativeDeltaTotalMicros: negativeTotal, minimumDeltaMicros: minimumDelta,
+            firstNegativeDeltas, intervalWeightsAvailable, unavailableReasons,
+            sampledIntervalMicros: intervalWeightsAvailable ? total : null,
+            unweightedTailMicros: intervalWeightsAvailable ? lastSampleToEnd : null, normalized: false as const}};
+}
+
+/** Profile completion is checked against observer receipts and actual bounded files after clean shutdown. */
+export async function assertRecoveryCpuProfiles(rows: any[], directory: string, stableAt: number, enabled: boolean, parent: ChildProcess) {
+    assert.ok(Number.isSafeInteger(parent?.pid) && parent.pid! > 0, 'An independently owned parent PID is required');
+    const shutdown = assertRecoveryShutdown(rows, parent, []);
+    assert.equal(rows.filter(row => row.kind === 'shutdown' && row.pid === parent.pid).length, 1);
+    const uniquePids = (values: any[]) => {assert.ok(values.every(pid => Number.isSafeInteger(pid) && pid > 0));
+        assert.equal(new Set(values).size, values.length, 'Duplicate PID in process inventory'); return [...values].sort((a, b) => a - b);};
+    const forks = rows.filter(row => row.kind === 'worker_fork'), exits = rows.filter(row => row.kind === 'worker_exit');
+    assert.ok([...forks, ...exits].every(row => row.pid === parent.pid), 'Child lifecycle receipt belongs to a foreign parent');
+    const children = uniquePids(forks.map(row => row.childPid)); assert.ok(!children.includes(parent.pid));
+    assert.deepEqual(uniquePids(shutdown.childExits.map((exit: any) => exit.pid)), children, 'Fork and shutdown child inventories differ');
+    assert.deepEqual(uniquePids(exits.map(row => row.childPid)), children, 'Fork and actual child exit inventories differ');
+    assert.ok(exits.every(row => row.code === 0 && row.signal === null), 'Actual child exit receipt was not clean');
+    const online = rows.filter(row => row.kind === 'worker_online');
+    uniquePids(online.map(row => row.childPid));
+    assert.ok(online.every(row => row.pid === parent.pid && children.includes(row.childPid)), 'Online receipt contains a foreign child');
+    const expected = uniquePids([parent.pid, ...children]);
+    const starts = rows.filter(row => row.kind === 'start'); assert.ok(starts.length > 0);
+    assert.deepEqual(uniquePids(starts.map(row => row.pid)), expected, 'An owned process observer is missing or foreign');
+    assert.ok(starts.every(row => row.pid === parent.pid || row.parentPid === parent.pid), 'Child observer has a foreign parent');
+    assert.ok(rows.every(row => expected.includes(row.pid)), 'Observer records contain a foreign process');
+    assert.ok(!rows.some(row => row.kind === 'observer_error'));
+    const files = await readdir(directory, {withFileTypes: true}); assert.ok(files.length <= 4096);
+    assert.ok(files.every(file => file.isFile() && /^worker-[1-9][0-9]*\.(jsonl|cpuprofile)$/.test(file.name)), 'Unexpected observer artifact');
+    for (const extension of ['jsonl', 'cpuprofile']) {
+        const wanted = extension === 'jsonl' || enabled ? expected.map(pid => `worker-${pid}.${extension}`).sort() : [];
+        assert.deepEqual(files.filter(file => file.name.endsWith('.' + extension)).map(file => file.name).sort(), wanted,
+            'Actual observer artifact inventory differs: ' + extension);
+    }
+    const profiles: any[] = [];
+    for (const start of starts) {
+        const selected = rows.filter(row => row.pid === start.pid), file = join(directory, `worker-${start.pid}.cpuprofile`);
+        const began = selected.filter(row => row.kind === 'profile_started'), saved = selected.filter(row => row.kind === 'profile_saved');
+        const flushed = selected.filter(row => row.kind === 'flush'), exited = selected.filter(row => row.kind === 'exit');
+        assert.equal(flushed.length, 1); const flush = flushed[0];
+        assert.equal(flush.reason, 'qualifier_shutdown'); assert.ok(flush.at >= stableAt);
+        assert.equal(flush.success, true); assert.equal(flush.error, null); assert.equal(flush.droppedRecords, 0);
+        assert.equal(flush.profileState, enabled ? 'saved' : 'disabled'); assert.equal(flush.profilePath, enabled ? file : null);
+        assert.equal(exited.length, 1); assert.equal(exited[0].code, 0); assert.equal(exited[0].profileState, enabled ? 'saved' : 'disabled');
+        assert.equal(exited[0].flushed, true); assert.equal(exited[0].droppedRecords, 0);
+        if (!enabled) {assert.equal(began.length, 0); assert.equal(saved.length, 0); continue;}
+        assert.equal(began.length, 1); assert.equal(began[0].samplingIntervalMicros, 10000); assert.equal(began[0].maximumDurationMs, 900000);
+        assert.ok(began[0].at <= stableAt); assert.equal(saved.length, 1); assert.equal(saved[0].profilePath, file);
+        const bytes = await boundedPortableFile(file, 32 * 1024 * 1024); assert.equal(bytes.length, saved[0].bytes);
+        const evidence = recoveryCpuProfileEvidence(JSON.parse(bytes.toString()));
+        profiles.push({pid: start.pid, role: start.role, start, file, bytes: bytes.length, sha256: portableSourceHash(bytes),
+            ...evidence, flush});
+    }
+    return profiles;
+}
+
+async function recoveryProfilePins() {
+    const files: {path: string; bytes: number; sha256: string}[] = []; let totalBytes = 0;
+    const record = async (path: string) => {assert.ok(files.length < 4096);
+        const bytes = await boundedPortableFile(join(repo, path), 16 * 1024 * 1024); totalBytes += bytes.length;
+        assert.ok(totalBytes <= 128 * 1024 * 1024); files.push({path, bytes: bytes.length, sha256: portableSourceHash(bytes)});};
+    const walk = async (path: string) => {await ordinaryPortablePath(join(repo, path), true);
+        for (const entry of (await readdir(join(repo, path), {withFileTypes: true})).sort((a, b) => a.name.localeCompare(b.name))) {
+            assert.ok(entry.isDirectory() || entry.isFile(), 'Profile emission must contain ordinary files/directories');
+            if (entry.isDirectory()) await walk(path + '/' + entry.name); else await record(path + '/' + entry.name);
+        }};
+    for (const path of ['build', 'packages/backend-mongodb/dist']) await walk(path);
+    for (const path of ['package-lock.json', 'packages/backend-mongodb/package-lock.json', 'tsconfig.json',
+        'packages/backend-mongodb/tsconfig.json', '.bun-version', 'scripts/qualification/portable-state-recovery.ts',
+        'scripts/qualification/es955-worker-observer.mjs', 'scripts/qualification/portable-state-recovery-observer.mjs']) await record(path);
+    for (const path of ['build/indexer/launcher.js', 'build/indexer/workers/projection.js', 'build/api/server.js', 'packages/backend-mongodb/dist/index.js'])
+        assert.ok(files.some(file => file.path === path), 'Required profile emission missing: ' + path);
+    const dirty = execFileSync('git', ['diff', '--binary', 'HEAD', '--'], {cwd: repo, timeout: 5000, maxBuffer: 16 * 1024 * 1024});
+    assert.equal(dirty.length, 0, 'Profile runs require committed tracked source/configuration');
+    return {files, totalBytes, inventorySha256: portableSourceHash(Buffer.from(JSON.stringify(files))),
+        trackedDiffBytes: dirty.length, trackedDiffSha256: portableSourceHash(dirty)};
+}
 
 /** The original run budget covers setup, awaited phase results and the final source audit. */
 export class RecoveryRunDeadline {
@@ -51,10 +178,15 @@ export class RecoveryRunDeadline {
         }
         throw new Error(name + ' did not complete before deadline: ' + describe(last));
     }
-    async verifyFinalSource(audit: () => Promise<{inputHashes: Readonly<Record<string, string>>}>,
-        original: {inputHashes: Readonly<Record<string, string>>}) {
+    async completePrefix(audit: () => Promise<RecoverySourceAudit>, original: RecoverySourceAudit,
+        complete: (after: RecoverySourceAudit) => Promise<void>) {
+        const after = await this.verifyFinalSource(audit, original);
+        await complete(after); this.assertActive();
+    }
+    async verifyFinalSource(audit: () => Promise<RecoverySourceAudit>, original: RecoverySourceAudit) {
         this.assertActive();
         const after = await audit(); this.assertActive(); assert.deepEqual(after.inputHashes, original.inputHashes);
+        return after;
     }
 }
 
@@ -114,7 +246,8 @@ export function assertRecoveryShutdown(rows: any[], parent: ChildProcess, intent
 }
 
 export async function runPortableStateRecovery(stateFile: string, planFile: string, outputDirectory: string,
-    finality: 'reversible' | 'irreversible') {
+    finality: 'reversible' | 'irreversible', options: RecoveryRunOptions = {}) {
+    const profilePrefix = validateRecoveryRunOptions(options), profileOnly = profilePrefix !== undefined, cpuProfile = profileOnly && options.cpuProfile !== false;
     assertNativeQualificationRuntime();
     assert.equal(process.platform, 'linux', 'Actual stop/kill recovery qualification requires Linux');
     assert.ok(['reversible', 'irreversible'].includes(finality));
@@ -155,6 +288,13 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
         limits: {nodeAuthenticatedFork: false, wireTestnetReleaseQualified: false, legacyRoutesQualified: false,
             boundedHistoricalSourceGapQualified: false, unavailableUndoAncestorQualified: false,
             originalCorpusChanged: false, fixture: 'synthetic-engineering-fork'}};
+    if (profileOnly) {report.profileOnly = true; report.profiling = {prefix: profilePrefix, firstBlock: 1, sourcePacingBlocks: 32,
+        cpuSamplingIntervalMicros: 10000, maximumProfileBytes: 32 * 1024 * 1024, maximumDurationMs: 900000,
+        cpuCapture: {requested: cpuProfile, observerFlag: cpuProfile ? '1' : '0', verified: false, enabled: null},
+        sourcePins: {chainId: source.chainId, profileId: source.profileId, upstreamRevision: source.sourceRevision, components: source.components},
+        emptyTargetTablePrefix: true, overhead: cpuProfile ? 'CPU profiling overhead is not quantified; compare with a separately pinned observer-only control.'
+            : 'CPU capture is disabled; existing observer/proxy overhead is not quantified.',
+        fullRecoveryScenarioExecuted: false, stable: false};}
     const chain = 'hyp-p191-' + state.run, database = 'h45_p191_' + state.run;
     const es = new Client({node: state.core.nodes[0].url, requestTimeout: 10000, maxRetries: 0});
     const mongoFixture = new OwnedMongoFixture({command: docker});
@@ -181,7 +321,8 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
         try {const child = spawn(process.execPath, ['--import', pathToFileURL(join(repo, 'scripts/qualification/es955-worker-observer.mjs')).href,
             '--import', pathToFileURL(join(repo, 'scripts/qualification/portable-state-recovery-observer.mjs')).href, join(repo, entry)],
             {cwd: output, detached: true, stdio: ['ignore', stdout.fd, stderr.fd, 'ipc'], env: {...environment,
-                ES198_OBSERVER_DIR: directory, HYP246_RECOVERY_OBSERVER: join(output, 'barrier')}});
+                ES198_OBSERVER_DIR: directory, HYP246_RECOVERY_OBSERVER: join(output, 'barrier'),
+                ...(profileOnly ? {ES198_CPU_PROFILE: cpuProfile ? '1' : '0', ES198_PROFILE_MAX_MS: '900000'} : {})}});
             child.on('error', error => report.errors.push(describe(error))); return child;
         } finally {await stdout.close(); await stderr.close();}};
     const query = async (projection: string, query: ProjectionQuery = {filter: [], limit: 256, count: {upTo: 1000}}) => {
@@ -215,6 +356,7 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
     try {
         report.gitHead = execFileSync('git', ['rev-parse', 'HEAD'], {cwd: repo, encoding: 'utf8', timeout: 5000}).trim();
         report.runtime.sha256 = portableSourceHash(await boundedPortableFile(process.execPath, 256 * 1024 * 1024));
+        if (profileOnly) {report.profiling.pins = await recoveryProfilePins(); report.runtime.execArgv = process.execArgv;}
         const identity = await es.info(); assert.equal(identity.version.number, '9.5.5'); assert.equal(identity.cluster_uuid, state.core.clusterUuid);
         const kernel = docker(['info', '--format', '{{.KernelVersion}}']); const version = /^(\d+)\.(\d+)\.(\d+)/.exec(kernel);
         assert.ok(!version || !(Number(version[1]) === 6 && Number(version[2]) >= 19
@@ -307,18 +449,45 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
                 const current = await captureControl(); assert.equal(current?.phase, 'following');
                 assert.equal(current?.head?.blockId, recoveryRecord(source, branch, replay!.metrics().through).blockId);
                 physical = await physicalAt(branch, through); responses = [];
-                for (const binding of bindings) {const response = await query(binding.projectionId); assert.equal(response.status, 200);
+                for (const [index, binding] of bindings.entries()) {const response = await query(binding.projectionId); assert.equal(response.status, 200);
                     assertRecoveryHttp(response.body, response.headers, binding, checkpoint(branch, through),
-                        binding.projectionId === unaffected.id ? [] : recoveryExpectedRows(plan, branch, through)[binding.projectionId], finality); responses.push(receipt(response));}
+                        binding.projectionId === unaffected.id ? [] : recoveryExpectedRows(plan, branch, through)[binding.projectionId], finality,
+                        physical[index].metadata.revision); responses.push(receipt(response));}
             });
             const value = {name, branch, through, physical, responses, source: replay!.metrics(), control: await captureControl()};
             const bytes = Buffer.from(JSON.stringify(value, null, 2) + '\n'), file = 'stages/' + name + '.json';
             await writeFile(join(output, file), bytes, {flag: 'wx'}); report.stages.push({name, file, sha256: portableSourceHash(bytes)}); return value;
         };
         await wait('HTTP unavailable before source', async () => assertRecoveryUnavailable(await query(bindings[0].projectionId)));
-        for (let through = 32; through < 1243; through += 32) {replay.release(through);
+        const commonThrough = profilePrefix ?? 1243;
+        if (profileOnly) report.profiling.firstReleaseAt = Date.now();
+        for (let through = 32; through < commonThrough; through += 32) {replay.release(through);
             await wait('paced common prefix ' + through, async () => {await physicalAt('A', through);});}
-        replay.release(1243); await stage('common', 'A', 1243);
+        replay.release(commonThrough); const common = await stage(profileOnly ? 'profile-prefix-288' : 'common', 'A', commonThrough);
+        if (profileOnly) {
+            const stableAt = Date.now();
+            for (const value of common.physical) {assert.equal(value.metadata.undo.length, 256);
+                assert.deepEqual(value.metadata.coverageFloor, checkpoint('A', 32));}
+            await wait('profile source credits acknowledged', async () => replay!.assertDrained());
+            const sent = replay.metrics().sessions.flatMap(session => session.sent);
+            assert.ok(sent.every(entry => entry.branch === 'A' && entry.blockNum >= 1 && entry.blockNum <= profilePrefix));
+            assert.deepEqual([...new Set(sent.map(entry => entry.blockNum))].sort((a, b) => a - b), Array.from({length: profilePrefix}, (_, index) => index + 1));
+            await wait('profile broker acknowledgments and queues drained', async () => {report.brokerAcks = await drained();
+                const raw = report.brokerAcks.filter((value: any) => value.name === chain + ':live_blocks'); assert.equal(raw.length, 1);
+                assert.ok(raw[0].ack >= profilePrefix && raw[0].delivered >= raw[0].ack);});
+            await runDeadline.completePrefix(() => auditPortableWorkerSource(plan.source), original, async after => {
+                report.profiling.stable = true; report.profiling.stableAt = stableAt; report.profiling.sourceReauditHashes = after.inputHashes;
+                await stopMaster(owner); master = undefined; await stopApi(apiOwner); api = undefined;
+                report.profiling.cpuProfiles = []; report.profiling.observerCompletion = [];
+                for (const entry of [owner, apiOwner]) {const rows = await observed(entry.name);
+                    report.profiling.cpuProfiles.push(...await assertRecoveryCpuProfiles(rows, join(output, 'observer', entry.name), stableAt, cpuProfile, entry.child));
+                    report.profiling.observerCompletion.push({name: entry.name, ownedParentPid: entry.child.pid,
+                        events: rows.filter(row => ['start', 'worker_fork', 'worker_online', 'worker_exit', 'shutdown', 'profile_started', 'profile_saved', 'flush', 'exit'].includes(row.kind))});}
+                if (cpuProfile) assert.equal(report.profiling.cpuProfiles.filter((value: any) => value.role === 'projection').length, 1);
+                Object.assign(report.profiling.cpuCapture, {verified: true, enabled: cpuProfile});
+            });
+            report.sourceMetrics = replay.metrics(); report.sourceRequests = replay.requests; remaining(); report.status = 'profiled-prefix'; return report;
+        }
         replay.release(1247); const a = await stage('branch-a', 'A', finality === 'reversible' ? 1247 : 1243);
         const beforeGeneration = a.control.generation;
         if (finality === 'reversible') await writeFile(join(output, 'barrier/arm.json'), JSON.stringify({database, metadataId: recoveryMetadataId(bindings[0])}) + '\n', {flag: 'wx'});
@@ -418,14 +587,22 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
         report.mongoCleanup = mongoFixture.cleanupResult; report.sourceMetrics ??= replay?.metrics(); report.sourceRequests ??= replay?.requests;
         report.bulkCapture = ledger ? {...ledger.limits, recordedRequests: ledger.receipts.length} : null;
         if (report.errors.length) {report.status = 'failed'; report.error ??= 'Asynchronous fixture errors: ' + describe(report.errors[0]);}
+        if (profileOnly) {
+            if (report.error !== undefined || report.cleanup.some((value: any) => value.ok !== true)) report.status = 'failed';
+            report.profiling.completed = report.status === 'profiled-prefix';
+        }
         report.completedAt = new Date().toISOString(); await reportFile.writeFile(JSON.stringify(report, null, 2) + '\n'); await reportFile.sync(); await reportFile.close();
     }
     return report;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-    assert.equal(process.argv.length, 6, 'usage: node portable-state-recovery.ts STATE_FILE ORIGINAL_PLAN NEW_OUTPUT reversible|irreversible');
-    const result = await runPortableStateRecovery(process.argv[2], process.argv[3], process.argv[4], process.argv[5] as any);
+    const args = process.argv.slice(2);
+    assert.ok(args.length === 4 || [6, 8].includes(args.length) && args[4] === '--profile-prefix' && args[5] === '288'
+        && (args.length === 6 || args[6] === '--cpu-profile' && ['on', 'off'].includes(args[7])),
+        'usage: node portable-state-recovery.ts STATE_FILE ORIGINAL_PLAN NEW_OUTPUT reversible|irreversible [--profile-prefix 288 [--cpu-profile on|off]]');
+    const options: RecoveryRunOptions = args.length > 4 ? {profilePrefix: 288, cpuProfile: args.length === 6 || args[7] === 'on'} : {};
+    const result = await runPortableStateRecovery(args[0], args[1], args[2], args[3] as any, options);
     console.log(JSON.stringify({status: result.status, error: result.error, finality: result.finality, stages: result.stages}));
-    if (result.status !== 'passed') process.exitCode = 1;
+    if (result.status !== (options.profilePrefix ? 'profiled-prefix' : 'passed')) process.exitCode = 1;
 }

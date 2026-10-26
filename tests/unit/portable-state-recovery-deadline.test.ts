@@ -3,6 +3,44 @@ import {RecoveryRunDeadline} from '../../scripts/qualification/portable-state-re
 
 const original = {inputHashes: {'original-source.bin': 'a'.repeat(64)}};
 
+test('a prefix source audit finishing after the inherited deadline starts no profile finalization', async () => {
+    let now = 10_000, release!: () => void, finalized = 0, verdict = false;
+    const held = new Promise<void>(yes => {release = yes;}), budget = new RecoveryRunDeadline(() => now);
+    now = 909_999;
+    const work = budget.completePrefix(async () => {await held; return original;}, original, async () => {finalized++;})
+        .then(() => {verdict = true;});
+    now = 910_001; release();
+    await expect(work).rejects.toThrow('deadline');
+    expect(finalized).toBe(0); expect(verdict).toBe(false); expect(budget.expiresAt).toBe(910_000);
+});
+
+test('a prefix profile readback completing after the original deadline cannot earn a prefix verdict', async () => {
+    let now = 0, enter!: () => void, release!: () => void, verdict = false;
+    const entered = new Promise<void>(yes => {enter = yes;}), held = new Promise<void>(yes => {release = yes;});
+    const budget = new RecoveryRunDeadline(() => now);
+    const work = budget.completePrefix(async () => original, original, async () => {enter(); await held;})
+        .then(() => {verdict = true;});
+    await entered; now = 900_001; release();
+    await expect(work).rejects.toThrow('deadline'); expect(verdict).toBe(false);
+});
+
+test('an already expired prefix budget starts neither source audit nor profile finalization', async () => {
+    let now = 0, audits = 0, finalized = 0;
+    const budget = new RecoveryRunDeadline(() => now); now = 900_000;
+    await expect(budget.completePrefix(async () => {audits++; return original;}, original,
+        async () => {finalized++;})).rejects.toThrow('deadline');
+    expect(audits).toBe(0); expect(finalized).toBe(0);
+});
+
+test('prefix completion uses the unchanged source and remaining original setup budget', async () => {
+    let now = 10_000, finalized = 0;
+    const budget = new RecoveryRunDeadline(() => now); now = 909_990;
+    await budget.completePrefix(async () => {now += 2; return original;}, original, async after => {
+        expect(after.inputHashes).toEqual(original.inputHashes); finalized++; now += 3;
+    });
+    expect(finalized).toBe(1); expect(now).toBe(909_995); expect(budget.expiresAt).toBe(910_000);
+});
+
 for (const boundary of ['phase', 'original-run'] as const) {
     test(`a successful condition settling at the ${boundary} deadline cannot advance recovery`, async () => {
         let now = 10_000, attempts = 0;
