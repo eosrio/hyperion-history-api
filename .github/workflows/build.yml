@@ -44,6 +44,10 @@ jobs:
         run: bun check -p scripts/qualification/tsconfig.json
       - name: Check retained Wire source and replay credits with native Node
         run: node --experimental-strip-types scripts/qualification/check-wire-replay-fixture.mjs
+      - name: Check coherent Mongo qualification sampling with native Node
+        run: |
+          node --experimental-strip-types tests/unit/portable-state-mongo-sampling.mjs
+          node --experimental-strip-types tests/unit/portable-state-mongo-admission-red.mjs characterize
       - name: Check portable state source and fixture ownership guards
         run: python3 tests/fixtures/portable-state-worker/test_helpers.py
       - name: Verify published native Wire CPU evidence
