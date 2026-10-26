@@ -19,6 +19,7 @@ import {validateFixture, assertNodeOwnership} from './es955-replicas.ts';
 import {assertOwnedBinding, assertSuccessfulWorkerShutdown} from './es955-workers.ts';
 import {startBulkLedger, summarizeBulkLedger} from './replay-bulk-ledger.ts';
 import {createPortableHistoryDiagnostics, portableHistoryClock} from './portable-state-history-diagnostics.ts';
+import {auditWorkerRejectionDiagnostics} from './worker-rejection-diagnostics.mjs';
 import {OwnedMongoFixture, MONGODB_VERSION, waitForMongo} from './projection-fixture.mjs';
 import {auditPortableWorkerSource, boundedPortableFile, ordinaryPortablePath, portableSourceHash,
     portableSourceLimits, servePortableWorkerSource, type PortableSourceInput, type PortableSourceFile,
@@ -1086,12 +1087,20 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                 report[name + 'Exit'] = {code: child.exitCode, signal: child.signalCode};
                 const observerInstance = name === 'master' && masterRestarted ? 'master-restarted' : name;
                 const all = await observedDirectoryRows(observerInstance, true);
+                if (options.native) report[name + 'RejectionDiagnostics'] = {raw: auditWorkerRejectionDiagnostics(all, child.pid!)};
                 const fault = name === 'master' && recoveryControl
                     && (await readdir(join(output, 'attempt-recovery'))).includes('fault.json')
                     ? readWireRecoveryEvidence(recoveryControl.control).marker : undefined;
                 const readerFault = name === 'master' && readerCrash ? readerCrash : undefined;
                 const checked = readerFault ? wireReaderShutdownRows(all, readerFault, child.pid!, child.exitCode, child.signalCode)
                     : fault ? wireRecoveryShutdownRows(all, fault, child.pid!, child.exitCode, child.signalCode) : all;
+                if (options.native) {
+                    // Existing private fault verification alone selects this survivor view. Raw missing
+                    // SIGKILL summaries stay incomplete above; diagnostics introduce no exit membership.
+                    const coverage = auditWorkerRejectionDiagnostics(checked, child.pid!);
+                    report[name + 'RejectionDiagnostics'].requiredSurvivors = coverage;
+                    assert.equal(coverage.status, 'complete', 'Required native worker rejection capture is incomplete');
+                }
                 report[name + 'Shutdown'] = assertSuccessfulWorkerShutdown(checked, child.pid!, fault || readerFault ? 0 : child.exitCode, child.signalCode);
                 if (fault) report.expectedWorkerExit = {marker: fault, rawMasterExit: report[name + 'Exit'],
                     rawShutdown: all.find(row => row.kind === 'shutdown' && row.pid === child.pid),

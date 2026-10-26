@@ -16,6 +16,9 @@ import {ObserverIoMetrics, installProofMetrics} from './portable-state-worker-pr
 import {WorkerAttemptClient} from '../../build/indexer/protocol/worker-attempt-client.js';
 import {WorkerAttemptSupervisor} from '../../build/indexer/protocol/worker-attempt-supervisor.js';
 import {installProjectionDiagnostics} from './portable-state-projection-diagnostics.mjs';
+import {installWorkerRejectionDiagnostics} from './worker-rejection-diagnostics.mjs';
+import DSPool from '../../build/indexer/workers/ds-pool.js';
+import StateReader from '../../build/indexer/workers/state-reader.js';
 
 assert.equal(process.env.HYPERION_PORTABLE_NATIVE_QUALIFICATION, '1');
 const chain = process.env.CHAIN_NAME;
@@ -45,12 +48,14 @@ const projectionDiagnostics = cluster.isPrimary || process.env.worker_role === '
     ? installProjectionDiagnostics({WorkerClient: WorkerAttemptClient, Supervisor: WorkerAttemptSupervisor,
         Master: cluster.isPrimary ? (await import('../../build/indexer/modules/master.js')).HyperionMaster : undefined, record})
     : undefined;
+const rejectionDiagnostics = installWorkerRejectionDiagnostics({Pool: DSPool, Reader: StateReader,
+    Supervisor: cluster.isPrimary ? WorkerAttemptSupervisor : undefined, cluster, record});
 process.once('exit', () => {
     // Snapshot excludes this summary row and the following exit row's own writes/syncs.
     record('observer_metrics', {coverage: 'before-this-row', io: observerIo.snapshot(), proofs: proofMetrics.snapshot(),
-        projectionDiagnostics: projectionDiagnostics?.snapshot()});
+        projectionDiagnostics: projectionDiagnostics?.snapshot(), rejectionDiagnostics: rejectionDiagnostics.snapshot()});
     record('exit', {bytes}); closeSync(descriptor);
-    if (proofMetrics.snapshot().reportFailures || projectionDiagnostics?.snapshot().reportFailures) process.exitCode = 1;
+    if (proofMetrics.snapshot().reportFailures || projectionDiagnostics?.snapshot().reportFailures || rejectionDiagnostics.snapshot().reportFailures) process.exitCode = 1;
 });
 
 const prepare = ProtocolNativeObservationStore.prototype.prepare;

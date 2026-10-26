@@ -202,9 +202,9 @@ export default class StateReader extends HyperionWorker {
                         const successful = !err && channel === this.cch;
                         range?.settle(token, d.num, successful);
                         if (err) {
-                            this.failPublisherRecovery(`Block ${d.num} confirmation failed: ${err?.message ?? 'unknown confirmation'}`);
+                            this.failPublisherRecovery(`Block ${d.num} confirmation failed: ${err?.message ?? 'unknown confirmation'}`, {predicate: 'confirmation_failed', publisher: channel, blockNum: d.num});
                         } else if (!successful) {
-                            this.failPublisherRecovery(`Block ${d.num} confirmed by a replaced publisher`);
+                            this.failPublisherRecovery(`Block ${d.num} confirmed by a replaced publisher`, {predicate: 'confirmation_publisher_replaced', publisher: channel, blockNum: d.num});
                         } else {
                             if (range && range !== this.confirmRange) return;
                             try {
@@ -228,7 +228,7 @@ export default class StateReader extends HyperionWorker {
                 } catch (error: any) {
                     this.publications.delete(token);
                     range?.settle(token, d.num, false);
-                    this.failPublisherRecovery(`Block ${d.num} publish failed: ${error.message}`);
+                    this.failPublisherRecovery(`Block ${d.num} publish failed: ${error.message}`, {predicate: 'publication_threw', publisher: channel, blockNum: d.num});
                     return;
                 }
 
@@ -290,7 +290,7 @@ export default class StateReader extends HyperionWorker {
         if (this.cch) {
             const publisher = this.cch;
             if (Array.from(this.publications?.values() ?? []).some(publication => publication.publisher !== publisher)) {
-                this.failPublisherRecovery('Publisher replaced with unknown block confirmations');
+                this.failPublisherRecovery('Publisher replaced with unknown block confirmations', {predicate: 'pending_publisher_replaced', publisher});
                 return;
             }
             this.cch_ready = true;
@@ -301,20 +301,20 @@ export default class StateReader extends HyperionWorker {
                 if (this.finishing) return;
                 // Channel-only loss also needs supervision when no pending
                 // callback is available to report the failure.
-                if (this.publications?.size) this.failPublisherRecovery('Block publisher channel closed with unknown confirmations');
+                if (this.publications?.size) this.failPublisherRecovery('Block publisher channel closed with unknown confirmations', {predicate: 'publisher_closed_pending', publisher});
                 else {
                     // A full connection reconnect can replace a clean publisher.
                     // A channel-only close has no such reconnect in amqplib.
                     setTimeout(() => {
-                        if (publisher === this.cch && !this.cch_ready) this.failPublisherRecovery('Block publisher channel remained closed');
+                        if (publisher === this.cch && !this.cch_ready) this.failPublisherRecovery('Block publisher channel remained closed', {predicate: 'publisher_remained_closed', publisher});
                     }, 1000).unref();
                 }
             });
             publisher.on('error', (error: Error) => {
-                if (publisher === this.cch) this.failPublisherRecovery(`Block publisher error: ${error.message}`);
+                if (publisher === this.cch) this.failPublisherRecovery(`Block publisher error: ${error.message}`, {predicate: 'publisher_error', publisher});
             });
             publisher.on('return', () => {
-                if (publisher === this.cch) this.failPublisherRecovery('Mandatory block publication was unroutable');
+                if (publisher === this.cch) this.failPublisherRecovery('Mandatory block publication was unroutable', {predicate: 'publication_returned', publisher});
             });
             this.stageOneDistQueue.resume();
             // resume() only starts queued cargo; a batch already waiting on an
@@ -328,7 +328,7 @@ export default class StateReader extends HyperionWorker {
 
         if (data.assignment_id && data.assignment_id === this.assignmentId && this.rangeRequested) return;
         if (this.publications?.size) {
-            this.failPublisherRecovery('Range replaced with unknown block confirmations');
+            this.failPublisherRecovery('Range replaced with unknown block confirmations', {predicate: 'range_replaced_pending'});
             return;
         }
         this.rangeRequested = true;
@@ -498,7 +498,7 @@ export default class StateReader extends HyperionWorker {
             this.confirmationDeadlineAt = undefined;
             const pending = this.publications.values().next().value;
             if (pending && pending.deadline <= performance.now()) {
-                this.failPublisherRecovery('Block publisher confirmation deadline exceeded (60000ms)');
+                this.failPublisherRecovery('Block publisher confirmation deadline exceeded (60000ms)', {predicate: 'confirmation_deadline', publisher: pending.publisher});
             } else this.scheduleConfirmationDeadline();
         }, Math.max(0, oldest.deadline - performance.now())).unref();
         this.confirmationDeadline = timer;
@@ -1591,7 +1591,7 @@ export default class StateReader extends HyperionWorker {
         });
     }
 
-    private failPublisherRecovery(reason: string) {
+    private failPublisherRecovery(reason: string, decision: {predicate: string; publisher?: ConfirmChannel; blockNum?: number}) {
         if (this.publisherFailure) return;
         this.publisherFailure = reason;
         this.cch_ready = false;
@@ -1611,7 +1611,7 @@ export default class StateReader extends HyperionWorker {
 
     private failSourceRecovery(reason: string) {
         process.send?.({event: 'reader_source_incomplete', error: reason, assignment_id: this.assignmentId});
-        this.failPublisherRecovery(reason);
+        this.failPublisherRecovery(reason, {predicate: 'source_recovery_required'});
     }
 
     private logForkedBlocks(removedList: any[]) {
