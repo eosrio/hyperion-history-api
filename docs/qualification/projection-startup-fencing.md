@@ -46,6 +46,7 @@ npm run build
 node tests/unit/projection-controller-startup.mjs frame-read
 node tests/unit/projection-controller-startup.mjs initialize-retained
 bun test tests/unit/projection-controller-startup.test.ts tests/unit/projection-startup-fencing.test.ts
+bun test tests/unit/projection-observer-results.test.ts
 ```
 
 Select an explicit native Node 24 or 26 executable through `HYPERION_NATIVE_NODE` for the Bun test
@@ -78,6 +79,23 @@ The rows distinguish:
 - The original initialization retry decision, after the actual lifecycle method makes it.
 - Parent projection census when an active fence is sent, and source-open before/after state with
   the physical reader PID, current-reader match, reader session and source generation.
+
+Root and terminal outcomes are observed on the original scope and client native promises;
+the source-open observer also returns the original promise. Diagnostic callbacks return no value.
+They do not await or re-resolve an operation's opaque result or access its `then` property.
+Selected, omitted and unrelated paths preserve original promise identity, arguments, results
+and synchronous throws. Observation failures are counted without replacing those outcomes.
+
+The native result controls compare an unobserved client against the projection observer alone,
+its composition with fatal diagnostics, and a failing diagnostic sink on both supported Node
+majors. They cover resolving/rejecting thenables, throwing getters, plain values whose getter
+throws only after the baseline's three reads, native promise results and synchronous errors.
+Intentionally foreign handles remain rejected without borrowing custody; their unavailable
+fatal descriptions are counted explicitly. Parent-source controls use controlled methods and
+include selected and omitted source opens. These are resource-free behavioral controls, not
+physical source authority or full-worker qualification. The former extra async wrappers could
+turn a baseline success into a rejection; this regression does not establish the cause of any
+archived service failure.
 
 The parent census retains at most eight projection owners and eight attempts per selected owner,
 with omitted counts. It does not attest all owners outside that bound. Reporting failures are counted,
