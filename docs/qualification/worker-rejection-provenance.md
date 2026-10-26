@@ -87,6 +87,13 @@ does not inherit the relation. Missing or superseded relations remain unknown.
 These are diagnostic relations, with no owned broker-fault membership or
 permission to excuse an exit.
 
+One original relaunch timer can launch several pending definitions. Each fork is
+matched to that definition's own retained disconnect request in the same master;
+`triggerRequestId` separately identifies the timer that caused the sweep. A new
+definition without a disconnect request remains unassociated. A reader has no
+attempt-supervisor owner, so its previous owner stays null. No relation is
+borrowed from another definition or inferred from timing.
+
 Failure diagnostics allow 128 events and 128 rejected-root descriptions per
 process, with at most eight associations for one reused error object. Omissions,
 sink failures and missing original-method hooks fail the diagnostic audit.
@@ -159,6 +166,9 @@ identity and bounds have separate controls. The replacement loop drives original
 master methods and their real timer through native cluster disconnect/fork/exit
 callbacks and real supervisor attachment. It controls the child fault and master
 services; it is not an actual broker-restart qualification.
+The coalesced controls disconnect two original workers before the first timer,
+including a reader case, and launch an unrelated new definition in the same
+sweep. They retain distinct original requests and the shared triggering callback.
 
 Fresh, source-pinned Linux Node 24/26 runs of the original full broker recovery
 scenario are still required. Keep the original corpus, oracles, default 256-block

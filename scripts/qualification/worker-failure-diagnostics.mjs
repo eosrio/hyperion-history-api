@@ -10,6 +10,7 @@ export function installWorkerFailureDiagnostics({Pool, Reader, Projection, Worke
     let events = 0, omitted = 0, rejectedRoots = 0, omittedRoots = 0;
     const rootContexts = new WeakMap(), roots = new WeakMap(), batches = new WeakMap(), readerDecisions = new WeakMap();
     const knownWorkers = new WeakSet(), disconnects = new WeakMap(), requests = new WeakMap(), replacements = new WeakMap();
+    const pendingDefinitions = new WeakMap();
     const launching = [];
     const observe = operation => {try {return operation();} catch {failed(); return undefined;}};
     const record = (event, snapshot) => {
@@ -143,13 +144,18 @@ export function installWorkerFailureDiagnostics({Pool, Reader, Projection, Worke
         cluster.fork = function(definition, ...args) {
             const result = fork.call(this, definition, ...args);
             observe(() => {
-                const context = launching.at(-1);
-                if (!context || definition !== context.definition) return;
-                const replacement = {...context, replacementId: randomUUID(), worker: result};
+                const trigger = launching.at(-1);
+                if (!trigger) return;
+                const pending = pendingDefinitions.get(trigger.master), request = pending?.get(definition);
+                if (!request || request.master !== trigger.master || !trigger.master.workerMap.includes(definition)
+                    || definition.wref !== undefined) return;
+                pending.delete(definition);
+                const replacement = {...request, triggerRequestId: trigger.id, replacementId: randomUUID(), worker: result};
                 replacements.set(result, replacement);
-                record('worker_replacement_forked', () => ({replacementId: replacement.replacementId, requestId: context.id,
-                    disconnectId: context.disconnect.id, logicalWorkerId: definition.worker_id, role: definition.worker_role,
-                    previous: context.disconnect.identity, previousOwner: context.previousOwner, child: workerIdentity(result)}));
+                record('worker_replacement_forked', () => ({replacementId: replacement.replacementId, requestId: request.id,
+                    triggerRequestId: trigger.id, disconnectId: request.disconnect.id,
+                    logicalWorkerId: definition.worker_id, role: definition.worker_role,
+                    previous: request.disconnect.identity, previousOwner: request.previousOwner, child: workerIdentity(result)}));
             });
             return result;
         };
@@ -172,6 +178,9 @@ export function installWorkerFailureDiagnostics({Pool, Reader, Projection, Worke
             observe(() => {
                 if (!pending || pending.definition.wref !== undefined || pending.definition.failures !== pending.failures + 1) return;
                 requests.set(worker, pending);
+                let definitions = pendingDefinitions.get(this);
+                if (!definitions) {definitions = new WeakMap(); pendingDefinitions.set(this, definitions);}
+                definitions.set(pending.definition, pending);
                 record('worker_replacement_requested', () => ({requestId: pending.id, disconnectId: pending.disconnect.id,
                     logicalWorkerId: pending.definition.worker_id, role: pending.definition.worker_role,
                     previous: pending.disconnect.identity, previousOwner: pending.previousOwner, failures: pending.definition.failures}));
@@ -182,8 +191,11 @@ export function installWorkerFailureDiagnostics({Pool, Reader, Projection, Worke
             let request;
             observe(() => {
                 const candidate = requests.get(worker);
-                if (candidate?.master === this && candidate.definition === definition && this.workerMap.includes(definition)
-                    && definition.wref === undefined) {request = candidate; requests.delete(worker);}
+                // An earlier timer may already have launched this definition. This original callback can
+                // still sweep other pending definitions, each of which keeps its own disconnect relation.
+                if (candidate?.master === this && candidate.definition === definition && this.workerMap.includes(definition)) {
+                    request = candidate; requests.delete(worker);
+                }
             });
             if (!request) return relaunch.call(this, worker, definition, ...args);
             launching.push(request);
@@ -199,6 +211,7 @@ export function installWorkerFailureDiagnostics({Pool, Reader, Projection, Worke
                 const replacement = replacements.get(worker);
                 if (!replacement || replacement.master.workerAttemptSupervisor !== this) return;
                 record('replacement_owner_attached', () => ({replacementId: replacement.replacementId, requestId: replacement.id,
+                    triggerRequestId: replacement.triggerRequestId,
                     child: workerIdentity(worker), previous: replacement.disconnect.identity, previousOwner: replacement.previousOwner, role,
                     parentEpoch: this.epoch, parentIncarnation: this.owners.get(worker).incarnation}));
             });

@@ -17,10 +17,12 @@ test.each(['projection', 'cleanup-error', 'copied-error', 'primitive', 'sink-fai
             controlledServices: true, faultMembership: false});
     }, 25000);
 
-test('original master delay and real cluster callbacks retain exact replacement lineage', async () => {
-    expect(await native('./worker-failure-replacement.mjs')).toMatchObject({passed: true,
-        originalExit: 1, replacementExit: 0, actualClusterCallbacks: true, originalRelaunchDelayMs: 5000, faultMembership: false});
-}, 25000);
+test.each(['single', 'coalesced', 'coalesced-reader'])(
+    'original master delay and real cluster callbacks retain exact replacement lineage: %s', async mode => {
+        expect(await native('./worker-failure-replacement.mjs', mode)).toMatchObject({passed: true, scenario: mode,
+            replacements: mode === 'single' ? 1 : 2, unrelatedForkUnassociated: true,
+            originalExit: 1, replacementExit: 0, actualClusterCallbacks: true, originalRelaunchDelayMs: 5000, faultMembership: false});
+    }, 25000);
 
 test('controlled return/promise/copy/budget controls cannot create a root association', async () => {
     expect(await native('./worker-failure-controls.mjs')).toMatchObject({passed: true,
