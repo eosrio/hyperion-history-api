@@ -10,7 +10,8 @@ test('native worker rejection provenance retains original decisions, custody, re
     const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
     expect({code, stderr}).toEqual({code: 0, stderr: ''});
     const result = JSON.parse(stdout.trim());
-    expect(result.status).toBe('passed'); expect(result.checks).toBe(31); expect(result.rows).toBe(48);
+    expect(result.status).toBe('passed'); expect(result.checks).toBe(31); expect(result.rows).toBe(49);
+    expect(result.endAssociationRows).toBe(1); expect(result.rows - result.endAssociationRows).toBe(48);
 }, 50000);
 
 test('diagnostic copies cannot normalize failed shutdowns, extra deaths or a nonzero master exit', () => {
@@ -40,7 +41,9 @@ test('capture failures, omitted decisions and changed limits fail the diagnostic
         reportFailures: 0, omittedRejections: 0, fences: {maximumFenceEvents: 1024, membersPerRow: 32, omitted: 0,
             enabled: {client: true, host: true, supervisor: true, master: true}},
         failures: {maximumFailureEvents: 128, maximumErrorMatches: 8, omitted: 0, omittedRoots: 0,
-            enabled: {root: true, attempts: true, pool: true, reader: true, projection: true, master: true, cluster: true, supervisor: true}}}};
+            enabled: {root: true, attempts: true, pool: true, reader: true, projection: true, master: true, cluster: true, supervisor: true}},
+        endAssociation: {enabled: true, maximumSuccesses: 8, maximumFailures: 128, maximumNesting: 32,
+            successes: 0, failures: 0, omittedSuccesses: 0, omittedFailures: 0, reportFailures: 0}}};
     const starts = [{kind: 'start', pid: 101}, {kind: 'native_boundary', event: 'start', pid: 101}];
     expect(auditWorkerRejectionDiagnostics([...starts, row], 101).status).toBe('complete');
     expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics, reportFailures: 1}}], 101)).toThrow('capture failed');
@@ -58,6 +61,13 @@ test('capture failures, omitted decisions and changed limits fail the diagnostic
         fences: {...row.rejectionDiagnostics.fences, omitted: 1}}}], 101)).toThrow('fence diagnostic events were omitted');
     expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics,
         fences: {...row.rejectionDiagnostics.fences, enabled: {...row.rejectionDiagnostics.fences.enabled, client: false}}}}], 101)).toThrow('client is unavailable');
+    expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics,
+        endAssociation: undefined}}], 101)).toThrow('End diagnostic success bound');
+    for (const [patch, error] of [[{enabled: false}, 'hooks are unavailable'], [{reportFailures: 1}, 'end diagnostic capture failed'],
+        [{omittedFailures: 1}, 'failures were omitted'], [{maximumFailures: 129}, 'failure bound changed'],
+        [{failures: 1}, 'failure record census differs']] as const)
+        expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics,
+            endAssociation: {...row.rejectionDiagnostics.endAssociation, ...patch}}}], 101)).toThrow(error);
     expect(auditWorkerRejectionDiagnostics([], 101)).toMatchObject({status: 'incomplete', processes: [{pid: 101, missing: ['native-start', 'diagnostic-summary']}]});
     expect(auditWorkerRejectionDiagnostics(starts, 101)).toMatchObject({status: 'incomplete', processes: [{pid: 101, missing: ['diagnostic-summary']}]});
     const physicalFork = {kind: 'worker_fork', pid: 101, childPid: 102};
@@ -69,6 +79,12 @@ test('capture failures, omitted decisions and changed limits fail the diagnostic
     // original-object fault view can select survivors; the raw absent summary remains unknown.
     const checked = raw.filter(value => value !== physicalFork && value.pid !== 102);
     expect(auditWorkerRejectionDiagnostics(checked, 101).status).toBe('complete');
+    const orphanEnd = {kind: 'native_boundary', event: 'worker_attempt_end_association', pid: 202,
+        reply: {ok: false, error: 'Invalid worker attempt end association'}};
+    expect(auditWorkerRejectionDiagnostics([...checked, orphanEnd], 101)).toMatchObject({status: 'incomplete',
+        processes: [{pid: 101, missing: []}, {pid: 202, missing: ['physical-census-membership', 'native-start', 'diagnostic-summary']}]});
+    for (const pid of [undefined, 0, -1, '202'])
+        expect(() => auditWorkerRejectionDiagnostics([...checked, {...orphanEnd, pid}], 101)).toThrow('Invalid end diagnostic process');
     expect(auditWorkerRejectionDiagnostics([...checked, nativeStart], 101).processes.find(value => value.pid === 102)?.missing)
         .toEqual(['physical-census-membership', 'diagnostic-summary']);
     expect(() => auditWorkerRejectionDiagnostics(checked, undefined)).toThrow('Original primary PID');

@@ -4,6 +4,7 @@ import {serialize} from 'node:v8';
 import assert from 'node:assert/strict';
 import {installWorkerFenceDiagnostics} from './worker-fence-diagnostics.mjs';
 import {installWorkerFailureDiagnostics} from './worker-failure-diagnostics.mjs';
+import {installWorkerEndDiagnostics} from './worker-end-diagnostics.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 function physical(pid) {
@@ -168,24 +169,28 @@ export function installWorkerRejectionDiagnostics({Pool, Reader, Projection, Sup
     }
     const failures = installWorkerFailureDiagnostics({Pool, Reader, Projection, WorkerClient, Master, Supervisor, cluster,
         emit, physical, workerIdentity, failed: () => {reportFailures++;}});
+    const endAssociation = installWorkerEndDiagnostics({Supervisor, emit, workerIdentity, failed: () => {reportFailures++;}});
     return {snapshot: () => ({observationOnly: true, rejections, omittedRejections, workerCount,
         pendingPublications: pending.size, reportFailures, maximumRejections, maximumPendingPublications, maximumWorkers,
-        fences: fences.snapshot(), failures: failures.snapshot()})};
+        fences: fences.snapshot(), failures: failures.snapshot(), endAssociation: endAssociation.snapshot()})};
 }
 
 /** Capture integrity only. Successful validation never changes or excuses a raw worker outcome. */
 export function auditWorkerRejectionDiagnostics(rows, primaryPid) {
     const validPid = pid => Number.isSafeInteger(pid) && pid > 0;
     assert.ok(validPid(primaryPid), 'Original primary PID is required for diagnostic coverage');
-    const expected = new Set([primaryPid]), starts = new Set(), pids = new Set(), summaries = [];
+    const expected = new Set([primaryPid]), starts = new Set(), pids = new Set(), endPids = new Set(), summaries = [];
     for (const row of rows) {
         if (row.kind === 'start') {assert.ok(validPid(row.pid)); expected.add(row.pid);}
         if (row.kind === 'worker_fork') {assert.ok(validPid(row.childPid)); expected.add(row.childPid);}
         if (row.kind === 'native_boundary' && row.event === 'start') {
             assert.ok(validPid(row.pid) && !starts.has(row.pid), 'Duplicated or invalid native diagnostic start'); starts.add(row.pid);
         }
+        if (row.kind === 'native_boundary' && row.event === 'worker_attempt_end_association') {
+            assert.ok(validPid(row.pid), 'Invalid end diagnostic process'); endPids.add(row.pid);
+        }
     }
-    assert.ok(expected.size <= 64 && starts.size <= 64, 'Diagnostic process census exceeds its existing bound');
+    assert.ok(new Set([...expected, ...starts, ...endPids]).size <= 64, 'Diagnostic process census exceeds its existing bound');
     for (const row of rows.filter(value => value.kind === 'native_boundary' && value.event === 'observer_metrics')) {
         assert.ok(Number.isSafeInteger(row.pid) && row.pid > 0 && !pids.has(row.pid), 'Duplicated or invalid rejection diagnostic process');
         pids.add(row.pid);
@@ -201,13 +206,29 @@ export function auditWorkerRejectionDiagnostics(rows, primaryPid) {
         assert.equal(value.failures?.maximumErrorMatches, 8, 'Failure error-object match bound changed');
         assert.equal(value.failures?.omitted, 0, 'Worker failure diagnostic events were omitted');
         assert.equal(value.failures?.omittedRoots, 0, 'Worker failure diagnostic roots were omitted');
+        const end = value.endAssociation;
+        assert.equal(end?.maximumSuccesses, 8, 'End diagnostic success bound is unavailable or changed');
+        assert.equal(end.maximumFailures, 128, 'End diagnostic failure bound changed');
+        assert.equal(end.maximumNesting, 32, 'End diagnostic nesting bound changed');
+        assert.equal(end.reportFailures, 0, 'Worker end diagnostic capture failed');
+        assert.equal(end.omittedFailures, 0, 'Worker end diagnostic failures were omitted');
+        if (row.pid === primaryPid) assert.equal(end.enabled, true, 'Original parent end diagnostic hooks are unavailable');
+        for (const key of ['successes','failures','omittedSuccesses','omittedFailures'])
+            assert.ok(Number.isSafeInteger(end[key]) && end[key] >= 0, 'Invalid worker end diagnostic counter');
+        assert.equal(end.omittedSuccesses, Math.max(0, end.successes - end.maximumSuccesses), 'End success omission counter differs');
+        assert.equal(end.omittedFailures, Math.max(0, end.failures - end.maximumFailures), 'End failure omission counter differs');
+        const endRows = rows.filter(value => value.kind === 'native_boundary' && value.event === 'worker_attempt_end_association' && value.pid === row.pid);
+        assert.equal(endRows.filter(value => value.reply?.ok === true).length, Math.min(end.successes, end.maximumSuccesses), 'End diagnostic success record census differs');
+        assert.equal(endRows.filter(value => value.reply?.ok !== true).length, Math.min(end.failures, end.maximumFailures), 'End diagnostic failure record census differs');
         for (const key of ['root', 'attempts', 'pool', 'reader', 'projection', ...(row.pid === primaryPid ? ['master', 'cluster', 'supervisor'] : [])])
             assert.equal(value.failures?.enabled?.[key], true, `Worker failure diagnostic ${key} is unavailable`);
         for (const key of ['client', 'host', ...(row.pid === primaryPid ? ['supervisor', 'master'] : [])])
             assert.equal(value.fences?.enabled?.[key], true, `Worker fence diagnostic ${key} is unavailable`);
         summaries.push({pid: row.pid, ...value});
     }
-    const processes = [...new Set([...expected, ...starts, ...pids])].sort((a, b) => a - b).map(pid => ({pid,
+    const census = new Set([...expected, ...starts, ...pids, ...endPids]);
+    assert.ok(census.size <= 64, 'Diagnostic process census exceeds its existing bound');
+    const processes = [...census].sort((a, b) => a - b).map(pid => ({pid,
         missing: [...(!expected.has(pid) ? ['physical-census-membership'] : []),
             ...(!starts.has(pid) ? ['native-start'] : []), ...(!pids.has(pid) ? ['diagnostic-summary'] : [])]}));
     return {status: processes.some(value => value.missing.length) ? 'incomplete' : 'complete', processes, summaries};
