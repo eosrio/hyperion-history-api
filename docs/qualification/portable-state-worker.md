@@ -175,6 +175,10 @@ providers, native decisions, transport responses, receipts or worker services.
 This is a guarded replay of the production implementations, with that explicit
 engineering activation, rather than qualification of public/default activation.
 
+The guarded observer also records a bounded [projection startup lifecycle window](projection-startup-fencing.md).
+It distinguishes initialization retries from first-frame fencing without changing either behavior.
+Its descriptions are observations; original lifecycle methods still decide drainage and retry eligibility.
+
 The replay holds actual source prefixes 1/33/122/256/397 before the original
 Mongo prefixes 1244/1480. Prefix 256 keeps all genuine notification occurrences
 within the **default 256-block** proof ancestry; no recovery-window override is
@@ -324,6 +328,10 @@ that failed run into a passing result.
 
 ## Owned broker restart instrumentation
 
+For the additional #331 decision and original-custody observations, see
+[worker rejection provenance](worker-rejection-provenance.md). These diagnostics
+do not classify failed exits as expected or weaken the shared shutdown checker.
+
 The initial #319 fault mode uses `--native --authority-rpc URL --broker-recovery`
 on native Linux Node 24/26. It excludes profiling and other fault modes. Create
 its private services with `services.py create NEW_DIRECTORY --pin-rabbit-ports`.
@@ -472,6 +480,52 @@ not qualify live SHIP forks, the remaining recovery matrix, prospective capacity
 full replay, launch pins or the release. Source bytes/oracles, queue budgets,
 256-block ancestry, durability, activation and phase/run deadlines are unchanged.
 
+## Replica restart before broker handover
+
+For [#329](https://github.com/eosrio/hyperion-history-api/issues/329), create a fresh
+owned fixture with both explicit port options:
+
+```sh
+python tests/fixtures/portable-state-worker/services.py create out/storage-services --pin-rabbit-ports --pin-elasticsearch-ports
+node scripts/qualification/portable-state-worker.ts out/storage-services/worker-state.json out/p191-source/plan.json out/storage-node24 --native --authority-rpc http://SELECTED_RPC_ORIGIN --broker-storage-recovery
+```
+
+The baseline uses the same checkout, runtimes and fixed-port fixture creation with
+`--broker-recovery`. Each run needs fresh services and output. Both options are
+qualification-only; ordinary fixture creation retains random loopback ports.
+Endpoint intent is saved before creation. A competing bind fails without choosing
+another endpoint. Cleanup retains its existing exclusive ownership checks.
+
+The combined case first requires the unchanged block-33 source/native/API oracles.
+It holds the actual confirmed-handoff manifest response after the original
+two-copy write, before its fresh observation and consumer ACK. The new controller
+checks the current private Docker socket/daemon, target container, fixed loopback
+bind, exclusive volume, exact image/environment/budgets, private network members
+and Linux process births. An opaque, single-use capability restarts only the
+secondary data-node container, retaining its volume. Copied diagnostics and a
+changed census cannot authorize that mutation.
+
+Before broker handover, require the original cluster/index UUIDs, a green
+three-node/two-data-node cluster and the exact original manifest on both configured
+copies. Refresh and physical-copy reads establish visibility; the held original
+write response remains the write acknowledgment. Its record must remain unchanged
+and held, with no fresh result, ACK, end or association during storage recovery.
+The existing broker restart then fences the original attempt before releasing its
+return. Exactly one original block-34 continuation allows the replacement to obtain
+its own conditional two-copy receipt, authenticated end and retained association.
+Only the exact two original block-33 publishers may reconcile this retry.
+
+`prefixes/storage-restart-33.json` records the storage boundary separately from
+`prefixes/broker-restart-34.json`. The final report links that replacement attempt
+and retains the full workload verdict, software shutdown and physical cleanup
+separately. A later 685/full replay failure remains failed. This case tests an
+already acknowledged two-copy write surviving one replica restart before the
+caller observes it. It does not qualify new writes during node loss, power-loss
+durability, live forks, prospective capacity, deployment or the release. Keep
+settlement unknown and preserve all original inputs, grants, ancestry, budgets
+and deadlines. Node 24/26 actual Linux runs and retained raw evidence are required;
+resource-free/native capability controls alone cannot complete #329.
+
 ## Production master restart before adjudication
 
 The irreversible canonical RPC check retains the original physical live-reader
@@ -552,3 +606,93 @@ Mongo barriers. An observed restart boundary is separate from the final replay
 result: a later failure is still a failed run. This single drained-queue crash
 does not qualify other crash windows, broker/server restart, generic reversible
 inputs, live forks, launch pins or the complete release.
+
+## Native history query and bulk chronology
+
+[#334](https://github.com/eosrio/hyperion-history-api/issues/334) tracks the original
+native block-397 missing-row failure. A matching successful bulk receipt in a
+terminal capture cannot establish what an earlier search saw. Native runs now
+retain `history-diagnostics/NNN-action-search.json` before the existing response,
+identity, value and proof assertions. Each record contains the exact client
+request and complete deserialized response, including hits, exact totals and shard
+status. Target holds also retain the original expected identity, frame/oracle
+hashes, source position, current control/commit, selection and relevant observed
+worker events. A client rejection retains its original error and server body.
+
+`NNN-action-refresh.json` records the original refresh request/response, phase,
+source progress, recovery snapshot and latest existing owned-queue sample with its
+observation time. The sample can predate the refresh; it does not add a queue read
+or establish a new state/history barrier. Raw worker journals retain membership,
+publication, seal and source-ACK evidence independently.
+
+Native bulk captures additionally retain `bulk/NNNNN-chronology.json`, linked to
+the unchanged request and response files by hashes. The record distinguishes
+request arrival, the invocation of upstream `remote.end` and the actual upstream
+response-end callback, including failed/in-flight requests. Dispatch invocation
+does not prove server receipt. Compare monotonic nanoseconds only when the clock
+domains have the same driver PID and process time origin. Child-process sequences
+and timestamps are not automatically in that domain. The original response and
+copy checks still establish write acknowledgment; refreshes and later reads do
+not replace them.
+
+History diagnostics allow 128 records, 16 MiB per record and 64 MiB total. Full
+records are written exclusively and are never silently truncated. Serialization,
+file or budget failures preserve the original operation's result/error and mark
+the qualification evidence incomplete. The run cannot pass with such a failure.
+Bulk chronology bytes count against the existing 256 MiB bulk capture cap, with
+the existing request count and per-message limits. Observation and file-write
+overhead is part of this diagnostic run; it is not a production performance result.
+
+The native controlled feedback loop uses the sealed original `1..1480` corpus and
+installed Wire codec while controlling canonical/storage/search reads. It calls
+the original factory and `hold(397)`, then stops the visible-row control at an
+always-throwing independent proof guard. It never manufactures a successful grant.
+
+```sh
+node --experimental-strip-types tests/unit/portable-native-history-capture.mjs
+node --experimental-strip-types tests/unit/portable-native-history-capture.mjs delayed
+```
+
+The first command checks the visible, delayed, missing, wrong-identity, wrong-fork,
+timeout, failed-shard and incomplete-source cases, including a repeated delayed
+case. The second intentionally exits 1 at the unchanged missing-row assertion.
+These controls validate diagnostic capture, not a fix or service qualification.
+An actual owned Linux run must still retain the failed query and correlated
+write/refresh chronology before choosing a behavioral change. Keep the historical
+failure failed and preserve the original oracles, single search, default ancestry,
+queues, budgets, deadlines and separate full-replay/shutdown/cleanup verdicts.
+
+The later `f9a27adb` Linux capture failed a different comparison: the exact
+publication count at block 397. Its retained query contains row 637, and terminal
+worker evidence contains one confirmation matching its canonical payload hash,
+admission, fragment, block and owned queue. The earlier event array and the
+confirmation's arrival relative to that array were not retained. The native
+checker reused a snapshot taken before its asynchronous storage and proof reads.
+
+Publication checks now read observations again after those reads. If a receipt is
+still absent, they reuse the original hold or handover deadline; no output gets a
+fresh timeout. Handover reads retain their original restarted-worker filter.
+Count, publisher, payload, admission, fragment, queue, persistence and mandatory
+checks remain strict. Missing or duplicate confirmations still fail. The native
+component regression exercises the receipt matcher without constructing proof
+authority:
+
+```sh
+node --experimental-strip-types tests/unit/portable-native-publications.mjs
+```
+
+This fixes the stale publication observation. It does not retroactively accept
+the failed run, establish when its confirmation arrived, or resolve the older
+missing-row case. Fresh full-worker Linux qualification remains required.
+
+### Storage-cut owner and terminal records
+
+The storage qualifier receives the actual captured master PID from the driver. It validates
+the held child's parent against that PID, then checks the original attempt's child operation
+records and the master's `end`/`adjudicated` records separately. The precondition runs before
+storage inspection, again before issuing the restart capability, and after recovery. Missing
+or foreign owners and any original terminal evidence fail the cut; unrelated attempts and
+foreign process records do not count as the held original's terminal state.
+
+The native controlled-record regression exercises both pre-inspection and post-snapshot
+guards without Docker or service actions. It establishes no source, end or restart authority.

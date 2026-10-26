@@ -36,6 +36,11 @@ import {createHash} from 'node:crypto';
 import type {ProtocolAbiActionInput} from '@eosrio/hyperion-sdk/protocol';
 import {currentProofConsumerScope, trackProofConsumerOperation} from '../protocol/proof-consumer-scope.js';
 
+type ActionAdmissionPredicate = 'owner_current' | 'producer_epoch' | 'executable' | 'source_chain'
+    | 'source_block_number' | 'source_block_id' | 'source_producer' | 'source_timestamp' | 'target_identity'
+    | 'transaction_dispatch_present' | 'dispatch_payload' | 'dispatch_inline_count' | 'dispatch_filtered'
+    | 'source_selection' | 'bound_owner_current' | 'bound_configuration';
+
 interface ProtocolActionWork {
     original: ActionTrace;
     metadata: ProtocolActionMetadata;
@@ -156,6 +161,31 @@ export default class DSPoolWorker extends HyperionWorker {
     private readonly ioRedisClient: Redis;
     txCacheExpiration = 3600;
 
+    private createConsumerQueue() {
+        return cargo((payload: ConsumeMessage[], cb) => {
+            this.processMessages(payload).then(() => cb()).catch((error) =>
+                this.handleActionProcessingFailure(error, payload, cb));
+        }, this.conf.prefetch.block);
+    }
+
+    private handleActionProcessingFailure(error: any, _payload: ConsumeMessage[], callback: () => void) {
+        if (this.usesExtensionProtocol || this.actionSourceAdmissionEnabled) {
+            return this.exitForActionProcessing(error, _payload);
+        }
+        hLog('NackAll:', error);
+        if (this.ch && this.ch_ready) {
+            try {this.ch.nackAll();} catch (e: any) {hLog(e.message);}
+        }
+        callback();
+    }
+
+    private exitForActionProcessing(error: any, _payload: ConsumeMessage[]): never {
+        hLog('Protocol action processing failed; supervised replacement required:', error.message);
+        this.ch_ready = false;
+        this.consumerQueue.kill();
+        return process.exit(1);
+    }
+
     constructor() {
         super();
 
@@ -168,26 +198,7 @@ export default class DSPoolWorker extends HyperionWorker {
             }
         }
 
-        this.consumerQueue = cargo((payload: ConsumeMessage[], cb) => {
-            // hLog(`Processing ${payload.length} messages`);
-            this.processMessages(payload).then(() => cb()).catch((err) => {
-                if (this.usesExtensionProtocol || this.actionSourceAdmissionEnabled) {
-                    hLog('Protocol action processing failed; supervised replacement required:', err.message);
-                    this.ch_ready = false;
-                    this.consumerQueue.kill();
-                    return process.exit(1);
-                }
-                hLog('NackAll:', err);
-                if (this.ch && this.ch_ready) {
-                    try {
-                        this.ch.nackAll();
-                    } catch (e: any) {
-                        hLog(e.message);
-                    }
-                }
-                cb();
-            });
-        }, this.conf.prefetch.block);
+        this.consumerQueue = this.createConsumerQueue();
 
         this.preIndexingQueue = queue((data: any, cb) => {
             if (data.publish) {try {data.publish(); cb();} catch (error) {cb(error instanceof Error ? error : new Error(String(error)));} return;}
@@ -920,17 +931,35 @@ export default class DSPoolWorker extends HyperionWorker {
         const admission = await this.getActionAdmissionStore().resolve(headers?.[actionSourceAdmissionHeader]);
         const epoch = await actionProducerEpoch(this);
         const source = admission.source.inventoryInput.source, ordinal = headers?.action_trace_ordinal;
-        if (!owner.current() || actionHistoryImmutableJson(epoch.producer) !== actionHistoryImmutableJson(admission.source.producer)
-            || epoch.executableSha256 !== admission.source.executableSha256 || source.chainId !== this.chainId
-            || headers?.block_num !== source.blockNum || headers?.block_id !== source.blockId || headers?.producer !== source.producer
-            || headers?.ts !== source.timestamp || actionHistoryImmutableJson(await this.actionTarget(source.blockNum)) !== actionHistoryImmutableJson(admission.target))
-            throw new Error('Action admission producer/source/target epoch mismatch');
+        // Keep the original short-circuit order and evaluate each operand once. The rejection
+        // boundary exposes the actual failed decision to engineering observers, without a recheck.
+        let reason = 'Action admission producer/source/target epoch mismatch';
+        const equal = (predicate: ActionAdmissionPredicate, actual: unknown, expected: unknown, sensitiveOperands = false): void => {
+            if (actual === expected) return;
+            const operand = (value: unknown) => sensitiveOperands
+                ? {sha256: createHash('sha256').update(value as string).digest('hex'), bytes: Buffer.byteLength(value as string)} : value;
+            this.rejectActionAdmission(reason, {
+                predicate, actual: operand(actual), expected: operand(expected), operandFormat: sensitiveOperands ? 'sha256' : 'value',
+                message, admission, epoch, owner});
+        };
+        equal('owner_current', owner.current(), true);
+        equal('producer_epoch', actionHistoryImmutableJson(epoch.producer), actionHistoryImmutableJson(admission.source.producer));
+        equal('executable', epoch.executableSha256, admission.source.executableSha256);
+        equal('source_chain', source.chainId, this.chainId);
+        equal('source_block_number', headers?.block_num, source.blockNum);
+        equal('source_block_id', headers?.block_id, source.blockId);
+        equal('source_producer', headers?.producer, source.producer);
+        equal('source_timestamp', headers?.ts, source.timestamp);
+        equal('target_identity', actionHistoryImmutableJson(await this.actionTarget(source.blockNum)), actionHistoryImmutableJson(admission.target));
         if (admission.inventory) {
+            reason = 'Action admission input payload or source ordinal mismatch';
             const transaction = admission.inventory.transactions.find(value => value.traceOrdinal === ordinal);
-            if (!transaction?.dispatch || createHash('sha256').update(payload).digest('hex') !== transaction.dispatch.bodySha256
-                || headers?.inline_count !== transaction.dispatch.inlineCount || headers?.filtered !== transaction.dispatch.filtered
-                || (this.usesProtocolSourceBindings && headers?.[protocolSourceSelectionHeader] !== admission.inventory.sourceSelectionId))
-                throw new Error('Action admission input payload or source ordinal mismatch');
+            if (!transaction?.dispatch) this.rejectActionAdmission(reason, {
+                predicate: 'transaction_dispatch_present', actual: false, expected: true, operandFormat: 'value', message, admission, epoch, owner});
+            equal('dispatch_payload', createHash('sha256').update(payload).digest('hex'), transaction.dispatch.bodySha256);
+            equal('dispatch_inline_count', headers?.inline_count, transaction.dispatch.inlineCount);
+            equal('dispatch_filtered', headers?.filtered, transaction.dispatch.filtered);
+            if (this.usesProtocolSourceBindings) equal('source_selection', headers?.[protocolSourceSelectionHeader], admission.inventory.sourceSelectionId);
         }
         this.actionHookFailure = undefined;
         this.activeActionAdmission = {admission, traceOrdinal: ordinal, payload, headers, configuration: epoch.configuration, owner};
@@ -940,8 +969,17 @@ export default class DSPoolWorker extends HyperionWorker {
             configurationSha256: createHash('sha256').update(epoch.configuration).digest('hex'),
             targetName: admission.target.name, targetUuid: admission.target.uuid});
         this.assertWorkerAttemptActive();
-        if (!owner.current() || currentActionConfiguration(this) !== epoch.configuration)
-            throw new Error('Action admission producer/channel epoch changed during attempt binding');
+        reason = 'Action admission producer/channel epoch changed during attempt binding';
+        equal('bound_owner_current', owner.current(), true);
+        equal('bound_configuration', currentActionConfiguration(this), epoch.configuration, true);
+    }
+
+    /** Diagnostic boundary only: never grants attempt, source, retry, settlement or progress authority. */
+    private rejectActionAdmission(reason: string, decision: {
+        predicate: ActionAdmissionPredicate; actual: unknown; expected: unknown; operandFormat: 'value' | 'sha256'; message: Message; admission: ActionSourceAdmission;
+        epoch: Awaited<ReturnType<typeof actionProducerEpoch>>; owner: ActionPublicationOwner
+    }): never {
+        throw Object.assign(new Error(reason), {actionAdmissionPredicate: decision.predicate});
     }
 
     private async assertActionAdmissionCurrent(): Promise<void> {

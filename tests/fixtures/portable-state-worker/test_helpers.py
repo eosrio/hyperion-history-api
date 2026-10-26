@@ -125,6 +125,22 @@ class FixtureHelpers(unittest.TestCase):
                 services.core_command("cleanup", self.directory, "owned-pwsh", pin_rabbit_ports=True)
             run.assert_not_called()
 
+    def test_fixed_elasticsearch_endpoints_keep_default_creation_and_cleanup_ownership(self):
+        for rabbit in [False, True]:
+            for elastic in [False, True]:
+                with patch.object(services.subprocess, "run") as run:
+                    services.core_command("create", self.directory, "owned-pwsh", pin_rabbit_ports=rabbit, pin_elasticsearch_ports=elastic)
+                arguments = run.call_args.args[0]
+                self.assertEqual("-PinRabbitPorts" in arguments, rabbit)
+                self.assertEqual("-PinElasticsearchPorts" in arguments, elastic)
+                position = arguments.index("-IndexingPressureLimitMb")
+                self.assertEqual(arguments[position + 1], "64")
+                self.assertEqual(run.call_args.kwargs["timeout"], 360)
+        with patch.object(services.subprocess, "run") as run:
+            with self.assertRaisesRegex(ValueError, "create-only"):
+                services.core_command("cleanup", self.directory, "owned-pwsh", pin_elasticsearch_ports=True)
+            run.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

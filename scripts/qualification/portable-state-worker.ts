@@ -18,13 +18,15 @@ import type {ProjectionBinding, ProjectionDefinition, ProjectionQuery, Projectio
 import {validateFixture, assertNodeOwnership} from './es955-replicas.ts';
 import {assertOwnedBinding, assertSuccessfulWorkerShutdown} from './es955-workers.ts';
 import {startBulkLedger, summarizeBulkLedger} from './replay-bulk-ledger.ts';
+import {createPortableHistoryDiagnostics, portableHistoryClock} from './portable-state-history-diagnostics.ts';
+import {auditWorkerRejectionDiagnostics} from './worker-rejection-diagnostics.mjs';
 import {OwnedMongoFixture, MONGODB_VERSION, waitForMongo} from './projection-fixture.mjs';
 import {auditPortableWorkerSource, boundedPortableFile, ordinaryPortablePath, portableSourceHash,
     portableSourceLimits, servePortableWorkerSource, type PortableSourceInput, type PortableSourceFile,
     type PortableWorkerSource, type PortableSourceProfile} from './portable-state-worker-source.ts';
 import {assertPortableWorkerOracle, portableWorkerAbiAvailability} from './portable-state-worker-oracle.ts';
 import {auditPortableNativeOracle, createPortableNativeQualification, nativePortableHolds, portableLegacyProfile,
-    portableNativeProfile} from './portable-state-worker-native.ts';
+    portableNativeProfile, type PortableNativePhaseBudget} from './portable-state-worker-native.ts';
 import {auditPortablePhysicalMongo} from './portable-state-worker-mongo.ts';
 import {auditPortableWorkerProfiles, portableWorkerProfileEnvironment, portableWorkerProfileLimits} from './portable-state-worker-profiles.ts';
 import {createWireRecoveryControl, readWireRecoveryEvidence, auditWireAttemptRecovery, wireRecoveryShutdownRows} from './portable-state-worker-recovery.mjs';
@@ -38,6 +40,8 @@ import {createWireBrokerRecoveryControl, readWireBrokerRecoveryEvidence, assertW
     releaseWireBrokerReceipt, auditWireBrokerSourceCounterWindows, assertWireBrokerHeldQueues,
     auditWireBrokerAttemptRecovery} from './portable-state-broker-recovery.mjs';
 import {captureOwnedWireBroker, describeOwnedWireBroker, restartOwnedWireBroker} from './owned-wire-broker.mjs';
+import {captureOwnedWireReplica, describeOwnedWireReplica} from './owned-wire-replica.mjs';
+import {qualifyWireStorageRestart} from './portable-state-storage-recovery.mjs';
 import {portableWorkerSourceFrame} from './portable-state-worker-source.ts';
 
 const repo = fileURLToPath(new URL('../../', import.meta.url));
@@ -326,7 +330,8 @@ export async function portableSourceRpc(source: PortableWorkerSource, errors: st
 }
 
 export interface PortableWorkerOptions {readonly native?: boolean; readonly authorityRpc?: string; readonly profile?: boolean;
-    readonly workerRecovery?: boolean; readonly masterRecovery?: boolean; readonly readerRecovery?: boolean; readonly brokerRecovery?: boolean}
+    readonly workerRecovery?: boolean; readonly masterRecovery?: boolean; readonly readerRecovery?: boolean;
+    readonly brokerRecovery?: boolean; readonly storageRecovery?: boolean}
 
 function portableAuthorityRpcOrigin(value: string): URL {
     const upstream = new URL(value);
@@ -339,7 +344,7 @@ function portableAuthorityRpcOrigin(value: string): URL {
 export function validatePortableWorkerOptions(options: unknown): asserts options is PortableWorkerOptions {
     assert.ok(options && typeof options === 'object' && !Array.isArray(options)
         && [Object.prototype, null].includes(Object.getPrototypeOf(options))
-        && Object.keys(options).every(key => ['native', 'authorityRpc', 'profile', 'workerRecovery', 'masterRecovery', 'readerRecovery', 'brokerRecovery'].includes(key)));
+        && Object.keys(options).every(key => ['native', 'authorityRpc', 'profile', 'workerRecovery', 'masterRecovery', 'readerRecovery', 'brokerRecovery', 'storageRecovery'].includes(key)));
     const selected = options as PortableWorkerOptions;
     if (Object.hasOwn(selected, 'native')) assert.equal(typeof selected.native, 'boolean');
     if (Object.hasOwn(selected, 'profile')) assert.equal(typeof selected.profile, 'boolean');
@@ -347,6 +352,7 @@ export function validatePortableWorkerOptions(options: unknown): asserts options
     if (Object.hasOwn(selected, 'masterRecovery')) assert.equal(typeof selected.masterRecovery, 'boolean');
     if (Object.hasOwn(selected, 'readerRecovery')) assert.equal(typeof selected.readerRecovery, 'boolean');
     if (Object.hasOwn(selected, 'brokerRecovery')) assert.equal(typeof selected.brokerRecovery, 'boolean');
+    if (Object.hasOwn(selected, 'storageRecovery')) assert.equal(typeof selected.storageRecovery, 'boolean');
     if (Object.hasOwn(selected, 'authorityRpc')) {
         assert.ok(selected.native === true && typeof selected.authorityRpc === 'string',
             'the source-bounded RPC check requires explicit native qualification');
@@ -365,19 +371,22 @@ export function validatePortableWorkerOptions(options: unknown): asserts options
     assert.ok(!selected.brokerRecovery || selected.native === true && typeof selected.authorityRpc === 'string'
         && !selected.profile && !selected.workerRecovery && !selected.masterRecovery && !selected.readerRecovery,
         'Broker recovery requires native source-bounded RPC qualification without CPU capture or another fault');
+    assert.ok(!selected.storageRecovery || selected.brokerRecovery === true,
+        'Storage recovery requires the explicit native broker handover case');
 }
 
 export function parsePortableWorkerArguments(args: readonly string[]) {
     assert.ok(args.slice(0, 3).length === 3 && args.slice(0, 3).every(value => typeof value === 'string' && value.length > 0)
         && (args.length === 3 || args.length === 4 && args[3] === '--native'
-            || (args.length === 6 || args.length === 7 && ['--profile', '--worker-recovery', '--master-recovery', '--reader-recovery', '--broker-recovery'].includes(args[6]))
+            || (args.length === 6 || args.length === 7 && ['--profile', '--worker-recovery', '--master-recovery', '--reader-recovery', '--broker-recovery', '--broker-storage-recovery'].includes(args[6]))
                 && args[3] === '--native' && args[4] === '--authority-rpc'),
-    'usage: node portable-state-worker.ts STATE_FILE PLAN_JSON NEW_OUTPUT_DIRECTORY [--native [--authority-rpc URL [--profile|--worker-recovery|--master-recovery|--reader-recovery|--broker-recovery]]]');
+    'usage: node portable-state-worker.ts STATE_FILE PLAN_JSON NEW_OUTPUT_DIRECTORY [--native [--authority-rpc URL [--profile|--worker-recovery|--master-recovery|--reader-recovery|--broker-recovery|--broker-storage-recovery]]]');
     const options = {...(args.length > 3 ? {native: true} : {}), ...(args.length >= 6 ? {authorityRpc: args[5]} : {}),
         ...(args[6] === '--profile' ? {profile: true} : {}), ...(args[6] === '--worker-recovery' ? {workerRecovery: true} : {}),
         ...(args[6] === '--master-recovery' ? {masterRecovery: true} : {}),
         ...(args[6] === '--reader-recovery' ? {readerRecovery: true} : {}),
-        ...(args[6] === '--broker-recovery' ? {brokerRecovery: true} : {})};
+        ...(['--broker-recovery', '--broker-storage-recovery'].includes(args[6]) ? {brokerRecovery: true} : {}),
+        ...(args[6] === '--broker-storage-recovery' ? {storageRecovery: true} : {})};
     validatePortableWorkerOptions(options);
     return {stateFile: args[0], planFile: args[1], outputDirectory: args[2], options};
 }
@@ -416,6 +425,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
     const network = JSON.parse(docker(['network', 'inspect', state.network]))[0];
     assertPortableWorkerServices(state, inspections, network);
     if (options.brokerRecovery) describeOwnedWireBroker(captureOwnedWireBroker(state.core, docker));
+    if (options.storageRecovery) describeOwnedWireReplica(captureOwnedWireReplica(state.core, docker));
     const volumeEvidence: any[] = [];
     for (const service of services) {
         const volume = JSON.parse(docker(['volume', 'inspect', service.volume]))[0];
@@ -426,6 +436,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
     await mkdir(output); await mkdir(join(output, 'observer')); await mkdir(join(output, 'observer/master')); await mkdir(join(output, 'observer/api'));
     await mkdir(join(output, 'config/chains'), {recursive: true});
     await mkdir(join(output, 'bulk')); await mkdir(join(output, 'prefixes'));
+    if (options.native) await mkdir(join(output, 'history-diagnostics'));
     const reportHandle = await open(join(output, 'report.json'), 'wx');
     const report: any = {schemaVersion: 1, status: 'running', startedAt: new Date().toISOString(), source: {
         chainId: source.chainId, profileId: source.profileId, revision: source.sourceRevision, components: source.components,
@@ -440,6 +451,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         prefixes: [], cleanup: [], errors: [], limits: {releaseQualified: false, forkRecoveryQualified: false, rustQualified: false,
             processCrashRecoveryQualified: false, writeFailureIsolationQualified: false,
             note: 'Actual Node worker/Mongo/HTTP tracer; no AtomicAssets, full release, fork or Bun qualification.'}};
+    const historyDiagnostics = options.native ? createPortableHistoryDiagnostics(join(output, 'history-diagnostics'), report.errors) : undefined;
     const chain = `hyp-p191-${state.run}`, database = `h45_p191_${state.run}`;
     const invalidDefinition = portableWorkerFaultDefinition(plan), faultThrough = plan.barriers[0].through;
     const mongoFixture = new OwnedMongoFixture({command: docker});
@@ -460,10 +472,16 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             ...(mode === 'alwaysOn' ? {data: {failCommands: ['update'], errorCode: 2}} : {})});
     };
     const es = new Client({node: state.core.nodes[0].url, requestTimeout: 10000, maxRetries: 0});
-    const wait = async (name: string, condition: () => Promise<void>, milliseconds = 60000) => {
-        const end = Math.min(deadline, performance.now() + milliseconds); let last: unknown;
+    let lastQueues: {observed: ReturnType<typeof portableHistoryClock>; rows: any[]} | undefined;
+    const refreshActions = async (through: number, phase: string) => {
+        const request = {index: chain + '-action-*'}, refresh = () => es.indices.refresh(request);
+        return historyDiagnostics ? historyDiagnostics.observe('action-refresh', {request, through, phase,
+            source: source.records[through - 1], replay: replay?.metrics(), queues: lastQueues, recovery: report.lastRecovery}, refresh) : refresh();
+    };
+    const wait = async (name: string, condition: () => Promise<void>, milliseconds = 60000, inherited?: PortableNativePhaseBudget) => {
+        const end = Math.min(deadline, performance.now() + milliseconds, inherited?.deadline ?? Infinity); let last: unknown;
         while (performance.now() < end) {for (const child of [master, api]) if (child) assert.ok(child.exitCode === null && child.signalCode === null, `${name}: actual child exited`);
-            assert.deepEqual(report.errors, []); try {await condition(); return;} catch (error) {last = error;} await pause(100);}
+            assert.deepEqual(report.errors, []); try {await condition(); return Object.freeze({deadline: end});} catch (error) {last = error;} await pause(100);}
         throw new Error(`${name} did not complete: ${describeError(last)}`);
     };
     const queues = async () => {
@@ -471,9 +489,10 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             headers: {authorization: 'Basic ' + Buffer.from('qualifier:qualifier-test-only').toString('base64')}, signal: AbortSignal.timeout(Math.min(5000, remaining()))});
         assert.equal(response.status, 200); const rows = await boundedResponse(response, 1024 * 1024);
         assert.ok(Array.isArray(rows) && rows.length <= 4096);
-        return rows.filter((row: any) => row.name.startsWith(chain + ':')).map((row: any) => ({name: row.name,
+        const selected = rows.filter((row: any) => row.name.startsWith(chain + ':')).map((row: any) => ({name: row.name,
             ready: row.messages_ready, unacked: row.messages_unacknowledged, messages: row.messages, consumers: row.consumers,
             ack: row.message_stats?.ack ?? 0, delivered: row.message_stats?.deliver_get ?? 0, redelivered: row.message_stats?.redeliver ?? 0}));
+        lastQueues = {observed: portableHistoryClock(), rows: selected}; return selected;
     };
     const observedDirectoryRows = async (kind = 'master', complete = false) => {
         const directory = join(output, 'observer', kind);
@@ -539,7 +558,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         rpc = await portableSourceRpc(source, report.errors, options.authorityRpc
             ? {authorityRpc: options.authorityRpc, replayThrough: () => replay!.metrics().through} : {});
         report.rpc = {requests: rpc.requests, lineage: rpc.lineage};
-        ledger = await startBulkLedger(state.core.nodes[0].url, join(output, 'bulk'), report.errors, 20000);
+        ledger = await startBulkLedger(state.core.nodes[0].url, join(output, 'bulk'), report.errors, 20000, options.native === true);
         report.bulkCapture = {...ledger.limits, recordedRequests: 0};
         const apiPort = await freePort(), controlPort = await freePort(), config = portableWorkerConfig(chain, database,
             [...plan.definitions, invalidDefinition], apiPort, rpc.url, source.profileId as PortableSourceProfile);
@@ -587,6 +606,8 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             report.brokerRecovery = {status: 'pending', control: brokerControl.control,
                 recoveryQualified: false, note: 'Restart observation alone grants no recovery, ACK settlement or capacity acceptance.'};
             report.preloads.push('portable-state-broker-recovery-preload.mjs');
+            if (options.storageRecovery) report.storageRecovery = {status: 'pending', brokerHandover: 'pending',
+                freshWriteAuthority: false, capacityAuthority: false, releaseQualified: false};
         }
         report.config = config; report.bindings = bindings; report.connections = connections;
         report.contractFailure = {definition: invalidDefinition, binding: invalidBinding,
@@ -641,7 +662,9 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             return {history: await history(block.blockNum), states};
         };
         const native = nativeOracle ? await createPortableNativeQualification({source, oracle: nativeOracle, client: es, chain, apiPort,
-            events: () => observedRows(), http, unrelated, rawHistory: history, wait, bulk: {directory: join(output, 'bulk'), receipts: ledger.receipts},
+            events: () => observedRows(), http, unrelated, rawHistory: history,
+            wait: (name, work, budget) => wait(name, work, 60000, budget), historyDiagnostics,
+            bulk: {directory: join(output, 'bulk'), receipts: ledger.receipts},
             ...(options.workerRecovery ? {attemptRecovery: () => report.attemptRecovery?.status === 'observed'
                 ? report.attemptRecovery.evidence : undefined} : {}),
             ...(options.masterRecovery ? {masterRestart: () => masterCrash && master?.pid
@@ -649,7 +672,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             ...(options.readerRecovery ? {readerRestart: () => readerCrash && master?.pid
                 ? {receipt: readerCrash, masterPid: master.pid} : undefined} : {}),
             ...(options.brokerRecovery ? {brokerRecovery: () => brokerAttemptAudit} : {})}) : undefined;
-        if (native) report.native = {profile: native.profile, oracleHashes: native.oracleHashes, holds: [],
+        if (native) report.native = {profile: native.profile, oracleHashes: native.oracleHashes, holds: [], historyDiagnostics: historyDiagnostics!.evidence,
             activation: 'Existing admission engineering preload only; ordinary installed native provider; public/default operator activation remains disabled.',
             constructedControls: native.controls, notificationInventory: native.originalNotifications};
         const observeBrokerCut = async () => {
@@ -786,7 +809,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                             previousBlockId: source.records[faultThrough - 2].blockId}}]});
                 replay.assertThrough(through); mongoFixture.ownedContainer('replica');
             }
-            if (native) {await es.indices.refresh({index: chain + '-action-*'}); const observed = await native.hold(through);
+            if (native) {await refreshActions(through, 'scheduled-prefix'); const observed = await native.hold(through);
                 const file = `prefixes/native-${through}.json`, bytes = Buffer.from(JSON.stringify(observed, null, 2) + '\n');
                 await writeFile(join(output, file), bytes, {flag: 'wx'}); report.native.holds.push({through, file, sha256: portableSourceHash(bytes)});}
             const observed = {through, blockId: block.blockId, responses, history: await history(through),
@@ -796,6 +819,12 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             await writeFile(join(output, file), bytes, {flag: 'wx'}); report.prefixes.push({through, file, sha256: portableSourceHash(bytes)});
             if (brokerControl && through === 33) {
                 await observeBrokerCut(); const control = brokerControl.control;
+                if (options.storageRecovery) {
+                    await qualifyWireStorageRestart({core: state.core, docker, es, control, masterPid: master!.pid, replay, wait, evidence: report.storageRecovery});
+                    const file = 'prefixes/storage-restart-33.json', bytes = Buffer.from(JSON.stringify(report.storageRecovery, null, 2) + '\n');
+                    await writeFile(join(output, file), bytes, {flag: 'wx'});
+                    report.prefixes.push({through, file, sha256: portableSourceHash(bytes)});
+                }
                 const token = captureOwnedWireBroker(state.core, docker);
                 report.brokerRecovery.originalIncarnation = describeOwnedWireBroker(token);
                 try {
@@ -865,7 +894,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                 });
                 report.brokerRecovery.attemptAudit = brokerAttemptAudit;
                 assert.ok(counterWindows);
-                assert.ok(native); await es.indices.refresh({index: chain + '-action-*'});
+                assert.ok(native); await refreshActions(through, 'broker-continuation');
                 const nativePrefix = await native.hold(through);
                 const nativeFile = `prefixes/native-${through}.json`, nativeBytes = Buffer.from(JSON.stringify(nativePrefix, null, 2) + '\n');
                 await writeFile(join(output, nativeFile), nativeBytes, {flag: 'wx'});
@@ -874,6 +903,9 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                     source: replay.metrics(), recovery: report.lastRecovery, queues: await queues(),
                     evidence: readWireBrokerRecoveryEvidence(control), counterWindows, recoveryQualified: false};
                 report.brokerRecovery.status = 'observed';
+                if (options.storageRecovery) report.storageRecovery.brokerHandover = {status: 'observed', through,
+                    report: `prefixes/broker-restart-${through}.json`, originalAttemptId: brokerAttemptAudit!.originalEnd.attemptId,
+                    replacementAttemptId: brokerAttemptAudit!.end.attemptId, brokerSettlement: 'unknown'};
                 const file = `prefixes/broker-restart-${through}.json`, bytes = Buffer.from(JSON.stringify(report.brokerRecovery, null, 2) + '\n');
                 await writeFile(join(output, file), bytes, {flag: 'wx'});
                 report.prefixes.push({through, file, sha256: portableSourceHash(bytes)});
@@ -923,7 +955,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                 });
                 await releaseWireReaderRpc(readerCrash);
                 const resumedBlock = source.records[through - 1];
-                await wait('old canonical return rejects while the same master records a fresh source-bound association', async () => {
+                const handoverBudget = await wait('old canonical return rejects while the same master records a fresh source-bound association', async () => {
                     replay!.assertThrough(34); ledger!.assertIdle();
                     report.readerRecovery.evidence = await auditWireReaderHandover({receipt: readerCrash, masterPid: master!.pid,
                         rows: await observedDirectoryRows(), store, selections, es, queues: await queues()});
@@ -942,8 +974,8 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                 const absenceFile = 'reader-recovery/old-association-absence.json';
                 await writeFile(join(output, absenceFile), JSON.stringify(report.readerRecovery.evidence.absence, null, 2) + '\n', {flag: 'wx'});
                 report.readerRecovery.absenceFile = absenceFile;
-                await es.indices.refresh({index: chain + '-action-*'});
-                assert.ok(native); report.readerRecovery.nativeReplay = await native.resumedHead();
+                await refreshActions(through, 'reader-handover');
+                assert.ok(native); report.readerRecovery.nativeReplay = await native.resumedHead(handoverBudget);
                 assert.equal(report.readerRecovery.nativeReplay.current.value.source.readerSessionId, report.readerRecovery.currentReader.readerSessionId);
                 assert.equal(report.readerRecovery.nativeReplay.current.value.generation, report.readerRecovery.currentReader.generation);
                 report.readerRecovery.status = 'observed';
@@ -982,7 +1014,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                 masterRestarted = true; master = await spawnOwned('build/indexer/launcher.js', configFile);
                 report.masterPid = master.pid; report.masterRestart.status = 'restarted';
                 report.masterRestart.replacementMasterPid = master.pid;
-                await wait('replacement master rejects the old end and completes its own fresh block34 association', async () => {
+                const handoverBudget = await wait('replacement master rejects the old end and completes its own fresh block34 association', async () => {
                     replay!.assertThrough(34); ledger!.assertIdle();
                     report.masterRestart.evidence = await auditWireMasterRestart({receipt: masterCrash, newMasterPid: master!.pid,
                         rows: await observedDirectoryRows('master-restarted'), store, queues: await queues()});
@@ -1001,8 +1033,8 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                         report.masterRestart.stateResponses.push(responseReceipt(response));
                     }
                 });
-                await es.indices.refresh({index: chain + '-action-*'});
-                assert.ok(native); report.masterRestart.nativeReplay = await native.resumedHead();
+                await refreshActions(through, 'master-restart');
+                assert.ok(native); report.masterRestart.nativeReplay = await native.resumedHead(handoverBudget);
                 report.masterRestart.status = 'observed';
                 const result = Buffer.from(JSON.stringify(report.masterRestart, null, 2) + '\n');
                 await writeFile(join(output, 'prefixes/master-restart-33.json'), result, {flag: 'wx'});
@@ -1034,11 +1066,13 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         if (recoveryControl) assert.equal(report.attemptRecovery.status, 'observed');
         if (masterControl) assert.equal(report.masterRestart.status, 'observed');
         if (readerControl) assert.equal(report.readerRecovery.status, 'observed');
+        if (historyDiagnostics) assert.deepEqual(report.errors, []);
         report.limits.writeFailureIsolationQualified = true;
         report.status = 'passed';
     } catch (error) {report.status = 'failed'; report.error = describeError(error);}
     finally {
         if (brokerControl) report.brokerRecovery.fullWorkloadVerdict = report.status;
+        if (report.storageRecovery) report.storageRecovery.fullWorkloadVerdict = report.status;
         cleanupDeadline = performance.now() + 90_000;
         if (brokerControl && !brokerReceiptReleased) {
             try {releaseWireBrokerReceipt(brokerControl.control); brokerReceiptReleased = true;}
@@ -1054,12 +1088,20 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                 report[name + 'Exit'] = {code: child.exitCode, signal: child.signalCode};
                 const observerInstance = name === 'master' && masterRestarted ? 'master-restarted' : name;
                 const all = await observedDirectoryRows(observerInstance, true);
+                if (options.native) report[name + 'RejectionDiagnostics'] = {raw: auditWorkerRejectionDiagnostics(all, child.pid!)};
                 const fault = name === 'master' && recoveryControl
                     && (await readdir(join(output, 'attempt-recovery'))).includes('fault.json')
                     ? readWireRecoveryEvidence(recoveryControl.control).marker : undefined;
                 const readerFault = name === 'master' && readerCrash ? readerCrash : undefined;
                 const checked = readerFault ? wireReaderShutdownRows(all, readerFault, child.pid!, child.exitCode, child.signalCode)
                     : fault ? wireRecoveryShutdownRows(all, fault, child.pid!, child.exitCode, child.signalCode) : all;
+                if (options.native) {
+                    // Existing private fault verification alone selects this survivor view. Raw missing
+                    // SIGKILL summaries stay incomplete above; diagnostics introduce no exit membership.
+                    const coverage = auditWorkerRejectionDiagnostics(checked, child.pid!);
+                    report[name + 'RejectionDiagnostics'].requiredSurvivors = coverage;
+                    assert.equal(coverage.status, 'complete', 'Required native worker rejection capture is incomplete');
+                }
                 report[name + 'Shutdown'] = assertSuccessfulWorkerShutdown(checked, child.pid!, fault || readerFault ? 0 : child.exitCode, child.signalCode);
                 if (fault) report.expectedWorkerExit = {marker: fault, rawMasterExit: report[name + 'Exit'],
                     rawShutdown: all.find(row => row.kind === 'shutdown' && row.pid === child.pid),
@@ -1101,6 +1143,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             } catch (error) {report.status = 'failed'; report.cleanup.push({name, ok: false, error: describeError(error)});}
         }
         if (ledger) report.bulkCapture = {...ledger.limits, recordedRequests: ledger.receipts.length};
+        if (historyDiagnostics && (historyDiagnostics.evidence.failedCaptures > 0 || report.errors.length > 0)) report.status = 'failed';
         if (brokerControl) {
             try {report.brokerRecovery.terminalEvidence = readWireBrokerRecoveryEvidence(brokerControl.control);}
             catch (error) {report.brokerRecovery.evidenceError = describeError(error);}

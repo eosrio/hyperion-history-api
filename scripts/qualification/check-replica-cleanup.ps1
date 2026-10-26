@@ -45,12 +45,20 @@ function global:docker {
         }
         'run' {
             $i=[array]::IndexOf($a,'--name'); $name=$a[$i+1]
-            if($m.mode -eq 'run' -or ($m.mode.EndsWith('broker-run') -and $name.EndsWith('-rabbit'))){throw 'Injected run failure'}
+            if($m.mode -eq 'run' -or $m.mode -eq 'pinned-es-run' -or ($m.mode.EndsWith('broker-run') -and $name.EndsWith('-rabbit'))){throw 'Injected run failure'}
+            if($m.mode -eq 'pinned-es-bind-conflict') {
+                $saved=Get-Content -LiteralPath $m.stateFile -Raw|ConvertFrom-Json
+                $port=[int]$saved.nodes[0].pinnedHttpPort
+                if($a -notcontains "127.0.0.1:${port}:9200"){throw 'Docker bind differs from persisted Elasticsearch intent'}
+                $competitor=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,$port)
+                try { $competitor.ExclusiveAddressUse=$true; $competitor.Start(); throw 'Injected competing bind' }
+                finally { $competitor.Stop() }
+            }
             $cid=([string]($m.containers.Count+1))*64
             $m.containers[$cid]=@{name=$name;volume="$name-data"}; return $cid
         }
         'port' {
-            if($m.mode -eq 'port' -or $m.containers[$a[1]].name.EndsWith('-rabbit')){throw 'Injected port lookup failure'}
+            if($m.mode -in @('port','pinned-es-port') -or $m.containers[$a[1]].name.EndsWith('-rabbit')){throw 'Injected port lookup failure'}
             return '127.0.0.1:39001'
         }
         'ps' {
@@ -73,21 +81,32 @@ function global:docker {
 }
 
 try {
-    foreach($mode in @('run','port','broker-run','broker-port','pinned-broker-run','pinned-broker-port')) {
+    foreach($mode in @('run','port','broker-run','broker-port','pinned-broker-run','pinned-broker-port',
+        'pinned-es-run','pinned-es-port','pinned-es-bind-conflict')) {
         $reviewPath=Join-Path ([IO.Path]::GetTempPath()) ('es198-fixture-review-'+[guid]::NewGuid().ToString('N')+'.json')
-        $global:ReviewDockerMock=@{mode=$mode;network=$null;volumes=@{};containers=@{};labels=@{};
+        $global:ReviewDockerMock=@{mode=$mode;stateFile=$reviewPath;network=$null;volumes=@{};containers=@{};labels=@{};
             calls=[Collections.Generic.List[object]]::new();failRemoval=$false}
         try {
             $createError=$null
-            $pin=$mode.StartsWith('pinned-'); $brokerFailure=$mode.Contains('broker-')
-            try { $null=& $FixtureScript -Action create -StateFile $reviewPath -ExposeRabbitManagement -PinRabbitPorts:$pin }
+            $pin=$mode.StartsWith('pinned-broker-'); $elastic=$mode.StartsWith('pinned-es-'); $brokerFailure=$mode.Contains('broker-')
+            try { $null=& $FixtureScript -Action create -StateFile $reviewPath -ExposeRabbitManagement -PinRabbitPorts:$pin -PinElasticsearchPorts:$elastic }
             catch { $createError=$_.Exception.Message }
-            $expectedError=if($mode.EndsWith('run')){'Injected run failure'}else{'Injected port lookup failure'}
+            $expectedError=if($mode.EndsWith('run')){'Injected run failure'}elseif($mode.EndsWith('bind-conflict')){'Injected competing bind'}else{'Injected port lookup failure'}
             if($createError -ne $expectedError){throw "Expected exact injected create error, got: $createError"}
             $s=Get-Content -LiteralPath $reviewPath -Raw|ConvertFrom-Json
             if($s.nodes.Count -ne $(if($brokerFailure){3}else{1})){throw 'Intent not persisted before creation'}
-            if($mode -eq 'run' -and $s.nodes[0].containerId){throw 'Run failure unexpectedly saved a CID'}
-            if($mode -eq 'port' -and -not $s.nodes[0].containerId){throw 'CID not saved before port lookup'}
+            if(($mode -eq 'run' -or $elastic -and -not $mode.EndsWith('port')) -and $s.nodes[0].containerId){throw 'Run failure unexpectedly saved a CID'}
+            if(($mode -eq 'port' -or $mode -eq 'pinned-es-port') -and -not $s.nodes[0].containerId){throw 'CID not saved before port lookup'}
+            if($elastic) {
+                $port=[int]$s.nodes[0].pinnedHttpPort
+                $runs=@($global:ReviewDockerMock.calls | Where-Object { $_[0] -eq 'run' })
+                if($runs.Count -ne 1 -or $port -le 1024 -or $port -gt 65535 -or
+                    $s.nodes[0].url -ne "http://127.0.0.1:$port" -or $runs[0] -notcontains "127.0.0.1:${port}:9200"){
+                    throw 'Pinned Elasticsearch intent changed or retried after failure'
+                }
+                $probe=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,$port)
+                try { $probe.ExclusiveAddressUse=$true; $probe.Start() } finally { $probe.Stop() }
+            } elseif($s.nodes[0].pinnedHttpPort) {throw 'Ordinary fixture unexpectedly pinned Elasticsearch'}
             if($brokerFailure) {
                 if(-not $s.broker -or $s.broker.volume -ne "$($s.broker.name)-data"){throw 'Broker intent not persisted before creation'}
                 if([bool]$s.broker.containerId -ne $mode.EndsWith('port')){throw 'Broker CID persistence differs from the actual run outcome'}
@@ -149,6 +168,12 @@ try {
             $global:ReviewDockerMock.calls.Count -ne $beforeCalls){throw 'Invalid pin option performed fixture work'}
     }
     $reviewResults.Add([pscustomobject]@{scenario='invalid-pin-option-before-state-or-docker';passed=$true;realDockerCalls=0})
+    $failure=$null
+    try { $null=& $FixtureScript -Action cleanup -StateFile $invalidPath -PinElasticsearchPorts }
+    catch { $failure=$_.Exception.Message }
+    if($failure -ne 'Pinned Elasticsearch ports require create' -or (Test-Path -LiteralPath $invalidPath) -or
+        $global:ReviewDockerMock.calls.Count -ne $beforeCalls){throw 'Invalid Elasticsearch pin option performed fixture work'}
+    $reviewResults.Add([pscustomobject]@{scenario='invalid-elasticsearch-pin-before-state-or-docker';passed=$true;realDockerCalls=0})
     $reviewResults.Add([pscustomobject]@{scenario='repeated-cleanup-idempotency';passed=$true;
         runFailureRepeatedCleanup=$true;portFailureRepeatedCleanup=$true;realDockerCalls=0})
     $report=[ordered]@{schemaVersion=1;status='passed';fixtureScript=$FixtureScript;

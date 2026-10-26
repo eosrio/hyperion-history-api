@@ -46,28 +46,32 @@ def core_state(directory):
     return value
 
 
-def core_command(action, directory, pwsh, pin_rabbit_ports=False):
+def core_command(action, directory, pwsh, pin_rabbit_ports=False, pin_elasticsearch_ports=False):
     if pin_rabbit_ports and action != "create":
         raise ValueError("Pinned Rabbit ports are a create-only fixture option")
+    if pin_elasticsearch_ports and action != "create":
+        raise ValueError("Pinned Elasticsearch ports are a create-only fixture option")
     arguments = [pwsh, "-NoProfile", "-File", "scripts/qualification/es955-replica-fixture.ps1",
                  "-Action", action, "-StateFile", str(directory / "core-state.json")]
     if action == "create":
         arguments += ["-ExposeRabbitManagement", "-IndexingPressureLimitMb", "64"]
         if pin_rabbit_ports:
             arguments += ["-PinRabbitPorts"]
+        if pin_elasticsearch_ports:
+            arguments += ["-PinElasticsearchPorts"]
     # Preserve diagnostics if core setup or ownership-checked cleanup fails.
     with (directory / ("core-" + action + ".log")).open("ab") as log:
         subprocess.run(arguments, cwd=REPO, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=360)
 
 
-def create(directory, pwsh, pin_rabbit_ports=False):
+def create(directory, pwsh, pin_rabbit_ports=False, pin_elasticsearch_ports=False):
     directory = Path(directory).absolute()
     parent = ordinary(directory.parent, directory=True)
     if os.path.lexists(directory):
         raise FileExistsError("Service fixture directory must be new")
     directory = parent / directory.name
     directory.mkdir()
-    core_command("create", directory, pwsh, pin_rabbit_ports=pin_rabbit_ports)
+    core_command("create", directory, pwsh, pin_rabbit_ports=pin_rabbit_ports, pin_elasticsearch_ports=pin_elasticsearch_ports)
     core = core_state(directory)
     if core["status"] != "ready" or core["indexingPressureLimitMb"] != 64:
         raise ValueError("Core fixture is not ready at the actual-source pressure budget")
@@ -171,8 +175,11 @@ if __name__ == "__main__":
     parser.add_argument("directory", help="new service directory for create; preserved service directory for cleanup")
     parser.add_argument("--pwsh", default="pwsh", help="PowerShell7 executable; defaults to PATH")
     parser.add_argument("--pin-rabbit-ports", action="store_true", help="create-only stable loopback endpoints for broker restart qualification")
+    parser.add_argument("--pin-elasticsearch-ports", action="store_true", help="create-only stable loopback endpoints for replica restart qualification")
     arguments = parser.parse_args()
     if arguments.pin_rabbit_ports and arguments.action != "create":
         parser.error("--pin-rabbit-ports requires create")
-    result = create(arguments.directory, arguments.pwsh, arguments.pin_rabbit_ports) if arguments.action == "create" else cleanup(arguments.directory, arguments.pwsh)
+    if arguments.pin_elasticsearch_ports and arguments.action != "create":
+        parser.error("--pin-elasticsearch-ports requires create")
+    result = create(arguments.directory, arguments.pwsh, arguments.pin_rabbit_ports, arguments.pin_elasticsearch_ports) if arguments.action == "create" else cleanup(arguments.directory, arguments.pwsh)
     print(json.dumps(result, indent=2))
