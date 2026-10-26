@@ -820,7 +820,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             if (brokerControl && through === 33) {
                 await observeBrokerCut(); const control = brokerControl.control;
                 if (options.storageRecovery) {
-                    await qualifyWireStorageRestart({core: state.core, docker, es, control, replay, wait, evidence: report.storageRecovery});
+                    await qualifyWireStorageRestart({core: state.core, docker, es, control, masterPid: master!.pid, replay, wait, evidence: report.storageRecovery});
                     const file = 'prefixes/storage-restart-33.json', bytes = Buffer.from(JSON.stringify(report.storageRecovery, null, 2) + '\n');
                     await writeFile(join(output, file), bytes, {flag: 'wx'});
                     report.prefixes.push({through, file, sha256: portableSourceHash(bytes)});
