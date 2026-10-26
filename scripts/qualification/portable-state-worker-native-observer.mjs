@@ -49,6 +49,8 @@ const projectionDiagnostics = cluster.isPrimary || process.env.worker_role === '
         Master: cluster.isPrimary ? (await import('../../build/indexer/modules/master.js')).HyperionMaster : undefined, record})
     : undefined;
 const rejectionDiagnostics = installWorkerRejectionDiagnostics({Pool: DSPool, Reader: StateReader,
+    WorkerClient: WorkerAttemptClient, WorkerHost: HyperionWorker,
+    Master: cluster.isPrimary ? (await import('../../build/indexer/modules/master.js')).HyperionMaster : undefined,
     Supervisor: cluster.isPrimary ? WorkerAttemptSupervisor : undefined, cluster, record});
 process.once('exit', () => {
     // Snapshot excludes this summary row and the following exit row's own writes/syncs.

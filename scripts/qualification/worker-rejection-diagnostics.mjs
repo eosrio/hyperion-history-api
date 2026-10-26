@@ -2,6 +2,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {serialize} from 'node:v8';
 import assert from 'node:assert/strict';
+import {installWorkerFenceDiagnostics} from './worker-fence-diagnostics.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 function physical(pid) {
@@ -13,8 +14,8 @@ function physical(pid) {
 }
 
 /** Qualification observations only. No fault membership, retry, ACK, end, restart or shutdown authority. */
-export function installWorkerRejectionDiagnostics({Pool, Reader, Supervisor, cluster, record, maximumRejections = 32,
-    maximumPendingPublications = 64, maximumWorkers = 256}) {
+export function installWorkerRejectionDiagnostics({Pool, Reader, Supervisor, WorkerClient, WorkerHost, Master, cluster, record, maximumRejections = 32,
+    maximumPendingPublications = 64, maximumWorkers = 256, maximumFenceEvents = 1024}) {
     for (const limit of [maximumRejections, maximumPendingPublications, maximumWorkers])
         if (!Number.isSafeInteger(limit) || limit < 1 || limit > 256) throw new Error('Invalid rejection diagnostic bounds');
     const channelIds = new WeakMap(), publishers = new WeakSet(), pending = new Map(), workers = new WeakSet(), rejected = new WeakSet();
@@ -38,6 +39,8 @@ export function installWorkerRejectionDiagnostics({Pool, Reader, Supervisor, clu
         if (rejections++ >= maximumRejections) {omittedRejections++; reportFailures++; return;}
         emit(event, snapshot);
     };
+    const fences = installWorkerFenceDiagnostics({WorkerClient, WorkerHost, Supervisor, Master, emit, physical,
+        failed: () => {reportFailures++;}, maximumFenceEvents});
     const reject = Pool.prototype.rejectActionAdmission;
     Pool.prototype.rejectActionAdmission = function(reason, decision) {
         rejection('action_admission_rejected', () => {
@@ -47,7 +50,8 @@ export function installWorkerRejectionDiagnostics({Pool, Reader, Supervisor, clu
             const attempt = client.describe(retained.handle);
             const source = admission.source.inventoryInput;
             return {reason, predicate, actual: decision.actual, expected: decision.expected, operandFormat: decision.operandFormat,
-                attempt, parentEpoch: client.authority?.epoch ?? null, parentIncarnation: client.authority?.incarnation ?? null,
+                attempt, fenceOrigin: fences.describe(client, retained.handle),
+                parentEpoch: client.authority?.epoch ?? null, parentIncarnation: client.authority?.incarnation ?? null,
                 workerId: process.env.worker_id ?? null, originalConsumerId: attempt.descriptor.consumerId,
                 originalPublisherId: attempt.descriptor.publisherId,
                 currentConsumerId: this.workerAttemptChannels?.get(this.ch) ?? null,
@@ -155,7 +159,8 @@ export function installWorkerRejectionDiagnostics({Pool, Reader, Supervisor, clu
         };
     }
     return {snapshot: () => ({observationOnly: true, rejections, omittedRejections, workerCount,
-        pendingPublications: pending.size, reportFailures, maximumRejections, maximumPendingPublications, maximumWorkers})};
+        pendingPublications: pending.size, reportFailures, maximumRejections, maximumPendingPublications, maximumWorkers,
+        fences: fences.snapshot()})};
 }
 
 /** Capture integrity only. Successful validation never changes or excuses a raw worker outcome. */
@@ -179,6 +184,11 @@ export function auditWorkerRejectionDiagnostics(rows, primaryPid) {
         assert.equal(value.maximumRejections, 32); assert.equal(value.maximumPendingPublications, 64); assert.equal(value.maximumWorkers, 256);
         assert.equal(value.reportFailures, 0, 'Worker rejection diagnostic capture failed');
         assert.equal(value.omittedRejections, 0, 'Worker rejection diagnostic decisions were omitted');
+        assert.equal(value.fences?.maximumFenceEvents, 1024, 'Fence diagnostic bounds are unavailable or changed');
+        assert.equal(value.fences?.membersPerRow, 32, 'Fence diagnostic member bound changed');
+        assert.equal(value.fences?.omitted, 0, 'Worker fence diagnostic events were omitted');
+        for (const key of ['client', 'host', ...(row.pid === primaryPid ? ['supervisor', 'master'] : [])])
+            assert.equal(value.fences?.enabled?.[key], true, `Worker fence diagnostic ${key} is unavailable`);
         summaries.push({pid: row.pid, ...value});
     }
     const processes = [...new Set([...expected, ...starts, ...pids])].sort((a, b) => a - b).map(pid => ({pid,
