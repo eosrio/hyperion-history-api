@@ -178,7 +178,9 @@ try {
     }
     assert.equal(diagnostics.snapshot().reportFailures, bounds === '--record-limit' ? 2 : cluster.isWorker ? 0 : 1, 'capture failures must stay visible');
     assert.equal(diagnostics.snapshot().omittedRejections, bounds === '--record-limit' ? 2 : 0);
-    console.log(JSON.stringify({status: 'passed', checks, rows: rows.length, node: process.versions.node, scope: 'original-method component only'}));
+    console.log(JSON.stringify({status: 'passed', checks, rows: rows.length,
+        endAssociationRows: rows.filter(row => row.event === 'worker_attempt_end_association').length,
+        node: process.versions.node, scope: 'original-method component only'}));
     if (cluster.isWorker) process.disconnect();
 } finally {
     process.chdir(originalDirectory);
