@@ -194,8 +194,9 @@ try {
         currentSocket.message(frame(number,number===103?{this_block:{block_num:103,block_id:replacementId}}
             :number===104?{prev_block:{block_num:103,block_id:replacementId}}:{}));
         await resumed.drain();
-        if(number===104)a.worker.protocol.observeBlockAbi=()=>{throw new Error('Unsupported contract observation');};
-        try{await a.consume(publications.at(-1));}finally{a.worker.protocol.observeBlockAbi=hook;}
+        const replayProvider=a.worker.protocol;
+        if(number===104)a.worker.protocol={...replayProvider,observeBlockAbi(){throw new Error('Unsupported contract observation');}};
+        try{await a.consume(publications.at(-1));}finally{a.worker.protocol=replayProvider;}
         await until(async()=>(await frontier.readControl()).value.head?.blockNum===number);
     }
     resumed.worker.holdPublisherConfirms=true;const beforeFresh=publications.length;

@@ -26,6 +26,38 @@ const repo = fileURLToPath(new URL('../../', import.meta.url));
 const pause = (ms: number) => new Promise(done => setTimeout(done, ms));
 const point = (value: {blockNum: number; blockId: string}) => ({blockNum: value.blockNum, blockId: value.blockId});
 const describe = describePortableWorkerError;
+
+/** The original run budget covers setup, awaited phase results and the final source audit. */
+export class RecoveryRunDeadline {
+    readonly expiresAt: number;
+    private readonly now: () => number;
+    private readonly delay: (milliseconds: number) => Promise<unknown>;
+    constructor(now = () => performance.now(), delay: (milliseconds: number) => Promise<unknown> = pause) {
+        this.now = now; this.delay = delay;
+        this.expiresAt = now() + recoverySourceLimits.runMs;
+    }
+    private assertActive(end = this.expiresAt) {
+        assert.ok(this.now() < end, 'Recovery fixture deadline exceeded');
+    }
+    async wait(name: string, condition: () => Promise<void>, beforeAttempt: () => void, duration = 180000) {
+        const end = Math.min(this.expiresAt, this.now() + duration); let last: unknown;
+        while (this.now() < end) {
+            beforeAttempt();
+            this.assertActive(end);
+            try {await condition();} catch (error) {
+                last = error; this.assertActive(end); await this.delay(100); continue;
+            }
+            this.assertActive(end); return;
+        }
+        throw new Error(name + ' did not complete before deadline: ' + describe(last));
+    }
+    async verifyFinalSource(audit: () => Promise<{inputHashes: Readonly<Record<string, string>>}>,
+        original: {inputHashes: Readonly<Record<string, string>>}) {
+        this.assertActive();
+        const after = await audit(); this.assertActive(); assert.deepEqual(after.inputHashes, original.inputHashes);
+    }
+}
+
 async function freePort() {const server = createServer(); server.listen(0, '127.0.0.1'); await once(server, 'listening');
     const port = (server.address() as any).port; await new Promise<void>(done => server.close(() => done())); return port as number;}
 async function responseBody(response: Response, maximum = 4 * 1024 * 1024) {assert.ok(response.body); const chunks: Buffer[] = []; let bytes = 0;
@@ -86,7 +118,7 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
     assertNativeQualificationRuntime();
     assert.equal(process.platform, 'linux', 'Actual stop/kill recovery qualification requires Linux');
     assert.ok(['reversible', 'irreversible'].includes(finality));
-    const deadline = performance.now() + recoverySourceLimits.runMs;
+    const runDeadline = new RecoveryRunDeadline(), deadline = runDeadline.expiresAt;
     let cleanupDeadline: number | undefined;
     const remaining = () => {const value = Math.floor((cleanupDeadline ?? deadline) - performance.now()); assert.ok(value > 0, 'Recovery fixture deadline exceeded'); return value;};
     const docker = (args: string[]) => execFileSync('docker', args, {encoding: 'utf8', timeout: Math.min(30000, remaining()), maxBuffer: 16 * 1024 * 1024}).trim();
@@ -133,13 +165,10 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
     const apis: {child: ChildProcess; name: string; stopped: boolean}[] = [];
     let probeTask: Promise<void> | undefined, stopProbes = false, probeStage = 'initial', knownFork = false;
     let captureFailure: (() => Promise<unknown>) | undefined;
-    const wait = async (name: string, condition: () => Promise<void>, duration = 180000) => {
-        const end = Math.min(deadline, performance.now() + duration); let last: unknown;
-        while (performance.now() < end) {assert.deepEqual(report.errors, []);
-            for (const child of [api, master]) if (child) assert.ok(child.exitCode === null && child.signalCode === null, name + ': production child exited');
-            try {await condition(); return;} catch (error) {last = error;} await pause(100);}
-        throw new Error(name + ' did not complete: ' + describe(last));
-    };
+    const wait = (name: string, condition: () => Promise<void>, duration = 180000) => runDeadline.wait(name, condition, () => {
+        assert.deepEqual(report.errors, []);
+        for (const child of [api, master]) if (child) assert.ok(child.exitCode === null && child.signalCode === null, name + ': production child exited');
+    }, duration);
     const observed = async (name: string) => {const directory = join(output, 'observer', name), rows: any[] = [];
         for (const file of (await readdir(directory)).filter(value => value.endsWith('.jsonl'))) {
             const lines = (await boundedPortableFile(join(directory, file), 24 * 1024 * 1024)).toString().split(/\r?\n/);
@@ -369,8 +398,8 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
             const raw = report.brokerAcks.filter((value: any) => value.name === chain + ':live_blocks'); assert.equal(raw.length, 1);
             assert.ok(raw[0].ack >= 1249 && raw[0].delivered >= raw[0].ack);});
         await wait('final source credits acknowledged', async () => replay!.assertDrained());
-        const after = await auditPortableWorkerSource(plan.source); assert.deepEqual(after.inputHashes, original.inputHashes);
-        report.sourceMetrics = replay.metrics(); report.sourceRequests = replay.requests; report.status = 'passed';
+        await runDeadline.verifyFinalSource(() => auditPortableWorkerSource(plan.source), original);
+        report.sourceMetrics = replay.metrics(); report.sourceRequests = replay.requests; remaining(); report.status = 'passed';
     } catch (error) {report.status = 'failed'; report.error = describe(error);}
     finally {
         cleanupDeadline = performance.now() + 90000; stopProbes = true; await probeTask;

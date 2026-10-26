@@ -3,6 +3,7 @@
 import {MongoClient} from 'mongodb';
 import {existsSync, readFileSync, writeFileSync, realpathSync, statSync} from 'node:fs';
 import {isAbsolute, join} from 'node:path';
+import {assertNativeQualificationRuntime} from './native-node-runtime.mjs';
 
 export function rollbackIntentReceipt(event, database, metadataId) {
     const command = event?.command;
@@ -17,7 +18,8 @@ export function rollbackIntentReceipt(event, database, metadataId) {
 }
 
 if (process.env.worker_role === 'projection' && process.env.HYP246_RECOVERY_OBSERVER) {
-    if (process.platform !== 'linux' || !/^(22|24)\./.test(process.versions.node)) throw new Error('Recovery crash observer requires native Linux Node22/24');
+    assertNativeQualificationRuntime();
+    if (process.platform !== 'linux') throw new Error('Recovery crash observer requires Linux');
     const argument = process.env.HYP246_RECOVERY_OBSERVER;
     if (!isAbsolute(argument) || realpathSync(argument) !== argument || !statSync(argument).isDirectory())
         throw new Error('Recovery observer needs an existing ordinary absolute directory');

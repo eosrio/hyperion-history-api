@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
+import {spawnSync} from 'node:child_process';
 import {registerHooks} from 'node:module';
 import {cargo} from 'async';
 import {ABI, Serializer} from '@wharfkit/antelope';
@@ -45,7 +46,7 @@ try {
         es_replicas: 0, index_version: 'v1', reader_recovery_window_blocks: 256},
         indexer: {fetch_block: true, fetch_traces: true, fetch_deltas: true},
         scaling: {ds_queues: 1, max_queue_limit: 64, block_queue_limit: 64, resume_trigger: 8, max_autoscale: 0},
-        prefetch: {read: 8}, plugins: {}};
+        prefetch: {read: 8}, features: {}, plugins: {}};
     mkdirSync(join(directory, 'config'));
     writeFileSync(join(directory, 'chain.json'), JSON.stringify(config));
     writeFileSync(join(directory, 'config/connections.json'), '{}');
@@ -225,8 +226,22 @@ try {
         h.reader.onIpcMessage({event: 'resume'}); assert.equal(h.creditCommands().length, before + 1);
     } else if (scenario === 'coalesced-credits') {
         const h = await fixture();
+        // An irreversible frame cannot be replayed eight times on one live connection.
+        // Reuse the original archive's verified consecutive frames, without materializing a new source.
+        const captured = spawnSync(process.platform === 'win32' ? 'python' : 'python3', ['-c', `
+import base64, json, runpy, sys
+_, _, files = runpy.run_path(sys.argv[1])['verified_inputs']()
+print(json.dumps([base64.b64encode(files[f'source/block-{number:06d}.bin']).decode() for number in range(33, 41)]))
+`, fileURLToPath(new URL('../fixtures/portable-state-worker/prepare.py', import.meta.url))],
+        {encoding: 'utf8', timeout: 10_000, maxBuffer: 2 * 1024 * 1024});
+        assert.equal(captured.status, 0, captured.stderr);
+        const frames = JSON.parse(captured.stdout).map(value => Buffer.from(value, 'base64'));
+        assert.equal(frames.length, 8); assert(frames[0].equals(h.frame));
         h.reader.onIpcMessage({event: 'pause'}); h.reader.onIpcMessage({event: 'pause'});
-        for (let index = 0; index < 8; index++) {h.socket.message(h.frame); await h.drain();}
+        for (const [index, input] of frames.entries()) {
+            assert.equal(codec.decode('result', input)[1].this_block.block_num, 33 + index);
+            h.socket.message(input); await h.drain(); assert(h.publications.at(-1).content.equals(input));
+        }
         assert.equal(h.creditCommands().length, 0); assert.equal(h.publications.length, 8);
         h.reader.onIpcMessage({event: 'pause'}); h.reader.onIpcMessage({event: 'resume'}); h.reader.onIpcMessage({event: 'resume'});
         assert.deepEqual(h.creditCommands(), [{socket: 1, request: ['get_blocks_ack_request_v0', {num_messages: 8}]}]);
