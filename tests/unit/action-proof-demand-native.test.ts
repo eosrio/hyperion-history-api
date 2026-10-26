@@ -3,9 +3,9 @@ import {fileURLToPath} from 'node:url';
 import {appendFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 
-async function runOriginalWireNativeCase(mode: string, ...flags: string[]) {
+async function runNativeCase(worker: string, mode: string, ...flags: string[]) {
     const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node',
-        fileURLToPath(new URL('./action-attempt-managed-wire-ipc.mjs', import.meta.url)), mode, ...flags],
+        fileURLToPath(new URL(worker, import.meta.url)), mode, ...flags],
     {stdout: 'pipe', stderr: 'pipe', timeout: 40_000});
     const [code, stdout, stderr] = await Promise.all([child.exited,
         new Response(child.stdout).text(), new Response(child.stderr).text()]);
@@ -15,6 +15,17 @@ async function runOriginalWireNativeCase(mode: string, ...flags: string[]) {
     expect({code, stderr, stdout: stdout.slice(-8000)}).toMatchObject({code: 0, stderr: ''});
     return JSON.parse(stdout.trim().split('\n').at(-1)!);
 }
+
+function runOriginalWireNativeCase(mode: string, ...flags: string[]) {
+    return runNativeCase('./action-attempt-managed-wire-ipc.mjs', mode, ...flags);
+}
+
+test('native receipt capture copies the checked view without conversion or layout hooks', async () => {
+    const result = await runNativeCase('./action-proof-demand-copy-worker.mjs', 'payload-copy');
+    expect(result).toMatchObject({passed: true, hooks: 0, originalPayloadBytes: 2,
+        redirectedBytesNeverCopied: 128 * 1024, fullWorkerQualification: false,
+        cases: ['ordinary-offset-buffer', 'own-conversion-buffer', 'inherited-conversion-view', 'inherited-layout-view']});
+}, 10_000);
 
 test('the same held original Wire DS input yields one verified accounting transition', async () => {
     const result = await runOriginalWireNativeCase('handoff-held-confirm', '--shadow-transition');

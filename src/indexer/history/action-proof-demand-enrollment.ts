@@ -96,7 +96,10 @@ export class WorkerProofDemandObserver {
                 measuredHeaders = true;
                 if (encoded === null) this.unknownHeaders = increment(this.unknownHeaders);
                 else this.knownHeaderBytes = Math.min(Number.MAX_SAFE_INTEGER, this.knownHeaderBytes + encoded.length);
-                return {schemaVersion: 1, type: 'capture', receiptId, payloadHex: Buffer.from(payload).toString('hex'),
+                // Copy the measured intrinsic view; Buffer.from(payload) can invoke conversion/layout hooks.
+                const capturedPayload = Buffer.allocUnsafe(length);
+                Uint8Array.prototype.set.call(capturedPayload, payload);
+                return {schemaVersion: 1, type: 'capture', receiptId, payloadHex: capturedPayload.toString('hex'),
                     headersHex: encoded?.toString('hex') ?? null};
             });
             if (!measuredHeaders) this.unknownHeaders = increment(this.unknownHeaders);
