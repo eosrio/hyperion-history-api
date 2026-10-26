@@ -58,6 +58,18 @@ test('profile receipts bind each start to one saved ordinary file and exact byte
         ? {...row, maximumDurationMs: 1000} : row), 123, true)).rejects.toThrow();
 }));
 
+test('native artifact validation preserves the captured signed V8 deltas and failed-run provenance', async () => {
+    const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node', '--experimental-strip-types',
+        fileURLToPath(new URL('./portable-worker-profile-signed.mjs', import.meta.url))], {stdout: 'pipe', stderr: 'pipe', timeout: 10000});
+    const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
+    expect({code, stdout, stderr}).toMatchObject({code: 0, stderr: ''});
+    expect(JSON.parse(stdout.trim())).toMatchObject({passed: true,
+        sha256: '01e4bc6d485fbc462ac2f3274cd389a6d3833e742aecbc6aa99c297b8e025ccd', samples: 40572,
+        negativeDeltaCount: 1, minimumDeltaMicros: -4, signedDeltaSumMicros: 409102052,
+        durationMicros: 409102260, originalRunStatus: 'failed', rawBytesUnchanged: true,
+        controlledProcessReceipts: true, fullWorkerQualification: false});
+}, 15000);
+
 test('missing, foreign, failed and excess profile evidence cannot satisfy capture', async () => fixture(async ({output, directory, file, rows, flush}) => {
     for (const patch of [{profileState: 'failed'}, {droppedRecords: 1}, {success: false},
         {profilePath: join(output, 'foreign.cpuprofile')}, {profilePath: join(directory, 'worker-124.cpuprofile')}])
@@ -102,7 +114,9 @@ test('malformed, unsampled, mismatched and excessive CPU files fail the artifact
         JSON.stringify({...base, nodes: [{id: 1, callFrame}, {id: 2, callFrame}]}),
         JSON.stringify({...base, nodes: [{id: 1, callFrame, children: [2]}, {id: 2, callFrame, children: [1]}]}),
         JSON.stringify({...base, samples: []}), JSON.stringify({...base, samples: [2]}), JSON.stringify({...base, timeDeltas: []}),
-        JSON.stringify({...base, timeDeltas: [-1]}), JSON.stringify({...base, endTime: 0})]) {
+        JSON.stringify({...base, timeDeltas: [-0.5]}), JSON.stringify({...base, timeDeltas: [Number.MIN_SAFE_INTEGER - 1]}),
+        JSON.stringify({...base, timeDeltas: [Number.MAX_SAFE_INTEGER + 1]}), JSON.stringify({...base, timeDeltas: ['1']}),
+        JSON.stringify({...base, timeDeltas: [null]}), JSON.stringify({...base, endTime: 0})]) {
         writeFileSync(file, value); rows.find(row => row.kind === 'profile_saved')!.bytes = Buffer.byteLength(value);
         await expect(auditPortableWorkerProfiles(output, 'master', rows, 123, true)).rejects.toThrow();
     }

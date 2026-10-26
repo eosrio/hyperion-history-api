@@ -101,8 +101,10 @@ export async function auditPortableWorkerProfiles(output: string, component: 'ma
         assert.equal(visited.size, ids.size, 'CPU profile call tree is disconnected or cyclic');
         assert.ok(Array.isArray(profile.samples) && profile.samples.length > 0 && profile.samples.every((id: unknown) => ids.has(id as number)),
             'CPU profile samples do not identify recorded nodes');
+        // V8 emits signed timestamp differences. Preserve raw order/bytes; the elapsed
+        // profile duration below is not per-sample or per-function CPU attribution.
         assert.ok(Array.isArray(profile.timeDeltas) && profile.timeDeltas.length === profile.samples.length
-            && profile.timeDeltas.every((value: unknown) => Number.isSafeInteger(value) && (value as number) >= 0), 'CPU profile sample times are invalid');
+            && profile.timeDeltas.every((value: unknown) => Number.isSafeInteger(value)), 'CPU profile sample times are invalid');
         assert.ok(Number.isFinite(profile.startTime) && Number.isFinite(profile.endTime) && profile.startTime >= 0
             && profile.endTime > profile.startTime, 'CPU profile interval is invalid');
         receipts.push({component, pid: start.pid, role: start.role, state: 'saved', file: relative(root, path).replaceAll('\\', '/'),
