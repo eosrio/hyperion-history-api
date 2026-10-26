@@ -27,6 +27,6 @@ test('malformed end summaries never retain issued credentials in diagnostic oper
         fileURLToPath(new URL('./worker-end-privacy.mjs', import.meta.url))], {stdout: 'pipe', stderr: 'pipe', timeout: 10000});
     const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
     expect({code, stderr}).toEqual({code: 0, stderr: ''});
-    expect(JSON.parse(stdout)).toMatchObject({passed: true, variants: 10, issuedCredentialsExcluded: true,
+    expect(JSON.parse(stdout)).toMatchObject({passed: true, variants: 23, issuedCredentialsExcluded: true,
         originalOutcomesPreserved: true, controlledCallbacksOnly: true, productionAuthority: false});
 }, 15000);

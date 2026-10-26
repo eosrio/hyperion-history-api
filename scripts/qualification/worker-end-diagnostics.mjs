@@ -6,6 +6,29 @@ const own = (value, key) => {
     const property = Object.getOwnPropertyDescriptor(value, key);
     return property && Object.hasOwn(property, 'value') ? property.value : undefined;
 };
+const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+const digest = value => typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
+const redacted = value => ({valueRedacted: true,
+    type: value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value});
+const operands = {
+    operation: value => value === 'end',
+    attemptId: value => typeof value === 'string' && uuid.test(value),
+    sequence: value => Number.isSafeInteger(value) && value > 0,
+    descriptorSha256: digest,
+    bindingSha256: digest
+};
+// Work only on detached observation data. UUID capabilities can also alias valid IDs,
+// reply fields or property names, so a field-name allowlist alone cannot exclude them.
+function withoutCredentials(value, credentials) {
+    let encoded = JSON.stringify(value), marker = '[credential-redacted]', suffix = 0;
+    if (Buffer.byteLength(encoded) > 64 * 1024) throw new Error('End observation row exceeds its byte bound');
+    while (encoded.includes(marker)) {
+        if (++suffix > 16) throw new Error('End credential redaction marker budget exceeded');
+        marker = `[credential-redacted-${suffix}]`;
+    }
+    for (const [index, credential] of credentials.entries()) encoded = encoded.replaceAll(credential, `${marker}:${index}`);
+    return JSON.parse(encoded);
+}
 // IPC carries plain JSON. Never invoke getters, toJSON, proxies or caller code while observing it.
 function detached(value, budget = {nodes: 0}, depth = 0, seen = new Set()) {
     if (++budget.nodes > 2048 || depth > 16) throw new Error('End observation metadata budget exceeded');
@@ -46,12 +69,16 @@ export function installWorkerEndDiagnostics({Supervisor, emit, workerIdentity, f
         const handle = Supervisor.prototype.handle, reply = Supervisor.prototype.reply;
         const snapshot = (context, boundary) => {
             const {supervisor, worker, payload} = context, request = {};
+            const owner = Map.prototype.get.call(own(supervisor, 'owners'), worker);
+            const entries = own(owner, 'entries'), entry = entries ? Map.prototype.get.call(entries, own(payload, 'attemptId')) : undefined;
+            context.credentials = [...new Set([own(payload, 'clientId'), own(payload, 'challenge'),
+                own(owner, 'clientId'), own(entry, 'challenge')].filter(value => typeof value === 'string' && uuid.test(value)))];
             // Only association operands survive. Client/challenge credentials and unknown summary values do not.
-            for (const key of ['operation','attemptId','sequence','descriptorSha256','bindingSha256']) {
+            for (const [key, accepts] of Object.entries(operands)) {
                 const property = Object.getOwnPropertyDescriptor(payload, key);
                 if (property) {
                     if (!Object.hasOwn(property, 'value')) throw new Error('End association input has an accessor');
-                    request[key] = detached(property.value);
+                    request[key] = accepts(property.value) ? property.value : redacted(property.value);
                 }
             }
             const summaryProperty = Object.getOwnPropertyDescriptor(payload, 'summary');
@@ -59,8 +86,6 @@ export function installWorkerEndDiagnostics({Supervisor, emit, workerIdentity, f
             const summary = summaryProperty?.value;
             if (summary !== undefined) {
                 const copy = detached(summary);
-                const redacted = value => ({valueRedacted: true,
-                    type: value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value});
                 request.summary = copy && typeof copy === 'object' && !Array.isArray(copy)
                     ? Object.fromEntries(Object.entries(copy).map(([key, value]) => {
                         if (key === 'acknowledgementAttempted') return [key, typeof value === 'boolean' ? value : redacted(value)];
@@ -68,8 +93,6 @@ export function installWorkerEndDiagnostics({Supervisor, emit, workerIdentity, f
                         return [key, {valueRedacted: true}];
                     })) : redacted(copy);
             }
-            const owner = Map.prototype.get.call(own(supervisor, 'owners'), worker);
-            const entries = own(owner, 'entries'), entry = entries ? Map.prototype.get.call(entries, request.attemptId) : undefined;
             return {request, validator: entry ? {entryPresent: true,
                 descriptorSha256: workerAttemptDigest(detached(own(entry, 'descriptor'))),
                 bindingSha256: workerAttemptDigest(detached(own(entry, 'binding')))} : {entryPresent: false},
@@ -133,10 +156,10 @@ export function installWorkerEndDiagnostics({Supervisor, emit, workerIdentity, f
                             if (typeof summary?.acknowledgementAttempted !== 'boolean') mismatches.push('summary.acknowledgementAttempted');
                             if (!['returned','threw'].includes(summary?.rootResult)) mismatches.push('summary.rootResult');
                         }
-                        emit('worker_attempt_end_association', () => ({requestId: context.requestId, attemptId: view.request.attemptId,
+                        emit('worker_attempt_end_association', () => withoutCredentials({requestId: context.requestId, attemptId: view.request.attemptId,
                             ...view, reply: context.reply, mismatches,
                             validatorComparisonReached: compared, credentialsRetained: false,
-                            replyBoundary: 'original Supervisor.reply input; delivery and settlement unknown'}));
+                            replyBoundary: 'original Supervisor.reply input; delivery and settlement unknown'}, context.credentials));
                     });
                 }
             }

@@ -23,6 +23,11 @@ operand views, not raw IPC frames or capabilities.
 Only a boolean acknowledgement flag and the `returned`/`threw` root-result values survive
 summary capture. Malformed recognized values and non-object summaries retain a redacted type
 description, so an issued credential inside an invalid array, string or nested value is excluded.
+Other received association operands retain only their expected scalar types; malformed values
+retain redacted type descriptions. UUID credentials observed in the request, owner and matched
+entry are excluded across the detached row, including aliases in otherwise valid IDs, reply
+metadata and property names. Noncolliding markers preserve distinct redacted aliases. Original
+validator comparisons happen before this presentation redaction, without changing input objects.
 
 The first eight normal ends are sampled. Later normal ends have an explicit omission count and
 perform no operand copying or digest work. Up to 128 failed ends remain eligible independently
