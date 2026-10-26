@@ -4,13 +4,19 @@ import {ProofConsumerScope} from '../../build/indexer/protocol/proof-consumer-sc
 import {workerAttemptDigest} from '../../build/indexer/protocol/worker-attempt-supervisor.js';
 
 /** Original-object observations only. These records never issue an end, retry or fault allowance. */
-export function installWorkerFenceDiagnostics({WorkerClient, WorkerHost, Supervisor, Master, emit, failed, physical,
+export function installWorkerFenceDiagnostics({WorkerClient, WorkerHost, Supervisor, Master, emit, failed, physical, workerIdentity,
     maximumFenceEvents = 1024, membersPerRow = 32}) {
     if (!Number.isSafeInteger(maximumFenceEvents) || maximumFenceEvents < 1 || maximumFenceEvents > 4096
         || !Number.isSafeInteger(membersPerRow) || membersPerRow < 1 || membersPerRow > 32)
         throw new Error('Invalid fence diagnostic bounds');
     const context = new AsyncLocalStorage(), records = new WeakMap(), origins = new WeakMap();
     const transports = new WeakMap(), channels = new WeakSet(), workers = new WeakMap(), deferred = new WeakMap();
+    const identities = new WeakMap();
+    const identifyWorker = worker => {
+        let identity = identities.get(worker);
+        if (!identity) {identity = workerIdentity ? workerIdentity(worker) : physical(worker.process.pid); identities.set(worker, identity);}
+        return identity;
+    };
     let events = 0, omitted = 0, normalDrains = 0;
     const observe = (event, value) => {
         if (events++ >= maximumFenceEvents) {omitted++; failed(); return;}
@@ -120,10 +126,12 @@ export function installWorkerFenceDiagnostics({WorkerClient, WorkerHost, Supervi
     });
     for (const name of ['handleProtocolAbiCoordinatorRequest', 'revokeProtocolAbiReader']) wrap(Master?.prototype, name, function(original, args) {
         const [worker, message] = args;
-        const source = safely(() => ({method: name, workerId: worker?.id ?? null, reader: physical(worker.process.pid),
-            currentReaderAtCall: this.liveReader?.wref === worker,
+        const currentReaderAtCall = this.liveReader?.wref === worker;
+        // Irrelevant/unauthorized calls must retain the original no-op without demanding /proc evidence.
+        // Real revocation may follow physical exit; identify the captured Worker, not a new PID lookup.
+        const source = () => ({method: name, workerId: worker?.id ?? null, reader: identifyWorker(worker), currentReaderAtCall,
             requestId: message?.mId ?? null, operation: message?.data?.operation ?? null,
-            readerSessionId: typeof message === 'string' ? message : message?.data?.readerSessionId ?? null}));
+            readerSessionId: typeof message === 'string' ? message : message?.data?.readerSessionId ?? null});
         return context.run({...context.getStore(), source}, () => original.apply(this, args));
     });
     wrap(Supervisor?.prototype, 'attach', function(original, args) {
@@ -132,7 +140,7 @@ export function installWorkerFenceDiagnostics({WorkerClient, WorkerHost, Supervi
             const owner = this.owners.get(worker);
             if (!owner || workers.get(worker) === owner) return;
             workers.set(worker, owner);
-            const child = physical(worker.process.pid);
+            const child = identifyWorker(worker);
             const send = worker.send, supervisor = this;
             worker.send = function(message, ...values) {
                 const current = context.getStore();
@@ -146,7 +154,7 @@ export function installWorkerFenceDiagnostics({WorkerClient, WorkerHost, Supervi
                         child, role: owner.role, parentEpoch: supervisor.epoch, parentIncarnation: owner.incarnation,
                         fenceEvent: message.event, messageSha256: workerAttemptDigest(message), method: current.method,
                         invokedFrom: current.supervisorCaller,
-                        sourceOperation: current.source ?? null, memberCount: members.length};
+                        sourceOperation: current.source?.() ?? null, memberCount: members.length};
                     // All chunks or an explicit failure. Never silently present a prefix as a complete set.
                     for (let offset = 0; offset < members.length; offset += membersPerRow)
                         observe('worker_attempt_fence_members', () => ({...snapshot, offset, members: members.slice(offset, offset + membersPerRow)}));

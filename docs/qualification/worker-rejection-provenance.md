@@ -39,6 +39,9 @@ its original sequence and descriptor/binding digests. The send is joined to the
 captured Worker, its observed PID/birth and parent epoch/incarnation. A source-open
 or revocation context is recorded only when that original master call actually
 reaches the supervisor. A send return or callback is not a delivery acknowledgment.
+Worker births are retained from original fork/attachment observations. Source
+context is realized only when a real supervisor send occurs: an unrelated no-op
+needs no process lookup, and relevant revocation after exit uses retained identity.
 
 On the child, wrappers preserve original EventEmitter dispatch and the client's
 authority validation. The first actual scope fence records accepted parent IPC,

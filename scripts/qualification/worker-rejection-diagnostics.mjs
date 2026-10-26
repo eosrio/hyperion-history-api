@@ -20,6 +20,12 @@ export function installWorkerRejectionDiagnostics({Pool, Reader, Supervisor, Wor
         if (!Number.isSafeInteger(limit) || limit < 1 || limit > 256) throw new Error('Invalid rejection diagnostic bounds');
     const channelIds = new WeakMap(), publishers = new WeakSet(), pending = new Map(), workers = new WeakSet(), rejected = new WeakSet();
     const incarnation = randomUUID();
+    const workerIdentities = new WeakMap();
+    const workerIdentity = worker => {
+        let identity = workerIdentities.get(worker);
+        if (!identity) {identity = physical(worker.process.pid); workerIdentities.set(worker, identity);}
+        return identity;
+    };
     let rejections = 0, workerCount = 0, reportFailures = 0, omittedRejections = 0;
     const channelId = channel => {
         if (!channel) return null;
@@ -39,7 +45,7 @@ export function installWorkerRejectionDiagnostics({Pool, Reader, Supervisor, Wor
         if (rejections++ >= maximumRejections) {omittedRejections++; reportFailures++; return;}
         emit(event, snapshot);
     };
-    const fences = installWorkerFenceDiagnostics({WorkerClient, WorkerHost, Supervisor, Master, emit, physical,
+    const fences = installWorkerFenceDiagnostics({WorkerClient, WorkerHost, Supervisor, Master, emit, physical, workerIdentity,
         failed: () => {reportFailures++;}, maximumFenceEvents});
     const reject = Pool.prototype.rejectActionAdmission;
     Pool.prototype.rejectActionAdmission = function(reason, decision) {
@@ -143,7 +149,7 @@ export function installWorkerRejectionDiagnostics({Pool, Reader, Supervisor, Wor
         workers.add(worker);
         if (++workerCount > maximumWorkers) {reportFailures++; return;}
         let identity;
-        emit('physical_worker_forked', () => ({workerId: worker.id, child: identity = physical(worker.process.pid)}));
+        emit('physical_worker_forked', () => ({workerId: worker.id, child: identity = workerIdentity(worker)}));
         worker.once('exit', (code, signal) => emit('physical_worker_exited', () => ({workerId: worker.id, child: identity ?? null, code, signal})));
     });
     if (Supervisor) {
@@ -152,7 +158,7 @@ export function installWorkerRejectionDiagnostics({Pool, Reader, Supervisor, Wor
             const result = attach.call(this, worker, role);
             if (!attached.has(worker)) {
                 attached.add(worker);
-                emit('attempt_owner_attached', () => ({role, workerId: worker.id, child: physical(worker.process.pid),
+                emit('attempt_owner_attached', () => ({role, workerId: worker.id, child: workerIdentity(worker),
                     parentEpoch: this.epoch, parentIncarnation: this.owners.get(worker).incarnation}));
             }
             return result;

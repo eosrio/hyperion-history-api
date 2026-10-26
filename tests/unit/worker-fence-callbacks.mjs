@@ -2,14 +2,25 @@
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {randomUUID} from 'node:crypto';
+import {mkdtempSync, mkdirSync, writeFileSync, rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {WorkerAttemptClient} from '../../build/indexer/protocol/worker-attempt-client.js';
 import {WorkerAttemptSupervisor, describeWorkerAttemptEnd} from '../../build/indexer/protocol/worker-attempt-supervisor.js';
 import {ProofConsumerScope} from '../../build/indexer/protocol/proof-consumer-scope.js';
 import {installWorkerFenceDiagnostics} from '../../scripts/qualification/worker-fence-diagnostics.mjs';
 
-const rows = []; let failures = 0;
+const previous = process.cwd(), directory = mkdtempSync(join(tmpdir(), 'hapi-fence-callbacks-'));
+mkdirSync(join(directory, 'config')); writeFileSync(join(directory, 'config/connections.json'), '{}');
+writeFileSync(join(directory, 'chain.json'), JSON.stringify({settings: {chain: 'fence-callbacks'}, indexer: {}, whitelists: {}, blacklists: {}}));
+process.env.CONFIG_JSON = join(directory, 'chain.json'); process.chdir(directory);
+const {HyperionMaster} = await import('../../build/indexer/modules/master.js');
+const rows = [], unavailable = new Set(); let failures = 0;
 const diagnostics = installWorkerFenceDiagnostics({WorkerClient: WorkerAttemptClient, Supervisor: WorkerAttemptSupervisor,
-    physical: pid => ({pid, birthTicks: null, birthObservation: 'controlled-transport-not-physical-worker'}),
+    Master: HyperionMaster, physical: pid => {
+        if (unavailable.has(pid)) throw new Error('ENOENT: controlled unavailable process identity');
+        return {pid, birthTicks: null, birthObservation: 'controlled-transport-not-physical-worker'};
+    },
     failed: () => {failures++;}, emit: (event, snapshot) => rows.push({event, ...structuredClone(snapshot())})});
 const descriptor = () => ({kind: 'ds-delivery', receiptId: randomUUID(), payloadSha256: 'a'.repeat(64),
     headersSha256: 'b'.repeat(64), consumerId: randomUUID(), publisherId: randomUUID(), queue: 'controlled', deliveryTag: 1});
@@ -37,6 +48,13 @@ function pair() {
     pairs.push(value); return value;
 }
 try {
+    const absent = {id: 99, process: {pid: 2147483647}, isConnected: () => false}; unavailable.add(absent.process.pid);
+    const master = Object.create(HyperionMaster.prototype);
+    assert.equal(master.revokeProtocolAbiReader(absent), undefined);
+    await master.handleProtocolAbiCoordinatorRequest(absent, {event: 'protocol_abi_coordinator_request', mId: randomUUID(),
+        data: {operation: 'open', contextId: 'h45srcctx1:' + 'c'.repeat(64), readerSessionId: 'irrelevant-session'}});
+    assert.equal(failures, 0, 'original no-op/unauthorized calls must not require a dead process identity');
+    assert.equal(rows.length, 0);
     const first = pair(), unrelated = pair();
     const handles = Array.from({length: 34}, () => first.client.capture(descriptor()));
     const other = unrelated.client.capture(descriptor());
@@ -61,6 +79,14 @@ try {
     }
     const returned = {};
     assert.equal(await unrelated.client.run(other, () => returned), returned, 'normal root result identity is unchanged');
+
+    const revoker = Object.assign(Object.create(HyperionMaster.prototype), {workerAttemptSupervisor: first.supervisor,
+        liveReader: {wref: first.worker}, protocolAbiSource: {worker: first.worker, readerSessionId: 'cached-session'},
+        protocolAbiCoordinator: {async revokeSource() {}}});
+    unavailable.add(process.pid); // Controlled lookup failure after the original Worker identity was captured.
+    revoker.revokeProtocolAbiReader(first.worker, 'cached-session'); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(rows.findLast(row => row.event === 'worker_attempt_fence_sent').sourceOperation.reader.pid, process.pid);
+    assert.equal(failures, 0, 'relevant revocation must use its original retained Worker birth'); unavailable.delete(process.pid);
 
     for (const kind of ['disconnect', 'dispose', 'direct']) {
         const current = pair(), handle = current.client.capture(descriptor());
@@ -88,4 +114,8 @@ try {
     assert.equal(originalPromise, scope.ending); assert.equal(scope.closeAndDrain(), originalPromise); await originalPromise;
     assert.equal(failures, 0);
     console.log(JSON.stringify({passed: true, controlledCallbacksOnly: true, physicalIpcOrExitEvidence: false, chunks: chunks.length}));
-} finally {for (const {client, supervisor} of pairs) {client.dispose(); supervisor.stop();}}
+} finally {
+    for (const {client, supervisor} of pairs) {client.dispose(); supervisor.stop();}
+    process.chdir(previous); assert.ok(directory.startsWith(join(tmpdir(), 'hapi-fence-callbacks-')));
+    rmSync(directory, {recursive: true, force: true});
+}
