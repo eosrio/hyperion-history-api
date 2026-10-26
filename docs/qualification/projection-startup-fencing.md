@@ -35,6 +35,20 @@ service run as passing. The historical projection PID 19531 lacks this diagnosti
 matching stack is not proof that its exact cause was this source transition. A new owned service
 capture must identify that cause before #332 can close. #331's broker-exit provenance is separate.
 
+Two additional controls fence a captured first frame before its callback enters. `frame-register`
+holds the original registration request before the supervisor handles it; the parent's active count
+is zero at the real source-open fence. `frame-reply` holds the original successful registration reply,
+with one accepted parent attempt. Both release the same original request or reply after the child
+has received its authenticated active fence. The original client rejects before invoking the frame
+operation, drains and obtains a genuine quiescent thrown end with no frame effects or retry authority.
+Initialization returns normally, while the physical projection still exits 1 under the existing policy.
+
+The projection root observer never enters these frame callbacks, so its absent root error and
+`originalScopeFence: false` do not classify the exception as foreign. The fixture separately checks
+the real client's ownership of the thrown scope error, the unchanged parent owner, empty frame
+binding and original accepted end. These controlled interleavings do not identify the historical
+Node 26 message send or replace its missing parent comparison evidence.
+
 ## Run the controls
 
 Install from the npm lockfile, run the complete project check and emit normal Node artifacts:
@@ -44,9 +58,11 @@ npm ci --allow-git=all
 npm run typecheck
 npm run build
 node tests/unit/projection-controller-startup.mjs frame-read
+node tests/unit/projection-controller-startup.mjs frame-register
+node tests/unit/projection-controller-startup.mjs frame-reply
 node tests/unit/projection-controller-startup.mjs initialize-retained
-bun test tests/unit/projection-controller-startup.test.ts tests/unit/projection-startup-fencing.test.ts
-bun test tests/unit/projection-observer-results.test.ts
+bun test ./tests/unit/projection-controller-startup.test.ts ./tests/unit/projection-startup-fencing.test.ts
+bun test ./tests/unit/projection-observer-results.test.ts
 ```
 
 Select an explicit native Node 24 or 26 executable through `HYPERION_NATIVE_NODE` for the Bun test
