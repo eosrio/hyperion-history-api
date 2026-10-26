@@ -1,0 +1,82 @@
+import {expect, it} from 'bun:test';
+import {setImmediate as turn} from 'node:timers/promises';
+import {ProtocolAbiProofReader} from '../../src/indexer/protocol/abi-proof.js';
+import {ProofConsumerScope, assertProofConsumerEnd} from '../../src/indexer/protocol/proof-consumer-scope.js';
+import {nativeAuthorizationFixture, holdRead} from './protocol-native-authorization-host-fixture.js';
+
+const gate = () => {let release!: () => void; const promise = new Promise<void>(resolve => {release = resolve;}); return {promise, release};};
+const profile = {id: '@eosrio/hyperion-wire-plugin', profileId: 'proof-engineering-v1', components: [
+    {id: 'wire-node', runtime: 'node' as const, version: '0.0.0-dev.1', sourceRevision: 'b'.repeat(40), sha256: 'c'.repeat(64)}]};
+
+it('does not end the real retained read when its proof wait loses the abort race', async () => {
+    const entered = gate(), held = gate(); let physicalPending = 0;
+    const store: any = {async readControl() {physicalPending++; entered.release(); try {await held.promise; return null;} finally {physicalPending--;}}};
+    const reader = new ProtocolAbiProofReader({chainId: '1'.repeat(64), profile, store});
+    const scope = new ProofConsumerScope('original-delivery'), cancellation = new AbortController();
+    const root = scope.run(() => reader.waitForOpen({chainId: '1'.repeat(64), blockNum: 33, blockId: '2'.repeat(64)},
+        undefined, {signal: cancellation.signal}));
+    await entered.promise; cancellation.abort(); await expect(root).rejects.toMatchObject({code: 'proof_cancelled'});
+    expect(physicalPending).toBe(1);
+    let ended = false; const ending = scope.closeAndDrain().then(end => {ended = true; return end;});
+    await turn(); expect(ended).toBe(false);
+    held.release(); const end = await ending;
+    expect(physicalPending).toBe(0); expect(scope.snapshot().state).toBe('drained'); assertProofConsumerEnd(scope, end);
+    expect(() => assertProofConsumerEnd(scope, {} as any)).toThrow('Unissued');
+    expect(() => scope.run(() => reader.open({chainId: '1'.repeat(64), blockNum: 33, blockId: '2'.repeat(64)}))).toThrow();
+});
+
+it('retains a detached native opening through its cloned store read until physical drainage', async () => {
+    const f = await nativeAuthorizationFixture(), reader = f.reader(), scope = new ProofConsumerScope('native-clone-delivery');
+    const held = holdRead(f.client, request => request.index === f.nativeStore.index);
+    let opening!: Promise<unknown>;
+    await scope.run(async () => {
+        opening = reader.open(f.selected.source, f.selected.selectionId); void opening.catch(() => {});
+        await held.entered;
+    });
+    let ended = false; const ending = scope.closeAndDrain().then(end => {ended = true; return end;});
+    try {await turn(); expect(ended).toBe(false);}
+    finally {held.release(); held.restore(); await Promise.allSettled([opening, ending]);}
+    expect(scope.snapshot().state).toBe('drained');
+});
+
+for (const kind of ['root', 'operation'] as const) it(`records a ${kind} before a reentrant close can observe it`, async () => {
+    const scope = new ProofConsumerScope('reentrant-' + kind), held = gate(), entered = gate();
+    let ending!: Promise<unknown>, ended = false;
+    const work = scope[kind === 'root' ? 'run' : 'operation'](async () => {
+        ending = scope.closeAndDrain().then(() => {ended = true;}); entered.release(); await held.promise;
+    });
+    await entered.promise;
+    try {await turn(); expect(ended).toBe(false);}
+    finally {held.release(); await Promise.allSettled([work, ending]);}
+    expect(scope.snapshot().state).toBe('drained');
+});
+
+for (const managed of [false, true]) it(`snapshots original proof inputs before caller mutation (${managed ? 'managed' : 'API'})`, async () => {
+    const f = await nativeAuthorizationFixture(), reader = f.proofs(), scope = new ProofConsumerScope('snapshot-' + managed);
+    const check = async () => {
+        const source = {...f.selected.source}, opening = reader.open(source, f.selected.selectionId);
+        source.blockNum = 900; source.blockId = '9'.repeat(64);
+        const view = await opening; expect(view.source.blockNum).toBe(2);
+        const input = {...f.selected.inputs[0]}, finding = reader.occurrence(view, input);
+        input.rawHex = 'ff'; input.actionOrdinal = 99;
+        expect((await finding).binding.actionOrdinal).toBe(f.selected.inputs[0].actionOrdinal);
+    };
+    if (managed) {await scope.run(check); await scope.closeAndDrain();} else await check();
+});
+
+it('reserves one closing promise before synchronous abort listeners can reenter it', async () => {
+    const scope = new ProofConsumerScope('reentrant-abort-close'); let inner!: Promise<unknown>;
+    scope.signal.addEventListener('abort', () => {inner = scope.closeAndDrain();}, {once: true});
+    const outer = scope.closeAndDrain(); expect(inner).toBe(outer);
+    expect(await inner).toBe(await outer);
+});
+
+it('retains the original scope in saved host helpers outside context and inside another attempt', async () => {
+    const first = new ProofConsumerScope('saved-helper-original'), second = new ProofConsumerScope('saved-helper-replacement');
+    let calls = 0, helper!: () => number;
+    await first.run(() => {helper = first.bindCallback(() => ++calls); expect(helper()).toBe(1);});
+    await first.closeAndDrain();
+    expect(() => helper()).toThrow('Original worker attempt');
+    await second.run(() => {expect(() => helper()).toThrow('Original worker attempt');});
+    await second.closeAndDrain(); expect(calls).toBe(1);
+});

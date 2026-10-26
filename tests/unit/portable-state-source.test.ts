@@ -250,15 +250,17 @@ test('actual canonical source reserves before provider decode and a rejected fai
     const fixture = projectionFailureFixture(selected, capture.chainId, checkpoint, true), progress: any[] = [];
     fixture.faults.rejectDetailedMarker = true;
     let rejectDecode = true, decodes = 0;
-    const createSession = p.options.provider.createShipSession.bind(p.options.provider);
-    p.options.provider.createShipSession = schema => {
-        const session = createSession(schema);
+    const admittedProvider = p.options.provider, originalSource = p.source;
+    expect(Object.isFrozen(admittedProvider)).toBe(true);
+    // The selected provider stays immutable; only this fixture's source receives the fault wrapper.
+    p.source = new PortableProjectionSource({...p.options, provider: {...admittedProvider, createShipSession(schema) {
+        const session = admittedProvider.createShipSession(schema);
         return {...session, decodeDeltas(bytes) {
             decodes++;
             if (rejectDecode) throw new Error('controlled provider delta decode failure');
             return session.decodeDeltas(bytes);
         }};
-    };
+    }}});
     const options = {chainId: capture.chainId, configuration: fixture.configuration, adapter: fixture.adapter,
         source: p.source, maximumFramesPerProjection: 1, onProgress: (value: any) => progress.push(value)};
     const controller = await PortableStateController.create(options), api = await projectionFailureApi(fixture, p.source);
@@ -278,5 +280,5 @@ test('actual canonical source reserves before provider decode and a rejected fai
         expect((await api.query()).statusCode).toBe(200);
         expect(fixture.metadata().checkpoint).toMatchObject({blockNum: 3, blockId: p.positions[2].blockId});
         expect(fixture.metadata().pending).toBeNull(); await restarted.stop();
-    } finally {await controller.stop(); await api.app.close();}
+    } finally {p.source = originalSource; await controller.stop(); await api.app.close();}
 });

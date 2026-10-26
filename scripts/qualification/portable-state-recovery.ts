@@ -1,6 +1,7 @@
 /** #246: actual production launcher/reader/worker/Mongo/HTTP engineering fork tracer.
  * Synthetic branch facts are explicitly distinct from live Wire consensus acceptance. */
 import assert from 'node:assert/strict';
+import {assertNativeQualificationRuntime} from './native-node-runtime.mjs';
 import {spawn, execFileSync, type ChildProcess} from 'node:child_process';
 import {mkdir, open, readdir, writeFile} from 'node:fs/promises';
 import {createServer} from 'node:http';
@@ -82,7 +83,7 @@ export function assertRecoveryShutdown(rows: any[], parent: ChildProcess, intent
 
 export async function runPortableStateRecovery(stateFile: string, planFile: string, outputDirectory: string,
     finality: 'reversible' | 'irreversible') {
-    assert.equal(process.release.name, 'node'); assert.ok(!process.versions.bun && /^(22|24)\./.test(process.versions.node));
+    assertNativeQualificationRuntime();
     assert.equal(process.platform, 'linux', 'Actual stop/kill recovery qualification requires Linux');
     assert.ok(['reversible', 'irreversible'].includes(finality));
     const deadline = performance.now() + recoverySourceLimits.runMs;

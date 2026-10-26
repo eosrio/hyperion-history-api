@@ -15,7 +15,8 @@ import {
     StreamTypeMap
 } from "../interfaces/stream-requests.js";
 import {mergeActionMeta, streamPastCommon} from "./helpers/functions.js";
-import {protectProtocolAction, revalidateProtocolActionScope} from './helpers/protocol-abi.js';
+import {protectProtocolAction, protocolActionsForStream} from './helpers/protocol-abi.js';
+import {createProtocolStreamScope} from './helpers/protocol-proof-request.js';
 import {assertProtocolProjectionReady} from './helpers/protocol-state-readiness.js';
 import {assertProtocolActionStreamReady} from './helpers/protocol-action-query.js';
 import {normalizeActionSequences} from '../indexer/helpers/action-sequences.js';
@@ -29,11 +30,23 @@ import {
 export const maximumPendingLiveActions = 64;
 export const maximumPendingLiveActionBytes = 16 * 1024 * 1024;
 
+function validAccountName(value: string): boolean {
+    try { return Name.from(value).toString() === value; }
+    catch { return false; }
+}
+
 interface PendingLiveAction {
     trace: {account: string; name: string; notified: string; message: string};
     targets: Map<string, string[]>;
     bytes: number;
     done: () => void;
+}
+
+interface ActiveHistoryRequest {
+    clientId: string;
+    controller: AbortController;
+    type: 'action' | 'delta';
+    replayOnReconnect: boolean;
 }
 
 export class SocketManager {
@@ -52,6 +65,7 @@ export class SocketManager {
     private liveActionQueue: PendingLiveAction[] = [];
     private liveActionPendingBytes = 0;
     private liveActionDraining = false;
+    private historyRequests = new Map<string, ActiveHistoryRequest>();
 
     // client_id >> request_uuid >> delta request
     private clientDeltaRequestMap: Map<string, Map<string, StreamDeltasRequest>> = new Map();
@@ -69,12 +83,14 @@ export class SocketManager {
     // private requestClientMap: Map<string, string> = new Map();
 
     // payer >> client_id >> request_uuid
-    private payerClientMap: Map<string, Map<string, [string, StreamDeltasRequest]>> = new Map();
+    private payerClientMap: Map<string, Map<string, Map<string, StreamDeltasRequest>>> = new Map();
 
     // notifiedAccount >> client_id >> requestIds
-    private notifiedAccountClientMap: Map<string, Map<string, [string, StreamActionsRequest]>> = new Map();
+    private notifiedAccountClientMap: Map<string, Map<string, Map<string, StreamActionsRequest>>> = new Map();
 
     private disconnectTimeoutMap: Map<string, NodeJS.Timeout> = new Map();
+    private staleRelayClients = new Set<string>();
+    private pendingRelayCancels = new Map<string, Set<string>>();
 
     private lastRelaySocketId: string = '';
 
@@ -144,8 +160,26 @@ export class SocketManager {
         socket.on('reconnect', (data: any) => {
             if (data.last_id) {
                 hLog("Client reconnected, previous ID: " + data.last_id);
-                if (this.clientDeltaRequestMap.has(data.last_id)) {
-                    this.replaceClientId(data.last_id, socket.id);
+                if (this.clientDeltaRequestMap.has(data.last_id) || this.clientActionRequestMap.has(data.last_id) ||
+                    [...this.historyRequests.values()].some(request => request.clientId === data.last_id)) {
+                    void this.replaceClientId(data.last_id, socket.id, socket).catch(error => {
+                        hLog('Stream reconnect transfer failed:', error);
+                        const requestIds = new Set([
+                            ...(this.clientDeltaRequestMap.get(data.last_id)?.keys() ?? []),
+                            ...(this.clientActionRequestMap.get(data.last_id)?.keys() ?? []),
+                            ...(this.clientDeltaRequestMap.get(socket.id)?.keys() ?? []),
+                            ...(this.clientActionRequestMap.get(socket.id)?.keys() ?? [])
+                        ]);
+                        for (const uuid of requestIds) {
+                            this.cancelRelayRequest(socket.id, uuid);
+                            this.detachDeltaRequests(socket.id, uuid);
+                            this.detachActionRequests(socket.id, uuid);
+                        }
+                        this.detachDeltaRequests(data.last_id);
+                        this.detachActionRequests(data.last_id);
+                        this.retireRelayClient(data.last_id);
+                        socket.emit('resend_requests', {last_id: data.last_id});
+                    });
                 } else {
                     // No requests present, likely a server restart, ask the client to resend the request
                     // Add a random delay
@@ -158,23 +192,20 @@ export class SocketManager {
 
         // handle request cancellation
         socket.on('cancel_stream_request', (data: { reqUUID: string }, callback) => {
-            if (typeof callback === 'function' && data) {
-                try {
-                    if (this.relay && this.relay.connected) {
-                        this.relay.emit('event', {
-                            reqUUID: data.reqUUID,
-                            type: 'cancel_request',
-                            client_socket_id: socket.id
-                        }, (response: any) => {
-                            callback(response);
-                        });
-                    } else {
-                        callback('STREAMING_OFFLINE');
-                    }
-                } catch (e: any) {
-                    console.log(e);
-                }
-            }
+            if (typeof callback !== 'function') return;
+            if (typeof data?.reqUUID !== 'string' || !data.reqUUID)
+                return callback({status: 'ERROR', message: 'Invalid request id'});
+            const history = this.historyRequests.get(data.reqUUID);
+            if (history && history.clientId !== socket.id) return callback({status: 'NOT_FOUND'});
+            const delta = this.clientDeltaRequestMap.get(socket.id)?.has(data.reqUUID) ?? false;
+            const action = this.clientActionRequestMap.get(socket.id)?.has(data.reqUUID) ?? false;
+            if (!history && !delta && !action) return callback({status: 'NOT_FOUND'});
+            history?.controller.abort(new Error('Stream request cancelled'));
+            this.historyRequests.delete(data.reqUUID);
+            if (delta) this.detachDeltaRequests(socket.id, data.reqUUID);
+            if (action) this.detachActionRequests(socket.id, data.reqUUID);
+            if (!delta && !action) return callback({status: 'OK'});
+            this.cancelRelayRequest(socket.id, data.reqUUID, callback);
         });
 
         // handle delta stream request
@@ -195,7 +226,12 @@ export class SocketManager {
         socket.on('disconnect', (reason) => {
             hLog(`[socket] ${socket.id} disconnected - ${reason}`);
             const timeoutId = setTimeout(() => {
+                for (const [uuid, history] of this.historyRequests) if (history.clientId === socket.id) {
+                    history.controller.abort(new Error('Stream client disconnected'));
+                    this.historyRequests.delete(uuid);
+                }
                 this.detachDeltaRequests(socket.id);
+                this.detachActionRequests(socket.id);
                 if (this.relay) {
                     this.relay.emit('event', { type: 'client_disconnected', id: socket.id, reason });
                 }
@@ -222,6 +258,12 @@ export class SocketManager {
         this.relay.on('connect', () => {
             hLog('Relay Connected!');
             this.lastRelaySocketId = this.relay?.id || '';
+            for (const clientId of this.staleRelayClients) {
+                this.relay?.emit('event', {type: 'client_disconnected', id: clientId,
+                    reason: 'offline_reconnect_cleanup'});
+                this.staleRelayClients.delete(clientId);
+            }
+            this.flushPendingRelayCancels();
             if (this.relay_down) {
                 this.relay_restored = true;
                 this.relay_down = false;
@@ -270,15 +312,52 @@ export class SocketManager {
     }
 
     // Send request from client to relay socket on indexer with callback
+    private cancelRelayRequest(clientId: string, requestUUID: string,
+        callback?: (response: any) => void): void {
+        if (this.relay?.connected) {
+            try {
+                this.relay.emit('event', {type: 'cancel_request', client_socket_id: clientId,
+                    reqUUID: requestUUID}, (response: any) => callback?.(response));
+                return;
+            } catch (error) {
+                hLog('Stream relay cancellation failed:', error);
+            }
+        }
+        if (!this.pendingRelayCancels.has(clientId)) this.pendingRelayCancels.set(clientId, new Set());
+        this.pendingRelayCancels.get(clientId)!.add(requestUUID);
+        callback?.({status: 'OK', pending: true});
+    }
+
+    private flushPendingRelayCancels(): void {
+        if (!this.relay?.connected) return;
+        const pending = [...this.pendingRelayCancels];
+        this.pendingRelayCancels.clear();
+        for (const [clientId, requests] of pending) {
+            for (const requestUUID of requests) this.cancelRelayRequest(clientId, requestUUID);
+        }
+    }
+
     emitToRelay(request: StreamRequest, type: StreamEvents, socket: Socket, reqUUID: string, done: (r: any) => void) {
-        if (this.relay && this.relay.connected) {
-            this.relay.emit('event', { reqUUID, type: type, client_socket: socket.id, request }, (resp: any) => {
-                resp['reqUUID'] = reqUUID;
-                resp['currentBlockNum'] = this.currentBlockNum;
-                done(resp);
-            });
-        } else {
-            done('STREAMING_OFFLINE');
+        let settled = false;
+        const finish = (response: any) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeout);
+            const result = response && typeof response === 'object' ? {...response} : {
+                status: 'ERROR', error: {statusCode: 503, retryable: true,
+                    message: String(response ?? 'Stream relay unavailable')}
+            };
+            done({...result, reqUUID, currentBlockNum: this.currentBlockNum});
+        };
+        const timeout = setTimeout(() => {
+            finish('Stream relay acknowledgement timed out');
+            this.cancelRelayRequest(socket.id, reqUUID);
+        }, 5000);
+        if (!this.relay?.connected) return finish('STREAMING_OFFLINE');
+        try {
+            this.relay.emit('event', {reqUUID, type, client_socket: socket.id, request}, finish);
+        } catch (error) {
+            finish(error);
         }
     }
 
@@ -307,7 +386,9 @@ export class SocketManager {
             if (!this.notifiedAccountClientMap.has(data.account)) {
                 this.notifiedAccountClientMap.set(data.account, new Map());
             }
-            this.notifiedAccountClientMap.get(data.account)?.set(client_id, [requestUUID, data]);
+            const clients = this.notifiedAccountClientMap.get(data.account)!;
+            if (!clients.has(client_id)) clients.set(client_id, new Map());
+            clients.get(client_id)!.set(requestUUID, data);
         }
 
         // include on the clientDeltaRequestMap as reverse index
@@ -341,7 +422,9 @@ export class SocketManager {
             if (!this.payerClientMap.has(data.payer)) {
                 this.payerClientMap.set(data.payer, new Map());
             }
-            this.payerClientMap.get(data.payer)?.set(client_id, [requestUUID, data]);
+            const clients = this.payerClientMap.get(data.payer)!;
+            if (!clients.has(client_id)) clients.set(client_id, new Map());
+            clients.get(client_id)!.set(requestUUID, data);
         }
 
         // include on the clientDeltaRequestMap as a reverse index
@@ -356,74 +439,58 @@ export class SocketManager {
      * remove all requests from the client_id from the deltaCodeMap and payerClientMap, use info from the reverse
      * index at clientDeltaRequestMap, also clean it if needed
      */
-    private detachDeltaRequests(client_id: string) {
+    private detachDeltaRequests(client_id: string, requestUUID?: string) {
         const clientRequests = this.clientDeltaRequestMap.get(client_id);
-        if (clientRequests) {
-            clientRequests?.forEach((data, requestUUID) => {
-                // console.log(`>> Removing request (${requestUUID}) | Code: ${data.code} | Table: ${data.table} | Payer: ${data.payer}`);
-                if (data.code && data.table) {
-                    // Remove from deltaCodeMap
-                    const tableMap = this.deltaCodeMap.get(data.code)?.get(data.table);
-                    if (tableMap) {
-                        tableMap.delete(client_id);
-                        // Clean up empty maps
-                        if (tableMap.size === 0) {
-                            this.deltaCodeMap.get(data.code)?.delete(data.table);
-                            if (this.deltaCodeMap.get(data.code)?.size === 0) {
-                                this.deltaCodeMap.delete(data.code);
-                            }
-                        }
-                    }
-                }
-                if (data.payer) {
-                    // Remove from payerClientMap
-                    const clientSet = this.payerClientMap.get(data.payer);
-                    if (clientSet) {
-                        clientSet.delete(client_id);
-                        if (clientSet.size === 0) {
-                            this.payerClientMap.delete(data.payer);
-                        }
-                    }
-                }
-            });
-            // Clean up clientDeltaRequestMap
-            this.clientDeltaRequestMap.delete(client_id);
+        if (!clientRequests) return;
+        for (const uuid of requestUUID ? [requestUUID] : [...clientRequests.keys()]) {
+            const data = clientRequests.get(uuid);
+            if (!data) continue;
+            if (data.code && data.table) {
+                const tables = this.deltaCodeMap.get(data.code);
+                const clients = tables?.get(data.table);
+                const requests = clients?.get(client_id);
+                requests?.delete(uuid);
+                if (requests?.size === 0) clients?.delete(client_id);
+                if (clients?.size === 0) tables?.delete(data.table);
+                if (tables?.size === 0) this.deltaCodeMap.delete(data.code);
+            }
+            if (data.payer && !data.code && !data.table) {
+                const clients = this.payerClientMap.get(data.payer);
+                const requests = clients?.get(client_id);
+                requests?.delete(uuid);
+                if (requests?.size === 0) clients?.delete(client_id);
+                if (clients?.size === 0) this.payerClientMap.delete(data.payer);
+            }
+            clientRequests.delete(uuid);
         }
+        if (clientRequests.size === 0) this.clientDeltaRequestMap.delete(client_id);
     }
 
-    private detachActionRequests(client_id: string) {
+    private detachActionRequests(client_id: string, requestUUID?: string) {
         const clientRequests = this.clientActionRequestMap.get(client_id);
-        if (clientRequests) {
-            clientRequests?.forEach((data) => {
-                if (data.contract && data.action) {
-                    // Remove from actionContractMap
-                    const actionMap = this.actionContractMap.get(data.contract)?.get(data.action);
-                    if (actionMap) {
-                        actionMap.delete(client_id);
-                        // Clean up empty maps
-                        if (actionMap.size === 0) {
-                            this.actionContractMap.get(data.contract)?.delete(data.action);
-                            if (this.actionContractMap.get(data.contract)?.size === 0) {
-                                this.actionContractMap.delete(data.contract);
-                            }
-                        }
-                    }
-                }
-
-                if (data.account) {
-                    // Remove from payerClientMap
-                    const clientSet = this.payerClientMap.get(data.account);
-                    if (clientSet) {
-                        clientSet.delete(client_id);
-                        if (clientSet.size === 0) {
-                            this.payerClientMap.delete(data.account);
-                        }
-                    }
-                }
-            });
-            // Clean up clientDeltaRequestMap
-            this.clientDeltaRequestMap.delete(client_id);
+        if (!clientRequests) return;
+        for (const uuid of requestUUID ? [requestUUID] : [...clientRequests.keys()]) {
+            const data = clientRequests.get(uuid);
+            if (!data) continue;
+            if (data.contract && data.action) {
+                const actions = this.actionContractMap.get(data.contract);
+                const clients = actions?.get(data.action);
+                const requests = clients?.get(client_id);
+                requests?.delete(uuid);
+                if (requests?.size === 0) clients?.delete(client_id);
+                if (clients?.size === 0) actions?.delete(data.action);
+                if (actions?.size === 0) this.actionContractMap.delete(data.contract);
+            }
+            if (data.account && !data.contract && !data.action) {
+                const clients = this.notifiedAccountClientMap.get(data.account);
+                const requests = clients?.get(client_id);
+                requests?.delete(uuid);
+                if (requests?.size === 0) clients?.delete(client_id);
+                if (clients?.size === 0) this.notifiedAccountClientMap.delete(data.account);
+            }
+            clientRequests.delete(uuid);
         }
+        if (clientRequests.size === 0) this.clientActionRequestMap.delete(client_id);
     }
 
     private async routeActionTraceToClients(traceData: any): Promise<void> {
@@ -447,13 +514,12 @@ export class SocketManager {
         // Forward to NOTIFIED ACCOUNT listeners
         notifiedAccounts.forEach((account: string) => {
             if (this.notifiedAccountClientMap.has(account)) {
-                this.notifiedAccountClientMap.get(account)?.forEach(([requestUUID, requestData], clientId) => {
-                    if (!targetClients.has(clientId)) {
-                        targetClients.set(clientId, []);
-                    }
-                    if (checkActionFilters(requestData, account, traceData.message)) {
-                        targetClients.get(clientId)?.push(requestUUID);
-                    }
+                this.notifiedAccountClientMap.get(account)?.forEach((requests, clientId) => {
+                    requests.forEach((requestData, requestUUID) => {
+                        if (!targetClients.has(clientId)) targetClients.set(clientId, []);
+                        if (checkActionFilters(requestData, account, traceData.message))
+                            targetClients.get(clientId)?.push(requestUUID);
+                    });
                 });
             }
         });
@@ -503,10 +569,13 @@ export class SocketManager {
         try {
             while (this.liveActionQueue.length) {
                 const pending = this.liveActionQueue[0];
+                let activeProofScope: ReturnType<typeof createProtocolStreamScope> | undefined;
                 try {
                     let message = pending.trace.message;
                     if (this.server.manager.config.settings?.protocol?.provider === 'extension') {
-                        const action = normalizeActionSequences(JSON.parse(message)), proofScope = {};
+                        activeProofScope = createProtocolStreamScope([...pending.targets.keys()]
+                            .map(clientId => this.io.sockets.sockets.get(clientId)).filter(socket => socket !== undefined));
+                        const action = normalizeActionSequences(JSON.parse(message)), proofScope = activeProofScope.scope;
                         const notified = new Set([
                             ...(action.receipts ?? []).map((receipt: any) => receipt.receiver),
                             ...(action.act?.authorization ?? []).map((authorization: any) => authorization.actor)
@@ -519,8 +588,8 @@ export class SocketManager {
                         mergeActionMeta(action, false, true);
                         await protectProtocolAction(this.server, proofScope, action);
                         delete action.protocol;
-                        message = JSON.stringify(action);
-                        await revalidateProtocolActionScope(this.server, proofScope);
+                        const [checked] = await protocolActionsForStream(this.server, proofScope, [action]);
+                        message = JSON.stringify(checked);
                     }
                     pending.targets.forEach((requests, clientId) => this.io.sockets.sockets.get(clientId)?.emit('message', {
                         type: 'action_trace', mode: 'live', targets: requests, message
@@ -528,6 +597,7 @@ export class SocketManager {
                 } catch (error) {
                     this.emitActionUnavailable(pending.targets, error);
                 } finally {
+                    activeProofScope?.dispose();
                     this.liveActionQueue.shift();
                     this.liveActionPendingBytes -= pending.bytes;
                     pending.done();
@@ -556,13 +626,12 @@ export class SocketManager {
 
         // Forward to PAYER listeners
         if (this.payerClientMap.has(payer)) {
-            this.payerClientMap.get(payer)?.forEach(([requestUUID, requestData], clientId) => {
-                if (!targetClients.has(clientId)) {
-                    targetClients.set(clientId, []);
-                }
-                if (checkDeltaFilters(requestData, payer, message)) {
-                    targetClients.get(clientId)?.push(requestUUID);
-                }
+            this.payerClientMap.get(payer)?.forEach((requests, clientId) => {
+                requests.forEach((requestData, requestUUID) => {
+                    if (!targetClients.has(clientId)) targetClients.set(clientId, []);
+                    if (checkDeltaFilters(requestData, payer, message))
+                        targetClients.get(clientId)?.push(requestUUID);
+                });
             });
         }
 
@@ -591,37 +660,67 @@ export class SocketManager {
         // console.log("Processing time: ", Number(process.hrtime.bigint() - tRef) / 1000000, "ms");
     }
 
-    private replaceClientId(previousId: string, newId: string) {
+    private retireRelayClient(clientId: string): void {
+        if (this.relay?.connected) this.relay.emit('event', {type: 'client_disconnected',
+            id: clientId, reason: 'reconnected'});
+        else this.staleRelayClients.add(clientId);
+    }
+
+    private transferRelayClient(previousId: string, newId: string, retainedRequestIds: string[]): Promise<boolean> {
+        return new Promise(resolve => {
+            if (!this.relay?.connected) return resolve(false);
+            let settled = false;
+            const finish = (accepted: boolean) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timeout);
+                resolve(accepted);
+            };
+            const timeout = setTimeout(() => finish(false), 5000);
+            try {
+                this.relay.emit('event', {type: 'client_reconnected',
+                    old_client_socket: previousId, client_socket: newId,
+                    retained_request_ids: retainedRequestIds},
+                (response: any) => finish(response?.status === 'OK'));
+            } catch {
+                finish(false);
+            }
+        });
+    }
+
+    private async replaceClientId(previousId: string, newId: string, socket: Socket): Promise<void> {
         const currentTimeout = this.disconnectTimeoutMap.get(previousId);
-        if (currentTimeout) {
-            clearTimeout(currentTimeout);
+        if (currentTimeout) clearTimeout(currentTimeout);
+        this.disconnectTimeoutMap.delete(previousId);
+        const activeHistory = [...this.historyRequests].filter(([, request]) => request.clientId === previousId);
+        for (const [uuid, request] of activeHistory) {
+            request.controller.abort(new Error('Stream client reconnected during history replay'));
+            this.historyRequests.delete(uuid);
         }
-        const currentDeltaRequests = this.clientDeltaRequestMap.get(previousId);
-        if (currentDeltaRequests) {
-            debugLog('⚠️ currentDeltaRequests:', currentDeltaRequests);
-            currentDeltaRequests.forEach((data, requestUUID) => {
-                if (!data.replayOnReconnect) {
-                    this.attachDeltaRequests(data, newId, requestUUID);
-                }
-            });
-            this.detachDeltaRequests(previousId);
-            this.clientDeltaRequestMap.set(newId, currentDeltaRequests);
-            this.clientDeltaRequestMap.delete(previousId);
+        const activeHistoryIds = new Set(activeHistory.map(([uuid]) => uuid));
+        const delta = [...(this.clientDeltaRequestMap.get(previousId) ?? [])]
+            .filter(([uuid, data]) => !data.replayOnReconnect && !activeHistoryIds.has(uuid));
+        const action = [...(this.clientActionRequestMap.get(previousId) ?? [])]
+            .filter(([uuid, data]) => !data.replayOnReconnect && !activeHistoryIds.has(uuid));
+        const retainedIds = [...delta, ...action].map(([uuid]) => uuid);
+        const transferred = await this.transferRelayClient(previousId, newId, retainedIds);
+        if (transferred) {
+            for (const [uuid, data] of delta) this.attachDeltaRequests(data, newId, uuid);
+            for (const [uuid, data] of action) this.attachActionRequests(data, newId, uuid);
         }
-
-        const currentActionRequests = this.clientActionRequestMap.get(previousId);
-        if (currentActionRequests) {
-            debugLog('⚠️ currentActionRequests:', currentActionRequests);
-            currentActionRequests.forEach((data, requestUUID) => {
-                if (!data.replayOnReconnect) {
-                    this.attachActionRequests(data, newId, requestUUID);
-                }
-            });
-            this.detachActionRequests(previousId);
-            this.clientActionRequestMap.set(newId, currentActionRequests);
-            this.clientActionRequestMap.delete(previousId);
+        this.detachDeltaRequests(previousId);
+        this.detachActionRequests(previousId);
+        if (!transferred) {
+            // The transfer may have committed while its acknowledgement was lost.
+            for (const uuid of retainedIds) this.cancelRelayRequest(newId, uuid);
+            this.retireRelayClient(previousId);
+            socket.emit('resend_requests', {last_id: previousId});
+            return;
         }
-
+        for (const [uuid, request] of activeHistory) if (!request.replayOnReconnect)
+            socket.emit('message', {type: `${request.type}_trace`, mode: 'history', reqUUID: uuid,
+                error: {statusCode: 503, retryable: true,
+                    message: 'Reconnect interrupted history replay; start a new request'}});
     }
 
     private async processStreamRequest<K extends keyof StreamTypeMap>(
@@ -632,6 +731,9 @@ export class SocketManager {
     ) {
         const originalCallback = callback;
         let acknowledged = false;
+        let requestUUID = '';
+        let historyController: AbortController | undefined;
+        let liveAccepted = false;
         callback = response => {if (!acknowledged) {acknowledged = true; originalCallback(response);}};
         try {
             if (type === 'delta') assertProtocolProjectionReady(this.server, 'row-history');
@@ -646,7 +748,12 @@ export class SocketManager {
             debugLog(`Processing ${type.toUpperCase()} request:`, data);
 
             // generate random uuid for each request
-            const requestUUID = randomUUID();
+            requestUUID = randomUUID();
+            if (data.start_from && data.start_from !== 0) {
+                historyController = new AbortController();
+                this.historyRequests.set(requestUUID, {clientId: socket.id, controller: historyController,
+                    type, replayOnReconnect: Boolean(data.replayOnReconnect)});
+            }
 
             // get the last history block from the real time stream request
             let lastHistoryBlock = 0;
@@ -658,14 +765,19 @@ export class SocketManager {
                     this.attachActionRequests(data as StreamActionsRequest, socket.id, requestUUID);
                 }
 
-                lastHistoryBlock = await new Promise<number>((resolve) => {
+                const liveStart = await new Promise<any>((resolve) => {
                     // start sending realtime data
                     const reqType = type === 'delta' ? 'delta_request' : 'action_request';
-                    this.emitToRelay(data, reqType, socket, requestUUID, (emissionResult) => {
-                        callback(emissionResult);
-                        resolve(emissionResult.currentBlockNum);
-                    });
+                    this.emitToRelay(data, reqType, socket, requestUUID, resolve);
                 });
+                callback(liveStart);
+                if (liveStart.status !== 'OK') {
+                    if (type === 'delta') this.detachDeltaRequests(socket.id, requestUUID);
+                    else this.detachActionRequests(socket.id, requestUUID);
+                    return;
+                }
+                liveAccepted = true;
+                lastHistoryBlock = liveStart.currentBlockNum;
             } else {
                 // if live data is ignored, immediately reply to the callback
                 callback({ status: 'OK', reqUUID: requestUUID, currentBlockNum: this.currentBlockNum });
@@ -683,10 +795,11 @@ export class SocketManager {
                 hLog('Performing primary scroll request until block: ', data.read_until, '... ');
                 let ltb: number | undefined = 0;
 
-                const hStreamResult = await streamPastCommon(this.server, socket, requestUUID, data, type);
+                const hStreamResult = await streamPastCommon(this.server, socket, requestUUID, data, type,
+                    historyController?.signal);
 
                 if (!hStreamResult.status) {
-                    return;
+                    throw new Error(String(hStreamResult.error ?? 'History replay failed'));
                 } else {
                     ltb = hStreamResult.lastTransmittedBlock;
                     let attempts = 1;
@@ -699,10 +812,11 @@ export class SocketManager {
                         hLog(`Performing ${type.toUpperCase()} fill request from ${ltb}...`);
                         data.start_from = (hStreamResult.lastTransmittedBlock ?? 0) + 1;
                         data.read_until = lastHistoryBlock;
-                        const r = await streamPastCommon(this.server, socket, requestUUID, data, type);
+                        historyController?.signal.throwIfAborted();
+                        const r = await streamPastCommon(this.server, socket, requestUUID, data, type,
+                            historyController?.signal);
                         if (!r.status) {
-                            hLog(`Error streaming past ${type.toUpperCase()}S:`, r);
-                            return;
+                            throw new Error(String(r.error ?? 'History fill failed'));
                         } else {
                             ltb = r.lastTransmittedBlock;
                             await sleep(500);
@@ -710,6 +824,7 @@ export class SocketManager {
                     }
                     hLog(`✅ Done streaming past ${type.toUpperCase()}S at block ${ltb}`);
 
+                    historyController?.signal.throwIfAborted();
                     socket.emit('message', {
                         type: 'history_end',
                         reqUUID: requestUUID,
@@ -719,10 +834,19 @@ export class SocketManager {
                 }
             }
         } catch (e: any) {
+            if (historyController?.signal.aborted) return;
+            if (liveAccepted) {
+                if (type === 'delta') this.detachDeltaRequests(socket.id, requestUUID);
+                else this.detachActionRequests(socket.id, requestUUID);
+                this.cancelRelayRequest(socket.id, requestUUID);
+            }
             hLog(`[processStreamRequest] Failed to process ${type.toUpperCase()} request:`, e.message);
             const error = {statusCode: e.statusCode ?? 503, retryable: true, message: e.message};
-            socket.emit('message', {type: `${type}_trace`, mode: 'history', error});
-            callback({status: 'ERROR', ...error});
+            if (acknowledged && requestUUID) socket.emit('message', {reqUUID: requestUUID,
+                type: `${type}_trace`, mode: 'history', error});
+            else callback({status: 'ERROR', ...error});
+        } finally {
+            if (requestUUID) this.historyRequests.delete(requestUUID);
         }
     }
 
@@ -735,35 +859,30 @@ export class SocketManager {
         switch (type) {
             case "action": {
                 const actionData = data as StreamActionsRequest;
-
-                // we should accept contract and action if account is not provided
-                // if the account is provided we don't need contract and action enforcement
-                if (!actionData.account && (!actionData.contract || !actionData.action)) {
+                // Account-only subscriptions and exact-contract action subscriptions
+                // are the shapes the live router can actually attach.
+                if ((!actionData.contract || !actionData.action) && !actionData.account) {
                     return {
                         status: 'ERROR',
                         message: 'account or contract and action are required'
                     };
                 }
-
-
-                // validate contract name
-                if (actionData.contract && Name.from(actionData.contract).toString() !== actionData.contract) {
+                if (Boolean(actionData.contract) !== Boolean(actionData.action)) {
+                    return {status: 'ERROR', message: 'contract and action must be provided together'};
+                }
+                if (actionData.contract && !validAccountName(actionData.contract)) {
                     return {
                         status: "ERROR",
                         message: `Invalid contract name: ${actionData.contract}`
                     };
                 }
-
-                // validate action name
-                if (actionData.action && Name.from(actionData.action).toString() !== actionData.action) {
+                if (actionData.action && actionData.action !== '*' && !validAccountName(actionData.action)) {
                     return {
                         status: "ERROR",
                         message: `Invalid action name: ${actionData.action}`
                     };
                 }
-
-                // validate account name
-                if (actionData.account && Name.from(actionData.account).toString() !== actionData.account) {
+                if (actionData.account && !validAccountName(actionData.account)) {
                     return {
                         status: "ERROR",
                         message: `Invalid account name: ${actionData.account}`
@@ -781,24 +900,27 @@ export class SocketManager {
                     };
                 }
 
-                if (Name.from(deltaData.table).toString() !== deltaData.table) {
+                if (deltaData.table !== '*' && !validAccountName(deltaData.table)) {
                     return {
                         status: "ERROR",
                         message: `Invalid table name: ${deltaData.table}`
                     };
                 }
 
-                if (Name.from(deltaData.code).toString() !== deltaData.code) {
+                if (!validAccountName(deltaData.code)) {
                     return {
                         status: "ERROR",
                         message: `Invalid code name: ${deltaData.code}`
                     };
                 }
 
-                if (Name.from(deltaData.scope).toString() !== deltaData.scope) {
+                // Empty means all scopes. Numeric/raw uint64 scopes are valid opaque
+                // keywords, but '*' is not understood by the live scope predicate.
+                if (deltaData.scope !== undefined
+                    && (typeof deltaData.scope !== 'string' || deltaData.scope === '*')) {
                     return {
                         status: "ERROR",
-                        message: `Invalid scope name: ${deltaData.scope}`
+                        message: `Invalid scope: ${deltaData.scope}`
                     };
                 }
 
@@ -857,7 +979,7 @@ export class SocketManager {
             const abi = ABI.from(abiData.abi);
             if (type === 'action') {
                 const actionName = (data as StreamActionsRequest).action;
-                const action = abi.actions.find(action => action.name.toString() === actionName);
+                const action = actionName === '*' || abi.actions.find(action => action.name.toString() === actionName);
                 if (!action) {
                     return {
                         status: 'ERROR',
@@ -866,7 +988,7 @@ export class SocketManager {
                 }
             } else if (type === 'delta') {
                 const tableName = (data as StreamDeltasRequest).table;
-                const tableDef = abi.tables.find(table => table.name.toString() === tableName);
+                const tableDef = tableName === '*' || abi.tables.find(table => table.name.toString() === tableName);
                 if (!tableDef) {
                     return {
                         status: 'ERROR',

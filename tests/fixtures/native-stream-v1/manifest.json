@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "revision": 2,
+  "resources": [
+    {
+      "path": "protocol/v1/README.md",
+      "sha256": "e7635fead5c909277f04086b0c857b0a20954bf6bd442eac15a71f862489f907"
+    },
+    {
+      "path": "conformance/v1/wire-vectors.json",
+      "sha256": "dfa5e6fc58ac3a9ef510c32e9cb2f9db6a05e2ef7a7dbe7d8be1678e79d58f49"
+    },
+    {
+      "path": "conformance/v1/scenarios.json",
+      "sha256": "856fd39dd1c50651c9cd2e73494c9874e94a5100a71341b559edea609181f3bf"
+    },
+    {
+      "path": "conformance/v1/network-sessions.json",
+      "sha256": "065506e140c7b54cebf15ace41382447782f6b7797fea277a33c60a48a248d09"
+    }
+  ]
+}

@@ -2,6 +2,7 @@ import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import {timedQuery} from "../../../helpers/functions.js";
 import {API} from "@wharfkit/antelope";
 import {searchActions} from '../../../helpers/action-search.js';
+import {protectProtocolAction} from '../../../helpers/protocol-abi.js';
 
 async function getCreator(fastify: FastifyInstance, request: FastifyRequest) {
 
@@ -42,6 +43,7 @@ async function getCreator(fastify: FastifyInstance, request: FastifyRequest) {
 
     if (results.hits.hits.length === 1) {
         const result = results.hits.hits[0]._source;
+        await protectProtocolAction(fastify, request, result, {decode: true});
         response.trx_id = result.trx_id;
         response.block_num = result.block_num;
         response.creator = result.act.data.creator;

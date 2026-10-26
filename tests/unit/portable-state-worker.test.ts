@@ -6,6 +6,7 @@ import {resolvePortableStateConfiguration} from '../../src/indexer/projection/co
 import {PortableProjectionFrameError} from '../../src/indexer/projection/source.js';
 import {createPortableStateReadGate} from '../../src/indexer/projection/production.js';
 import {createPortableStateQueryService} from '../../src/indexer/projection/query-service.js';
+import {ProofConsumerScope, currentProofConsumerScope} from '../../src/indexer/protocol/proof-consumer-scope.js';
 
 const zero = '0'.repeat(64), chainId = 'c'.repeat(64);
 const block = (height: number) => ({blockNum: height, blockId: String(height).padStart(64, '0'),
@@ -113,6 +114,30 @@ test('production scheduling requires recovery capability before adapter initiali
     await expect(PortableStateController.create({chainId, configuration: config(definition()), adapter: r.adapter,
         source: recoverySource({frame: async () => input(1, definition()), revalidate: async () => {}})})).rejects.toMatchObject({code: 'projection.capability-unavailable'});
     expect(r.calls).toEqual([]);
+});
+
+test('canonical recovery drains inside its original worker attempt and binds the selected frame', async () => {
+    const r = reference(), selected = definition(), bindings: any[] = [], scopes: ProofConsumerScope[] = [];
+    const source = recoverySource({frame: async () => {
+        expect(currentProofConsumerScope()?.id).toBe('original-recovery-attempt');
+        return input(1, selected);
+    }, revalidate: async () => {}});
+    const originalPlan = source.planRecovery;
+    source.planRecovery = async (...args) => {
+        expect(currentProofConsumerScope()?.id).toBe('original-recovery-attempt');
+        return originalPlan(...args);
+    };
+    const worker = await PortableStateController.create({chainId, configuration: config(selected), adapter: r.adapter,
+        source, maximumFramesPerProjection: 1, attempts: {
+            async run(_metadata, operation) {const scope = new ProofConsumerScope('original-recovery-attempt'); scopes.push(scope);
+                try {return await scope.run(operation);} finally {await scope.closeAndDrain();}},
+            async bind(fields) {bindings.push(fields);},
+        }});
+    await worker.drain(); await worker.stop();
+    expect(scopes).toHaveLength(1);
+    expect(r.applied).toHaveLength(1);
+    expect(bindings).toMatchObject([{projectionId: selected.id, checkpointBlockNum: 0, checkpointBlockId: zero},
+        {blockNum: 1, blockId: block(1).blockId}]);
 });
 
 test('restart resumes checkpoint+1 rather than replaying beyond retained source receipts; transport retry repeats exact height', async () => {

@@ -67,9 +67,13 @@ export class ProtocolAbiObservationStore {
         return this.bundles.prepare(id,{...record,protocol:{...record.protocol,components:orderedComponents(record.protocol.components)}});
     }
 
-    async read(id:string):Promise<ProtocolAbiObservationRecord> {
-        const record=await this.bundles.read(id) as ProtocolAbiObservationRecord;
-        if(protocolAbiObservationId(record)!==id)throw new Error('ABI observation source identity mismatch');
-        return record;
+    async read(id:string,signal?:AbortSignal):Promise<ProtocolAbiObservationRecord> {
+        signal?.throwIfAborted();
+        try {
+            const record=await this.bundles.read(id,signal) as ProtocolAbiObservationRecord;
+            signal?.throwIfAborted();
+            if(protocolAbiObservationId(record)!==id)throw new Error('ABI observation source identity mismatch');
+            return record;
+        } finally {signal?.throwIfAborted();}
     }
 }
