@@ -79,6 +79,12 @@ test('capture failures, omitted decisions and changed limits fail the diagnostic
     // original-object fault view can select survivors; the raw absent summary remains unknown.
     const checked = raw.filter(value => value !== physicalFork && value.pid !== 102);
     expect(auditWorkerRejectionDiagnostics(checked, 101).status).toBe('complete');
+    const orphanEnd = {kind: 'native_boundary', event: 'worker_attempt_end_association', pid: 202,
+        reply: {ok: false, error: 'Invalid worker attempt end association'}};
+    expect(auditWorkerRejectionDiagnostics([...checked, orphanEnd], 101)).toMatchObject({status: 'incomplete',
+        processes: [{pid: 101, missing: []}, {pid: 202, missing: ['physical-census-membership', 'native-start', 'diagnostic-summary']}]});
+    for (const pid of [undefined, 0, -1, '202'])
+        expect(() => auditWorkerRejectionDiagnostics([...checked, {...orphanEnd, pid}], 101)).toThrow('Invalid end diagnostic process');
     expect(auditWorkerRejectionDiagnostics([...checked, nativeStart], 101).processes.find(value => value.pid === 102)?.missing)
         .toEqual(['physical-census-membership', 'diagnostic-summary']);
     expect(() => auditWorkerRejectionDiagnostics(checked, undefined)).toThrow('Original primary PID');

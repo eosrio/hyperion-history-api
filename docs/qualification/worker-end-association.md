@@ -20,6 +20,10 @@ and binding digests, and the original reply input. Client/challenge credentials 
 unexpected summary keys remain visible while their values are redacted. These are allowlisted
 operand views, not raw IPC frames or capabilities.
 
+Only a boolean acknowledgement flag and the `returned`/`threw` root-result values survive
+summary capture. Malformed recognized values and non-object summaries retain a redacted type
+description, so an issued credential inside an invalid array, string or nested value is excluded.
+
 The first eight normal ends are sampled. Later normal ends have an explicit omission count and
 perform no operand copying or digest work. Up to 128 failed ends remain eligible independently
 of that success window. Normal sampled operands are copied at original handle entry. A later
@@ -39,6 +43,8 @@ inside the existing 64 KiB row and 24 MiB process budgets. Failed capture, missi
 failure omissions, changed bounds or disagreement between records and summary counts fails
 the diagnostic audit independently of raw software shutdown. Sink failures cannot replace an
 original result/error. Older captures do not acquire this coverage retroactively.
+Every end-record PID enters this census, including records without a start or summary; missing
+coverage stays incomplete, and invalid process IDs fail the audit.
 
 ## Controls
 

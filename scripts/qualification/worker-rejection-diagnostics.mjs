@@ -179,15 +179,18 @@ export function installWorkerRejectionDiagnostics({Pool, Reader, Projection, Sup
 export function auditWorkerRejectionDiagnostics(rows, primaryPid) {
     const validPid = pid => Number.isSafeInteger(pid) && pid > 0;
     assert.ok(validPid(primaryPid), 'Original primary PID is required for diagnostic coverage');
-    const expected = new Set([primaryPid]), starts = new Set(), pids = new Set(), summaries = [];
+    const expected = new Set([primaryPid]), starts = new Set(), pids = new Set(), endPids = new Set(), summaries = [];
     for (const row of rows) {
         if (row.kind === 'start') {assert.ok(validPid(row.pid)); expected.add(row.pid);}
         if (row.kind === 'worker_fork') {assert.ok(validPid(row.childPid)); expected.add(row.childPid);}
         if (row.kind === 'native_boundary' && row.event === 'start') {
             assert.ok(validPid(row.pid) && !starts.has(row.pid), 'Duplicated or invalid native diagnostic start'); starts.add(row.pid);
         }
+        if (row.kind === 'native_boundary' && row.event === 'worker_attempt_end_association') {
+            assert.ok(validPid(row.pid), 'Invalid end diagnostic process'); endPids.add(row.pid);
+        }
     }
-    assert.ok(expected.size <= 64 && starts.size <= 64, 'Diagnostic process census exceeds its existing bound');
+    assert.ok(new Set([...expected, ...starts, ...endPids]).size <= 64, 'Diagnostic process census exceeds its existing bound');
     for (const row of rows.filter(value => value.kind === 'native_boundary' && value.event === 'observer_metrics')) {
         assert.ok(Number.isSafeInteger(row.pid) && row.pid > 0 && !pids.has(row.pid), 'Duplicated or invalid rejection diagnostic process');
         pids.add(row.pid);
@@ -223,7 +226,9 @@ export function auditWorkerRejectionDiagnostics(rows, primaryPid) {
             assert.equal(value.fences?.enabled?.[key], true, `Worker fence diagnostic ${key} is unavailable`);
         summaries.push({pid: row.pid, ...value});
     }
-    const processes = [...new Set([...expected, ...starts, ...pids])].sort((a, b) => a - b).map(pid => ({pid,
+    const census = new Set([...expected, ...starts, ...pids, ...endPids]);
+    assert.ok(census.size <= 64, 'Diagnostic process census exceeds its existing bound');
+    const processes = [...census].sort((a, b) => a - b).map(pid => ({pid,
         missing: [...(!expected.has(pid) ? ['physical-census-membership'] : []),
             ...(!starts.has(pid) ? ['native-start'] : []), ...(!pids.has(pid) ? ['diagnostic-summary'] : [])]}));
     return {status: processes.some(value => value.missing.length) ? 'incomplete' : 'complete', processes, summaries};

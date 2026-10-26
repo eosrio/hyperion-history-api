@@ -59,9 +59,14 @@ export function installWorkerEndDiagnostics({Supervisor, emit, workerIdentity, f
             const summary = summaryProperty?.value;
             if (summary !== undefined) {
                 const copy = detached(summary);
+                const redacted = value => ({valueRedacted: true,
+                    type: value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value});
                 request.summary = copy && typeof copy === 'object' && !Array.isArray(copy)
-                    ? Object.fromEntries(Object.entries(copy).map(([key, value]) => [key,
-                        key === 'acknowledgementAttempted' || key === 'rootResult' ? value : {valueRedacted: true}])) : copy;
+                    ? Object.fromEntries(Object.entries(copy).map(([key, value]) => {
+                        if (key === 'acknowledgementAttempted') return [key, typeof value === 'boolean' ? value : redacted(value)];
+                        if (key === 'rootResult') return [key, ['returned','threw'].includes(value) ? value : redacted(value)];
+                        return [key, {valueRedacted: true}];
+                    })) : redacted(copy);
             }
             const owner = Map.prototype.get.call(own(supervisor, 'owners'), worker);
             const entries = own(owner, 'entries'), entry = entries ? Map.prototype.get.call(entries, request.attemptId) : undefined;
