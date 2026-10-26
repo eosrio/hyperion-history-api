@@ -7,6 +7,7 @@ import {readFileSync, rmSync, statSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {basename, dirname, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {deserialize as deserializeShadowHeaders} from 'node:v8';
 import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
 import {WorkerAttemptSupervisor, describeWorkerAttemptEnd} from '../../build/indexer/protocol/worker-attempt-supervisor.js';
 import {ActionAttemptAdjudicator} from '../../build/indexer/history/action-attempt-adjudicator.js';
@@ -15,6 +16,12 @@ import {ProtocolSourceBindingStore} from '../../build/indexer/protocol/source-bi
 import {persistRestartSnapshot, restartDirectory} from './action-attempt-restart-snapshot.mjs';
 
 const mode = process.argv[2] ?? 'main';
+const missingHeaderAccounting = process.argv.includes('--shadow-missing-headers');
+const accountingEnabled = process.argv.includes('--shadow-accounting') || missingHeaderAccounting;
+const shadowTransition = process.argv.includes('--shadow-transition') || accountingEnabled;
+assert(!shadowTransition || ['handoff-held-confirm', 'handoff-late-source-manifest', 'handoff-unknown-association'].includes(mode));
+assert(!accountingEnabled || mode === 'handoff-held-confirm');
+const verifiedTransitions = [];
 const lateAuthorityCases = {
     'main-late-config-target': ['config', 'target'],
     'handoff-late-config-canonical': ['config', 'canonical'],
@@ -36,7 +43,8 @@ const lateAuthorityCases = {
 const lateAuthorityCase = lateAuthorityCases[mode];
 assert(['main','main-held-write','main-failed-write','main-ack-throws','main-held-operation','main-held-end','main-failed-end',
     'main-held-adjudication','main-unknown-association','main-restart-checkpoint','handoff-restart-checkpoint','ds','contract','handoff',
-    'handoff-held-confirm','handoff-failed-confirm','handoff-held-drain','handoff-failed-drain'].includes(mode) || lateAuthorityCase);
+    'handoff-held-confirm','handoff-failed-confirm','handoff-held-drain','handoff-failed-drain',
+    'handoff-unknown-association'].includes(mode) || lateAuthorityCase);
 const isMain = mode.startsWith('main');
 const checkpointDirectory = mode.endsWith('-restart-checkpoint') ? restartDirectory(process.argv[3]) : undefined;
 if (checkpointDirectory) assert.equal(typeof process.send, 'function', 'restart checkpoint requires its owning controller');
@@ -48,11 +56,45 @@ cluster.setupPrimary({exec: fileURLToPath(new URL('./action-attempt-disposition-
         : mode === 'main-ack-throws' ? 'managed-original-main-ack-throws'
         : ['main','main-held-adjudication','main-unknown-association','main-restart-checkpoint'].includes(mode) ? 'managed-original-main'
         : mode === 'handoff-restart-checkpoint' ? 'managed-original-handoff'
+        : mode === 'handoff-unknown-association' ? 'managed-original-handoff'
         : mode === 'ds' ? 'managed-original-ds'
         : mode === 'contract' ? 'managed-original-contract' : 'managed-original-' + mode],
     silent: true});
 const ends = [], supervisor = new WorkerAttemptSupervisor({onEnd: end => ends.push(end)});
-const child = cluster.fork(), messages = [];
+let shadow;
+if (accountingEnabled) {
+    const {ActionProofDemandShadow} = await import('../../build/indexer/history/action-proof-demand.js');
+    const memory = frontierMemoryClient();
+    memory.client.indices.exists = async ({index}) => memory.settings.has(index);
+    const store = new ActionSourceAdmissionStore(memory.client, 'handoff-worker-original');
+    const selections = new ProtocolSourceBindingStore(memory.client, 'handoff-worker-original');
+    const state = {memory, store, selections, authority: undefined};
+    const current = () => {assert(state.authority, 'original controlled RPC boundary is not ready'); return state.authority;};
+    const adjudicator = new ActionAttemptAdjudicator(supervisor, store, selections, {
+        configurationSha256: () => current().configurationSha256(),
+        canonicalBlock: number => current().canonicalBlock(number),
+        assertCanonicalCurrent: block => current().assertCanonicalCurrent(block),
+        targetUuid: name => current().targetUuid(name),
+    }, {onVerifiedDsTransition: token => {
+        verifiedTransitions.push(token);
+        const before = state.accounting.snapshot();
+        state.accounting.observe(structuredClone(token));
+        const rejected = state.accounting.snapshot();
+        assert.equal(rejected.rejectedTransitions, before.rejectedTransitions + 1,
+            'copied transition must not consume the original');
+        assert.equal(rejected.pendingDemands, before.pendingDemands);
+        assert.equal(rejected.resolvedDemands, before.resolvedDemands);
+        assert.equal(rejected.knownPendingBytes, before.knownPendingBytes);
+        state.accounting.observe(token);
+        state.accounting.observe(token);
+        assert.equal(state.accounting.snapshot().rejectedTransitions, rejected.rejectedTransitions + 1,
+            'transition cannot be consumed twice');
+    }});
+    state.adjudicator = adjudicator;
+    state.accounting = new ActionProofDemandShadow(adjudicator, {maximumDemands: 8, maximumBytes: 1024 * 1024});
+    shadow = state;
+}
+const child = cluster.fork(accountingEnabled ? {HYPERION_PROOF_DEMAND_SHADOW_TEST: '1'} : {}), messages = [];
 let stderr = '', stdout = '', exited = false, exitCode, snapshotPath;
 child.process.stderr.on('data', bytes => {stderr += bytes.toString();});
 child.process.stdout.on('data', bytes => {stdout += bytes.toString();});
@@ -258,6 +300,21 @@ try {
             && ['observe','end'].includes(message.payload?.operation)), false);
         assert.equal(messages.some(message => message.event === 'qualification_ack'), false);
         assert.equal(ends.length, 0);
+        if (shadow) {
+            const input = messages.find(message => message.event === 'qualification_shadow_input');
+            assert(input, 'accounting observes the same original dispatch before the held return');
+            const registration = messages.find(message => message.event === 'worker_attempt_request'
+                && message.payload?.operation === 'register' && message.payload.descriptor?.kind === 'ds-delivery').payload;
+            shadow.accounting.retain({owner: {epoch: registration.epoch, incarnation: registration.incarnation,
+                attemptId: registration.attemptId}, source: input.source, admissionId: input.admissionId,
+                traceOrdinal: input.traceOrdinal, payload: Buffer.from(input.payloadHex, 'hex'),
+                ...(missingHeaderAccounting ? {} : {headers: deserializeShadowHeaders(Buffer.from(input.headersHex, 'hex'))}),
+                stage: 'ds-input'});
+            shadow.before = shadow.accounting.snapshot();
+            assert.equal(shadow.before.pendingDemands, 1);
+            assert.equal(shadow.before.resolvedDemands, 0);
+            assert.equal(verifiedTransitions.length, 0);
+        }
         child.send({event: mode === 'handoff-held-confirm' ? 'qualification_release_confirm' : 'qualification_release_drain'});
     }
     await waitFor(() => messages.some(message => message?.event === 'qualification_fixture') && ends.length === 1 || exited,
@@ -295,13 +352,13 @@ try {
         assert(fenced > ack && released > fenced && endRequest > released,
             'only the physically settled retained consumer operation permits an authenticated end');
     }
-    const memory = frontierMemoryClient();
+    const memory = shadow?.memory ?? frontierMemoryClient();
     for (const [key, value] of snapshot.documents) memory.documents.set(key, value);
     for (const [key, value] of snapshot.mappings) memory.mappings.set(key, value);
     for (const [key, value] of snapshot.settings) memory.settings.set(key, value);
     memory.client.indices.exists = async ({index}) => memory.settings.has(index);
-    const chain = 'handoff-worker-original', store = new ActionSourceAdmissionStore(memory.client, chain),
-        selections = new ProtocolSourceBindingStore(memory.client, chain);
+    const chain = 'handoff-worker-original', store = shadow?.store ?? new ActionSourceAdmissionStore(memory.client, chain),
+        selections = shadow?.selections ?? new ProtocolSourceBindingStore(memory.client, chain);
     const admission = await store.resolve(snapshot.admissionId);
     const source = admission.source.inventoryInput.source, end = describeWorkerAttemptEnd(supervisor, ends[0]);
     assert.equal(source.blockNum, isMain ? 1 : mode.startsWith('handoff') ? 33 : 36);
@@ -351,7 +408,9 @@ try {
             return value;
         }
     };
-    const adjudicator = new ActionAttemptAdjudicator(supervisor, store, selections, authority);
+    if (shadow) shadow.authority = authority;
+    const adjudicator = shadow?.adjudicator ?? new ActionAttemptAdjudicator(supervisor, store, selections, authority,
+        shadowTransition ? {onVerifiedDsTransition: token => {verifiedTransitions.push(token);}} : undefined);
     if (lateAuthorityCase) {
         const [change, boundary] = lateAuthorityCase, originalConfiguration = currentConfiguration;
         const targetSettings = memory.settings.get(admission.target.name), originalUuid = targetSettings['index.uuid'];
@@ -406,6 +465,8 @@ try {
             release();
             if (change === 'source') await assert.rejects(pending, /controlled canonical source was revoked/);
             else assert.deepEqual(await pending, {state: 'unresolved'}, `${change} changed during ${boundary} must not associate`);
+            if (shadowTransition) assert.equal(verifiedTransitions.length, 0,
+                'a written association with a failed final source check issues no transition');
             const storedDuringWrite = ['chunk', 'manifest', 'reassertion-read', 'postwrite-target'].includes(boundary);
             if (storedDuringWrite) {
                 const id = 'h45actionassociation1:' + createHash('sha256').update(JSON.stringify([end.epoch, end.incarnation, end.attemptId])).digest('hex');
@@ -418,6 +479,7 @@ try {
             recovery = {lateAuthorityRejected: true, lateAuthorityChange: change, lateAuthorityBoundary: boundary,
                 retainedRecordInspectionOnly: storedDuringWrite, restoredOriginalContextControl: true,
                 unrelatedWorkerProgressDuringHold: change === 'config' && boundary === 'manifest'};
+            if (shadowTransition) recovery.transitionCallbacksBeforeRecovery = verifiedTransitions.length;
         } finally {
             release(); await pending.catch(() => {});
             authority.targetUuid = originalTarget; authority.canonicalBlock = originalCanonical; selections.readSelection = originalSelection;
@@ -471,7 +533,7 @@ try {
         assert.equal(saved.observation.end.attemptId, end.attemptId);
         recovery = {heldAdjudicationBeforePersistence: true, unrelatedWorkerProgressDuringHold: true};
     }
-    if (mode === 'main-unknown-association') {
+    if (mode === 'main-unknown-association' || mode === 'handoff-unknown-association') {
         let unknownId, lostReceipts = 0;
         memory.faults.receipt = (receipt, request) => {
             if (request.index === store.index && request.document?.kind === 'manifest'
@@ -487,6 +549,8 @@ try {
                 'unknown post-end association write recorded as a failed adjudication');
         } finally {delete memory.faults.receipt;}
         assert.equal(lostReceipts, 1);
+        if (shadowTransition) assert.equal(verifiedTransitions.length, 0,
+            'a visible record with a lost original write receipt issues no transition');
         assert(memory.documents.has(memory.key(store.index, unknownId)));
         await unrelatedWorkerProgress(supervisor, ends);
         assert.deepEqual(adjudicator.snapshot(), {active: 0, pending: 0, failures: 1, dropped: 0});
@@ -517,6 +581,27 @@ try {
     }
     const beforeControl = memory.calls.length, associated = await adjudicator.adjudicate(ends[0]);
     assert.equal(associated.state, 'associated');
+    if (shadowTransition) {
+        assert.equal(verifiedTransitions.length, 1,
+            'the original verified DS end must notify shadow accounting after fresh association and final authority checks');
+        assert.equal(adjudicator.transitionSnapshot().failures, 0, 'the observer must finish synchronously without failure');
+        assert.equal((await adjudicator.adjudicate(ends[0])).state, 'associated');
+        assert.equal(verifiedTransitions.length, 1, 're-adjudicating the same authentic end cannot duplicate its transition');
+        if (shadow) {
+            shadow.after = shadow.accounting.snapshot();
+            assert.equal(shadow.after.pendingDemands, missingHeaderAccounting ? 1 : 0, JSON.stringify({before: shadow.before, after: shadow.after,
+                originalOwner: {epoch: end.epoch, incarnation: end.incarnation, attemptId: end.attemptId},
+                originalHeadersSha256: end.descriptor.headersSha256}));
+            assert.equal(shadow.after.resolvedDemands, missingHeaderAccounting ? 0 : 1);
+            assert.equal(shadow.after.knownPendingBytes, missingHeaderAccounting ? 1369 : 0);
+            assert.equal(shadow.after.unknownPendingHeaders, missingHeaderAccounting ? 1 : 0);
+            const rejected = shadow.after.rejectedTransitions;
+            shadow.accounting.observe(verifiedTransitions[0]);
+            assert.equal(shadow.accounting.snapshot().rejectedTransitions, rejected + 1,
+                'callback-expired transition is unusable');
+            assert.equal(shadow.accounting.snapshot().resolvedDemands, missingHeaderAccounting ? 0 : 1);
+        }
+    }
     if (recovery?.retainedRecordInspectionOnly) {
         const reassertion = memory.calls.slice(beforeControl).find(call => call.method === 'index'
             && call.request.index === store.index && call.request.id === associated.id);
@@ -548,6 +633,9 @@ try {
         heldOperationAcrossAckAndRoot: mode === 'main-held-operation',
         heldEndBeforeAssociation: mode === 'main-held-end',
         heldPublishBeforeObservation: mode === 'handoff-held-confirm' || mode === 'handoff-held-drain',
+        ...(shadowTransition ? {shadowTransition: true, verifiedDsTransitionCallbacks: verifiedTransitions.length} : {}),
+        ...(shadow ? {shadowAccounting: true, missingHeaderAccounting,
+            accountingBefore: shadow.before, accountingAfter: shadow.after} : {}),
         ...recovery,
         classification: observation.results[0].classification,
         controlledStorageAndCanonicalAuthority: true, brokerSettlement: observation.brokerSettlement,

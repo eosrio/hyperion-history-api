@@ -3,6 +3,7 @@ import {controlledAttemptLifecycle} from './worker-attempt-fixture.mjs';
  * Public admission remains disabled. This fixture explicitly enables its existing engineering seam;
  * broker confirms, cache and ES transports are controlled. No live-service or consensus qualification. */
 import assert from 'node:assert/strict';
+import {serialize as serializeShadowHeaders} from 'node:v8';
 import {registerHooks} from 'node:module';
 import {mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -642,6 +643,19 @@ try {
         prepared = await prepare(inputBytes);
         if (number === 33 && managedOriginalHandoff) {
             assert.equal(prepared.messages.length, 1);
+            if (process.env.HYPERION_PROOF_DEMAND_SHADOW_TEST === '1') {
+                const original = prepared.messages[0];
+                const transaction = prepared.admission.inventory.transactions.find(value =>
+                    value.dispatch?.canonicalJson === original.content.toString());
+                assert(transaction, 'shadow bookkeeping uses the actual original dispatch');
+                previousSend.call(process, {event: 'qualification_shadow_input',
+                    admissionId: prepared.admission.id, traceOrdinal: transaction.traceOrdinal,
+                    source: {...prepared.admission.source.inventoryInput.source,
+                        previousBlockId: prepared.admission.source.previousBlockId,
+                        selectionId: prepared.admission.source.inventoryInput.sourceSelectionId ?? null},
+                    payloadHex: original.content.toString('hex'),
+                    headersHex: serializeShadowHeaders(original.properties.headers).toString('hex')});
+            }
             poolConsumer.onAck = delivery => {
                 assert.equal(delivery, prepared.messages[0]);
                 const handoffs = ids(memory, 'h45actionhandoff1:');

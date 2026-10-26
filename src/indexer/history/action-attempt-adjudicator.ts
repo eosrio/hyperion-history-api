@@ -5,10 +5,27 @@ import {ProtocolSourceBindingStore, type ProtocolSourcePosition} from '../protoc
 import {describeWorkerAttemptEnd, type AcceptedWorkerAttemptEnd, type WorkerAttemptSupervisor,
     type WorkerAttemptEndDescription} from '../protocol/worker-attempt-supervisor.js';
 import type {FreshActionWrite} from './action-fresh-write.js';
+import {isPromise} from 'node:util/types';
+import type {VerifiedActionDsTransition, VerifiedActionDsTransitionDescription} from './action-proof-demand.js';
 
 const sha = (value: unknown) => createHash('sha256').update(actionHistoryImmutableJson(value)).digest('hex');
 const shaBytes = (value: Uint8Array) => createHash('sha256').update(value).digest('hex');
 const same = (left: unknown, right: unknown) => actionHistoryImmutableJson(left) === actionHistoryImmutableJson(right);
+interface TransitionOrigin {
+    issuer: ActionAttemptAdjudicator; description: VerifiedActionDsTransitionDescription;
+    active: boolean; consumed: boolean; current: () => void; finalized?: (accepted: boolean) => void;
+}
+const transitions = new WeakMap<VerifiedActionDsTransition, TransitionOrigin>();
+const increment = (value: number) => value === Number.MAX_SAFE_INTEGER ? value : value + 1;
+const freeze = <T>(value: T): T => {
+    if (value && typeof value === 'object') {for (const child of Object.values(value)) freeze(child); Object.freeze(value);}
+    return value;
+};
+
+export interface ActionAttemptAdjudicatorOptions {
+    /** Synchronous, engineering-injected observation. It grants no processing or capacity authority. */
+    readonly onVerifiedDsTransition?: (transition: VerifiedActionDsTransition) => void;
+}
 
 export interface CurrentAttemptCanonicalBlock {
     readonly chainId: string;
@@ -33,8 +50,14 @@ export class ActionAttemptAdjudicator {
     private active = 0;
     private failures = 0;
     private dropped = 0;
+    private readonly transitioned = new WeakSet<AcceptedWorkerAttemptEnd>();
+    private transitionEmitted = 0;
+    private transitionConsumed = 0;
+    private transitionFailures = 0;
+    private transitionUnconsumed = 0;
     constructor(private readonly supervisor: WorkerAttemptSupervisor, private readonly store: ActionSourceAdmissionStore,
-                private readonly selections: ProtocolSourceBindingStore, private readonly current: CurrentAttemptAuthority) {}
+                private readonly selections: ProtocolSourceBindingStore, private readonly current: CurrentAttemptAuthority,
+                private readonly options: ActionAttemptAdjudicatorOptions = {}) {}
 
     /** The supervisor's synchronous callback only queues work; storage and RPC stay off its mutation lane. */
     enqueue(evidence: AcceptedWorkerAttemptEnd): void {
@@ -44,6 +67,19 @@ export class ActionAttemptAdjudicator {
         this.pending.push(evidence); queueMicrotask(() => this.drain());
     }
     snapshot() {return Object.freeze({active: this.active, pending: this.pending.length, failures: this.failures, dropped: this.dropped});}
+    transitionSnapshot() {return Object.freeze({emitted: this.transitionEmitted, consumed: this.transitionConsumed,
+        failures: this.transitionFailures, unconsumed: this.transitionUnconsumed,
+        incomplete: this.transitionFailures > 0 || this.transitionUnconsumed > 0, observationOnly: true as const});}
+
+    /** A token is consumable only once, by its issuer, inside its original synchronous callback. */
+    consumeVerifiedDsTransition(token: VerifiedActionDsTransition, finalized?: (accepted: boolean) => void): VerifiedActionDsTransitionDescription {
+        const issued = transitions.get(token);
+        if (!issued || issued.issuer !== this || !issued.active || issued.consumed)
+            throw new Error('Unissued, foreign, expired or consumed DS transition');
+        if (finalized !== undefined && typeof finalized !== 'function') throw new Error('Invalid DS transition finalizer');
+        issued.current(); issued.consumed = true; issued.finalized = finalized; this.transitionConsumed = increment(this.transitionConsumed);
+        return issued.description;
+    }
     private drain(): void {
         while (this.active < 4 && this.pending.length) {
             const evidence = this.pending.shift()!; this.active++;
@@ -103,7 +139,56 @@ export class ActionAttemptAdjudicator {
         this.current.assertCanonicalCurrent(block);
         if (!await this.currentProducerMatches(admission)) return {state: 'unresolved'};
         this.current.assertCanonicalCurrent(block);
+        this.observeDsTransition(evidence, end, admission, originalPayload, results, block);
         return {state: 'associated', id: persisted.id};
+    }
+
+    private observeDsTransition(evidence: AcceptedWorkerAttemptEnd, end: WorkerAttemptEndDescription,
+                                admission: Awaited<ReturnType<ActionSourceAdmissionStore['resolve']>>,
+                                payload: string | Uint8Array, results: ActionAttemptAssociation['results'], block: CurrentAttemptCanonicalBlock): void {
+        if (end.role !== 'ds_pool_worker' || this.transitioned.has(evidence)) return;
+        try {
+            const observer = this.options.onVerifiedDsTransition;
+            if (observer === undefined) return;
+            if (typeof observer !== 'function') throw new Error('DS transition observer is unavailable');
+            this.transitioned.add(evidence);
+            const source = admission.source.inventoryInput.source;
+            const description: VerifiedActionDsTransitionDescription = freeze(JSON.parse(actionHistoryImmutableJson({
+                owner: {epoch: end.epoch, incarnation: end.incarnation, attemptId: end.attemptId},
+                source: {chainId: source.chainId, blockNum: source.blockNum, blockId: source.blockId, previousBlockId: admission.source.previousBlockId,
+                    selectionId: admission.source.inventoryInput.sourceSelectionId ?? null},
+                admissionId: admission.id, sourceId: admission.sourceId, planId: admission.planId, traceOrdinal: end.binding.traceOrdinal,
+                payloadSha256: end.descriptor.payloadSha256, payloadBytes: typeof payload === 'string' ? Buffer.byteLength(payload) : payload.byteLength,
+                headersSha256: end.descriptor.headersSha256, configurationSha256: end.binding.configurationSha256,
+                target: admission.target, results, stage: 'ds-input', brokerSettlement: 'unknown', observationOnly: true,
+            }, 64 * 1024)));
+            const token = Object.freeze({}) as VerifiedActionDsTransition;
+            const issued: TransitionOrigin = {issuer: this, description, active: true, consumed: false, current: () => {
+                this.current.assertCanonicalCurrent(block);
+                if (this.current.configurationSha256() !== description.configurationSha256) throw new Error('DS transition configuration changed');
+                this.current.assertCanonicalCurrent(block);
+            }};
+            transitions.set(token, issued); this.transitionEmitted = increment(this.transitionEmitted);
+            let accepted = false;
+            try {
+                const returned: unknown = observer.call(this.options, token);
+                if (returned !== undefined) {
+                    // Observe native rejection without awaiting it or reading an opaque then getter.
+                    if (isPromise(returned)) Promise.prototype.then.call(returned, () => {}, () => {});
+                    throw new Error('DS transition observer must return synchronously without a value');
+                }
+                accepted = true;
+            } finally {
+                issued.active = false;
+                if (!issued.consumed) this.transitionUnconsumed = increment(this.transitionUnconsumed);
+                try {if (accepted) issued.current();}
+                catch (error) {accepted = false; throw error;}
+                finally {
+                    try {issued.finalized?.(accepted);}
+                    finally {transitions.delete(token);}
+                }
+            }
+        } catch {this.transitionFailures = increment(this.transitionFailures);}
     }
 
     private async currentProducerMatches(admission: Awaited<ReturnType<ActionSourceAdmissionStore['resolve']>>): Promise<boolean> {
