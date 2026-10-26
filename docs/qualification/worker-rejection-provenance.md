@@ -61,6 +61,38 @@ the matching parent send and member set are required. In particular, copied vali
 IPC bytes can reach the child's existing callback without producing an original
 supervisor-send observation. These descriptions cannot grant fault membership.
 
+## Fatal callbacks and replacement lineage
+
+The original DS cargo factory, projection failure handler, reader recovery exit
+and delayed master relaunch callback have named private seams. Their existing
+logs, queue cancellation/nack behavior, exit codes and 5,000/1,000 ms relaunch
+delays remain unchanged. The observer follows these actual callbacks.
+
+`worker_attempt_run_rejected` distinguishes the operation's result/error from
+the final run rejection, which can instead come from drainage or end association.
+`worker_failure_decision` names the actual failure handler and joins an error
+only through retained original error/client objects. Copies, foreign clients,
+primitive values and reused ambiguous errors cannot establish that association.
+The DS handler also checks the original cargo array and rejection object.
+This records the failing root; it does not reconstruct every delivery in a batch.
+Reader exit records refer to the same first original recovery decision as the
+publisher callback record. Described scopes and ends remain non-authoritative.
+
+The master observes the original cluster disconnect, original logical definition,
+original physical Worker and retained owner incarnation before retirement. Only
+that definition's actual fork inside the original delayed relaunch call can join
+`worker_replacement_requested`, `worker_replacement_forked` and
+`replacement_owner_attached`. Another missing worker launched in the same sweep
+does not inherit the relation. Missing or superseded relations remain unknown.
+These are diagnostic relations, with no owned broker-fault membership or
+permission to excuse an exit.
+
+Failure diagnostics allow 128 events and 128 rejected-root descriptions per
+process, with at most eight associations for one reused error object. Omissions,
+sink failures and missing original-method hooks fail the diagnostic audit.
+The existing 64 KiB row and 24 MiB process budgets still apply. Original return
+values, promises, throws and raw shutdown verdicts are preserved.
+
 ## Bounds and authority
 
 Per process, captures allow 32 rejections, 64 outstanding publication descriptions,
@@ -95,6 +127,9 @@ node tests/unit/worker-rejection-provenance.mjs
 bun test tests/unit/worker-rejection-provenance.test.ts
 node tests/unit/worker-fence-origin.mjs active
 bun test tests/unit/worker-fence-origin.test.ts
+node tests/unit/worker-failure-lineage.mjs cleanup-error
+node tests/unit/worker-failure-replacement.mjs
+bun test tests/unit/worker-failure-lineage.test.ts
 ```
 
 The native component loop exercises all admission decisions, short-circuit order,
@@ -111,6 +146,15 @@ unrelated exceptions, and capture failures. Separate controlled EventEmitter tes
 check disconnect/dispose dispatch, independent owners, multi-row membership,
 send throw/callback errors and original result/promise identity. Those controlled
 dispatches are explicitly not physical IPC disconnection or exit evidence.
+
+The native failure loop drives the emitted projection run/catch and DS cargo
+factory/processMessages/failure handler with controlled services, preserves actual
+child exit codes, and distinguishes original, cleanup, copied and primitive
+errors. Legacy nack behavior, observer sink failure, original promise/return
+identity and bounds have separate controls. The replacement loop drives original
+master methods and their real timer through native cluster disconnect/fork/exit
+callbacks and real supervisor attachment. It controls the child fault and master
+services; it is not an actual broker-restart qualification.
 
 Fresh, source-pinned Linux Node 24/26 runs of the original full broker recovery
 scenario are still required. Keep the original corpus, oracles, default 256-block

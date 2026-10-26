@@ -19,6 +19,7 @@ import {installProjectionDiagnostics} from './portable-state-projection-diagnost
 import {installWorkerRejectionDiagnostics} from './worker-rejection-diagnostics.mjs';
 import DSPool from '../../build/indexer/workers/ds-pool.js';
 import StateReader from '../../build/indexer/workers/state-reader.js';
+import ProjectionWorker from '../../build/indexer/workers/projection.js';
 
 assert.equal(process.env.HYPERION_PORTABLE_NATIVE_QUALIFICATION, '1');
 const chain = process.env.CHAIN_NAME;
@@ -48,7 +49,7 @@ const projectionDiagnostics = cluster.isPrimary || process.env.worker_role === '
     ? installProjectionDiagnostics({WorkerClient: WorkerAttemptClient, Supervisor: WorkerAttemptSupervisor,
         Master: cluster.isPrimary ? (await import('../../build/indexer/modules/master.js')).HyperionMaster : undefined, record})
     : undefined;
-const rejectionDiagnostics = installWorkerRejectionDiagnostics({Pool: DSPool, Reader: StateReader,
+const rejectionDiagnostics = installWorkerRejectionDiagnostics({Pool: DSPool, Reader: StateReader, Projection: ProjectionWorker,
     WorkerClient: WorkerAttemptClient, WorkerHost: HyperionWorker,
     Master: cluster.isPrimary ? (await import('../../build/indexer/modules/master.js')).HyperionMaster : undefined,
     Supervisor: cluster.isPrimary ? WorkerAttemptSupervisor : undefined, cluster, record});
