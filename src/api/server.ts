@@ -21,7 +21,7 @@ import { CacheManager } from './helpers/cacheManager.js';
 
 import { createRequire } from 'node:module';
 import { FastifySwaggerUiOptions } from '@fastify/swagger-ui';
-import { QRYBasePublisher } from './qry-hub/base-publisher.js';
+import { DEFAULT_HUB_URL, QRYBasePublisher } from './qry-hub/base-publisher.js';
 import { getApiUsageHistory } from './helpers/functions.js';
 import { WebSocket } from 'ws';
 import { StateHistorySocket } from '../indexer/connections/state-history.js';
@@ -51,6 +51,7 @@ class HyperionApiServer {
   qryPublisher?: QRYBasePublisher;
 
   lastSentTimestamp = '';
+  usageInterval?: ReturnType<typeof setInterval>;
   private indexerController?: WebSocket;
   private alerts?: AlertsManager;
 
@@ -701,42 +702,49 @@ class HyperionApiServer {
 
   async startQRYHub() {
     if (this.conf.hub && this.conf.hub.instance_key && this.conf.hub.enabled) {
-      this.qryPublisher = new QRYBasePublisher({
-        hubUrl: 'api.hub.qry.network',
-        instancePrivateKey: this.conf.hub.instance_key,
-        metadata: {
-          version: this.manager.current_version,
-          commit_hash: this.manager.last_commit_hash,
-          api: {
-            limits: this.conf.api.limits,
-            tx_cache_expiration_sec: this.conf.api.tx_cache_expiration_sec,
-            disable_tx_cache: this.conf.api.disable_tx_cache,
+      let publisher: QRYBasePublisher;
+      try {
+        publisher = new QRYBasePublisher({
+          hubUrl: this.conf.hub.hub_url || DEFAULT_HUB_URL,
+          instancePrivateKey: this.conf.hub.instance_key,
+          metadata: {
+            version: this.manager.current_version,
+            commit_hash: this.manager.last_commit_hash,
+            api: {
+              limits: this.conf.api.limits,
+              tx_cache_expiration_sec: this.conf.api.tx_cache_expiration_sec,
+              disable_tx_cache: this.conf.api.disable_tx_cache,
+            },
+            blacklists: this.conf.blacklists,
+            whitelists: this.conf.whitelists,
+            features: this.conf.features,
           },
-          blacklists: this.conf.blacklists,
-          whitelists: this.conf.whitelists,
-          features: this.conf.features,
-        },
-        onMetadataRequest: () => {
-          // publish usage stats only on first connection
-          if (this.lastSentTimestamp === '') {
-            // publish past 24 hours of usage
+          onMetadataRequest: () => {
+            // The hub asks for metadata on every (re)connection, including after its own
+            // restarts, so the past 24 hours are re-sent each time; the hub de-duplicates them.
             this.publishApiUsage().catch(hLog);
-            // publish last hour of usage every minute
-            setInterval(async () => {
-              await this.publishLastApiUsageCount();
-            }, 60 * 1000);
-          }
+            if (!this.usageInterval) {
+              // publish the last complete hour of usage, checked every minute
+              this.usageInterval = setInterval(async () => {
+                await this.publishLastApiUsageCount();
+              }, 60 * 1000);
+            }
 
-          if (this.indexerController?.OPEN) {
-            this.qryPublisher?.publishIndexerStatus('active');
-          } else {
-            this.qryPublisher?.publishIndexerStatus('offline');
-          }
-        },
-      });
-      hLog(`Instance Key: ${this.qryPublisher.publicKey.toString()}`);
-      hLog(`Connecting API to QRY Hub...`);
-      await this.qryPublisher.connect();
+            if (this.indexerController?.readyState === WebSocket.OPEN) {
+              this.qryPublisher?.publishIndexerStatus('active');
+            } else {
+              this.qryPublisher?.publishIndexerStatus('offline');
+            }
+          },
+        });
+      } catch (e: any) {
+        hLog(`QRY Hub publishing disabled: ${e.message}`);
+        return;
+      }
+      this.qryPublisher = publisher;
+      hLog(`Instance Key: ${publisher.publicKey.toString()}`);
+      hLog(`Connecting API to QRY Hub at ${publisher.hubBase}...`);
+      publisher.connect();
     }
   }
 

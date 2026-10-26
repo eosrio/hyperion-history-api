@@ -14,12 +14,26 @@ settled certificate and follows exact immutable parent links, bounded by `maxAnc
 may have older generations. Missing certified ancestry is unavailable, including older history until
 a qualified historical membership/checkpoint mechanism exists. This bound does not waive that work.
 
-`action(view, input)` matches the original transaction/allocated ordinal, receiver/account/name,
-lossless receipt sequences and original raw bytes. The returned certified binding supplies the input
-origin ordinal when the caller has not yet obtained it. Persisted metadata must supply that ordinal
-and match it. Its immutable state ID selects the input ABI; a final-state root cannot select an action
-epoch. `finalState(view, account)` uses the target commit's root. UNKNOWN, deleted, empty and rejected
-ABIs retain raw input and explicit incompleteness, without an older-schema fallback.
+`occurrence(view, input)` proves exact original input membership in the issued canonical source. It
+matches the original transaction/allocated ordinal, receiver/account/name, lossless receipt sequences
+and original raw bytes. The returned frozen `{binding}` supplies the input origin ordinal when the
+caller has not yet obtained it; an explicitly supplied origin must match. The reader rechecks current
+authority before returning, without looking up or validating an account ABI. Thus a complete source
+can prove an occurrence even when its input ABI state is unknown, absent, empty, malformed or missing
+from retention. The binding's `stateId` is only an opaque reference, which may be null; this grant does
+not resolve ABI state, classify a native action or authorize decoding. Incomplete source observations
+still cannot issue a proof view. This is the occurrence foundation of
+[#256](https://github.com/eosrio/hyperion-history-api/issues/256); native interfaces and persisted native
+decisions remain separate work.
+
+`action(view, input)` performs the same original-input match and additionally requires the certified
+input ABI state. Its existing order remains input validation, ABI-state resolution and validation,
+then authority revalidation. Persisted metadata must supply the origin ordinal and match it. The
+immutable state ID selects the input ABI; a final-state root cannot select an action epoch.
+`finalState(view, account)` uses the target commit's root. UNKNOWN, deleted, empty and rejected ABIs
+retain raw input and explicit incompleteness, without an older-schema fallback. Nonempty ABI hex is
+opaque at the proof reader boundary; successful `action()` state resolution does not establish that
+the codec can decode those bytes.
 
 `waitForOpen` permits at most a 30-second deadline (five seconds by default) and accepts cancellation,
 including while a storage operation is pending. A reader permits at most 64 concurrent storage reads;

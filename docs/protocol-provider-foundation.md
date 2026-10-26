@@ -28,6 +28,20 @@ dependency preparation must run so the SDK and protocol package emit their artif
 versions that disable Git dependencies by default, `--allow-git=all` is a command-scoped development
 override for these explicit immutable pins. It is not an executable update mechanism.
 
+The dependency foundation for [#260](https://github.com/eosrio/hyperion-history-api/issues/260)
+pins SDK `d3ca7e41373da6301797e38cdc90c2b4d17af191` and Wire
+`cffef8f3ec12f662bac98e17cb9433b9fac4ab79`; Wire declares the same exact SDK pin.
+These packages contain the native-action interfaces, but the current Wire descriptor/provider
+keep that capability inactive. This host advertises no native-action interface support, so a
+profile requiring native actions is rejected before provider import. A provider selected through
+an ordinary profile may omit `nativeActions` or leave its visible data property undefined.
+Admission rejects a non-undefined value or an accessor, including inherited properties, without
+reading the accessor or invoking native methods. An undefined data property shadows deeper
+prototype properties in the same way as an ordinary property lookup.
+Required-profile runtime admission belongs to later coordinated activation, after the durable
+native-observation and authorization work in [#256](https://github.com/eosrio/hyperion-history-api/issues/256).
+Installing these pins does not qualify native processing or the Wire testnet.
+
 The host reads the inert SDK descriptor and verifies both Node/Rust artifact manifests, every
 listed file, executable entry coverage, exact profile/component pins and host/SDK compatibility
 before importing the provider factory or native addon. Modified-source artifacts fail activation.
@@ -86,6 +100,24 @@ protocol metadata fields before an engineering Wire activation. Initialize or re
 and ABI coverage projections separately under the accepted recovery contract.
 
 ## Validation and limits
+
+The [native observation journal](protocol-native-observations.md) retains separately versioned
+labels and exact original-capture references before history filtering and source acknowledgment.
+MainDS derives complete first-receiver membership independently from retained traces, checks every
+returned origin/raw digest, and preserves per-origin incomplete decisions. Native extraction runs
+after ABI PREPARE/link durability and before ABI codec errors or canonical-proof waits. An ABI
+extraction error therefore does not prevent independent native extraction; native incompleteness
+does not reset ABI reduction. Storage/reference/readback failures escape to supervised redelivery.
+
+The native worker control exercises actual constructor-created workers, parser and cargo with
+unchanged source-pinned Wire blocks 33, 122 and 397, plus explicitly derived failure frames.
+It covers filters/truncation, missing genesis traces versus encoded-empty vectors, extraction
+isolation, omitted/invalid labels, partial/unknown receipts, write/readback crashes and obsolete
+channel fencing. The disposable Elasticsearch runner checks the new namespace and reference
+readback against the pinned 9.5.5 server and retains its cleanup report. These are bounded journal
+controls: the installed profiles remain inactive, and stored labels/readback grant no canonical
+occurrence or native-decoding authority. Authorization, versioned worker/document metadata,
+HTTP/cache/current-Socket.IO consumers and complete testnet/fork recovery remain #256/#191/#231 work.
 
 The protocol tests execute emitted Node code and actual production methods. They use the
 source-pinned captured SHiP frame plus an explicitly synthetic nonempty receipt fixture; the

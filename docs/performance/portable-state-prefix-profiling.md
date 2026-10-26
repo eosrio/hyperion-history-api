@@ -38,7 +38,7 @@ the complete qualification and their owning issues.
 
 ## Reproduce on owned native Linux services
 
-Use a committed isolated checkout, native Node 22/24, pinned Bun 1.4.3, Docker,
+Use a committed isolated checkout, native Node 24/26, pinned Bun 1.4.4, Docker,
 Python and PowerShell 7. Follow the
 [original service and ownership prerequisites](../qualification/portable-state-worker.md).
 Select the exact intended Node binary on `PATH`, record its version and hash, and
@@ -47,6 +47,11 @@ and native TypeScript emission; a Bun typecheck is not a production runtime test
 
 ```sh
 node --version
+case "$(node -p 'process.versions.node.split(".")[0]')" in
+  24) types_flag=--experimental-transform-types ;;
+  26) types_flag=--experimental-strip-types ;;
+  *) echo 'Use native Node 24 or 26' >&2; exit 1 ;;
+esac
 git rev-parse HEAD
 git status --short
 npm ci --allow-git=all
@@ -57,7 +62,7 @@ bun check -p scripts/qualification/tsconfig.json
 mkdir -p out
 python tests/fixtures/portable-state-worker/prepare.py out/p250-source
 python tests/fixtures/portable-state-worker/services.py create out/p250-profile-services --disk-watermark-profile 8-4-2gb
-node --experimental-transform-types scripts/qualification/portable-state-recovery.ts out/p250-profile-services/worker-state.json out/p250-source/plan.json out/p250-profile reversible --profile-prefix 288
+node "$types_flag" scripts/qualification/portable-state-recovery.ts out/p250-profile-services/worker-state.json out/p250-source/plan.json out/p250-profile reversible --profile-prefix 288
 python tests/fixtures/portable-state-worker/services.py cleanup out/p250-profile-services
 ```
 
@@ -74,11 +79,11 @@ another fresh service fixture and run the same source, mode and prefix:
 
 ```sh
 python tests/fixtures/portable-state-worker/services.py create out/p250-control-services --disk-watermark-profile 8-4-2gb
-node --experimental-transform-types scripts/qualification/portable-state-recovery.ts out/p250-control-services/worker-state.json out/p250-source/plan.json out/p250-control reversible --profile-prefix 288 --cpu-profile off
+node "$types_flag" scripts/qualification/portable-state-recovery.ts out/p250-control-services/worker-state.json out/p250-source/plan.json out/p250-control reversible --profile-prefix 288 --cpu-profile off
 python tests/fixtures/portable-state-worker/services.py cleanup out/p250-control-services
 ```
 
-Repeat with a separately selected Node 22/24 binary or `irreversible` as a declared
+Repeat with a separately selected Node 24/26 binary or `irreversible` as a declared
 experiment axis. Ordinary invocation without either profiling flag continues the
 complete fork/crash/restart/gap scenario with its existing criteria and timeout.
 `--cpu-profile` is accepted only with the explicit prefix option.
@@ -108,6 +113,12 @@ process must save and flush its profile after the stable prefix, with no dropped
 records/errors, and exit cleanly. Saved file
 identity, size, hash, sample/node membership and duration are checked independently.
 Missing, oversized, malformed, prematurely flushed or incomplete profiles fail.
+Signed integer sample deltas retain their original order and values. An out-of-order
+or out-of-extent profile can retain sample evidence while reporting interval weights
+as unavailable; it is never sorted, clamped or normalized to create elapsed weights.
+See the [recorded timestamp analysis](v8-profile-timestamps.md). The signed-profile
+helper and captured regression from #253 are included here; its projection measurement
+feature and comparison campaign remain separate.
 The disabled control must instead report disabled capture and clean complete
 observer shutdown. All normal asynchronous error and service/process cleanup gates
 still apply.
@@ -119,4 +130,4 @@ throughput improvement. Compare repeated, alternating prefix controls and captur
 with the same pins and host observations before attributing a difference. Keep
 server execution time, client wall time, CPU samples and awaited spans distinct.
 Any selected optimization requires its own scope, invalidation/correctness checks,
-and the complete Node 22/24 recovery/finality qualification afterward.
+and the complete Node 24/26 recovery/finality qualification afterward.

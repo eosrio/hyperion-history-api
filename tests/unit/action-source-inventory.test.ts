@@ -85,7 +85,72 @@ function emit(value: ActionSourceInventoryInput, ordinals: number[], transaction
     return grouped;
 }
 
+/** Synthetic locator SHAPES only. These IDs confer no native/canonical decoding authority. */
+function nativeLocator(protocol: any, profileId: ActionSourceInventoryProfile): any {
+    return {...clone(protocol), schemaVersion: 2, kind: 'native', native: {
+        nativeKind: 'opaque.fixture.kind', contextId: 'h45srcctx1:' + '1'.repeat(64),
+        linkId: 'h45srcnat1:' + '2'.repeat(64), observationId: 'h45natobs1:' + '3'.repeat(64),
+        observationDigest: '4'.repeat(64), inventorySha256: '5'.repeat(64),
+        captureRef: {abiObservationId: 'h45abi1:' + '6'.repeat(64), abiObservationDigest: '7'.repeat(64), inputSha256: '8'.repeat(64)},
+        profile: {id: 'synthetic-locator-fixture', profileId, components: [
+            {id: 'fixture-node', runtime: 'node', version: '0.0.0-dev.1', sourceRevision: 'a'.repeat(40), sha256: 'b'.repeat(64)},
+            {id: 'fixture-rust', runtime: 'rust', version: '0.0.0-dev.1', sourceRevision: 'a'.repeat(40), sha256: 'c'.repeat(64)},
+        ]},
+    }};
+}
+
 describe('source-derived action inventory', () => {
+    it('retains schema2 locators while certifying the identical independent original source membership', () => {
+        const value = wireInput('wire-sysio-6508c9e8-engineering-v1', [action(1), action(2, 1, 'alice'), action(3, 1)]);
+        const inventory = deriveActionSourceInventory(value), output = emit(value, [1, 2, 3]);
+        expect(output).toHaveLength(2);
+        for (const document of output) document.protocol = nativeLocator(document.protocol, value.profileId);
+        const accepted = validateActionSourceTransactionOutput(inventory, 0, output) as any[];
+        expect(accepted).toEqual(output);
+        expect(accepted.map(v => v.protocol.input.inputActionOrdinal)).toEqual([1, 3]);
+        expect(accepted[0].receipts.map((v: any) => v.receiver)).toEqual(['token', 'alice']);
+        for (const change of [
+            (v: any) => {v.protocol.source.blockId = '0'.repeat(64);},
+            (v: any) => {v.protocol.selectionId = 'h45srcsel1:' + '0'.repeat(64);},
+            (v: any) => {v.protocol.input.inputActionOrdinal = 3;},
+            (v: any) => {v.protocol.input.rawHex = '0103';},
+            (v: any) => {v.protocol.native.profile.profileId = 'wrong-profile';},
+            (v: any) => {v.protocol.native.captureRef.inputSha256 = 'not-a-digest';},
+            (v: any) => {v.protocol.native.extra = 'unsupported';},
+            (v: any) => {v.protocol.schemaVersion = 3;},
+            (v: any) => {v.protocol.status = 'complete';},
+        ]) {
+            const changed = clone(output); change(changed[0]);
+            expect(() => validateActionSourceTransactionOutput(inventory, 0, changed)).toThrow(ActionSourceInventoryError);
+        }
+    });
+
+    it('admits an exact source-bound raw incomplete origin without suppressing a complete sibling', () => {
+        const value = wireInput('wire-sysio-6508c9e8-engineering-v1', [action(1), action(2, 1, 'alice'), action(3, 1)]);
+        const inventory = deriveActionSourceInventory(value), output = emit(value, [1, 2, 3]);
+        for (const document of output) document.protocol = nativeLocator(document.protocol, value.profileId);
+        output[0].protocol = {...output[0].protocol, kind: 'incomplete', status: 'incomplete',
+            error: {code: 'unsupported_origin', message: 'This origin is unsupported'}};
+        delete output[0].protocol.native.nativeKind;
+        output[0].act.data = '0102'; output[0].ds_error = true;
+        expect(validateActionSourceTransactionOutput(inventory, 0, output)).toEqual(output);
+        const codecFailed = clone(output); codecFailed[0].protocol.kind = 'native'; codecFailed[0].protocol.native.nativeKind = 'opaque.fixture.kind';
+        expect(validateActionSourceTransactionOutput(inventory, 0, codecFailed)).toEqual(codecFailed);
+        for (const change of [
+            (v: any) => {v.act.data = {decoded: 'unverified'};},
+            (v: any) => {v.act.data = '0103';},
+            (v: any) => {delete v.ds_error;},
+            (v: any) => {v.ds_error = false;},
+            (v: any) => {delete v.protocol.input.inputActionOrdinal;},
+            (v: any) => {v.protocol.input.inputActionOrdinal = 3;},
+            (v: any) => {v['@transfer'] = {unverified: true};},
+            (v: any) => {v.act.hex_encoder = 'unverified';},
+        ]) {
+            const changed = clone(output); change(changed[0]);
+            expect(() => validateActionSourceTransactionOutput(inventory, 0, changed)).toThrow(ActionSourceInventoryError);
+        }
+    });
+
     it('preserves complete original transaction order, including empty and excluded transactions', () => {
         const value = input();
         value.traces = [transaction([], secondId), transaction([action()])];
@@ -225,7 +290,8 @@ describe('source-derived action inventory', () => {
         expect(validateActionSourceTransactionOutput(one, 0, oneDoc)).toHaveLength(1);
     });
 
-    for (const profileId of ['wire-sysio-6508c9e8-engineering-v1', 'wire-sysio-7dede884-engineering-v1'] as const) {
+    for (const profileId of ['wire-sysio-6508c9e8-engineering-v1', 'wire-sysio-7dede884-engineering-v1',
+        'wire-sysio-6508c9e8-native-engineering-v1'] as const) {
         it(`uses complete independent Wire observations for ${profileId}`, () => {
             const value = wireInput(profileId), inventory = deriveActionSourceInventory(value), docs = emit(value, [1, 2]);
             expect(inventory.transactions[0].groups[0].inputActionOrdinal).toBe(1);

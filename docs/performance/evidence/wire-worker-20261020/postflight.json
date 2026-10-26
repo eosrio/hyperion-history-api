@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "performedAt": "2026-10-20T11:49:25.589652+00:00",
+  "host": "x570-hyperion-1",
+  "testedCodeCommit": "5da54fb77699ce0a92d52f59c7569cb8d3e81ba7",
+  "workerOwnershipSelectors": [
+    "cwd under owned evidence directory",
+    "exact owned launcher path in command line"
+  ],
+  "ownedWorkerProcessesRemaining": [],
+  "ownedResourcesRemaining": [
+    {
+      "run": "f7b946dfc432",
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    },
+    {
+      "run": "db892fea6f4e",
+      "containers": [],
+      "volumes": [],
+      "networks": []
+    }
+  ]
+}

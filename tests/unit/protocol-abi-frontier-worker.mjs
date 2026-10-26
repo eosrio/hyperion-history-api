@@ -5,6 +5,7 @@ import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
+import {controlledAttemptLifecycle} from './worker-attempt-fixture.mjs';
 
 registerHooks({resolve(specifier,context,next){if(specifier.includes('node-abieos'))throw new Error('Wire imported the legacy addon');return next(specifier,context);}});
 const previous=process.cwd(),directory=mkdtempSync(join(tmpdir(),'hyperion-abi-frontier-'));
@@ -100,6 +101,7 @@ try {
         const wref=Object.assign(new EventEmitter(),{id:++workerId,isConnected:()=>true,send(message,callback){result.onIpcMessage(message);callback?.(null);}});
         currentMaster.workerMap.push({worker_id:wref.id,worker_role:'deserializer',wref});const acks=[];let received;
         result.ch={prefetch(){},consume(queue,callback){received=callback;},on(){},ack(message){acks.push(message.fields.deliveryTag);},nack(){throw new Error('Unexpected fixture NACK');},sendToQueue(){return true;}};
+        controlledAttemptLifecycle(result,'deserializer');
         process.env.worker_queue=chain+':live_blocks';result.initConsumer();delete process.env.worker_queue;
         return {worker:result,wref,acks,async consume(publication){activeDsSender=wref;received({...publication,fields:{deliveryTag:++deliveryTag}});await until(()=>result.consumerQueue.idle());activeDsSender=undefined;}};
     };
@@ -151,8 +153,12 @@ try {
     assert.equal((await frontier.readControl()).value.head.blockNum,102);
     await b.consume(publications.at(-1));await until(async()=>(await frontier.readControl()).value.head?.blockId===replacementId);
     // Explicit incomplete contract observations advance topology with UNKNOWN ABI knowledge.
-    const hook=a.worker.protocol.observeBlockAbi;a.worker.protocol.observeBlockAbi=()=>{throw new Error('Unsupported contract observation');};
-    resumed.connection.message(frame(104,{prev_block:{block_num:103,block_id:replacementId}}));await resumed.drain();await a.consume(publications.at(-1));a.worker.protocol.observeBlockAbi=hook;
+    const admittedProvider=a.worker.protocol;assert(Object.isFrozen(admittedProvider));
+    // Inject a fault into this worker's fixture context without mutating its admitted provider.
+    a.worker.protocol={...admittedProvider,observeBlockAbi(){throw new Error('Unsupported contract observation');}};
+    try{
+        resumed.connection.message(frame(104,{prev_block:{block_num:103,block_id:replacementId}}));await resumed.drain();await a.consume(publications.at(-1));
+    }finally{a.worker.protocol=admittedProvider;}
     await until(async()=>(await frontier.readControl()).value.head?.blockNum===104);
     const incomplete=(await frontier.readControl()).value;assert.equal(incomplete.phase,'incomplete');assert.equal(incomplete.head.coverageStart,null);
     resumed.connection.message(frame(105));await resumed.drain();await a.consume(publications.at(-1));await until(async()=>(await frontier.readControl()).value.head?.blockNum===105);
@@ -188,8 +194,9 @@ try {
         currentSocket.message(frame(number,number===103?{this_block:{block_num:103,block_id:replacementId}}
             :number===104?{prev_block:{block_num:103,block_id:replacementId}}:{}));
         await resumed.drain();
-        if(number===104)a.worker.protocol.observeBlockAbi=()=>{throw new Error('Unsupported contract observation');};
-        try{await a.consume(publications.at(-1));}finally{a.worker.protocol.observeBlockAbi=hook;}
+        const replayProvider=a.worker.protocol;
+        if(number===104)a.worker.protocol={...replayProvider,observeBlockAbi(){throw new Error('Unsupported contract observation');}};
+        try{await a.consume(publications.at(-1));}finally{a.worker.protocol=replayProvider;}
         await until(async()=>(await frontier.readControl()).value.head?.blockNum===number);
     }
     resumed.worker.holdPublisherConfirms=true;const beforeFresh=publications.length;

@@ -19,12 +19,15 @@ const hex64 = /^[0-9a-f]{64}$/;
 const zero = '0'.repeat(64);
 
 export interface PortableSourceFile {readonly path: string; readonly bytes: number; readonly sha256: string}
+export type PortableSourceProfile = 'wire-sysio-6508c9e8-engineering-v1' | 'wire-sysio-6508c9e8-native-engineering-v1';
 export interface PortableSourceInput {
     readonly directory: string; readonly receiptSha256: string; readonly endBlock: number;
     readonly status: PortableSourceFile; readonly getInfo: PortableSourceFile;
 }
 export interface PortableSourceBlock {
     readonly blockNum: number; readonly blockId: string; readonly previousBlockId: string | null;
+    /** Original decoded header predecessor; genesis header-zero is distinct from absent SHiP prev_block. */
+    readonly headerPreviousBlockId: string;
     readonly frameSha256: string; readonly frameBytes: number; readonly timestamp: string;
     readonly producer: string; readonly applicationRows: readonly {ordinal: number; stream: string; present: number; rawHex: string; value: unknown}[];
 }
@@ -68,7 +71,9 @@ async function pinnedFile(root: string, file: PortableSourceFile, maximum: numbe
 }
 
 /** Only unchanged original frames are admitted. Capture investigation/application summaries are ignored. */
-export async function auditPortableWorkerSource(input: PortableSourceInput): Promise<PortableWorkerSource> {
+export async function auditPortableWorkerSource(input: PortableSourceInput,
+    profileId: PortableSourceProfile = 'wire-sysio-6508c9e8-engineering-v1'): Promise<PortableWorkerSource> {
+    assert.ok(['wire-sysio-6508c9e8-engineering-v1', 'wire-sysio-6508c9e8-native-engineering-v1'].includes(profileId));
     const root = await ordinaryPortablePath(input.directory, true);
     assert.ok(hex64.test(input.receiptSha256));
     assert.ok(Number.isSafeInteger(input.endBlock) && input.endBlock >= 1 && input.endBlock <= portableSourceLimits.blocks);
@@ -80,10 +85,12 @@ export async function auditPortableWorkerSource(input: PortableSourceInput): Pro
     assert.ok(receipt.endExclusive > input.endBlock && receipt.frames.length === receipt.endExclusive - 1);
     const schema = await pinnedFile(root, {path: 'schema.json', ...receipt.schema}, 65536);
     const status = await pinnedFile(root, input.status, 65536), infoBytes = await pinnedFile(root, input.getInfo, 65536);
-    const profileId = 'wire-sysio-6508c9e8-engineering-v1', profile = resolveCodecProfile(profileId);
+    const profile = resolveCodecProfile(profileId);
     const selection = await import(new URL('../../build/indexer/protocol/selection.js', import.meta.url).href);
     const selected = await selection.loadChainProtocol({provider: 'extension', package: '@eosrio/hyperion-wire-plugin', profileId});
     assert.equal(typeof selected.provider.verifyNativeGenesis, 'function');
+    assert.equal(selected.provider.nativeActions?.interfaceVersion,
+        profileId === 'wire-sysio-6508c9e8-native-engineering-v1' ? 1 : undefined);
     const schemaJson = schema.toString('utf8'), codec = createWireShipCodec(JSON.parse(schemaJson), profile);
     const decodedStatus: any = codec.decodeResult(status);
     assert.equal(decodedStatus[0], 'get_status_result_v0'); assert.equal(decodedStatus[1].chain_id, receipt.chainId);
@@ -112,7 +119,7 @@ export async function auditPortableWorkerSource(input: PortableSourceInput): Pro
         } else {assert.ok(result.traces !== null && Array.isArray(bundle.traces), 'later traces must be present even with no header transactions'); assert.equal(bundle.block.previous, parent);}
         const applicationRows = bundle.deltaRows.flatMap((row: any, ordinal: number) =>
             ['contract_row', 'contract_row_kv', 'contract_index_kv'].includes(row.stream) ? [{ordinal, ...jsonCopy(row)}] : []);
-        records.push(Object.freeze({blockNum: index + 1, blockId: entry.blockId, previousBlockId: parent,
+        records.push(Object.freeze({blockNum: index + 1, blockId: entry.blockId, previousBlockId: parent, headerPreviousBlockId: bundle.block.previous,
             frameSha256: entry.sha256, frameBytes: frame.length, timestamp: bundle.block.timestamp, producer: bundle.block.producer,
             applicationRows: Object.freeze(applicationRows)}));
         frames.push(frame); inputHashes[entry.file] = entry.sha256; parent = entry.blockId;

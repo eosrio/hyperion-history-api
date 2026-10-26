@@ -4,14 +4,18 @@ on:
   push:
     branches: [ "main", "dev", "release/4.5" ]
   pull_request:
-    branches: [ "main", "dev", "release/4.5", "codex/fix-action-abi-epochs", "codex/wire-protocol-host", "codex/protocol-abi-observations", "codex/protocol-abi-coverage", "codex/protocol-abi-frontier", "codex/protocol-abi-consumers", "codex/exact-sequence-history-adapter", "codex/action-source-journal", "codex/portable-state-production", "codex/portable-state-canonical-recovery" ]
+    branches: [ "main", "dev", "release/4.5", "fix/stream-client-compatibility-45", "codex/fix-action-abi-epochs", "codex/wire-protocol-host", "codex/protocol-abi-observations", "codex/protocol-abi-coverage", "codex/protocol-abi-frontier", "codex/protocol-abi-consumers", "codex/exact-sequence-history-adapter", "codex/action-source-journal", "codex/portable-state-production", "feat/protocol-action-occurrence-proof", "fix/protocol-source-read-cancellation", "build/native-action-dependencies", "feat/native-observation-prepare", "feat/native-action-authorization", "feat/native-action-consumers", "build/native-wire-profile-pin", "build/bun-1.4.4", "fix/native-wire-worker-proofs", "fix/live-reader-ship-credits", "feat/source-handoff-outcomes", "feat/action-attempt-dispositions", "codex/wire-full-worker-replay", "codex/portable-state-canonical-recovery", "codex/portable-state-recovery-refresh", "codex/portable-state-cpu-profile", "codex/portable-state-cpu-profile-refresh", "codex/portable-state-validation-measurement", "codex/portable-state-validation-measurement-refresh" ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [22.x, 24.x]
+        node-version: [24.x, 26.x]
     steps:
       - uses: actions/checkout@v4
       - name: Use Node.js ${{ matrix.node-version }}
@@ -24,10 +28,22 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
+      - name: Verify the pinned checker and embedded TypeScript
+        run: |
+          test "$(bun --version)" = "$(cat .bun-version)"
+          test "$(bun -p process.versions.typescript)" = "$(node -p 'require("./package.json").dependencies.typescript')"
       - run: npm run typecheck
       - run: npm run build
+      - name: Check stream request lifecycle on Node ${{ matrix.node-version }}
+        run: node --test tests/native/stream-request-lifecycle.test.mjs tests/native/stream-history-delivery.test.mjs
+      - name: Check history/live stream filters and selectors on Node ${{ matrix.node-version }}
+        run: node --test tests/native/stream-filter-parity.test.mjs
+      - name: Check pinned native stream JSON and credit windows on Node ${{ matrix.node-version }}
+        run: node --test tests/native/native-stream-json.test.mjs tests/native/native-stream-credits.test.mjs
       - name: Typecheck Elasticsearch qualification runner
         run: bun check -p scripts/qualification/tsconfig.json
+      - name: Check retained Wire source and replay credits with native Node
+        run: node --experimental-strip-types scripts/qualification/check-wire-replay-fixture.mjs
       - name: Check portable state source and fixture ownership guards
         run: python3 tests/fixtures/portable-state-worker/test_helpers.py
       - name: Verify Elasticsearch evidence checksums
@@ -71,6 +87,12 @@ jobs:
       - name: Verify action source admission evidence checksums
         working-directory: docs/performance/evidence/action-source-admission-20261020
         run: sha256sum -c SHA256SUMS
+      - name: Verify captured Wire worker evidence checksums
+        working-directory: docs/performance/evidence/wire-worker-20261020
+        run: sha256sum -c SHA256SUMS
+      - name: Verify Wire Mongo state write evidence checksums
+        working-directory: docs/performance/evidence/wire-state-writes-20261020
+        run: sha256sum -c SHA256SUMS
       - name: Verify protocol adapter observation checksum
         working-directory: docs/performance/evidence/protocol-adapter-20261019
         run: sha256sum -c SHA256SUMS
@@ -80,10 +102,20 @@ jobs:
       - name: Verify portable state prefix profiling evidence checksums
         working-directory: docs/performance/evidence/portable-state-prefix-20261022
         run: sha256sum -c SHA256SUMS
-      - run: bun test tests/unit
-      - name: Check ABI journal, source bindings and canonical frontier against disposable Elasticsearch 9.5.5
+      - name: Verify native proof read evidence and diagnostic boundaries
+        working-directory: docs/performance/evidence/native-proof-reads-20261022
+        run: python3 verify.py
+      - run: npm test
+      - name: Check ABI/native journals, source bindings and canonical frontier against disposable Elasticsearch 9.5.5
         if: matrix.node-version == '24.x'
-        run: node scripts/qualification/check-protocol-abi-store.mjs
+        run: node scripts/qualification/check-protocol-abi-store.mjs protocol-journals.json
+      - name: Retain protocol journal evidence and cleanup result
+        if: always() && matrix.node-version == '24.x'
+        uses: actions/upload-artifact@v4
+        with:
+          name: protocol-journals-node24
+          path: protocol-journals.json
+          if-no-files-found: error
 
   projection-mongodb:
     runs-on: ubuntu-22.04
@@ -91,7 +123,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [22.x, 24.x]
+        node-version: [24.x, 26.x]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -127,7 +159,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: [22.x, 24.x]
+        node: [24.x, 26.x]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -152,7 +184,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: [22.x, 24.x]
+        node: [24.x, 26.x]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

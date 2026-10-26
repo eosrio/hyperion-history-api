@@ -12,6 +12,7 @@ import {debugLog, hLog} from '../helpers/common_functions.js';
 import {RabbitQueueDef} from '../definitions/index-queues.js';
 import {LiveReaderCheckpoint, ReaderConfirmRange} from '../helpers/reader-progress.js';
 import {actionSourceIngressHeader} from '../history/action-source-admission.js';
+import type {ProtocolShipSession} from '@eosrio/hyperion-sdk/protocol';
 
 interface RequestRange {
     first_block: number;
@@ -26,6 +27,7 @@ interface BlockInfo {
 class StaleProtocolIngress extends Error {}
 class RevokedProtocolSource extends Error {}
 type ProtocolIngress = {generation: number; kind: 'connected'} | {generation: number; kind: 'frame'; data: Buffer};
+interface ShipCreditOwner {generation?: number; epoch: object; session?: ProtocolShipSession}
 
 export interface GetBlocksResultV0 {
     head: BlockInfo;
@@ -56,6 +58,10 @@ export default class StateReader extends HyperionWorker {
 
     private recovery = false;
     private allowRequests = true;
+    private backpressurePaused = false;
+    private shipCreditEpoch: object = {};
+    private withheldShipCredits?: {owner: ShipCreditOwner; count: number};
+    private legacyCreditGenerations = new WeakMap<object, number>();
     private pendingRequest: [number, number] | null = null;
     private completionSignaled = false;
     private assignmentId = process.env.reader_assignment;
@@ -393,11 +399,15 @@ export default class StateReader extends HyperionWorker {
                 break;
             }
             case 'pause': {
+                this.backpressurePaused = true;
                 this.allowRequests = false;
                 break;
             }
             case 'resume': {
+                if (this.finishing || this.publisherFailure) break;
+                this.backpressurePaused = false;
                 this.allowRequests = true;
+                this.flushShipCredits();
                 if (this.pendingRequest) {
                     this.processPending();
                 }
@@ -411,17 +421,16 @@ export default class StateReader extends HyperionWorker {
             }
             case 'next_server': {
                 hLog('received next server action from master');
-                if (this.usesOrderedSourceIngress) {
-                    this.physicalIngressGeneration = undefined;
-                    this.revokeCoordinatorSource();
-                    this.handleLostConnection();
-                } else this.ship.close(false);
+                if (this.usesOrderedSourceIngress) this.revokeCoordinatorSource();
+                // A deliberate switch initiates recovery; the old close callback is fenced.
+                this.handleLostConnection();
                 break;
             }
             case 'stop': {
                 if (this.isLiveReader) {
                     hLog('[LIVE READER] Closing Websocket');
-                    if (this.usesOrderedSourceIngress) { this.finishing = true; this.physicalIngressGeneration = undefined; }
+                    this.finishing = true;
+                    this.physicalIngressGeneration = undefined;
                     this.clearProtocolReconnect();
                     this.revokeCoordinatorSource();
                     this.ship.close(true);
@@ -535,9 +544,11 @@ export default class StateReader extends HyperionWorker {
         if (this.usesOrderedSourceIngress && block_array.some(item => item?.kind === 'frame' || item?.kind === 'connected')) {
             let credits = 0;
             let creditGeneration: number | undefined;
+            let creditOwner: ShipCreditOwner | undefined;
             for (const item of block_array as ProtocolIngress[]) {
                 if (item.kind === 'connected') {
                     if (item.generation !== this.physicalIngressGeneration) continue;
+                    this.invalidateShipCredits();
                     this.shipABI = undefined;
                     this.sourceContext = undefined;
                     this.actionSourceSession = undefined;
@@ -545,6 +556,7 @@ export default class StateReader extends HyperionWorker {
                     this.shipSession?.close?.();
                     this.shipSession = undefined;
                     credits = 0;
+                    creditOwner = undefined;
                     creditGeneration = item.generation;
                     continue;
                 }
@@ -555,11 +567,13 @@ export default class StateReader extends HyperionWorker {
                 }
                 this.activeIngressGeneration = item.generation;
                 try {
+                    const owner = this.shipCreditOwner(item.generation);
                     const kind = await this.onMessage(item.data);
                     this.assertCurrentIngress();
                     if (kind === 'block') {
-                        if (creditGeneration !== item.generation) credits = 0;
+                        if (creditGeneration !== item.generation || (creditOwner && !this.sameShipCreditOwner(creditOwner, owner))) credits = 0;
                         creditGeneration = item.generation;
+                        creditOwner = owner;
                         credits++;
                     }
                 } catch (error) {
@@ -573,22 +587,32 @@ export default class StateReader extends HyperionWorker {
             }
             while (this.publications.size && !this.publisherFailure) await new Promise(resolve => setTimeout(resolve, 5));
             if (this.publisherFailure) throw new Error(this.publisherFailure);
-            if (credits) this.send(['get_blocks_ack_request_v0', {num_messages: credits}], creditGeneration);
+            if (credits && creditOwner) this.returnShipCredits(credits, creditOwner);
             if (this.delay_active) await new Promise(resolve => setTimeout(resolve, this.block_processing_delay));
             return true;
         }
+        // Legacy cargo keeps raw buffers, but their credit ownership is captured
+        // at socket ingress, before a reconnect can leave old work in the queue.
+        const generation = this.physicalIngressGeneration;
+        const blocks = block_array.filter(block => {
+            const original = this.legacyCreditGenerations?.get(block);
+            return original === undefined || original === generation;
+        });
+        if (!blocks.length) return true;
         if (this.shipABI) {
-            for (const block of block_array) {
+            const owner = this.shipCreditOwner(generation);
+            for (const block of blocks) {
+                if (!this.currentShipCreditOwner(owner)) break;
                 await this.onMessage(block);
             }
             // SHIP credit means accepted input has a successful broker confirm,
             // not merely that its bytes entered a client-side publisher buffer.
             while (this.publications.size && !this.publisherFailure) await new Promise(resolve => setTimeout(resolve, 5));
             if (this.publisherFailure) throw new Error(this.publisherFailure);
-            this.ackBlockRange(block_array.length);
+            this.returnShipCredits(blocks.length, owner);
         } else {
-            await this.onMessage(block_array[0]);
-            this.ackBlockRange(block_array.length);
+            await this.onMessage(blocks[0]);
+            this.returnShipCredits(blocks.length, this.shipCreditOwner(generation));
         }
         if (this.delay_active) {
             await new Promise((resolve) => setTimeout(resolve, this.block_processing_delay));
@@ -1139,6 +1163,7 @@ export default class StateReader extends HyperionWorker {
     }
 
     private revokeCoordinatorSource(): void {
+        this.invalidateShipCredits();
         const source = this.coordinatorSource;
         this.coordinatorSource = undefined;
         this.coordinatorResumeFromBlock = undefined;
@@ -1342,8 +1367,44 @@ export default class StateReader extends HyperionWorker {
         });
     }
 
-    private ackBlockRange(size: number) {
-        this.send(['get_blocks_ack_request_v0', {num_messages: size}]);
+    private shipCreditOwner(generation = this.physicalIngressGeneration): ShipCreditOwner {
+        return {generation, epoch: this.shipCreditEpoch ??= {}, session: this.shipSession};
+    }
+
+    private sameShipCreditOwner(left: ShipCreditOwner, right: ShipCreditOwner): boolean {
+        return left.generation === right.generation && left.epoch === right.epoch && left.session === right.session;
+    }
+
+    private currentShipCreditOwner(owner: ShipCreditOwner): boolean {
+        return !this.finishing && !this.publisherFailure && this.ship.connected !== false
+            && this.sameShipCreditOwner(owner, this.shipCreditOwner())
+            && (!this.socketGeneration || owner.generation === this.socketGeneration);
+    }
+
+    private invalidateShipCredits(): void {
+        this.shipCreditEpoch = {};
+        this.withheldShipCredits = undefined;
+    }
+
+    /** Confirmed input retains one bounded counter, never a waiter in the cargo loop. */
+    private returnShipCredits(count: number, owner: ShipCreditOwner): void {
+        if (!Number.isInteger(count) || count < 1 || count > 0xffffffff) throw new Error('Invalid SHIP credit count');
+        if (!this.currentShipCreditOwner(owner)) return;
+        const pending = this.withheldShipCredits;
+        const total = count + (pending && this.sameShipCreditOwner(pending.owner, owner) ? pending.count : 0);
+        if (total > 0xffffffff) throw new Error('Withheld SHIP credit count exceeds uint32');
+        this.withheldShipCredits = {owner, count: total};
+        this.flushShipCredits();
+    }
+
+    private flushShipCredits(): void {
+        if (this.backpressurePaused) return;
+        const pending = this.withheldShipCredits;
+        // Clear before encoding/sending: duplicate resumes or synchronous socket
+        // callbacks cannot return the same accepted-input credit twice.
+        this.withheldShipCredits = undefined;
+        if (pending && this.currentShipCreditOwner(pending.owner))
+            this.send(['get_blocks_ack_request_v0', {num_messages: pending.count}], pending.owner.generation);
     }
 
     // private startQueueWatcher() {
@@ -1391,11 +1452,12 @@ export default class StateReader extends HyperionWorker {
     }
 
     private startWS() {
+        if (this.finishing || this.publisherFailure) return;
+        const generation = ++this.socketGeneration;
+        this.physicalIngressGeneration = undefined;
+        this.invalidateShipCredits();
         if (this.usesOrderedSourceIngress) {
-            if (this.finishing || this.publisherFailure) return;
             this.clearProtocolReconnect();
-            const generation = ++this.socketGeneration;
-            this.physicalIngressGeneration = undefined;
             this.revokeCoordinatorSource();
             this.ship.connect(
                 (data: any) => { void this.blockReadingQueue.push({kind: 'frame', generation, data: Buffer.from(data)}).catch(console.log); },
@@ -1414,13 +1476,32 @@ export default class StateReader extends HyperionWorker {
                 });
             return;
         }
+        // Before open there is no physical ingress owner yet. The attempt's
+        // epoch distinguishes its first failure from a retired socket callback.
+        const attemptEpoch = this.shipCreditEpoch;
+        let opened = false;
+        const currentAttempt = () => generation === this.socketGeneration && !this.finishing && !this.publisherFailure
+            && (opened ? this.physicalIngressGeneration === generation : this.shipCreditEpoch === attemptEpoch);
         this.ship.connect(
-            this.blockReadingQueue.push,
-            this.handleLostConnection.bind(this),
+            (data: any) => {
+                // Distinct delivery identity without copying a ws-owned Buffer.
+                const frame = Buffer.isBuffer(data) ? data.subarray() : Buffer.from(data);
+                (this.legacyCreditGenerations ??= new WeakMap()).set(frame, generation);
+                void this.blockReadingQueue.push(frame).catch(console.log);
+            },
+            () => {
+                if (!currentAttempt()) return;
+                this.physicalIngressGeneration = undefined;
+                this.invalidateShipCredits();
+                this.handleLostConnection();
+            },
             () => {
                 hLog('connection failed');
             },
             () => {
+                if (opened || !currentAttempt()) return;
+                opened = true;
+                this.physicalIngressGeneration = generation;
                 this.reconnectCount = 0;
                 this.shipABI = undefined;
                 this.sourceContext = undefined;
@@ -1437,6 +1518,8 @@ export default class StateReader extends HyperionWorker {
     }
 
     private handleLostConnection() {
+        this.invalidateShipCredits();
+        this.physicalIngressGeneration = undefined;
         if (this.usesOrderedSourceIngress && (this.reconnectTimer || this.finishing || this.publisherFailure)) return;
         this.recovery = true;
         this.ship.close(false);

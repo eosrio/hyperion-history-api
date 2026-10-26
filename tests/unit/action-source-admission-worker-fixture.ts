@@ -1,3 +1,4 @@
+import {controlledAttemptLifecycle} from './worker-attempt-fixture.mjs';
 /** Resource-free source prototype probe. The codec, ES transport and AMQP channels are controlled;
  * this is neither a binary SHiP/native-addon fixture nor a live broker/database qualification. */
 import assert from 'node:assert/strict';
@@ -165,7 +166,7 @@ try {
             const raw = readerPublisher.sent[0];
             assert.equal(raw.options.persistent, true); assert.equal(raw.options.mandatory, true);
             assert.ok(raw.payload.equals(frame)); assert.ok(raw.options.headers[actionSourceIngressHeader]);
-            const incoming = message(raw); main.captureActionAdmissionDelivery(incoming, mainConsumer); return incoming;
+            const incoming = message(raw); (controlledAttemptLifecycle(main, 'deserializer'), main).captureActionAdmissionDelivery(incoming, mainConsumer); return incoming;
         }
         async function admit() {
             const incoming = await sourceMessage(); await parser.parseMessage(main, [incoming]);
@@ -173,7 +174,7 @@ try {
             const admission = await store.resolve(ids[0]);
             assert.deepEqual(admission.inventory, expected, 'store must derive inventory from untouched original source');
             return {incoming, admission, messages: mainPublisher.sent.map(sent => {
-                const incoming = message(sent); pool.captureActionAdmissionDelivery(incoming, poolConsumer); return incoming;
+                const incoming = message(sent); (controlledAttemptLifecycle(pool, 'ds_pool_worker'), pool).captureActionAdmissionDelivery(incoming, poolConsumer); return incoming;
             })};
         }
         return {reader, main, pool, parser, loader, control, memory, store, frame, result, schemas, expected,
@@ -255,7 +256,7 @@ try {
         assert.equal(admission.source.ingressId, ingressId, 'Retained source must keep its original ingress identity');
         assert.deepEqual(admission.inventory, h.expected, 'Original native inventory must not change during source awaits');
         const messages = h.mainPublisher.sent.map(sent => {
-            const incoming = message(sent); h.pool.captureActionAdmissionDelivery(incoming, h.poolConsumer); return incoming;
+            const incoming = message(sent); (controlledAttemptLifecycle(h.pool, 'ds_pool_worker'), h.pool).captureActionAdmissionDelivery(incoming, h.poolConsumer); return incoming;
         });
         assert.equal(messages.length, 1); assert.equal(messages[0].content.toString(), h.expected.transactions[0].dispatch!.canonicalJson);
         await h.pool.processMessages(messages);
@@ -277,7 +278,7 @@ try {
         await h.main.initializeProtocolShip(JSON.stringify({version: 'newer-current-session', structs: []}));
         await h.parser.parseMessage(h.main, [incoming]);
         assert.equal(h.schemas.at(-1), 'controlled-original'); assert.deepEqual(h.mainConsumer.acked, [incoming]);
-        const wrong = {...incoming, content: Buffer.from('tampered')}; h.main.captureActionAdmissionDelivery(wrong, h.mainConsumer);
+        const wrong = {...incoming, content: Buffer.from('tampered')}; (controlledAttemptLifecycle(h.main, 'deserializer'), h.main).captureActionAdmissionDelivery(wrong, h.mainConsumer);
         const before = h.mainPublisher.sent.length;
         await assert.rejects(h.parser.parseMessage(h.main, [wrong]), /retained reader context/);
         assert.equal(h.mainPublisher.sent.length, before); assert.equal(h.mainConsumer.acked.length, 1);
@@ -535,7 +536,7 @@ try {
             (value: any) => {value.properties.headers[actionSourceAdmissionHeader] = 'h45actionadmission1:' + '0'.repeat(64);},
         ]) {
             const bad = {...messages[0], content: Buffer.from(messages[0].content), properties: clone(messages[0].properties)};
-            mutation(bad); h.pool.captureActionAdmissionDelivery(bad, h.poolConsumer);
+            mutation(bad); (controlledAttemptLifecycle(h.pool, 'ds_pool_worker'), h.pool).captureActionAdmissionDelivery(bad, h.poolConsumer);
             await assert.rejects(h.pool.processMessages([bad]));
             assert.equal(h.control.decoded.length, 0); assert.equal(h.poolPublisher.sent.length, 0);
             assert.equal(h.poolConsumer.acked.length, 0); assert.equal(h.cache.length, 0); assert.equal(h.poolConsumer.streamed.length, 0);
@@ -545,14 +546,18 @@ try {
 
     await check('original-channel-and-return-fences', async () => {
         const h = await harness(), incoming = await h.sourceMessage(), replacement = new ControlledConsumer();
-        assert.throws(() => h.main.captureActionAdmissionDelivery(incoming, replacement), /replace.*consumer/);
+        assert.throws(() => (controlledAttemptLifecycle(h.main, 'deserializer'), h.main).captureActionAdmissionDelivery(incoming, replacement), /replace.*consumer/);
         h.main.ch = replacement;
         await assert.rejects(h.parser.parseMessage(h.main, [incoming]), /channels.*unavailable/);
         assert.equal(h.mainPublisher.sent.length, 0); assert.equal(h.mainConsumer.acked.length, 0); assert.equal(replacement.acked.length, 0);
         h.main.ch = h.mainConsumer; h.mainPublisher.automatic = false;
-        const running = h.parser.parseMessage(h.main, [incoming]);
+        // A broker redelivery is a new physical receipt, even when its original bytes are identical.
+        const redelivery = {...incoming, content: Buffer.from(incoming.content), properties: clone(incoming.properties)};
+        h.main.captureActionAdmissionDelivery(redelivery, h.mainConsumer);
+        const running = h.parser.parseMessage(h.main, [redelivery]);
         await until(() => h.mainPublisher.sent.length === 1, 'mandatory return');
         const sent = h.mainPublisher.sent[0]; h.mainPublisher.emit('return', {properties: {messageId: sent.options.messageId}});
+        sent.confirm(); // The outer failure does not fabricate completion of the actual outstanding confirm.
         await assert.rejects(running, /unroutable/); assert.equal(h.mainConsumer.acked.length, 0);
         const stale = await harness(), source = await stale.sourceMessage(); stale.mainPublisher.automatic = false;
         const pending = stale.parser.parseMessage(stale.main, [source]);

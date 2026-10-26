@@ -1,6 +1,7 @@
 /** #246: actual production launcher/reader/worker/Mongo/HTTP engineering fork tracer.
  * Synthetic branch facts are explicitly distinct from live Wire consensus acceptance. */
 import assert from 'node:assert/strict';
+import {assertNativeQualificationRuntime} from './native-node-runtime.mjs';
 import {spawn, execFileSync, type ChildProcess} from 'node:child_process';
 import {mkdir, open, readdir, writeFile} from 'node:fs/promises';
 import {createServer} from 'node:http';
@@ -25,6 +26,7 @@ const repo = fileURLToPath(new URL('../../', import.meta.url));
 const pause = (ms: number) => new Promise(done => setTimeout(done, ms));
 const point = (value: {blockNum: number; blockId: string}) => ({blockNum: value.blockNum, blockId: value.blockId});
 const describe = describePortableWorkerError;
+type RecoverySourceAudit = {inputHashes: Readonly<Record<string, string>>};
 export interface RecoveryRunOptions {readonly profilePrefix?: 288; readonly cpuProfile?: boolean;}
 export function validateRecoveryRunOptions(options: RecoveryRunOptions = {}) {
     assert.ok(options && typeof options === 'object' && !Array.isArray(options));
@@ -33,6 +35,50 @@ export function validateRecoveryRunOptions(options: RecoveryRunOptions = {}) {
     assert.ok(options.cpuProfile === undefined || typeof options.cpuProfile === 'boolean' && options.profilePrefix === 288,
         'CPU capture can only be selected explicitly with profiling prefix288');
     return options.profilePrefix;
+}
+
+/** Retain signed protocol deltas; only chronological, bounded intervals can supply elapsed weights. */
+export function recoveryCpuProfileEvidence(profile: any) {
+    assert.ok(profile && typeof profile === 'object' && !Array.isArray(profile));
+    assert.ok(Array.isArray(profile.nodes) && profile.nodes.length > 0 && profile.nodes.length <= 100000);
+    assert.ok(Array.isArray(profile.samples) && profile.samples.length > 0 && profile.samples.length <= 200000);
+    assert.ok(Number.isSafeInteger(profile.startTime) && profile.startTime >= 0 &&
+        Number.isSafeInteger(profile.endTime) && profile.endTime > profile.startTime);
+    assert.ok(Array.isArray(profile.timeDeltas) && profile.timeDeltas.length === profile.samples.length);
+    const ids = new Set<number>();
+    for (const node of profile.nodes) {
+        assert.ok(node && Number.isSafeInteger(node.id) && node.id > 0 && !ids.has(node.id)); ids.add(node.id);
+    }
+    assert.ok(profile.samples.every((id: unknown) => Number.isSafeInteger(id) && ids.has(id as number)));
+    const elapsedMicros = profile.endTime - profile.startTime;
+    let total = 0, minimumOffset = 0, maximumOffset = 0, minimumDelta = Infinity;
+    let negativeCount = 0, negativeTotal = 0, outsideExtent = 0;
+    const firstNegativeDeltas: {index: number; deltaMicros: number}[] = [];
+    for (let index = 0; index < profile.timeDeltas.length; index++) {
+        const delta = profile.timeDeltas[index];
+        assert.ok(Number.isSafeInteger(delta), 'Profile deltas must be integer protocol microseconds');
+        total += delta; assert.ok(Number.isSafeInteger(total), 'Reconstructed profile timestamp exceeds exact arithmetic');
+        minimumDelta = Math.min(minimumDelta, delta);
+        minimumOffset = Math.min(minimumOffset, total); maximumOffset = Math.max(maximumOffset, total);
+        if (total < 0 || total > elapsedMicros) outsideExtent++;
+        if (delta < 0) {
+            negativeCount++; negativeTotal += delta; assert.ok(Number.isSafeInteger(negativeTotal));
+            if (firstNegativeDeltas.length < 16) firstNegativeDeltas.push({index, deltaMicros: delta});
+        }
+    }
+    const unavailableReasons: string[] = [];
+    if (negativeCount) unavailableReasons.push('out-of-order-samples');
+    if (outsideExtent) unavailableReasons.push('sample-outside-recording-extent');
+    if (total <= 0) unavailableReasons.push('no-positive-sampled-interval');
+    const intervalWeightsAvailable = unavailableReasons.length === 0;
+    const lastSampleToEnd = elapsedMicros - total; assert.ok(Number.isSafeInteger(lastSampleToEnd));
+    return {samples: profile.samples.length, startTime: profile.startTime, endTime: profile.endTime,
+        timing: {elapsedMicros, rawSignedDeltaSumMicros: total, rawLastSampleToEndMicros: lastSampleToEnd,
+            reconstructedOffsetRangeMicros: {min: minimumOffset, max: maximumOffset}, outsideExtentSampleCount: outsideExtent,
+            negativeDeltaCount: negativeCount, negativeDeltaTotalMicros: negativeTotal, minimumDeltaMicros: minimumDelta,
+            firstNegativeDeltas, intervalWeightsAvailable, unavailableReasons,
+            sampledIntervalMicros: intervalWeightsAvailable ? total : null,
+            unweightedTailMicros: intervalWeightsAvailable ? lastSampleToEnd : null, normalized: false as const}};
 }
 
 /** Profile completion is checked against observer receipts and actual bounded files after clean shutdown. */
@@ -79,15 +125,9 @@ export async function assertRecoveryCpuProfiles(rows: any[], directory: string, 
         assert.equal(began.length, 1); assert.equal(began[0].samplingIntervalMicros, 10000); assert.equal(began[0].maximumDurationMs, 900000);
         assert.ok(began[0].at <= stableAt); assert.equal(saved.length, 1); assert.equal(saved[0].profilePath, file);
         const bytes = await boundedPortableFile(file, 32 * 1024 * 1024); assert.equal(bytes.length, saved[0].bytes);
-        const profile = JSON.parse(bytes.toString());
-        assert.ok(Array.isArray(profile.nodes) && profile.nodes.length > 0 && Array.isArray(profile.samples) && profile.samples.length > 0);
-        assert.ok(Number.isFinite(profile.startTime) && Number.isFinite(profile.endTime) && profile.endTime > profile.startTime);
-        assert.ok(Array.isArray(profile.timeDeltas) && profile.timeDeltas.length === profile.samples.length);
-        const ids = new Set(profile.nodes.map((node: any) => node.id));
-        assert.ok(profile.samples.every((id: unknown) => Number.isSafeInteger(id) && ids.has(id)));
-        assert.ok(profile.timeDeltas.every((delta: unknown) => typeof delta === 'number' && Number.isFinite(delta) && delta >= 0));
+        const evidence = recoveryCpuProfileEvidence(JSON.parse(bytes.toString()));
         profiles.push({pid: start.pid, role: start.role, start, file, bytes: bytes.length, sha256: portableSourceHash(bytes),
-            samples: profile.samples.length, startTime: profile.startTime, endTime: profile.endTime, flush});
+            ...evidence, flush});
     }
     return profiles;
 }
@@ -112,6 +152,42 @@ async function recoveryProfilePins() {
     assert.equal(dirty.length, 0, 'Profile runs require committed tracked source/configuration');
     return {files, totalBytes, inventorySha256: portableSourceHash(Buffer.from(JSON.stringify(files))),
         trackedDiffBytes: dirty.length, trackedDiffSha256: portableSourceHash(dirty)};
+}
+
+/** The original run budget covers setup, awaited phase results and the final source audit. */
+export class RecoveryRunDeadline {
+    readonly expiresAt: number;
+    private readonly now: () => number;
+    private readonly delay: (milliseconds: number) => Promise<unknown>;
+    constructor(now = () => performance.now(), delay: (milliseconds: number) => Promise<unknown> = pause) {
+        this.now = now; this.delay = delay;
+        this.expiresAt = now() + recoverySourceLimits.runMs;
+    }
+    private assertActive(end = this.expiresAt) {
+        assert.ok(this.now() < end, 'Recovery fixture deadline exceeded');
+    }
+    async wait(name: string, condition: () => Promise<void>, beforeAttempt: () => void, duration = 180000) {
+        const end = Math.min(this.expiresAt, this.now() + duration); let last: unknown;
+        while (this.now() < end) {
+            beforeAttempt();
+            this.assertActive(end);
+            try {await condition();} catch (error) {
+                last = error; this.assertActive(end); await this.delay(100); continue;
+            }
+            this.assertActive(end); return;
+        }
+        throw new Error(name + ' did not complete before deadline: ' + describe(last));
+    }
+    async completePrefix(audit: () => Promise<RecoverySourceAudit>, original: RecoverySourceAudit,
+        complete: (after: RecoverySourceAudit) => Promise<void>) {
+        const after = await this.verifyFinalSource(audit, original);
+        await complete(after); this.assertActive();
+    }
+    async verifyFinalSource(audit: () => Promise<RecoverySourceAudit>, original: RecoverySourceAudit) {
+        this.assertActive();
+        const after = await audit(); this.assertActive(); assert.deepEqual(after.inputHashes, original.inputHashes);
+        return after;
+    }
 }
 
 async function freePort() {const server = createServer(); server.listen(0, '127.0.0.1'); await once(server, 'listening');
@@ -172,10 +248,10 @@ export function assertRecoveryShutdown(rows: any[], parent: ChildProcess, intent
 export async function runPortableStateRecovery(stateFile: string, planFile: string, outputDirectory: string,
     finality: 'reversible' | 'irreversible', options: RecoveryRunOptions = {}) {
     const profilePrefix = validateRecoveryRunOptions(options), profileOnly = profilePrefix !== undefined, cpuProfile = profileOnly && options.cpuProfile !== false;
-    assert.equal(process.release.name, 'node'); assert.ok(!process.versions.bun && /^(22|24)\./.test(process.versions.node));
+    assertNativeQualificationRuntime();
     assert.equal(process.platform, 'linux', 'Actual stop/kill recovery qualification requires Linux');
     assert.ok(['reversible', 'irreversible'].includes(finality));
-    const deadline = performance.now() + recoverySourceLimits.runMs;
+    const runDeadline = new RecoveryRunDeadline(), deadline = runDeadline.expiresAt;
     let cleanupDeadline: number | undefined;
     const remaining = () => {const value = Math.floor((cleanupDeadline ?? deadline) - performance.now()); assert.ok(value > 0, 'Recovery fixture deadline exceeded'); return value;};
     const docker = (args: string[]) => execFileSync('docker', args, {encoding: 'utf8', timeout: Math.min(30000, remaining()), maxBuffer: 16 * 1024 * 1024}).trim();
@@ -229,13 +305,10 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
     const apis: {child: ChildProcess; name: string; stopped: boolean}[] = [];
     let probeTask: Promise<void> | undefined, stopProbes = false, probeStage = 'initial', knownFork = false;
     let captureFailure: (() => Promise<unknown>) | undefined;
-    const wait = async (name: string, condition: () => Promise<void>, duration = 180000) => {
-        const end = Math.min(deadline, performance.now() + duration); let last: unknown;
-        while (performance.now() < end) {assert.deepEqual(report.errors, []);
-            for (const child of [api, master]) if (child) assert.ok(child.exitCode === null && child.signalCode === null, name + ': production child exited');
-            try {await condition(); return;} catch (error) {last = error;} await pause(100);}
-        throw new Error(name + ' did not complete: ' + describe(last));
-    };
+    const wait = (name: string, condition: () => Promise<void>, duration = 180000) => runDeadline.wait(name, condition, () => {
+        assert.deepEqual(report.errors, []);
+        for (const child of [api, master]) if (child) assert.ok(child.exitCode === null && child.signalCode === null, name + ': production child exited');
+    }, duration);
     const observed = async (name: string) => {const directory = join(output, 'observer', name), rows: any[] = [];
         for (const file of (await readdir(directory)).filter(value => value.endsWith('.jsonl'))) {
             const lines = (await boundedPortableFile(join(directory, file), 24 * 1024 * 1024)).toString().split(/\r?\n/);
@@ -402,17 +475,18 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
             await wait('profile broker acknowledgments and queues drained', async () => {report.brokerAcks = await drained();
                 const raw = report.brokerAcks.filter((value: any) => value.name === chain + ':live_blocks'); assert.equal(raw.length, 1);
                 assert.ok(raw[0].ack >= profilePrefix && raw[0].delivered >= raw[0].ack);});
-            const after = await auditPortableWorkerSource(plan.source); assert.deepEqual(after.inputHashes, original.inputHashes);
-            report.profiling.stable = true; report.profiling.stableAt = stableAt; report.profiling.sourceReauditHashes = after.inputHashes;
-            await stopMaster(owner); master = undefined; await stopApi(apiOwner); api = undefined;
-            report.profiling.cpuProfiles = []; report.profiling.observerCompletion = [];
-            for (const entry of [owner, apiOwner]) {const rows = await observed(entry.name);
-                report.profiling.cpuProfiles.push(...await assertRecoveryCpuProfiles(rows, join(output, 'observer', entry.name), stableAt, cpuProfile, entry.child));
-                report.profiling.observerCompletion.push({name: entry.name, ownedParentPid: entry.child.pid,
-                    events: rows.filter(row => ['start', 'worker_fork', 'worker_online', 'worker_exit', 'shutdown', 'profile_started', 'profile_saved', 'flush', 'exit'].includes(row.kind))});}
-            if (cpuProfile) assert.equal(report.profiling.cpuProfiles.filter((value: any) => value.role === 'projection').length, 1);
-            Object.assign(report.profiling.cpuCapture, {verified: true, enabled: cpuProfile});
-            report.sourceMetrics = replay.metrics(); report.sourceRequests = replay.requests; report.status = 'profiled-prefix'; return report;
+            await runDeadline.completePrefix(() => auditPortableWorkerSource(plan.source), original, async after => {
+                report.profiling.stable = true; report.profiling.stableAt = stableAt; report.profiling.sourceReauditHashes = after.inputHashes;
+                await stopMaster(owner); master = undefined; await stopApi(apiOwner); api = undefined;
+                report.profiling.cpuProfiles = []; report.profiling.observerCompletion = [];
+                for (const entry of [owner, apiOwner]) {const rows = await observed(entry.name);
+                    report.profiling.cpuProfiles.push(...await assertRecoveryCpuProfiles(rows, join(output, 'observer', entry.name), stableAt, cpuProfile, entry.child));
+                    report.profiling.observerCompletion.push({name: entry.name, ownedParentPid: entry.child.pid,
+                        events: rows.filter(row => ['start', 'worker_fork', 'worker_online', 'worker_exit', 'shutdown', 'profile_started', 'profile_saved', 'flush', 'exit'].includes(row.kind))});}
+                if (cpuProfile) assert.equal(report.profiling.cpuProfiles.filter((value: any) => value.role === 'projection').length, 1);
+                Object.assign(report.profiling.cpuCapture, {verified: true, enabled: cpuProfile});
+            });
+            report.sourceMetrics = replay.metrics(); report.sourceRequests = replay.requests; remaining(); report.status = 'profiled-prefix'; return report;
         }
         replay.release(1247); const a = await stage('branch-a', 'A', finality === 'reversible' ? 1247 : 1243);
         const beforeGeneration = a.control.generation;
@@ -493,8 +567,8 @@ export async function runPortableStateRecovery(stateFile: string, planFile: stri
             const raw = report.brokerAcks.filter((value: any) => value.name === chain + ':live_blocks'); assert.equal(raw.length, 1);
             assert.ok(raw[0].ack >= 1249 && raw[0].delivered >= raw[0].ack);});
         await wait('final source credits acknowledged', async () => replay!.assertDrained());
-        const after = await auditPortableWorkerSource(plan.source); assert.deepEqual(after.inputHashes, original.inputHashes);
-        report.sourceMetrics = replay.metrics(); report.sourceRequests = replay.requests; report.status = 'passed';
+        await runDeadline.verifyFinalSource(() => auditPortableWorkerSource(plan.source), original);
+        report.sourceMetrics = replay.metrics(); report.sourceRequests = replay.requests; remaining(); report.status = 'passed';
     } catch (error) {report.status = 'failed'; report.error = describe(error);}
     finally {
         cleanupDeadline = performance.now() + 90000; stopProbes = true; await probeTask;
