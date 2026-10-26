@@ -292,3 +292,34 @@ failure still leaves caller-owned resources and evidence to account for.
 Faster reads can reduce observed lag, but they do not establish the pending-input
 safety property. The strict bounded coordination or older-input recovery work in
 #277 and the full #270 Linux worker/MongoDB acceptance remain open.
+
+## Current queued-consumer edge regression
+
+The current regression at the `72e17923` baseline reuses the genuine source setup
+in `tests/unit/protocol-native-lag-replay.mjs` through a separate
+`--queued-proof-boundary=256` or `--queued-proof-boundary=257` mode. It does not
+reinterpret the historical sources, credit measurements or deliberately RED
+preservation assertion above. Those diagnostic modes retain their original scope.
+
+```sh
+bun test ./tests/unit/protocol-native-queued-proof.test.ts
+```
+
+Set `HYPERION_NATIVE_NODE` to the selected native Node 24 or 26 executable;
+the ordinary CI matrix uses its native `node`. Both cases keep the default
+256 ancestry bound and the original block-33 dispatch queued while actual
+reader/MainDS/coordinator methods advance unchanged source frames. At head 289,
+actual DS processing publishes the exact native oracle value/global-sequence
+string and completes its original membership. Holding its publication confirm
+leaves the original ACK, seal and accepted end unavailable. At head 290, actual
+DS processing retains incomplete evidence, publishes nothing and cannot seal;
+its controlled ACK and returned end do not turn that failure into completeness.
+
+Production `WorkerAttemptClient` and `WorkerAttemptSupervisor` methods communicate
+over explicit controlled IPC objects. The supervisor accepts the original end
+capability; copied metadata is rejected. Confirmation, consumer ACK observation,
+membership and accepted end are checked separately. Storage, broker and IPC
+transports remain controlled. No recovered/persisted adjudicator association,
+broker settlement, physical sink durability, capacity remedy or full worker
+qualification is established. The original expiry defect, fork/replay gates,
+historical failed runs and unchanged 1–1480 acceptance remain open.
