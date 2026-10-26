@@ -73,3 +73,17 @@ test('native publication checks refresh receipts within the original phase deadl
     expect(JSON.parse(stdout)).toMatchObject({passed: true, freshReads: 2, inheritedDeadline: true,
         strictPublicationControls: true, proofSuccessFabricated: false, fullWorkerQualification: false});
 }, 25000);
+
+test('original native hold joins exact captured writes before refresh within its original budget', async () => {
+    const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node', '--experimental-strip-types',
+        fileURLToPath(new URL('./portable-native-history-capture.mjs', import.meta.url)), 'witness'],
+    {stdout: 'pipe', stderr: 'pipe', timeout: 90000});
+    const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
+    expect({code, error: code ? stderr : undefined}).toEqual({code: 0, error: undefined});
+    const report = JSON.parse(stdout.trim().split('\n').at(-1)!);
+    expect(report).toMatchObject({status: 'witness-controls-passed', inheritedDeadline: true,
+        retainedFrames: 1480, diagnosticRecords: 6, proofSuccessFabricated: false, fullWorkerQualification: false});
+    expect(report.results).toHaveLength(29);
+    expect(report.results.filter(row => row.reachedIndependentProofGuard).map(row => row.mode))
+        .toEqual(['ready', 'delayed-completion', 'seal-pending']);
+}, 95000);

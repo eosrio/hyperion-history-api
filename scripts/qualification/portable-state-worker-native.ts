@@ -7,6 +7,7 @@ import type {PortableHistoryDiagnostics} from './portable-state-history-diagnost
 import {boundedPortableFile, portableSourceHash, portableWorkerSourceFrame, type PortableWorkerSource} from './portable-state-worker-source.ts';
 import {wireRecoveryPublicationOwners} from './portable-state-worker-recovery.mjs';
 import {wireBrokerRecoveryPublicationOwners} from './portable-state-broker-recovery.mjs';
+import {observePortableNativeHistoryWrite, portableNativeHistoryRemaining} from './portable-native-history-witness.ts';
 
 export const portableNativeProfile = 'wire-sysio-6508c9e8-native-engineering-v1';
 export const portableLegacyProfile = 'wire-sysio-6508c9e8-engineering-v1';
@@ -125,6 +126,7 @@ interface NativeRunOptions {
     readonly bulk: {readonly directory: string; readonly receipts: readonly any[]};
     readonly wait: NativePublicationWait;
     readonly historyDiagnostics?: PortableHistoryDiagnostics;
+    readonly refreshActions?: (through: number, budget: PortableNativePhaseBudget) => Promise<any>;
     readonly attemptRecovery?: () => unknown;
     readonly brokerRecovery?: () => unknown;
     readonly masterRestart?: () => {receipt: unknown; masterPid: number} | undefined;
@@ -342,6 +344,60 @@ export async function createPortableNativeQualification(options: NativeRunOption
             const commit = await frontier.readCommit(control.value.head.commitId);
             assert.equal(commit.nativeActionInterfaceVersion, 1); assert.equal(commit.source.blockId, source.records[through - 1].blockId);
             const result: any = {through, control, commit, notifications: [], native: null};
+            const target = oracle.rows.find((value: any) => value.blockNum === through);
+            const targetRaw = target ? await durable(events, through) : undefined;
+            if (options.refreshActions) {
+                if (target) result.historyWrite = await observePortableNativeHistoryWrite({chain, bulk: options.bulk, wait, budget,
+                    expectation: async () => {
+                        const admitted = (await options.events()).filter(value => value.kind === 'native_boundary'
+                            && value.event === 'action_admitted' && value.blockNum === through);
+                        if (!admitted.length) return undefined;
+                        assert.equal(admitted.length, 1);
+                        const current = await admissionStore.resolve(admitted[0].admissionId);
+                        assert.equal(current.incomplete, null); assert.ok(current.planId);
+                        assert.equal(current.source.frameHex, targetRaw!.original.raw.toString('hex'));
+                        assert.equal(current.source.schemaJson, source.schemaJson);
+                        assert.equal(current.source.producer.profileId, source.profileId);
+                        for (const key of ['chainId', 'blockNum', 'blockId'] as const)
+                            assert.equal(current.source.inventoryInput.source[key], targetRaw!.original.position[key]);
+                        assert.equal(current.source.previousBlockId, targetRaw!.original.position.previousBlockId);
+                        assert.equal(current.source.inventoryInput.source.producer, String(targetRaw!.original.block.producer));
+                        assert.equal(current.source.inventoryInput.source.timestamp, String(targetRaw!.original.block.timestamp));
+                        assert.equal(current.source.inventoryInput.profileId, source.profileId);
+                        assert.equal(current.source.inventoryInput.sourceSelectionId, targetRaw!.event.selectionId);
+                        const {plan} = await admissionStore.journal.readPlan(current.planId);
+                        assert.deepEqual(plan.target, current.target); assert.deepEqual(plan.producer, current.source.producer);
+                        for (const key of ['chainId', 'blockNum', 'blockId', 'previousBlockId'] as const)
+                            assert.equal(plan.source[key], targetRaw!.original.position[key]);
+                        assert.equal(plan.source.captureSha256, current.source.captureSha256);
+                        let sealed;
+                        try {sealed = await admissionStore.journal.readManifest(current.planId);} catch (error) {
+                            if (error instanceof Error && error.name === 'ActionHistorySourceJournalReadError'
+                                && 'code' in error && error.code === 'missing' && 'recordKind' in error && error.recordKind === 'seal') return undefined;
+                            throw error;
+                        }
+                        assert.equal(sealed.manifest.planId, current.planId);
+                        const fragments = sealed.manifest.fragments.filter(value => value.transactionId === target.transactionId);
+                        assert.equal(fragments.length, 1);
+                        const effects = fragments[0].effects.filter(value => value.globalSequence === target.globalSequence);
+                        assert.equal(effects.length, 1);
+                        return {target: current.target, id: target.globalSequence, effect: effects[0], admissionId: current.id,
+                            planId: current.planId, manifestId: sealed.id, source: targetRaw!.original.position, selectionId: targetRaw!.event.selectionId};
+                    }, validate: async (document, expected) => {
+                        const logical = sequences.restoreActionSequenceStorage(document);
+                        await assertPortableNativeAction(logical, target, provider.nativeActions.encodeValue.bind(provider.nativeActions));
+                        assert.equal(logical.protocol.source.chainId, source.chainId);
+                        assert.equal(logical.protocol.selectionId, expected.selectionId);
+                        assert.deepEqual(logical.protocol.native.profile, profile);
+                        assert.deepEqual(manifests.fingerprintActionHistoryEffect(logical), expected.effect,
+                            'native bulk canonical payload differs from its original sealed effect');
+                    }});
+                portableNativeHistoryRemaining(budget);
+                const refresh = await options.refreshActions(through, budget!);
+                portableNativeHistoryRemaining(budget);
+                assert.ok(refresh._shards.total > 0); assert.equal(refresh._shards.failed, 0);
+                assert.equal(refresh._shards.successful, refresh._shards.total);
+            }
             if (through === 34 && options.brokerRecovery?.()) {
                 // Recheck the already-held original output against its two audited physical publishers.
                 result.brokerRecoveredMembership = await admission(events, 33, await actions(33), budget);
@@ -349,10 +405,9 @@ export async function createPortableNativeQualification(options: NativeRunOption
             if (through === 1) {const raw = await durable(events, 1), membership = await admission(events, 1, await actions(1), budget);
                 await assert.rejects(native.open(raw.original.position, raw.event.selectionId), {code: 'native_source_incomplete'});
                 result.genesis = {raw, membership, wholeHistoryCompleteness: false};}
-            const target = oracle.rows.find((value: any) => value.blockNum === through);
             if (target) {
-                const raw = await durable(events, through), physical = await actions(through, {name: 'native-oracle-hold', through,
-                    control, commit, selection: raw.event, sourceAck: raw.sourceAck,
+                const raw = targetRaw!, physical = await actions(through, {name: 'native-oracle-hold', through,
+                    control, commit, selection: raw.event, sourceAck: raw.sourceAck, historyWrite: result.historyWrite,
                     workerEvents: events.filter(value => value.kind === 'native_boundary' && value.blockNum === through)});
                 const row = physical.find(value => value.logical.trx_id === target.transactionId && value.logical.action_ordinal === target.actionOrdinal);
                 assert.ok(row); await assertPortableNativeAction(row.logical, target, provider.nativeActions.encodeValue.bind(provider.nativeActions));
