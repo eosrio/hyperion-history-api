@@ -1,4 +1,5 @@
 import {createHash, randomUUID} from 'node:crypto';
+import {isPromise} from 'node:util/types';
 import {actionHistoryImmutableJson} from '../history/action-history-manifest.js';
 import type {FreshActionWrite} from '../history/action-fresh-write.js';
 
@@ -43,6 +44,20 @@ export interface WorkerAttemptEndDescription {
 }
 declare const acceptedEndBrand: unique symbol;
 export interface AcceptedWorkerAttemptEnd {readonly [acceptedEndBrand]: true}
+declare const observationBrand: unique symbol;
+export interface WorkerAttemptObservation {readonly [observationBrand]: true}
+export interface WorkerAttemptObservationDescription {
+    readonly phase: 'registered' | 'bound' | 'ended';
+    readonly worker: PhysicalAttemptWorker;
+    readonly owner: {readonly epoch: string; readonly incarnation: string; readonly attemptId: string};
+    readonly role: WorkerAttemptRole;
+    readonly descriptor: WorkerAttemptDescriptor;
+    readonly binding: WorkerAttemptBinding;
+    /** Lifecycle observation only; does not establish canonical source membership or permission. */
+    readonly isActive: () => boolean;
+}
+const observations = new WeakMap<WorkerAttemptObservation, {issuer: WorkerAttemptSupervisor;
+    description: WorkerAttemptObservationDescription; active: boolean; consumed: boolean}>();
 const accepted = new WeakMap<object, {supervisor: WorkerAttemptSupervisor; value: WorkerAttemptEndDescription}>();
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const hash = /^[0-9a-f]{64}$/;
@@ -95,7 +110,11 @@ export class WorkerAttemptSupervisor {
     private metadataBytes = 0;
     private stopped = false;
     private overflow = false;
+    private observationFailures = 0;
+    private observationEmitted = 0;
     constructor(private readonly options: {onEnd?: (end: AcceptedWorkerAttemptEnd) => void;
+        /** Internal synchronous observation only; never grants processing, source or capacity authority. */
+        onObservation?: (value: WorkerAttemptObservation) => void;
         maximumOwners?: number; maximumActive?: number; maximumRetainedEndsPerOwner?: number; maximumMetadataBytes?: number; fenceTimeoutMs?: number} = {}) {
         for (const [key, maximum] of Object.entries(workerAttemptBounds)) {
             const value = (options as any)[key];
@@ -171,6 +190,7 @@ export class WorkerAttemptSupervisor {
                         challenge: randomUUID(), registrationRequest: requestId, binding: {}, bindingVersion: 0,
                         freshWrites: [], freshWriteBytes: 0, freshWriteOverflow: false});
                     owner.entries.set(entry.id, entry); owner.sequence = entry.sequence; this.active++;
+                    this.observe(owner, entry, 'registered');
                 }
                 this.reply(worker, requestId, {ok: true, epoch: this.epoch, incarnation: owner.incarnation,
                     attemptId: entry.id, challenge: entry.challenge, descriptorSha256: workerAttemptDigest(entry.descriptor)}); return true;
@@ -191,6 +211,7 @@ export class WorkerAttemptSupervisor {
                         throw new Error('Original attempt binding cannot be replaced');
                     entry = this.account({...entry, binding: JSON.parse(bindingJson), bindingVersion: input.version, bindingRequest: requestId});
                     owner.entries.set(entry.id, entry);
+                    this.observe(owner, entry, 'bound');
                 }
                 this.reply(worker, requestId, {ok: true, bindingSha256: workerAttemptDigest(entry.binding)}); return true;
             }
@@ -249,9 +270,35 @@ export class WorkerAttemptSupervisor {
         if (!owner.fencedAttempts.size && owner.activeFenceTimer) {clearTimeout(owner.activeFenceTimer); owner.activeFenceTimer = undefined;}
         const evidence = Object.freeze({}) as AcceptedWorkerAttemptEnd;
         accepted.set(evidence, {supervisor: this, value: end});
+        this.observe(owner, entry, 'ended');
         try {this.options.onEnd?.(evidence);} catch {this.overflow = true;}
         return status === 'quiescent' ? entry : next;
     }
+    private observe(owner: Owner, entry: Entry, phase: WorkerAttemptObservationDescription['phase']): void {
+        try {
+            const callback = this.options.onObservation;
+            if (callback === undefined || owner.role !== 'ds_pool_worker') return;
+            if (typeof callback !== 'function') throw new Error('Attempt observer unavailable');
+            const metadata = JSON.parse(workerAttemptJson({owner: {epoch: this.epoch, incarnation: owner.incarnation, attemptId: entry.id},
+                role: owner.role, descriptor: entry.descriptor, binding: entry.binding}));
+            Object.freeze(metadata.owner); Object.freeze(metadata.descriptor); Object.freeze(metadata.binding);
+            const token = Object.freeze({}) as WorkerAttemptObservation;
+            const issued = {issuer: this, description: Object.freeze({...metadata, worker: owner.worker, phase, isActive: () => {
+                const current = owner.entries.get(entry.id);
+                return !this.stopped && this.owners.get(owner.worker) === owner && owner.state === 'active'
+                    && !!current && !current.end && !owner.fencedAttempts.has(entry.id);
+            }}), active: true, consumed: false};
+            observations.set(token, issued); this.observationEmitted = Math.min(Number.MAX_SAFE_INTEGER, this.observationEmitted + 1);
+            try {
+                const result: unknown = callback(token);
+                if (result !== undefined) {
+                    if (isPromise(result)) Promise.prototype.then.call(result, () => {}, () => {});
+                    throw new Error('Attempt observer must return synchronously without a value');
+                }
+            } finally {issued.active = false; observations.delete(token);}
+        } catch {this.observationFailures = Math.min(Number.MAX_SAFE_INTEGER, this.observationFailures + 1);}
+    }
+    observationSnapshot() {return Object.freeze({observationOnly: true, emitted: this.observationEmitted, failures: this.observationFailures});}
     private trim(owner: Owner): void {
         const maximum = this.options.maximumRetainedEndsPerOwner ?? workerAttemptBounds.maximumRetainedEndsPerOwner;
         while (owner.completed.length > maximum) {
@@ -299,6 +346,12 @@ export class WorkerAttemptSupervisor {
         owners: [...this.owners.values()].map(owner => ({incarnation: owner.incarnation, role: owner.role, state: owner.state,
             attempts: [...owner.entries.values()].map(entry => ({attemptId: entry.id, descriptor: {...entry.descriptor}, binding: {...entry.binding},
                 status: entry.end?.status ?? 'registered'}))}))});}
+}
+/** Original callback scope only. JSON, retained tokens and another supervisor cannot issue an owner. */
+export function consumeWorkerAttemptObservation(supervisor: WorkerAttemptSupervisor, token: WorkerAttemptObservation): WorkerAttemptObservationDescription {
+    const value = observations.get(token);
+    if (!value || value.issuer !== supervisor || !value.active || value.consumed) throw new Error('Unissued or expired attempt observation');
+    value.consumed = true; return value.description;
 }
 /** Read-only description of an actually issued same-supervisor end. JSON copies cannot reissue it. */
 export function describeWorkerAttemptEnd(supervisor: WorkerAttemptSupervisor, evidence: AcceptedWorkerAttemptEnd): WorkerAttemptEndDescription {

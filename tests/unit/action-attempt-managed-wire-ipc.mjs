@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import cluster from 'node:cluster';
 import {createHash} from 'node:crypto';
-import {readFileSync, rmSync, statSync} from 'node:fs';
+import {readFileSync, rmSync, statSync, appendFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {basename, dirname, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -17,7 +17,13 @@ import {persistRestartSnapshot, restartDirectory} from './action-attempt-restart
 
 const mode = process.argv[2] ?? 'main';
 const missingHeaderAccounting = process.argv.includes('--shadow-missing-headers');
-const accountingEnabled = process.argv.includes('--shadow-accounting') || missingHeaderAccounting;
+const receiptBridgeEnabled = process.argv.includes('--receipt-bridge');
+const receiptRegistrationHolds = process.argv.includes('--receipt-registration-holds');
+const lateReceipt = process.argv.includes('--receipt-late-capture') ? 'capture'
+    : process.argv.includes('--receipt-late-binding') ? 'binding' : undefined;
+const receiptWorkerUnavailable = process.argv.includes('--receipt-worker-unavailable');
+const unavailableReceipt = !!lateReceipt || receiptWorkerUnavailable;
+const accountingEnabled = process.argv.includes('--shadow-accounting') || missingHeaderAccounting || receiptBridgeEnabled;
 const shadowTransition = process.argv.includes('--shadow-transition') || accountingEnabled;
 assert(!shadowTransition || ['handoff-held-confirm', 'handoff-late-source-manifest', 'handoff-unknown-association'].includes(mode));
 assert(!accountingEnabled || mode === 'handoff-held-confirm');
@@ -60,7 +66,9 @@ cluster.setupPrimary({exec: fileURLToPath(new URL('./action-attempt-disposition-
         : mode === 'ds' ? 'managed-original-ds'
         : mode === 'contract' ? 'managed-original-contract' : 'managed-original-' + mode],
     silent: true});
-const ends = [], supervisor = new WorkerAttemptSupervisor({onEnd: end => ends.push(end)});
+let receiptEnrollment;
+const ends = [], supervisor = new WorkerAttemptSupervisor({onEnd: end => ends.push(end),
+    ...(receiptBridgeEnabled ? {onObservation: token => {receiptEnrollment?.observe(token);}} : {})});
 let shadow;
 if (accountingEnabled) {
     const {ActionProofDemandShadow} = await import('../../build/indexer/history/action-proof-demand.js');
@@ -86,21 +94,49 @@ if (accountingEnabled) {
         assert.equal(rejected.resolvedDemands, before.resolvedDemands);
         assert.equal(rejected.knownPendingBytes, before.knownPendingBytes);
         state.accounting.observe(token);
+        const consumed = state.accounting.snapshot();
         state.accounting.observe(token);
-        assert.equal(state.accounting.snapshot().rejectedTransitions, rejected.rejectedTransitions + 1,
+        assert.equal(state.accounting.snapshot().rejectedTransitions, consumed.rejectedTransitions + 1,
             'transition cannot be consumed twice');
     }});
     state.adjudicator = adjudicator;
     state.accounting = new ActionProofDemandShadow(adjudicator, {maximumDemands: 8, maximumBytes: 1024 * 1024});
     shadow = state;
+    if (receiptBridgeEnabled) {
+        const {ActionProofDemandEnrollment} = await import('../../build/indexer/history/action-proof-demand-enrollment.js');
+        receiptEnrollment = new ActionProofDemandEnrollment(supervisor, state.accounting);
+    }
 }
-const child = cluster.fork(accountingEnabled ? {HYPERION_PROOF_DEMAND_SHADOW_TEST: '1'} : {}), messages = [];
-let stderr = '', stdout = '', exited = false, exitCode, snapshotPath;
+const child = cluster.fork(receiptBridgeEnabled ? {HYPERION_PROOF_DEMAND_RECEIPT_TEST: '1',
+    ...(receiptWorkerUnavailable ? {HYPERION_PROOF_DEMAND_RECEIPT_UNAVAILABLE_TEST: '1'} : {})}
+    : accountingEnabled ? {HYPERION_PROOF_DEMAND_SHADOW_TEST: '1'} : {}), messages = [];
+let stderr = '', stdout = '', exited = false, exitCode, exitSignal, snapshotPath;
 child.process.stderr.on('data', bytes => {stderr += bytes.toString();});
 child.process.stdout.on('data', bytes => {stdout += bytes.toString();});
-child.on('message', message => messages.push(message));
-child.on('exit', code => {exited = true; exitCode = code;});
+child.on('message', message => {
+    messages.push(message);
+    if (receiptBridgeEnabled && message?.event === 'qualification_receipt_observation'
+        && JSON.parse(message.packet).type !== lateReceipt) receiptEnrollment.receive(child, message.packet);
+});
+child.on('exit', (code, signal) => {exited = true; exitCode = code; exitSignal = signal;});
 supervisor.attach(child, role);
+let heldReceiptRegistration, heldReceiptReply, receiptRegistrationReleased = !receiptRegistrationHolds;
+const originalReceiptHandle = supervisor.handle.bind(supervisor), originalReceiptSend = child.send.bind(child);
+if (receiptRegistrationHolds) {
+    supervisor.handle = (worker, message) => {
+        if (!receiptRegistrationReleased && message?.event === 'worker_attempt_request' && message.payload?.operation === 'register') {
+            assert(!heldReceiptRegistration || heldReceiptRegistration.requestId === message.requestId);
+            heldReceiptRegistration = message; return true;
+        }
+        return originalReceiptHandle(worker, message);
+    };
+    child.send = (message, ...args) => {
+        if (message?.event === 'worker_attempt_reply' && message.result?.descriptorSha256 && !heldReceiptReply) {
+            heldReceiptReply = {message, args}; return true;
+        }
+        return originalReceiptSend(message, ...args);
+    };
+}
 
 function waitFor(predicate, label, timeout = 30_000) {
     if (predicate()) return Promise.resolve();
@@ -145,10 +181,44 @@ async function unrelatedWorkerProgress(supervisor, ends) {
 }
 
 try {
+    if (receiptBridgeEnabled) {
+        await waitFor(() => messages.some(message => message?.event === 'qualification_receipt_queued') || exited,
+            'original native consume callback queues its input before DS entry').catch(error => {
+                error.message += ' ' + JSON.stringify({exited, exitCode, exitSignal, childPid: child.process.pid,
+                    stdout: stdout.slice(-8000), stderr: stderr.slice(-8000)}); throw error;
+            });
+        assert.equal(exited, false, stderr);
+        const queued = messages.find(message => message.event === 'qualification_receipt_queued');
+        assert.equal(queued.queued, 1); assert.equal(queued.running, 0); assert.equal(queued.originalAckCount, 0);
+        assert.equal(messages.some(message => message.event === 'worker_attempt_request' && message.payload?.operation === 'bind'), false);
+        if (!receiptWorkerUnavailable) assert(messages.some(message => message.event === 'qualification_receipt_observation' && JSON.parse(message.packet).type === 'capture'),
+            'the original consume callback must automatically capture the queued receipt');
+        else {assert.equal(queued.observer.failures, 1); assert.equal(queued.observer.knownCapturedPayloadBytes, 1369);
+            assert(queued.observer.reservedEncodedCopyBytes > 0);}
+        if (receiptRegistrationHolds) {
+            await waitFor(() => heldReceiptRegistration, 'original DS registration request held before supervisor entry');
+            assert.equal(supervisor.snapshot().active, 0);
+            assert.equal(receiptEnrollment.snapshot().receipts[0].owner, null);
+            assert.equal(receiptEnrollment.snapshot().receipts[0].phase, 'receipt-process-custody');
+            receiptRegistrationReleased = true; originalReceiptHandle(child, heldReceiptRegistration);
+            assert(heldReceiptReply); assert.equal(supervisor.snapshot().active, 1);
+            assert(receiptEnrollment.snapshot().receipts[0].owner);
+            assert.equal(receiptEnrollment.snapshot().receipts[0].sourceClaim, null);
+            originalReceiptSend(heldReceiptReply.message, ...heldReceiptReply.args);
+        }
+        if (receiptWorkerUnavailable) await waitFor(() => receiptEnrollment.snapshot().receipts.length === 1, 'original registration owns unknown diagnostic input');
+        const before = receiptEnrollment.snapshot();
+        assert.equal(before.receipts.length, 1); assert.equal(before.receipts[0].payloadBytes, lateReceipt === 'capture' || receiptWorkerUnavailable ? null : 1369);
+        assert.equal(before.receipts[0].sourceClaim, null); assert.equal(before.receipts[0].enrolled, false);
+        assert.equal(before.accounting.retainedDemands, 0); assert.equal(before.canonicalAuthority, false);
+        assert.equal(before.coverage, 'incomplete'); assert.equal(before.receiptCustodyCount, 1);
+        assert.equal(before.semanticCustodyKnownBytesLowerBound > 1369, lateReceipt !== 'capture' && !receiptWorkerUnavailable);
+        child.send({event: 'qualification_release_receipt'});
+    }
     if (mode === 'main-failed-end') {
         await waitFor(() => messages.some(message => message?.event === 'qualification_end_failed') || exited,
             'original Wire callback durable result and ACK with failed original end sends');
-        assert.equal(exited, false, JSON.stringify({exitCode, stderr: stderr.slice(-4000)}));
+        assert.equal(exited, false, JSON.stringify({exitCode, stderr: stderr.slice(-4000), stdout: stdout.slice(-4000)}));
         const failed = messages.find(message => message.event === 'qualification_end_failed');
         assert.deepEqual({originalAckCount: failed.originalAckCount, retainedAttemptRecords: failed.retainedAttemptRecords,
             failedEndSends: failed.failedEndSends}, {originalAckCount: 1, retainedAttemptRecords: 1, failedEndSends: 3});
@@ -289,7 +359,7 @@ try {
         const event = mode === 'handoff-held-confirm' ? 'qualification_confirm_held' : 'qualification_drain_held';
         await waitFor(() => messages.some(message => message?.event === event) || exited,
             `original Wire DS ${mode} publisher hold`);
-        assert.equal(exited, false, JSON.stringify({exitCode, stderr: stderr.slice(-4000)}));
+        assert.equal(exited, false, JSON.stringify({exitCode, stderr: stderr.slice(-4000), stdout: stdout.slice(-4000)}));
         const held = messages.find(message => message.event === event);
         assert.equal(held.originalAckCount, 0);
         assert.equal(held.retainedHandoffs, 0);
@@ -300,7 +370,7 @@ try {
             && ['observe','end'].includes(message.payload?.operation)), false);
         assert.equal(messages.some(message => message.event === 'qualification_ack'), false);
         assert.equal(ends.length, 0);
-        if (shadow) {
+        if (shadow && !receiptBridgeEnabled) {
             const input = messages.find(message => message.event === 'qualification_shadow_input');
             assert(input, 'accounting observes the same original dispatch before the held return');
             const registration = messages.find(message => message.event === 'worker_attempt_request'
@@ -314,6 +384,12 @@ try {
             assert.equal(shadow.before.pendingDemands, 1);
             assert.equal(shadow.before.resolvedDemands, 0);
             assert.equal(verifiedTransitions.length, 0);
+        }
+        if (receiptBridgeEnabled) {
+            shadow.before = shadow.accounting.snapshot();
+            assert.equal(shadow.before.pendingDemands, unavailableReceipt ? 0 : 1); assert.equal(shadow.before.resolvedDemands, 0);
+            assert.equal(receiptEnrollment.snapshot().receipts[0].phase, unavailableReceipt ? 'registered-custody' : 'child-binding-observed');
+            assert.equal(receiptEnrollment.snapshot().canonicalAuthority, false);
         }
         child.send({event: mode === 'handoff-held-confirm' ? 'qualification_release_confirm' : 'qualification_release_drain'});
     }
@@ -592,14 +668,22 @@ try {
             assert.equal(shadow.after.pendingDemands, missingHeaderAccounting ? 1 : 0, JSON.stringify({before: shadow.before, after: shadow.after,
                 originalOwner: {epoch: end.epoch, incarnation: end.incarnation, attemptId: end.attemptId},
                 originalHeadersSha256: end.descriptor.headersSha256}));
-            assert.equal(shadow.after.resolvedDemands, missingHeaderAccounting ? 0 : 1);
+            assert.equal(shadow.after.resolvedDemands, missingHeaderAccounting || unavailableReceipt ? 0 : 1);
             assert.equal(shadow.after.knownPendingBytes, missingHeaderAccounting ? 1369 : 0);
             assert.equal(shadow.after.unknownPendingHeaders, missingHeaderAccounting ? 1 : 0);
             const rejected = shadow.after.rejectedTransitions;
             shadow.accounting.observe(verifiedTransitions[0]);
             assert.equal(shadow.accounting.snapshot().rejectedTransitions, rejected + 1,
                 'callback-expired transition is unusable');
-            assert.equal(shadow.accounting.snapshot().resolvedDemands, missingHeaderAccounting ? 0 : 1);
+            assert.equal(shadow.accounting.snapshot().resolvedDemands, missingHeaderAccounting || unavailableReceipt ? 0 : 1);
+            if (lateReceipt) {
+                const packet = messages.find(message => message.event === 'qualification_receipt_observation' && JSON.parse(message.packet).type === lateReceipt).packet;
+                receiptEnrollment.receive(child, packet);
+                const late = receiptEnrollment.snapshot();
+                assert.equal(late.late, 1); assert.equal(late.coverage, 'incomplete'); assert.equal(late.receipts[0].unavailable, true);
+                assert(late.semanticCustodyKnownBytesLowerBound > 1369);
+                assert.equal(late.accounting.retainedDemands, 0); assert.equal(late.accounting.resolvedDemands, 0);
+            }
         }
     }
     if (recovery?.retainedRecordInspectionOnly) {
@@ -636,6 +720,8 @@ try {
         ...(shadowTransition ? {shadowTransition: true, verifiedDsTransitionCallbacks: verifiedTransitions.length} : {}),
         ...(shadow ? {shadowAccounting: true, missingHeaderAccounting,
             accountingBefore: shadow.before, accountingAfter: shadow.after} : {}),
+        ...(receiptBridgeEnabled ? {receiptBridge: true, receiptRegistrationHolds, lateReceipt: lateReceipt ?? null,
+            receiptWorkerUnavailable, receiptEnrollment: receiptEnrollment.snapshot()} : {}),
         ...recovery,
         classification: observation.results[0].classification,
         controlledStorageAndCanonicalAuthority: true, brokerSettlement: observation.brokerSettlement,
@@ -647,6 +733,10 @@ try {
         try {child.process.kill();} catch {}
         await waitFor(() => exited, `owned Wire ${mode} failure cleanup`, 5000).catch(() => {});
     }
+    if (process.env.HYPERION_PROOF_DEMAND_EVIDENCE_DIR) appendFileSync(resolve(process.env.HYPERION_PROOF_DEMAND_EVIDENCE_DIR,
+        'native-child-cleanup.jsonl'), JSON.stringify({mode, flags: process.argv.slice(3), native: process.version,
+            parentPid: process.pid, childPid: child.process.pid, exited, exitCode: exitCode ?? null, exitSignal: exitSignal ?? null,
+            stdout, stderr, eventTypes: messages.map(message => message.event)}) + '\n');
     if (snapshotPath) {
         const owned = resolve(snapshotPath);
         assert.equal(dirname(owned), resolve(tmpdir()));

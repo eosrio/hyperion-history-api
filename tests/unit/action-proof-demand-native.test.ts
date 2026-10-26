@@ -1,5 +1,7 @@
 import {expect, test} from 'bun:test';
 import {fileURLToPath} from 'node:url';
+import {appendFileSync} from 'node:fs';
+import {resolve} from 'node:path';
 
 async function runOriginalWireNativeCase(mode: string, ...flags: string[]) {
     const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node',
@@ -7,6 +9,9 @@ async function runOriginalWireNativeCase(mode: string, ...flags: string[]) {
     {stdout: 'pipe', stderr: 'pipe', timeout: 40_000});
     const [code, stdout, stderr] = await Promise.all([child.exited,
         new Response(child.stdout).text(), new Response(child.stderr).text()]);
+    if (process.env.HYPERION_PROOF_DEMAND_EVIDENCE_DIR) appendFileSync(resolve(process.env.HYPERION_PROOF_DEMAND_EVIDENCE_DIR,
+        'native-case-results.jsonl'), JSON.stringify({mode, flags, pid: child.pid,
+            runtimeRequested: process.env.HYPERION_NATIVE_NODE ?? 'node', code, stdout, stderr}) + '\n');
     expect({code, stderr, stdout: stdout.slice(-8000)}).toMatchObject({code: 0, stderr: ''});
     return JSON.parse(stdout.trim().split('\n').at(-1)!);
 }
@@ -17,6 +22,13 @@ test('the same held original Wire DS input yields one verified accounting transi
         mode: 'handoff-held-confirm', shadowTransition: true, managedParentEnd: true,
         heldPublishBeforeObservation: true, writeBeforeAckBeforeEnd: true,
         verifiedDsTransitionCallbacks: 1, classification: 'confirmed-handoff',
+        brokerSettlement: 'unknown', fullWorkerQualification: false});
+}, 45_000);
+
+for (const flag of ['', '--receipt-registration-holds', '--receipt-late-capture', '--receipt-late-binding', '--receipt-worker-unavailable'])
+test(`the original native consume callback automatically enrolls custody before DS cargo entry ${flag}`, async () => {
+    const result = await runOriginalWireNativeCase('handoff-held-confirm', '--receipt-bridge', ...(flag ? [flag] : []));
+    expect(result).toMatchObject({passed: true, receiptBridge: true, originalAckCount: 1,
         brokerSettlement: 'unknown', fullWorkerQualification: false});
 }, 45_000);
 

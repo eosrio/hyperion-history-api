@@ -24,6 +24,7 @@ import {ActionSourceAdmissionStore} from '../history/action-source-admission.js'
 import {publishAdmittedAction, bindActionPublicationOwnerToScope, type ActionPublicationOwner} from '../history/action-confirmed-publication.js';
 import {createHash, randomUUID} from 'node:crypto';
 import {serialize} from 'node:v8';
+import {WorkerProofDemandObserver} from '../history/action-proof-demand-enrollment.js';
 import type {Message} from 'amqplib';
 import {actionHistoryImmutableJson} from '../history/action-history-manifest.js';
 import {WorkerAttemptClient, createControlledLocalAttemptClient, type WorkerAttempt} from '../protocol/worker-attempt-client.js';
@@ -118,7 +119,13 @@ export abstract class HyperionWorker {
     private actionAdmissionStore?: ActionSourceAdmissionStore;
     private readonly actionAdmissionOwners = new WeakMap<object, Channel>();
     protected workerAttemptClient?: WorkerAttemptClient;
-    private workerAttemptDeliveries?: WeakMap<object, {handle: WorkerAttempt; payloadSha256: string; headersSha256: string | null; consumer: Channel}>;
+    private workerAttemptDeliveries?: WeakMap<object, {handle: WorkerAttempt; receiptId: string; payloadSha256: string; headersSha256: string | null; consumer: Channel}>;
+    private proofDemandObserver?: WorkerProofDemandObserver;
+    /** Explicit internal engineering injection; ordinary workers do not enroll diagnostics. */
+    configureProofDemandObserver(observer: WorkerProofDemandObserver): void {
+        if (this.workerAttemptDeliveries || !(observer instanceof WorkerProofDemandObserver)) throw new Error('Observer must be installed before physical receipt');
+        this.proofDemandObserver = observer;
+    }
     private workerAttemptChannels?: WeakMap<object, string>;
     private workerAttemptChannelListeners?: WeakSet<object>;
 
@@ -156,11 +163,27 @@ export abstract class HyperionWorker {
         const payloadSha256 = createHash('sha256').update(message.content).digest('hex');
         let headersSha256: string | null;
         try {headersSha256 = workerAttemptHeadersSha256(message.properties?.headers ?? {});} catch {headersSha256 = null;}
-        const handle = this.attemptClient().capture({kind, receiptId: randomUUID(), payloadSha256, headersSha256,
+        const receiptId = randomUUID();
+        const handle = this.attemptClient().capture({kind, receiptId, payloadSha256, headersSha256,
             consumerId: this.attemptChannelId(channel), publisherId: this.attemptChannelId(this.cch),
             queue: typeof process.env.worker_queue === 'string' ? process.env.worker_queue : null,
             deliveryTag: Number.isSafeInteger(message.fields?.deliveryTag) ? message.fields.deliveryTag : null});
-        this.workerAttemptDeliveries.set(message, {handle, payloadSha256, headersSha256, consumer: channel});
+        this.workerAttemptDeliveries.set(message, {handle, receiptId, payloadSha256, headersSha256, consumer: channel});
+        if (kind === 'ds-delivery' && this.proofDemandObserver) try {
+            const content = Object.getOwnPropertyDescriptor(message, 'content')?.value;
+            const properties = Object.getOwnPropertyDescriptor(message, 'properties')?.value;
+            const headers = properties && Object.getOwnPropertyDescriptor(properties, 'headers')?.value;
+            this.proofDemandObserver.capture(receiptId, content, headers);
+        } catch {}
+    }
+    protected observeProofDemandBinding(message: Message, admission: {source: {inventoryInput: {source: any; sourceSelectionId?: string}; previousBlockId: string | null}; id: string}, traceOrdinal: number): void {
+        try {
+            const receipt = this.workerAttemptDeliveries?.get(message); if (!receipt) return;
+            const source = admission.source.inventoryInput.source;
+            this.proofDemandObserver?.bound(receipt.receiptId, {admissionId: admission.id, traceOrdinal,
+                source: {chainId: source.chainId, blockNum: source.blockNum, blockId: source.blockId,
+                    previousBlockId: admission.source.previousBlockId, selectionId: admission.source.inventoryInput.sourceSelectionId ?? null}});
+        } catch {}
     }
     async runWorkerAttemptDelivery<T>(message: Message, operation: () => T | Promise<T>): Promise<T> {
         if (!this.tracksWorkerAttempts) return operation();
