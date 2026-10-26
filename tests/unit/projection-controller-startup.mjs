@@ -16,9 +16,10 @@ import {installProjectionDiagnostics} from '../../scripts/qualification/portable
 
 const stage = process.argv[2] ?? 'frame-read';
 assert.ok(['connect', 'initialize', 'initialize-retained', 'initialize-error', 'initialize-foreign', 'initialize-mutating',
-    'frame-read', 'frame-control', 'diagnostic-failure', 'bounded'].includes(stage));
+    'frame-read', 'frame-register', 'frame-reply', 'frame-control', 'diagnostic-failure', 'bounded'].includes(stage));
+const preEntry = ['frame-register', 'frame-reply'].includes(stage);
 const heldStage = stage.startsWith('initialize') ? 'initialize' : stage === 'connect' ? 'connect' : 'frame-read';
-const fatal = ['initialize-error', 'initialize-foreign', 'frame-read', 'diagnostic-failure', 'bounded'].includes(stage);
+const fatal = ['initialize-error', 'initialize-foreign', 'frame-read', 'frame-register', 'frame-reply', 'diagnostic-failure', 'bounded'].includes(stage);
 const gate = () => {let release; const promise = new Promise(yes => {release = yes;}); return {promise, release};};
 const until = async (test, message) => {
     const end = performance.now() + 5000;
@@ -110,6 +111,15 @@ if (cluster.isWorker && process.env.worker_role === 'continuous_reader') {
         manager: {conn: {mongodb: {}}, mongodbClient: mongo}, stopped: false, profiler: {stopReporting() {}}});
     const attempts = new WorkerAttemptClient({mode: 'managed', role: 'projection', transport: process,
         timeoutMs: 500, drainTimeoutMs: 1000, retries: 0});
+    if (preEntry) {
+        const activeFence = attempts.fenceActiveAttempts;
+        attempts.fenceActiveAttempts = function(...args) {
+            const result = activeFence.apply(this, args);
+            send({event: 'fixture_fenced_pre_entry', scopes: [...this.scopes.values()].map(value => ({
+                attemptId: value.id, kind: value.descriptor.kind, scope: value.scope.snapshot()}))});
+            return result;
+        };
+    }
     const diagnostics = installProjectionDiagnostics({WorkerClient: WorkerAttemptClient, maximumAttempts: stage === 'bounded' ? 1 : 8,
         record: (event, value) => {
         if (stage === 'diagnostic-failure') throw new Error('Controlled diagnostic sink failure');
@@ -120,10 +130,13 @@ if (cluster.isWorker && process.env.worker_role === 'continuous_reader') {
     process.once('exit', () => send({event: 'fixture_diagnostic_metrics', metrics: diagnostics.snapshot()}));
     const originalRun = attempts.run.bind(attempts);
     attempts.run = async (handle, operation) => {
-        try {return await originalRun(handle, operation);}
+        let operationEntered = false;
+        const runOperation = preEntry ? function(...args) {operationEntered = true; return operation.apply(this, args);} : operation;
+        try {return await originalRun(handle, runOperation);}
         catch (error) {
             send({event: 'fixture_failure', original: attempts.describe(handle), name: error?.name, code: error?.code,
-                stack: error?.stack, connectionCalls, diagnosticMetrics: diagnostics.snapshot()}); throw error;
+                stack: error?.stack, connectionCalls, diagnosticMetrics: diagnostics.snapshot(),
+                ...(preEntry ? {operationEntered, originalScopeFence: attempts.attempts.get(handle).scope.ownsFenceError(error)} : {})}); throw error;
         }
     };
     worker.configureWorkerAttemptLifecycle(attempts);
@@ -166,16 +179,52 @@ if (cluster.isWorker && process.env.worker_role === 'continuous_reader') {
             Master: HyperionMaster, record: (diagnostic, value) => {
                 assert.ok(messages.length < 256); messages.push({event: 'fixture_diagnostic', diagnostic, ...value});
             }});
+        let heldRequest, heldReply, releaseOriginalFrame;
+        if (preEntry) {
+            const originalHandle = supervisor.handle, originalSend = projection.child.send;
+            supervisor.handle = function(worker, message) {
+                if (worker === projection.child && message?.event === 'worker_attempt_request'
+                    && message.payload?.operation === 'register' && message.payload.descriptor?.kind === 'projection-frame' && !heldRequest) {
+                    heldRequest = {worker, message};
+                    if (stage === 'frame-register') return true;
+                }
+                return originalHandle.call(this, worker, message);
+            };
+            projection.child.send = function(...args) {
+                const message = args[0];
+                if (stage === 'frame-reply' && message?.event === 'worker_attempt_reply'
+                    && message.requestId === heldRequest?.message.requestId && !heldReply) {
+                    assert.equal(message.result.ok, true);
+                    heldReply = {args, message}; return true;
+                }
+                return originalSend.apply(this, args);
+            };
+            releaseOriginalFrame = () => stage === 'frame-register'
+                ? originalHandle.call(supervisor, heldRequest.worker, heldRequest.message)
+                : originalSend.apply(projection.child, heldReply.args);
+        }
         supervisor.attach(projection.child, 'projection');
-        await until(() => messages.some(value => value.event === 'fixture_held') && messages.some(value => value.event === 'fixture_reader_ready'), 'real controller reaches held setup/source read');
-        const held = messages.find(value => value.event === 'fixture_held');
+        await until(() => (preEntry ? stage === 'frame-register' ? !!heldRequest : !!heldReply : messages.some(value => value.event === 'fixture_held'))
+            && messages.some(value => value.event === 'fixture_reader_ready'), 'real controller reaches held setup/source/registration boundary');
+        const held = preEntry ? {stage, requestId: heldRequest.message.requestId, attemptId: heldRequest.message.payload.attemptId}
+            : messages.find(value => value.event === 'fixture_held');
         const before = supervisor.snapshot();
+        if (preEntry) assert.equal(before.active, stage === 'frame-register' ? 0 : 1);
         if (stage !== 'frame-control') {
             reader.child.send({event: 'fixture_open_source'});
-            await until(() => messages.some(value => value.event === 'fixture_fenced') && messages.some(value => value.event === 'fixture_source_opened'), 'original source-open bridge fences the held physical scope');
+            await until(() => messages.some(value => value.event === (preEntry ? 'fixture_fenced_pre_entry' : 'fixture_fenced'))
+                && messages.some(value => value.event === 'fixture_source_opened'), 'original source-open bridge fences the held physical scope');
         }
         assert.equal(ends.length, heldStage === 'frame-read' ? 1 : 0, 'no end for the still-held original operation');
-        projection.child.send({event: 'fixture_release'});
+        if (preEntry) {
+            const fenced = messages.find(value => value.event === 'fixture_fenced_pre_entry');
+            assert.equal(fenced.scopes.length, 1);
+            assert.equal(fenced.scopes[0].attemptId, held.attemptId);
+            assert.equal(fenced.scopes[0].scope.state, 'fenced');
+            assert.equal(fenced.scopes[0].scope.pendingOperations, 0);
+            assert.equal(messages.some(value => ['recovery', 'frame-read', 'settings'].includes(value.kind)), false);
+            releaseOriginalFrame();
+        } else projection.child.send({event: 'fixture_release'});
         if (stage === 'initialize-retained') {
             await until(() => messages.some(value => value.diagnostic === 'projection_root_threw'), 'root fails while actual retained setup remains pending');
             await delay(20);
@@ -205,7 +254,20 @@ if (cluster.isWorker && process.env.worker_role === 'continuous_reader') {
         assert.equal(new Set(ends.map(value => value.attemptId)).size, ends.length);
         if (heldStage === 'frame-read') {
             assert.equal(ends[0].descriptor.kind, 'projection-initialization'); assert.equal(ends[0].rootResult, 'returned');
-            if (fatal) assert.match(failure.stack, /at operation .*projection\/controller\.js:\d+:\d+/);
+            if (fatal && !preEntry) assert.match(failure.stack, /at operation .*projection\/controller\.js:\d+:\d+/);
+        }
+        if (preEntry) {
+            assert.equal(ends.length, 2);
+            assert.equal(ends[1].attemptId, held.attemptId);
+            assert.deepEqual(ends[1].binding, {});
+            assert.equal(failure.operationEntered, false);
+            assert.equal(failure.originalScopeFence, true);
+            assert.equal(failure.name, 'ProofConsumerFencedError');
+            assert.match(failure.stack, /WorkerAttemptClient\.run/);
+            assert.equal(messages.some(value => ['recovery', 'frame-read', 'settings'].includes(value.kind)), false);
+            assert.equal(diagnostics.some(value => value.diagnostic === 'projection_initialization_retry'), false);
+            assert.equal(diagnostics.some(value => value.diagnostic.startsWith('projection_root_')
+                && value.attempt.descriptor.kind === 'projection-frame'), false);
         }
         if (!fatal && stage !== 'frame-control') {
             assert.equal(ends.length, 3); assert.equal(ends[0].rootResult, 'threw');
@@ -215,11 +277,13 @@ if (cluster.isWorker && process.env.worker_role === 'continuous_reader') {
             const observedFailures = diagnostics.filter(value => value.diagnostic === 'projection_attempt_threw');
             assert.equal(observedFailures.length, stage === 'frame-control' ? 0 : 1);
             if (fatal) assert.equal(observedFailures[0].attempt.attemptId, failure.original.attemptId);
-            assert.ok(observedFailures.every(value => value.scope.state === 'drained' && value.scope.pendingOperations === 0));
+            assert.ok(observedFailures.every(value => (preEntry ? value.attempt.scope : value.scope).state === 'drained'
+                && (preEntry ? value.attempt.scope : value.scope).pendingOperations === 0));
             assert.ok(observedFailures.every(value => value.lifecycle.activeFence === true && value.lifecycle.stopped === false
                 && value.lifecycle.parentEpoch === value.attempt.masterEnd.epoch
                 && value.lifecycle.parentIncarnation === value.attempt.masterEnd.incarnation));
-            if (stage === 'initialize-error' || stage === 'initialize-foreign') assert.equal(observedFailures[0].originalScopeFence, false);
+            if (preEntry) assert.equal(observedFailures[0].scope, undefined);
+            if (stage === 'initialize-error' || stage === 'initialize-foreign' || preEntry) assert.equal(observedFailures[0].originalScopeFence, false);
             else if (stage !== 'frame-control') assert.equal(observedFailures[0].originalScopeFence, true);
             assert.equal(parentDiagnostics.snapshot().reportFailures, 0);
         }
@@ -232,6 +296,8 @@ if (cluster.isWorker && process.env.worker_role === 'continuous_reader') {
         console.log(JSON.stringify({passed: true, stage, native: process.version, projectionExit: projection.code,
             originalControllerAndSource: true, originalSourceOpenBridge: stage !== 'frame-control',
             originalInitializationRetried: !fatal && stage !== 'frame-control', fencedFrameExitObserved: fatal && heldStage === 'frame-read',
+            ...(preEntry ? {frameOperationEntered: failure.operationEntered, parentActiveAtFence: before.active,
+                authenticFrameEndObserved: ends[1].attemptId === held.attemptId} : {}),
             noPostFenceEffects: true, controlledStorageAndCanonicalAuthority: true, fullWorkerQualification: false}));
     } finally {
         for (const state of children) if (!state.exited && state.child.isConnected()) state.child.send({event: 'fixture_finish'});
