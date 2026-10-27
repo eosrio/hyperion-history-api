@@ -139,7 +139,7 @@ export async function runContextualProjectionQualification({uri, run, replicaSet
         await assert.rejects(adapter.apply({...request, revision: b.view.revision}), errorCode('projection.stale-revision'));
         await assert.rejects(adapter.query(b.view, all), errorCode('projection.stale-revision'));
         const retained = await adapter.retainedCheckpoints({binding, revision: appliedC.view.revision});
-        assert.deepEqual(JSON.parse(JSON.stringify(retained.checkpoints)), [appliedC.view.checkpoint, genesis]);
+        assert.deepEqual(JSON.parse(JSON.stringify(retained.checkpoints)), [{blockNum: 1, blockId: hex(100)}, genesis]);
         check('bounded undo restores every pre-block image, removes A, inserts replacement C with new context and fences ABA/old operations', {revision: empty.revision});
         const absent = frame(2, 'absent', 4000); absent.block.previousBlockId = c.block.blockId;
         absent.changes[0].present = false; delete absent.changes[0].value;
