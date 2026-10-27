@@ -20,6 +20,8 @@ import {installWorkerRejectionDiagnostics} from './worker-rejection-diagnostics.
 import DSPool from '../../build/indexer/workers/ds-pool.js';
 import StateReader from '../../build/indexer/workers/state-reader.js';
 import ProjectionWorker from '../../build/indexer/workers/projection.js';
+import {createWireBacklogCapture, installWireBacklogCapture, writeWireBacklogCapture} from './wire-backlog-capture.mjs';
+import {currentProofConsumerScope} from '../../build/indexer/protocol/proof-consumer-scope.js';
 
 assert.equal(process.env.HYPERION_PORTABLE_NATIVE_QUALIFICATION, '1');
 const chain = process.env.CHAIN_NAME;
@@ -47,6 +49,7 @@ const proofMetrics = installProofMetrics({ProofReader: ProtocolAbiProofReader, B
     Connection: UndiciConnection, record});
 const stageTimings = process.env.HYPERION_PORTABLE_NATIVE_STAGE_TIMING === '1'
     ? (await import('./portable-native-stage-timing.mjs')).installNativeWorkerStageTimings({enabled: true}) : undefined;
+let backlogCapture;
 const projectionDiagnostics = cluster.isPrimary || process.env.worker_role === 'projection'
     ? installProjectionDiagnostics({WorkerClient: WorkerAttemptClient, Supervisor: WorkerAttemptSupervisor,
         Master: cluster.isPrimary ? (await import('../../build/indexer/modules/master.js')).HyperionMaster : undefined, record})
@@ -56,6 +59,16 @@ const rejectionDiagnostics = installWorkerRejectionDiagnostics({Pool: DSPool, Re
     Master: cluster.isPrimary ? (await import('../../build/indexer/modules/master.js')).HyperionMaster : undefined,
     Supervisor: cluster.isPrimary ? WorkerAttemptSupervisor : undefined, cluster, record});
 process.once('exit', () => {
+    if (backlogCapture) {
+        const started = process.hrtime.bigint();
+        try {
+            const receipt = writeWireBacklogCapture(backlogCapture, join(directory, `backlog-${process.pid}.json`));
+            record('backlog_capture_written', {...receipt, elapsedNs: (process.hrtime.bigint() - started).toString()});
+            if (receipt.omitted || receipt.failures) process.exitCode = 1;
+        } catch (error) {
+            record('backlog_capture_failed', {message: String(error).slice(0, 512), restorable: false}); process.exitCode = 1;
+        }
+    }
     // Snapshot excludes this summary row and the following exit row's own writes/syncs.
     record('observer_metrics', {coverage: 'before-this-row', io: observerIo.snapshot(), proofs: proofMetrics.snapshot(),
         projectionDiagnostics: projectionDiagnostics?.snapshot(), rejectionDiagnostics: rejectionDiagnostics.snapshot(),
@@ -151,3 +164,20 @@ HyperionWorker.prototype.captureActionAdmissionDelivery = function (message, cha
     }
     return result;
 };
+
+// Explicit diagnostic opt-in only. Existing environment sanitization prevents ambient activation.
+if (process.env.ES198_WIRE_BACKLOG_CAPTURE !== undefined) {
+    assert.equal(process.env.ES198_WIRE_BACKLOG_CAPTURE, '1');
+    assert.equal(process.env.ES198_CPU_PROFILE, '0');
+    assert.equal(process.env.HYPERION_PORTABLE_NATIVE_STAGE_TIMING, undefined);
+    const birthTicks = process.platform === 'linux'
+        ? readFileSync('/proc/self/stat', 'utf8').split(') ').at(-1).split(' ')[19] : null;
+    if (birthTicks !== null) assert.match(birthTicks, /^[1-9][0-9]*$/);
+    backlogCapture = createWireBacklogCapture({enabled: true, identity: {chain, chainId: null,
+        sourceAuthority: 'requires-separate-verified-source-snapshot',
+        sourceHead: process.env.ES198_WIRE_BACKLOG_CAPTURE_HEAD, profileId: config.settings.protocol.profileId,
+        configurationSha256: hash(readFileSync(process.env.CONFIG_JSON)), pid: process.pid, parentPid: process.ppid,
+        birthTicks, birthObservation: birthTicks === null ? 'unsupported-platform' : 'proc-stat'}});
+    installWireBacklogCapture({capture: backlogCapture, WorkerHost: HyperionWorker, Reader: StateReader,
+        currentScope: () => currentProofConsumerScope()});
+}
