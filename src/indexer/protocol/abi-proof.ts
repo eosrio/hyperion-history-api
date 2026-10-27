@@ -260,7 +260,7 @@ export class ProtocolAbiProofReader {
             controller.signal.removeEventListener('abort',onAbort);controller.abort();}
         });
     }
-    async revalidate(view:ProtocolAbiProofView,{signal}:ProtocolAbiProofReadOptions={}):Promise<void> {
+    private async revalidateCurrent(view:ProtocolAbiProofView,{signal}:ProtocolAbiProofReadOptions,opening:boolean):Promise<void> {
         return this.consume(view,async()=>{
         signal=proofConsumerSignal(signal);
         const issued=this.issued.get(view);if(!issued)unavailable('invalid_proof','ABI proof view was not issued by this reader');
@@ -268,7 +268,16 @@ export class ProtocolAbiProofReader {
         if(current.ownerId!==prior.ownerId||current.generation!==prior.generation||current.head.blockNum<prior.head.blockNum
             ||(current.head.blockNum===prior.head.blockNum&&json(current.head)!==json(prior.head)))
             unavailable('authority_changed','Canonical ABI authority changed during consumption');
+        if(opening&&current.head.blockNum-issued.commit.source.blockNum>this.maximumAncestry)
+            unavailable('ancestry_unavailable','Requested ABI source is outside verified ancestry');
         });
+    }
+    async revalidate(view:ProtocolAbiProofView,options:ProtocolAbiProofReadOptions={}):Promise<void> {
+        return this.revalidateCurrent(view,options,false);
+    }
+    /** Final NEW worker opening handoff, never adoption of another reader's view or a wider window. */
+    async revalidateOpening(view:ProtocolAbiProofView,options:ProtocolAbiProofReadOptions={}):Promise<void> {
+        return this.revalidateCurrent(view,options,true);
     }
     /** An issued, current proof of native empty application state supplies the actual 0 -> 1 frame. */
     async nativeGenesisFrame(view:ProtocolAbiProofView,options:ProtocolAbiProofReadOptions={}):Promise<ProjectionFrame> {

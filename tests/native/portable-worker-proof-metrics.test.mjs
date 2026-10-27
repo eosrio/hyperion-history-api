@@ -76,6 +76,7 @@ async function fixture(run, {compressed = false, retry = false} = {}) {
             const [index, route, key] = segments;
             let body, statusCode = 200;
             if (retry && requests.length === 0) {statusCode = 503; body = {error: {type: 'unavailable_shards_exception', reason: 'constructed retry'}, status: 503};}
+            else if (route === undefined) body = await memory.client.indices.get({index});
             else if (route === '_mapping') body = await memory.client.indices.getMapping({index});
             else if (route === '_settings') body = await memory.client.indices.getSettings({index});
             else {assert.equal(route, '_doc'); body = await memory.client.get({index, id: key});}
@@ -198,7 +199,7 @@ test('thrown transport errors retain their identity and mark body size unavailab
     } finally {metrics.restore();}
 });
 
-test('actual native preload retains write+fsync and publishes explicitly delimited observer counters', () => {
+for (const stageTiming of [false, true]) test(`actual native preload retains write+fsync and delimited counters; stageTiming=${stageTiming}`, () => {
     const directory = realpathSync(mkdtempSync(join(tmpdir(), 'hyperion-proof-metrics-')));
     try {
         const config = join(directory, 'config.json');
@@ -208,7 +209,8 @@ test('actual native preload retains write+fsync and publishes explicitly delimit
         const preload = new URL('../../scripts/qualification/portable-state-worker-native-observer.mjs', import.meta.url).href;
         const child = spawnSync(process.execPath, ['--import', preload, '--input-type=module', '-e', ''], {timeout: 30000, encoding: 'utf8', cwd: directory,
             env: {...process.env, NODE_OPTIONS: '', HYPERION_PORTABLE_NATIVE_QUALIFICATION: '1', CHAIN_NAME: 'hyp-p191-0123456789ab',
-                CONFIG_JSON: config, ES198_OBSERVER_DIR: directory}});
+                CONFIG_JSON: config, ES198_OBSERVER_DIR: directory,
+                ...(stageTiming ? {HYPERION_PORTABLE_NATIVE_STAGE_TIMING: '1'} : {})}});
         assert.equal(child.status, 0, JSON.stringify({stderr: child.stderr, stdout: child.stdout, error: child.error?.message}));
         assert.equal(child.signal, null);
         const rows = readFileSync(join(directory, `native-${child.pid}.jsonl`), 'utf8').trim().split('\n').map(JSON.parse);
@@ -217,6 +219,10 @@ test('actual native preload retains write+fsync and publishes explicitly delimit
         assert.equal(rows[1].io.writeElapsed.count, 1); assert.equal(rows[1].io.syncElapsed.count, 1);
         assert.equal(rows[1].io.writtenBytes, Buffer.byteLength(JSON.stringify(rows[0]) + '\n'));
         assert.deepEqual(rows[1].proofs, {started: 0, settled: 0, reportFailures: 0});
+        if (stageTiming) {
+            assert.equal(rows[1].stageTimings.enabled, true); assert.equal(rows[1].stageTimings.starts, 0);
+            assert.deepEqual(rows[1].stageTimings.active, []); assert.equal(rows[1].stageTimings.runtime.pid, child.pid);
+        } else assert.equal(rows[1].stageTimings, undefined);
     } finally {
         assert.equal(dirname(directory), realpathSync(tmpdir())); assert.ok(basename(directory).startsWith('hyperion-proof-metrics-'));
         rmSync(directory, {recursive: true, force: true});

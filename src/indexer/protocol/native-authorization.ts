@@ -30,6 +30,15 @@ export interface ProtocolNativeActionReaderOptions {
     readonly store: ProtocolNativeObservationStore;
     readonly proofReader: ProtocolAbiProofReader;
 }
+/** Host-internal worker pairing. Standalone/API construction retains independent issuance. */
+export interface ProtocolNativeWorkerReaders {
+    readonly proofs: ProtocolAbiProofReader;
+    readonly native: ProtocolNativeActionReader;
+    waitForOpen(source: ProtocolAbiProofSource, selectionId: string,
+        options?: ProtocolAbiProofReadOptions & {timeoutMs?: number}): Promise<{
+        readonly view: ProtocolAbiProofView; readonly nativeView: ProtocolNativeActionView;
+    }>;
+}
 export class ProtocolNativeActionUnavailableError extends Error {
     readonly statusCode = 503;
     constructor(readonly code: string, message: string) {super(message); this.name = 'ProtocolNativeActionUnavailableError';}
@@ -101,6 +110,29 @@ export class ProtocolNativeActionReader {
         this.proofs = options.proofReader.asReadOnly();
     }
 
+    /** One fresh canonical opening, followed by the unchanged whole native-source verification.
+     * Only this operation can unpack its own native view into the paired issuer's existing handles.
+     * No view-adoption API, retained-pair lookup or cross-attempt opening cache is exposed.
+     */
+    static forWorker(options: ProtocolNativeActionReaderOptions): ProtocolNativeWorkerReaders {
+        const native = new ProtocolNativeActionReader(options), proofs = native.proofs;
+        return Object.freeze({native, proofs, async waitForOpen(source: ProtocolAbiProofSource, selectionId: string,
+            options: ProtocolAbiProofReadOptions & {timeoutMs?: number} = {}) {
+            const scope = currentProofConsumerScope(true), signal = proofConsumerSignal(options.signal);
+            return trackProofConsumerOperation(async () => {
+                const nativeView = await native.openSelected(source, selectionId, {...options, signal}, true, async proof => {
+                    // Ordinary consumption permits monotone head progress. A NEW joint opening
+                    // still needs the original bound after replay, within the existing eight slots.
+                    await native.read(() => proofs.revalidateOpening(proof, {signal}), signal);
+                    assertProofConsumerCapability(scope); currentProofConsumerScope(true); signal?.throwIfAborted();
+                });
+                assertProofConsumerCapability(scope); currentProofConsumerScope(true); signal?.throwIfAborted();
+                const issued = native.views.get(nativeView)!;
+                return Object.freeze({view: issued.proof, nativeView});
+            }, scope);
+        }});
+    }
+
     private consume<T>(issued: IssuedView | undefined, operation: () => Promise<T>): Promise<T> {
         const scope = issued ? issued.scope : currentProofConsumerScope();
         assertProofConsumerCapability(scope); return trackProofConsumerOperation(operation, scope);
@@ -136,7 +168,7 @@ export class ProtocolNativeActionReader {
 
     private async openSelected(source: ProtocolAbiProofSource, selectionId: string,
                                {signal, timeoutMs}: ProtocolAbiProofReadOptions & {timeoutMs?: number},
-                               wait: boolean): Promise<ProtocolNativeActionView> {
+                               wait: boolean, finishWorkerOpening?: (proof: ProtocolAbiProofView) => Promise<void>): Promise<ProtocolNativeActionView> {
         return this.consume(undefined,async () => {
         signal = proofConsumerSignal(signal);
         signal?.throwIfAborted();
@@ -215,6 +247,7 @@ export class ProtocolNativeActionReader {
             }
             for (const decision of decisions) current.decisions.set(key(decision.origin), decision);
             await this.revalidateIssued(current, {signal});
+            if (finishWorkerOpening) await finishWorkerOpening(proof);
             const handle = Object.freeze({}) as ProtocolNativeActionView;
             this.views.set(handle, current); return handle;
         } finally {this.activeOpens--; signal?.throwIfAborted();}

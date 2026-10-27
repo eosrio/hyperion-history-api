@@ -13,7 +13,7 @@ const isWrite=(call:any)=>['createIndex','create','index'].includes(call.method)
 const gate=()=>{let release!:()=>void;const promise=new Promise<void>(resolve=>{release=resolve;});return {promise,release};};
 function transportSignals(client:any){
     const signals:Array<AbortSignal|undefined>=[];
-    for(const [owner,name] of [[client,'get'],[client.indices,'getMapping'],[client.indices,'getSettings']] as const){
+    for(const [owner,name] of [[client,'get'],[client.indices,'get']] as const){
         const original=owner[name];owner[name]=(request:any,options?:{signal?:AbortSignal})=>{
             signals.push(options?.signal);return original(request,options);
         };
@@ -226,8 +226,8 @@ describe('durable native observations without ABI authority',()=>{
     it('allows independent cold read-only consumers to finish while another cancels during mapping validation',async()=>{
         const f=await fixture(),opening=await f.store.prepare(f.selectionId,f.record),reader=new ProtocolNativeObservationStore(f.client,chain,0,undefined,{readOnly:true});
         const entered=gate(),release=gate(),abort=new AbortController(),healthy=new AbortController(),reason=new Error('Only one read stopped');
-        const original=f.client.indices.getMapping;let held=false;
-        f.client.indices.getMapping=async(request:any,options:any)=>{
+        const original=f.client.indices.get;let held=false;
+        f.client.indices.get=async(request:any,options:any)=>{
             if(!held&&options?.signal===abort.signal){held=true;entered.release();await release.promise;}
             return original(request,options);
         };
