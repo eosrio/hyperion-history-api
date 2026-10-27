@@ -19,6 +19,7 @@ import {validateFixture, assertNodeOwnership} from './es955-replicas.ts';
 import {assertOwnedBinding, assertSuccessfulWorkerShutdown} from './es955-workers.ts';
 import {startBulkLedger, summarizeBulkLedger} from './replay-bulk-ledger.ts';
 import {createPortableHistoryDiagnostics, portableHistoryClock} from './portable-state-history-diagnostics.ts';
+import {createPortableCursorWaitClocks, type PortableCursorWaitTarget} from './portable-cursor-wait-clocks.ts';
 import {auditWorkerRejectionDiagnostics} from './worker-rejection-diagnostics.mjs';
 import {OwnedMongoFixture, MONGODB_VERSION, waitForMongo} from './projection-fixture.mjs';
 import {auditPortableWorkerSource, boundedPortableFile, ordinaryPortablePath, portableSourceHash,
@@ -444,7 +445,8 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
     await mkdir(join(output, 'bulk')); await mkdir(join(output, 'prefixes'));
     if (options.native) await mkdir(join(output, 'history-diagnostics'));
     const reportHandle = await open(join(output, 'report.json'), 'wx');
-    const report: any = {schemaVersion: 1, status: 'running', startedAt: new Date().toISOString(), source: {
+    const cursorWaitClocks = createPortableCursorWaitClocks();
+    const report: any = {schemaVersion: 1, status: 'running', startedAt: new Date().toISOString(), cursorWaitPhases: cursorWaitClocks.evidence, source: {
         chainId: source.chainId, profileId: source.profileId, revision: source.sourceRevision, components: source.components,
         range: {first: 1, last: source.endBlock}, inputHashes: source.inputHashes, originalStatus: source.originalStatus},
         planSha256: portableSourceHash(planBytes), oracleHashes, expectationOrigin: plan.expectationOrigin, stateAbiAvailability,
@@ -493,13 +495,18 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
             phaseBudget: budget && {clock: 'performance.now', deadline: budget.deadline},
             source: source.records[through - 1], replay: replay?.metrics(), queues: lastQueues, recovery: report.lastRecovery}, refresh) : refresh();
     };
-    const wait = async (name: string, condition: () => Promise<void>, milliseconds = 60000, inherited?: PortableNativePhaseBudget) => {
-        const end = Math.min(deadline, performance.now() + milliseconds, inherited?.deadline ?? Infinity); let last: unknown;
-        while (performance.now() < end) {for (const child of [master, api]) if (child) assert.ok(child.exitCode === null && child.signalCode === null, `${name}: actual child exited`);
-            assert.deepEqual(report.errors, []); try {await condition();
-                assert.ok(performance.now() < end, `${name}: original phase deadline exceeded`);
-                return Object.freeze({deadline: end});} catch (error) {last = error;} await pause(100);}
-        throw new Error(`${name} did not complete: ${describeError(last)}`);
+    const wait = async (name: string, condition: () => Promise<void>, milliseconds = 60000, inherited?: PortableNativePhaseBudget,
+                        cursorTarget?: PortableCursorWaitTarget) => {
+        const startedMs = performance.now(), end = Math.min(deadline, startedMs + milliseconds, inherited?.deadline ?? Infinity); let last: unknown;
+        const phase = cursorTarget ? cursorWaitClocks.begin(cursorTarget, startedMs, end) : undefined;
+        let status: 'passed' | 'failed' = 'failed';
+        try {
+            while (performance.now() < end) {for (const child of [master, api]) if (child) assert.ok(child.exitCode === null && child.signalCode === null, `${name}: actual child exited`);
+                assert.deepEqual(report.errors, []); try {await condition();
+                    assert.ok(performance.now() < end, `${name}: original phase deadline exceeded`);
+                    status = 'passed'; return Object.freeze({deadline: end});} catch (error) {last = error;} await pause(100);}
+            throw new Error(`${name} did not complete: ${describeError(last)}`);
+        } finally {if (phase) cursorWaitClocks.complete(phase, status, performance.now());}
     };
     const queues = async () => {
         const response = await fetch(state.core.broker.managementUrl + '/api/queues/%2F', {
@@ -784,7 +791,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                     for (const recovery of recoveries) {assert.equal(recovery.initialized, true); assert.deepEqual(recovery.checkpoint, {blockNum: through, blockId: block.blockId});
                         assert.equal(recovery.pending, null); assert.equal(recovery.gap, null);}
                     replay!.assertThrough(through); report.lastRecovery = recoveries;
-                });
+                }, 60000, undefined, {blockNum: through, blockId: block.blockId});
             }
             let isolation: any, isolationBudget: PortableNativePhaseBudget | undefined;
             if (through >= faultThrough) isolationBudget = await wait(`invalid mapping remains durably isolated at${through}`, async () => {
