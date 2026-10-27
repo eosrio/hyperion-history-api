@@ -197,18 +197,32 @@ export abstract class HyperionWorker {
             return operation();
         });
     }
+    private captureProjectionAttempt(client: WorkerAttemptClient, kind: Extract<WorkerAttemptKind, 'projection-initialization' | 'projection-frame'>,
+                                     metadata: unknown): WorkerAttempt {
+        const bytes = actionHistoryImmutableJson(metadata), digest = createHash('sha256').update(bytes).digest('hex');
+        return client.capture({kind, receiptId: randomUUID(), payloadSha256: digest,
+                headersSha256: createHash('sha256').update('{}').digest('hex'), consumerId: null, publisherId: null, queue: null, deliveryTag: null});
+    }
     async runProjectionAttempt<T>(kind: Extract<WorkerAttemptKind, 'projection-initialization' | 'projection-frame'>,
                                   metadata: unknown, operation: () => T | Promise<T>, mayRetryInitialization?: () => boolean): Promise<T> {
         const client = this.attemptClient();
         for (let attempt = 1; ; attempt++) {
-            const bytes = actionHistoryImmutableJson(metadata), digest = createHash('sha256').update(bytes).digest('hex');
-            const handle = client.capture({kind, receiptId: randomUUID(), payloadSha256: digest,
-                headersSha256: createHash('sha256').update('{}').digest('hex'), consumerId: null, publisherId: null, queue: null, deliveryTag: null});
+            const handle = this.captureProjectionAttempt(client, kind, metadata);
             try {return await client.run(handle, operation);}
             catch (error) {
                 if (kind !== 'projection-initialization' || attempt >= maximumProjectionInitializationAttempts || !mayRetryInitialization?.()
                     || !client.consumeProjectionInitializationRetry(handle, error)) throw error;
             }
+        }
+    }
+    async runProjectionFrameAttempt(metadata: unknown, operation: () => Promise<boolean>, mayContinue: () => boolean): Promise<boolean> {
+        const client = this.attemptClient(), handle = this.captureProjectionAttempt(client, 'projection-frame', metadata);
+        try {return await client.run(handle, operation);}
+        catch (error) {
+            if (!mayContinue() || !client.consumeProjectionFrameDeferral(handle, error)) throw error;
+            // False means no successful frame in this drain, never source coverage or application authority.
+            // The worker's next normal drain reads durable checkpoint+1 in a fresh accepted scope.
+            return false;
         }
     }
     async bindWorkerAttempt(fields: WorkerAttemptBinding): Promise<void> {await this.attemptClient().bindCurrent(fields);}

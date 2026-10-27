@@ -13,7 +13,7 @@ interface Attempt {
     accepted: Promise<void>; challenge?: string; binding: WorkerAttemptBinding; bindingVersion: number;
     acknowledgementAttempted: boolean; ended?: WorkerAttemptEndDescription; running: boolean;
     freshWrites: FreshActionWrite[]; freshWriteOverflow: boolean;
-    activeFence: boolean; fencedFailure?: ProofConsumerFencedError; initializationRetryClaimed: boolean;
+    activeFence: boolean; fencedFailure?: ProofConsumerFencedError; initializationRetryClaimed: boolean; frameDeferralClaimed: boolean;
     fenceTimer?: ReturnType<typeof setTimeout>;
 }
 type Managed = {mode: 'managed'; role: WorkerAttemptRole; transport: WorkerAttemptTransport};
@@ -104,7 +104,7 @@ export class WorkerAttemptClient {
         const handle = Object.freeze({}) as WorkerAttempt, id = randomUUID(), sequence = ++this.sequence;
         const record: Attempt = {handle, id, sequence, descriptor: JSON.parse(workerAttemptJson(descriptor)), scope: new ProofConsumerScope(id),
             accepted: Promise.resolve(), binding: {}, bindingVersion: 0, acknowledgementAttempted: false, running: false,
-            freshWrites: [], freshWriteOverflow: false, activeFence: false, initializationRetryClaimed: false};
+            freshWrites: [], freshWriteOverflow: false, activeFence: false, initializationRetryClaimed: false, frameDeferralClaimed: false};
         this.attempts.set(handle, record); this.scopes.set(record.scope, record);
         record.scope.signal.addEventListener('abort', () => {
             record.fenceTimer = setTimeout(() => {
@@ -238,14 +238,24 @@ export class WorkerAttemptClient {
     fenceActiveAttempts(): void {for (const record of this.scopes.values()) {record.activeFence = true; record.scope.fence();}}
     /** One fresh initialization may follow a genuinely drained current-parent source fence. No semantic completion is inferred. */
     consumeProjectionInitializationRetry(handle: WorkerAttempt, error: unknown): boolean {
+        return this.consumeProjectionSourceFence(handle, error, 'projection-initialization');
+    }
+    /** End only this frame's drain. A later drain must capture a new attempt and reread durable recovery. */
+    consumeProjectionFrameDeferral(handle: WorkerAttempt, error: unknown): boolean {
+        return this.consumeProjectionSourceFence(handle, error, 'projection-frame');
+    }
+    private consumeProjectionSourceFence(handle: WorkerAttempt, error: unknown,
+                                         kind: 'projection-initialization' | 'projection-frame'): boolean {
         const record = this.attempts.get(handle), end = record?.ended;
         if (this.options.mode !== 'managed' || this.options.role !== 'projection' || this.stopped || !record
-            || record.descriptor.kind !== 'projection-initialization' || !record.activeFence || record.initializationRetryClaimed
+            || record.descriptor.kind !== kind || !record.activeFence || record.initializationRetryClaimed || record.frameDeferralClaimed
             || !record.fencedFailure || record.fencedFailure !== error || !end || end.rootResult !== 'threw' || end.status !== 'quiescent'
             || end.epoch !== this.authority?.epoch || end.incarnation !== this.authority?.incarnation
             || end.acknowledgementAttempted || end.freshWrites.length || end.freshWriteOverflow
             || record.scope.snapshot().state !== 'drained') return false;
-        record.initializationRetryClaimed = true; return true;
+        if (kind === 'projection-initialization') record.initializationRetryClaimed = true;
+        else record.frameDeferralClaimed = true;
+        return true;
     }
     /** Original physical channel retirement affects queued roots too, before their processing starts. */
     fenceChannel(channelId: string): void {

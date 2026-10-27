@@ -22,7 +22,7 @@ interface ControllerOptions {
     onProgress?: (value: PortableStateProgress) => void;
     maximumFramesPerProjection?: number;
     /** Private actual-worker transport. Component controllers issue no master lifecycle authority. */
-    attempts?: {run<T>(metadata: unknown, operation: () => Promise<T>): Promise<T>; bind(fields: WorkerAttemptBinding): Promise<void>};
+    attempts?: {run(metadata: unknown, operation: () => Promise<boolean>): Promise<boolean>; bind(fields: WorkerAttemptBinding): Promise<void>};
 }
 const zero = '0'.repeat(64);
 const json = protocolImmutableJson;
@@ -67,6 +67,7 @@ export class PortableStateController {
         const common = {projectionId: runtime.definition.id, binding: runtime.binding};
         for (let count = 0; count < this.maximumFrames && !this.stopped; count++) {
             const operation = async (): Promise<boolean> => {
+                const scope = currentProofConsumerScope();
                 let recovery: ProjectionRecoveryView | undefined;
                 try {
                     currentProofConsumerScope()?.assertActive();
@@ -106,11 +107,15 @@ export class PortableStateController {
                     currentProofConsumerScope()?.assertActive();
                     this.report({...common, status: applied.status, checkpoint: applied.view.checkpoint, evidence: selected.evidence});
                 } catch (error) {
+                    // Cancellation must not turn an ordinary/foreign failure into retry authority.
+                    // Preserve the original owned error too; no fenced scope may dispatch recovery I/O.
+                    if (scope?.signal.aborted) throw error;
                     // A revoked attempt cannot dispatch fresh recovery I/O after its capability fence.
                     currentProofConsumerScope()?.assertActive();
                     if (error instanceof PortableProjectionFrameError) {
                         try {await this.options.adapter.markIncomplete(runtime.binding, error.block, reason(error));}
                         catch (markError) {
+                            if (scope?.signal.aborted) throw markError;
                             currentProofConsumerScope()?.assertActive();
                             this.report({...common, status: 'incomplete', ...(recovery ? {recovery} : {}),
                                 reason: 'Durable projection failure marking requires retry: ' + reason(markError)});
@@ -121,7 +126,9 @@ export class PortableStateController {
                     // Runtime mapping errors already mark incomplete. Transport/apply errors retain exact source intent.
                     // Resume always asks the adapter for checkpoint+1; no failed target is skipped or acknowledged here.
                     currentProofConsumerScope()?.assertActive();
-                    try {recovery = await this.recovery(runtime);} catch {}
+                    try {recovery = await this.recovery(runtime);} catch (recoveryError) {
+                        if (scope?.signal.aborted) throw recoveryError;
+                    }
                     currentProofConsumerScope()?.assertActive();
                     this.report({...common, status: recovery?.pending || recovery?.gap ? 'incomplete' : 'waiting',
                         ...(recovery ? {recovery, checkpoint: recovery.checkpoint} : {}), reason: reason(error)});

@@ -116,6 +116,7 @@ export class PortableProjectionSource {
     async frame(blockNum: number, definition: ProjectionDefinition,
                 admitCanonicalTarget?: (block: ProjectionBlock) => Promise<void>): Promise<PortableProjectionFrame> {
         if (!Number.isSafeInteger(blockNum) || blockNum < 1) unavailable('Invalid source height');
+        const scope = currentProofConsumerScope(this.options.requireAttemptScope);
         const control = await this.control();
         if (blockNum > control.head.blockNum) unavailable('Next projection source has not committed');
         if (control.head.blockNum - blockNum > this.maximumAncestry) {
@@ -223,6 +224,8 @@ export class PortableProjectionSource {
                 previousBlockId}, changes}, proof, evidence};
         } finally {session.close?.();}
         } catch (error) {
+            // Preserve exact error ownership after cancellation; wrapping cannot grant or erase recovery authority.
+            if (scope?.signal.aborted) throw error;
             throw new PortableProjectionFrameError({blockNum, blockId: proof.source.blockId,
                 previousBlockId: proof.source.previousBlockId ?? zero}, error);
         }
