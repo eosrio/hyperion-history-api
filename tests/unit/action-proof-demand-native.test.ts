@@ -43,6 +43,13 @@ test(`the original native consume callback automatically enrolls custody before 
         brokerSettlement: 'unknown', fullWorkerQualification: false});
 }, 45_000);
 
+test('the original native queued receipt waits for delayed registration while capture and cargo remain held', async () => {
+    const result = await runOriginalWireNativeCase('handoff-held-confirm', '--receipt-bridge',
+        '--receipt-late-capture', '--receipt-registration-delayed');
+    expect(result).toMatchObject({passed: true, receiptBridge: true, receiptRegistrationDelayed: true,
+        lateReceipt: 'capture', originalAckCount: 1, brokerSettlement: 'unknown', fullWorkerQualification: false});
+}, 45_000);
+
 test('missing original header bytes stay unknown and charged after the verified Wire end', async () => {
     const result = await runOriginalWireNativeCase('handoff-held-confirm', '--shadow-missing-headers');
     expect(result).toMatchObject({passed: true,
