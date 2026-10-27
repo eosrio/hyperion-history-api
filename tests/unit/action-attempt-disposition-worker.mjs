@@ -203,6 +203,14 @@ try {
         import('../../build/indexer/history/action-source-inventory.js'), import('../../build/indexer/history/action-history-manifest.js'),
         import('../../build/indexer/history/action-producer-epoch.js'), import('../../build/indexer/history/action-confirmed-publication.js'),
         import('../../build/indexer/protocol/worker-attempt-client.js')]);
+    if (['enabled', 'disabled'].includes(process.env.HYPERION_QUALIFICATION_STAGE_TIMING_TEST)) {
+        const timing = (await import('../../scripts/qualification/portable-native-stage-timing.mjs'))
+            .installNativeWorkerStageTimings({enabled: process.env.HYPERION_QUALIFICATION_STAGE_TIMING_TEST === 'enabled'});
+        process.on('message', message => {
+            if (message?.event === 'qualification_stage_snapshot') previousSend.call(process, {
+                event: 'qualification_stage_snapshot', requestId: message.requestId, snapshot: timing.snapshot()});
+        });
+    }
     const installed = await loadChainProtocol(config.settings.protocol);
     assert.ok(installed.provider.nativeActions, 'select the installed native provider normally');
     assert(installed.components.every(component => component.sourceRevision === '7167659e9c043cb3351074fcacb40200cc57f3a3'));

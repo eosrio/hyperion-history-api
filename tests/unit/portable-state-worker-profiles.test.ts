@@ -9,6 +9,18 @@ import {parsePortableWorkerArguments, runPortableStateWorker, validatePortableWo
 
 const origin = 'http://127.0.0.1:58271';
 const callFrame = {functionName: '(root)', scriptId: '0', url: '', lineNumber: -1, columnNumber: -1};
+test('stage timing is a separate explicit native replay option and cannot combine with added fault cases', () => {
+    const files = ['state.json', 'plan.json', 'new-output'], base = [...files, '--native', '--authority-rpc', origin];
+    expect(parsePortableWorkerArguments([...base, '--stage-timing']).options).toEqual({native: true, authorityRpc: origin, stageTiming: true});
+    expect(parsePortableWorkerArguments([...base, '--profile', '--stage-timing']).options)
+        .toEqual({native: true, authorityRpc: origin, profile: true, stageTiming: true});
+    for (const args of [[...files, '--stage-timing'], [...files, '--native', '--stage-timing'], [...base, '--stage-timing', '--profile'],
+        [...base, '--worker-recovery', '--stage-timing'], [...base, '--stage-timing', '--stage-timing']])
+        expect(() => parsePortableWorkerArguments(args)).toThrow();
+    for (const options of [{stageTiming: true}, {native: true, stageTiming: true}, {stageTiming: 'true'},
+        {native: true, authorityRpc: origin, stageTiming: true, brokerRecovery: true}])
+        expect(() => validatePortableWorkerOptions(options)).toThrow();
+});
 test('CPU profile arguments preserve ordinary replay forms and require explicit native source authority', async () => {
     const files = ['state.json', 'plan.json', 'new-output'];
     expect(parsePortableWorkerArguments(files).options).toEqual({});
