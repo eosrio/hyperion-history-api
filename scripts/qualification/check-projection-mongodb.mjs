@@ -7,6 +7,7 @@ import {release} from 'node:os';
 import {MongoClient} from 'mongodb';
 import {OwnedMongoFixture, MONGODB_IMAGE, MONGODB_VERSION, waitForMongo} from './projection-fixture.mjs';
 import {runProjectionRollbackQualification} from './projection-rollback.mjs';
+import {runContextualProjectionQualification} from './projection-contextual.mjs';
 
 const require = createRequire(import.meta.url);
 const output = process.argv[2];
@@ -14,7 +15,7 @@ if (process.argv.length > 3 || output?.startsWith('mongodb:')) throw new Error('
 const fixture = new OwnedMongoFixture();
 const report = {schemaVersion: 1, status: 'running', createdAt: new Date().toISOString(), run: fixture.run,
     image: MONGODB_IMAGE, platform: 'linux/amd64', kernel: release(), client: require('mongodb/package.json').version,
-    qualification: false, scope: 'SDK v1 fixed-ABI table projection and opt-in v2 bounded rollback/process-crash recovery; no live SHiP fork, live activation, Wire or launch qualification',
+    qualification: false, scope: 'SDK v1 fixed-ABI table projection, opt-in v2 rollback and contextual recovery transactions; no production SHiP fork/serving activation, Wire or launch qualification',
     checks: [], cleanup: fixture.cleanupResult};
 const clients = new Set();
 const trace = [];
@@ -109,7 +110,14 @@ try {
             'packages/backend-mongodb/src/storage.ts', 'packages/backend-mongodb/dist/storage.js',
             'packages/backend-mongodb/src/rollback.ts', 'packages/backend-mongodb/dist/rollback.js',
             'packages/backend-mongodb/src/rollback-contract.ts', 'packages/backend-mongodb/dist/rollback-contract.js',
+            'packages/backend-mongodb/src/rollback-engine.ts', 'packages/backend-mongodb/dist/rollback-engine.js',
+            'packages/backend-mongodb/src/rollback-dialect.ts', 'packages/backend-mongodb/dist/rollback-dialect.js',
+            'packages/backend-mongodb/src/contextual.ts', 'packages/backend-mongodb/dist/contextual.js',
+            'src/indexer/projection/contextual-runtime.ts', 'build/indexer/projection/contextual-runtime.js',
+            'src/indexer/projection/contextual-contract.ts', 'build/indexer/projection/contextual-contract.js',
+            'src/indexer/projection/source.ts', 'build/indexer/projection/source.js',
             'scripts/qualification/check-projection-mongodb.mjs', 'scripts/qualification/projection-fixture.mjs',
+            'scripts/qualification/projection-contextual.mjs', 'scripts/qualification/projection-contextual-worker.mjs',
             'scripts/qualification/projection-rollback.mjs', 'scripts/qualification/projection-rollback-worker.mjs']
             .map(path => [path, createHash('sha256').update(readFileSync(new URL(`../../${path}`, import.meta.url))).digest('hex')]))};
     report.source.sdkProjectionSha256 = createHash('sha256').update(readFileSync(new URL(import.meta.resolve('@eosrio/hyperion-sdk/projection')))).digest('hex');
@@ -307,11 +315,16 @@ try {
         databaseName: `hyp_rollback_${fixture.run}`, run: fixture.run,
         assertOwned: () => fixture.ownedContainer('replica')});
     check('opt-in rollback retains canonical effects and progress across real worker process crashes', report.rollback);
+    report.contextual = await runContextualProjectionQualification({uri: fixture.endpoint('replica'), run: fixture.run,
+        assertOwned: () => fixture.ownedContainer('replica'),
+        restart: async () => {fixture.restart(); return fixture.endpoint('replica');}});
+    check('explicit contextual recovery preserves original candidates/creation across native transaction failure, process loss, restart and rollback', report.contextual);
     report.status = 'passed';
 } catch (error) {
     report.status = 'failed';
     report.error = {name: error.name, message: error.message, stack: error.stack};
     if (error.rollbackReport) report.rollback = error.rollbackReport;
+    if (error.contextualReport) report.contextual = error.contextualReport;
     report.recentCommands = trace.slice(-128);
     report.fixtureFailure = fixture.diagnostics();
     process.exitCode = 1;

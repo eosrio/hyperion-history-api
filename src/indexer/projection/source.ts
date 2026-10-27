@@ -4,7 +4,8 @@ import type {ProtocolProvider} from '@eosrio/hyperion-sdk/protocol';
 import type {StatefulOwnerDeclarationV2} from '@eosrio/hyperion-sdk/projection-stateful-owner-v2';
 import type {CapturedStatefulSourceV2} from '@eosrio/hyperion-sdk/projection-stateful-source-v2';
 import type {StatefulSelector} from '@eosrio/hyperion-sdk/projection-stateful';
-import {ProjectionContractError, type ProjectionBlock, type ProjectionCheckpoint, type ProjectionDefinition} from '@eosrio/hyperion-sdk/projection';
+import {ProjectionContractError, validateContextualProjectionDefinition, type ContextualProjectionDefinition,
+    type ProjectionBlock, type ProjectionCheckpoint, type ProjectionDefinition} from '@eosrio/hyperion-sdk/projection';
 import {ProtocolAbiFrontierStore, ProtocolAbiFrontierRecordMemo} from '../protocol/abi-frontier-store.js';
 import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, type ProtocolAbiProofView} from '../protocol/abi-proof.js';
 import {ProtocolAbiObservationStore, protocolAbiObservationId, type ProtocolAbiObservationRecord} from '../protocol/abi-observation-store.js';
@@ -21,6 +22,7 @@ import {statefulAbiEpoch} from './stateful-abi-epoch.js';
 import {diskAbiHistoryOptions} from '../protocol/disk-abi-history-options.js';
 import type {DiskAbiHistoryConfiguration} from '../protocol/disk-abi-history.js';
 import {ProtocolSourceBindingReadError} from '../protocol/source-bindings.js';
+import {contextualChecked, originalProjectionTimeMs, type ContextualProjectionFrame} from './contextual-contract.js';
 
 const json = protocolImmutableJson;
 const digest = (value: Uint8Array | string) => createHash('sha256').update(value).digest('hex');
@@ -60,6 +62,10 @@ export interface PortableStatefulFrameV2 {
     readonly proof: ProtocolAbiProofView;
     readonly evidence: PortableProjectionSourceEvidence;
 }
+export interface PortableContextualProjectionFrame extends Omit<PortableProjectionFrame, 'frame'> {
+    readonly frame: ContextualProjectionFrame;
+}
+type SourceDefinition = Pick<ProjectionDefinition, 'source'>;
 /** A known canonical target can be durably fenced even when its retained input cannot be used. */
 export class PortableProjectionFrameError extends Error {
     constructor(readonly block: ProjectionBlock, cause: unknown) {
@@ -89,6 +95,7 @@ export class PortableProjectionSource {
             store: this.store, maxAncestryBlocks: this.maximumAncestry, requireAttemptScope: options.requireAttemptScope,
             historicalCertificates: options.historicalCertificates,diskHistory:this.diskHistory});
     }
+    get chainId(): string {return this.options.chainId;}
     private async retained<T>(operation: () => Promise<T>): Promise<T> {
         const scope = currentProofConsumerScope(this.options.requireAttemptScope);
         const value = await trackProofConsumerOperation(operation, scope);
@@ -140,7 +147,7 @@ export class PortableProjectionSource {
         await this.control();
         await this.reader.revalidate(proof);
     }
-    private async definitionState(proof: ProtocolAbiProofView, definition: ProjectionDefinition, allowBeforeDeployment: boolean) {
+    private async definitionState(proof: ProtocolAbiProofView, definition: SourceDefinition, allowBeforeDeployment: boolean) {
         const state = await this.reader.inspectFinalState(proof, definition.source.contract);
         if (state?.present && state.abiHex) {
             const deployment = protocolDeployment(this.options.provider, {account: state.account, block: state.source.blockNum,
@@ -164,7 +171,13 @@ export class PortableProjectionSource {
         return undefined;
     }
     /** Serving requires the fixed ABI at both the completed view and current canonical head. */
-    async assertDefinition(proof: ProtocolAbiProofView, definition: ProjectionDefinition): Promise<void> {
+    assertDefinition(proof: ProtocolAbiProofView, definition: ProjectionDefinition): Promise<void> {
+        return this.assertSourceDefinition(proof, definition);
+    }
+    async assertContextualDefinition(proof: ProtocolAbiProofView, definition: ContextualProjectionDefinition): Promise<void> {
+        return this.assertSourceDefinition(proof, contextualChecked(validateContextualProjectionDefinition(definition)));
+    }
+    private async assertSourceDefinition(proof: ProtocolAbiProofView, definition: SourceDefinition): Promise<void> {
         this.reader.assertConsumerScope(proof);
         await this.definitionState(proof, definition, false);
         const control = await this.control();
@@ -303,8 +316,29 @@ export class PortableProjectionSource {
         await this.revalidate(proof);
     }
     /** Bounded certified ancestry; missing old input never becomes an empty frame. */
-    async frame(blockNum: number, definition: ProjectionDefinition,
+    frame(blockNum: number, definition: ProjectionDefinition,
                 admitCanonicalTarget?: (block: ProjectionBlock) => Promise<void>): Promise<PortableProjectionFrame> {
+        return this.readFrame(blockNum, definition, admitCanonicalTarget, frame => frame, false);
+    }
+    /** Separate opt-in source shape; legacy frames never gain a contextual field implicitly. */
+    async contextualFrame(blockNum: number, definition: ContextualProjectionDefinition,
+        admitCanonicalTarget?: (block: ProjectionBlock) => Promise<void>): Promise<PortableContextualProjectionFrame> {
+        const selected = contextualChecked(validateContextualProjectionDefinition(definition));
+        return this.readFrame(blockNum, selected, admitCanonicalTarget, (frame, timestamp) => ({...frame,
+            context: {contract: selected.source.contract, table: selected.source.table,
+                blockTimeMs: originalProjectionTimeMs(timestamp)}}), true);
+    }
+    /** Recheck the original source-point ABI/mapping after an awaited host/adapter operation. */
+    async revalidateContextualFrame(proof: ProtocolAbiProofView, definition: ContextualProjectionDefinition): Promise<void> {
+        const selected = contextualChecked(validateContextualProjectionDefinition(definition));
+        this.reader.assertConsumerScope(proof);
+        await this.definitionState(proof, selected, true);
+        await this.revalidate(proof);
+    }
+    private async readFrame<F extends ProjectionFrame>(blockNum: number, definition: SourceDefinition,
+        admitCanonicalTarget: ((block: ProjectionBlock) => Promise<void>) | undefined,
+        finish: (frame: ProjectionFrame, timestamp: unknown) => F, contextual: boolean):
+        Promise<{frame: F; proof: ProtocolAbiProofView; evidence: PortableProjectionSourceEvidence}> {
         if (!Number.isSafeInteger(blockNum) || blockNum < 1) unavailable('Invalid source height');
         const scope = currentProofConsumerScope(this.options.requireAttemptScope);
         const {commit, proof} = await this.canonicalTarget(blockNum, admitCanonicalTarget);
@@ -314,8 +348,17 @@ export class PortableProjectionSource {
         if (blockNum === 1) {
             verifyNativeGenesisRecord(observation, this.options.provider.verifyNativeGenesis?.bind(this.options.provider));
             const frame = await this.reader.nativeGenesisFrame(proof);
+            let timestamp: unknown;
+            if (contextual) {
+                const blockHex = observation.capture.blockHex;
+                if (!blockHex) unavailable('Original genesis header is unavailable for contextual mapping');
+                const session = this.options.provider.createShipSession(JSON.parse(context.schemaJson));
+                try {timestamp = (session.decodeBlock(Buffer.from(blockHex!, 'hex')) as {timestamp?: unknown}).timestamp;}
+                finally {session.close?.();}
+                await this.definitionState(proof, definition, true);
+            }
             await this.revalidate(proof);
-            return {frame, proof, evidence};
+            return {frame: finish(frame, timestamp), proof, evidence};
         }
         const capture = observation.capture;
         if (!capture.blockHex || capture.tracesHex === null || capture.deltasHex === null
@@ -325,6 +368,7 @@ export class PortableProjectionSource {
         const session = this.options.provider.createShipSession(JSON.parse(context.schemaJson));
         try {
             const block: any = session.decodeBlock(Buffer.from(blockHex, 'hex'));
+            const originalTimestamp: unknown = contextual ? block.timestamp : undefined;
             if (String(block.previous).toLowerCase() !== previousBlockId) unavailable('Projection header predecessor mismatch');
             // Consume original traces too: missing or malformed source cannot prove an empty table block.
             session.decodeTraces(Buffer.from(tracesHex, 'hex'));
@@ -373,9 +417,10 @@ export class PortableProjectionSource {
                     if (changes.length > 1000) throw new ProjectionContractError('projection.invalid-contract', 'Projection frame exceeds its bounded mutation count');
                 }
             }
+            if (contextual) await this.definitionState(proof, definition, true);
             await this.revalidate(proof);
-            return {frame: {chainId: this.options.chainId, block: {blockNum, blockId: proof.source.blockId,
-                previousBlockId}, changes}, proof, evidence};
+            return {frame: finish({chainId: this.options.chainId, block: {blockNum, blockId: proof.source.blockId,
+                previousBlockId}, changes}, originalTimestamp), proof, evidence};
         } finally {session.close?.();}
         } catch (error) {
             // Preserve exact error ownership after cancellation; wrapping cannot grant or erase recovery authority.
