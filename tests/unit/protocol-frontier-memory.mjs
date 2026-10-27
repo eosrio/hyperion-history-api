@@ -13,8 +13,8 @@ export function frontierMemoryClient(replicas=0) {
             async get(request){
                 note('getIndex',request);if(!mappings.has(request.index))throw missingIndex(request.index);
                 const mapping=structuredClone(mappings.get(request.index)),setting=structuredClone(settings.get(request.index));
-                const left=faults.mapping?.(mapping,request)??{[request.index]:{mappings:mapping}};
-                const right=faults.settings?.(setting,request)??{[request.index]:{settings:setting}};
+                const left=await (faults.mapping?.(mapping,request)??{[request.index]:{mappings:mapping}});
+                const right=await (faults.settings?.(setting,request)??{[request.index]:{settings:setting}});
                 return Object.fromEntries([...new Set([...Object.keys(left),...Object.keys(right)])]
                     .map(index=>[index,{...left[index],...right[index]}]));
             },

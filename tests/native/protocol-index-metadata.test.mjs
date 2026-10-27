@@ -7,6 +7,7 @@ import {ImmutableProtocolBundleStore} from '../../build/indexer/protocol/immutab
 import {ProtocolAbiProofReader, protocolAbiCertificateForControl} from '../../build/indexer/protocol/abi-proof.js';
 import {ProofConsumerScope} from '../../build/indexer/protocol/proof-consumer-scope.js';
 import {frontierMemoryClient} from '../unit/protocol-frontier-memory.mjs';
+import {observationMemoryClient} from '../unit/protocol-observation-memory.mjs';
 
 assert.ok([24, 26].includes(Number(process.versions.node.split('.')[0])), 'run with native Node 24/26');
 const chain = 'combined-metadata-fixture';
@@ -296,3 +297,49 @@ test('cancelling the real proof wait retains an outstanding helper until its act
         assert.equal(scope.snapshot().pendingOperations, 0);
     } finally {release.release(); await scope.closeAndDrain(); await f.client.close();}
 });
+
+async function asyncMetadataFixture(kind) {
+    const memory = kind === 'frontier' ? frontierMemoryClient() : observationMemoryClient();
+    const store = kind === 'frontier' ? new ProtocolAbiFrontierStore(memory.client, chain)
+        : new ImmutableProtocolBundleStore(memory.client, chain, 0, 'metadata-async-fixture', 'metadata-async-fixture-v1');
+    const prepared = kind === 'frontier' ? await store.prepareCommit({height: 42}) : await store.prepare('fixture-record', {height: 42});
+    return {memory, read: signal => kind === 'frontier' ? store.readCommit(prepared.id, signal) : store.read(prepared.id, signal)};
+}
+const metadataReply = (phase, value, request) => ({[request.index]: {[phase === 'mapping' ? 'mappings' : 'settings']: value}});
+
+for (const kind of ['frontier', 'observation']) for (const phase of ['mapping', 'settings']) {
+    test(`${kind} adapter awaits a held async ${phase} callback before the real store read can settle`, async () => {
+        const f = await asyncMetadataFixture(kind), entered = gate(), release = gate(); let settled = false;
+        f.memory.faults[phase] = async (value, request) => {entered.release(); await release.promise; return metadataReply(phase, value, request);};
+        const result = f.read().then(value => {settled = true; return {value};}, error => {settled = true; return {error};});
+        try {
+            await entered.promise; await new Promise(resolve => setImmediate(resolve));
+            assert.equal(settled, false, 'the original callback is still physically pending');
+            release.release(); assert.deepEqual(await result, {value: {height: 42}});
+        } finally {release.release(); await result;}
+    });
+
+    test(`${kind} adapter preserves async ${phase} values on ordinary non-target reads`, async () => {
+        const f = await asyncMetadataFixture(kind);
+        f.memory.faults[phase] = async (value, request) => metadataReply(phase, value, request);
+        assert.deepEqual(await f.read(), {height: 42});
+    });
+
+    test(`${kind} adapter propagates the exact async ${phase} rejection without a detached failure`, async () => {
+        const f = await asyncMetadataFixture(kind), error = new Error('original async callback failure');
+        f.memory.faults[phase] = async () => {throw error;};
+        await assert.rejects(f.read(), actual => actual === error);
+    });
+
+    test(`${kind} adapter keeps async ${phase} custody until late success and then honors the original abort reason`, async () => {
+        const f = await asyncMetadataFixture(kind), entered = gate(), release = gate(), controller = new AbortController();
+        const reason = Object.freeze({caller: 'cancelled while metadata callback was retained'}); let settled = false;
+        f.memory.faults[phase] = async (value, request) => {entered.release(); await release.promise; return metadataReply(phase, value, request);};
+        const result = f.read(controller.signal).then(value => {settled = true; return {value};}, error => {settled = true; return {error};});
+        try {
+            await entered.promise; const before = f.memory.calls.length; controller.abort(reason);
+            await new Promise(resolve => setImmediate(resolve)); assert.equal(settled, false);
+            release.release(); assert.equal((await result).error, reason); assert.equal(f.memory.calls.length, before);
+        } finally {release.release(); await result;}
+    });
+}

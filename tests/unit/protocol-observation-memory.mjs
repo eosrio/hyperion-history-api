@@ -8,8 +8,8 @@ export function observationMemoryClient(replicas=0) {
         indices:{
             async get(request){
                 calls.push({method:'getIndex',request});
-                const left=faults.mapping?.(mapping,request)??{[request.index]:{mappings:mapping}};
-                const right=faults.settings?.(settings,request)??{[request.index]:{settings}};
+                const left=await (faults.mapping?.(mapping,request)??{[request.index]:{mappings:mapping}});
+                const right=await (faults.settings?.(settings,request)??{[request.index]:{settings}});
                 return Object.fromEntries([...new Set([...Object.keys(left),...Object.keys(right)])]
                     .map(index=>[index,{...left[index],...right[index]}]));
             },

@@ -48,6 +48,8 @@ actual held helper's scope drain. That drain is a local promise/scope observatio
 database/network cleanup proof. The memory fixtures declare constructed source data and do not
 qualify Wire/native values or production storage. Existing controlled metadata fixtures are
 adapted to the new request; original source, worker fences, waits and assertions remain.
+Both metadata test adapters await asynchronous mapping/settings callbacks before assembling the
+response, preserving their original held-operation, rejection and cancellation controls.
 
 The baseline reader control makes six requests for one single-chunk frontier record; the candidate
 uses four, retaining the two layout validations and manifest/chunk reads. The single-head proof
