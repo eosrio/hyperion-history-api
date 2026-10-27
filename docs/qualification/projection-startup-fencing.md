@@ -82,6 +82,15 @@ An owned fence retains its identity; concurrent ordinary/foreign/copied errors r
 remain ineligible. There is no cause-chain, name or string-based unwrapping. Unfenced source and
 contract failures retain their ordinary target/error wrapping and readiness behavior.
 
+The primary error must also survive the entire fallback handling path. A scope can be active at
+catch entry, then become fenced while the failure marker or recovery read is pending. Both a
+successful fallback return and a fallback rejection must check the captured scope before a scope
+getter can issue a new owned fence. If cancelled, propagate the original primary object, including
+when the fallback itself rejects with an owned fence; do not turn a preceding ordinary/foreign
+failure into cancellation authority. The same synchronous guard runs before and after every
+fallback await and inside fallback catches. With an active scope, ordinary waiting/incomplete
+reports and their primary/fallback reasons keep their previous behavior.
+
 `frame-recover` holds the real source input callbacks and separately retained operations for three
 definitions over two consecutive original reader/master source-open fences. It checks each old
 lane's end remains unavailable before its own retained operation settles, late old callbacks cannot
@@ -104,6 +113,13 @@ operation must settle before an authentic end can arrive. Owned fences may defer
 and copied callback errors must reach the caller as their exact original objects. No further source
 I/O, certified frame return, write or readiness is permitted after the held callback is fenced.
 This source boundary independently failed on native 24/26 before the wrapping fix and passed after it.
+The same fixture now drives the real controller's fallback adapter callbacks after a primary source
+error while still active. Ordinary/foreign primaries are crossed with failure-marker/recovery
+callbacks that resolve or reject with owned, ordinary or foreign errors. Parent fencing during the
+held fallback must retain the exact primary object, wait for its separately retained operation and
+publish no progress or further source/adapter I/O. Unfenced callback controls retain their existing
+waiting/incomplete response reasons. These original-callback controls exposed the remaining race in
+the first `3b728031` candidate before its separate error-identity revision.
 
 ## Run the controls
 

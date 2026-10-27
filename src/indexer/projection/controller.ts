@@ -107,29 +107,28 @@ export class PortableStateController {
                     currentProofConsumerScope()?.assertActive();
                     this.report({...common, status: applied.status, checkpoint: applied.view.checkpoint, evidence: selected.evidence});
                 } catch (error) {
-                    // Cancellation must not turn an ordinary/foreign failure into retry authority.
-                    // Preserve the original owned error too; no fenced scope may dispatch recovery I/O.
-                    if (scope?.signal.aborted) throw error;
-                    // A revoked attempt cannot dispatch fresh recovery I/O after its capability fence.
-                    currentProofConsumerScope()?.assertActive();
+                    // Preserve the primary failure across every fallback await, including successful returns.
+                    // A later cancellation or fallback error cannot replace it with fresh retry authority.
+                    const assertErrorHandlingActive = () => {
+                        if (scope?.signal.aborted) throw error;
+                        currentProofConsumerScope()?.assertActive();
+                    };
+                    assertErrorHandlingActive();
                     if (error instanceof PortableProjectionFrameError) {
                         try {await this.options.adapter.markIncomplete(runtime.binding, error.block, reason(error));}
                         catch (markError) {
-                            if (scope?.signal.aborted) throw markError;
-                            currentProofConsumerScope()?.assertActive();
+                            assertErrorHandlingActive();
                             this.report({...common, status: 'incomplete', ...(recovery ? {recovery} : {}),
                                 reason: 'Durable projection failure marking requires retry: ' + reason(markError)});
                             return false;
                         }
-                        currentProofConsumerScope()?.assertActive();
+                        assertErrorHandlingActive();
                     }
                     // Runtime mapping errors already mark incomplete. Transport/apply errors retain exact source intent.
                     // Resume always asks the adapter for checkpoint+1; no failed target is skipped or acknowledged here.
-                    currentProofConsumerScope()?.assertActive();
-                    try {recovery = await this.recovery(runtime);} catch (recoveryError) {
-                        if (scope?.signal.aborted) throw recoveryError;
-                    }
-                    currentProofConsumerScope()?.assertActive();
+                    assertErrorHandlingActive();
+                    try {recovery = await this.recovery(runtime);} catch {assertErrorHandlingActive();}
+                    assertErrorHandlingActive();
                     this.report({...common, status: recovery?.pending || recovery?.gap ? 'incomplete' : 'waiting',
                         ...(recovery ? {recovery, checkpoint: recovery.checkpoint} : {}), reason: reason(error)});
                     return false;
