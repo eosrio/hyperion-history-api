@@ -8,6 +8,9 @@ export const wireBacklogCaptureLimits = Object.freeze({maximumRows: 16384, maxim
 const missing = Object.freeze(['atomic-store-snapshot', 'complete-genesis-coverage', 'exact-queued-and-active-membership',
     'publication-confirm-and-drain-outcomes', 'fresh-source-and-worker-ownership', 'physical-credit-owner-restoration']);
 const need = (ok, message) => {if (!ok) throw new Error(message);};
+// JSON may escape one raw UTF-8 byte as six ASCII bytes. Tags/container punctuation
+// and finite-number spellings add bounded per-node overhead; logical limits stay unchanged.
+const encodedLimit = bounds => 6 * bounds.maximumValueBytes + 64 * bounds.maximumNodes + 64;
 const own = (value, name) => {
     const d = value && Object.getOwnPropertyDescriptor(value, name);
     if (!d) return undefined;
@@ -39,15 +42,17 @@ export function encodeWireBacklogValue(value, bounds = wireBacklogCaptureLimits)
             return ['object', Object.keys(v).map(key => {charge(Buffer.byteLength(key)); return [key, visit(own(v, key), depth + 1)];})];
         } finally {active.delete(v);}
     };
-    return visit(value, 0);
+    const encoded = visit(value, 0);
+    need(Buffer.byteLength(JSON.stringify(encoded)) <= encodedLimit(bounds), 'Encoded value byte bound');
+    return encoded;
 }
 
-export function decodeWireBacklogValue(encoded) {
+export function decodeWireBacklogValue(encoded, bounds = wireBacklogCaptureLimits) {
     // Validate a bounded detached encoding before recursion/allocation.
-    const text = JSON.stringify(encoded); need(typeof text === 'string' && Buffer.byteLength(text) <= 2 * wireBacklogCaptureLimits.maximumValueBytes, 'Encoded value byte bound');
+    const text = JSON.stringify(encoded); need(typeof text === 'string' && Buffer.byteLength(text) <= encodedLimit(bounds), 'Encoded value byte bound');
     let nodes = 0;
     const visit = (v, depth) => {
-        need(++nodes <= wireBacklogCaptureLimits.maximumNodes && depth <= wireBacklogCaptureLimits.maximumDepth
+        need(++nodes <= bounds.maximumNodes && depth <= bounds.maximumDepth
             && Array.isArray(v) && typeof v[0] === 'string', 'Malformed encoded capture value');
         const [tag, x] = v;
         if (tag === 'null' || tag === 'undefined') {need(v.length === 1, 'Malformed null capture'); return tag === 'null' ? null : undefined;}
@@ -66,7 +71,11 @@ export function decodeWireBacklogValue(encoded) {
         }
         return out;
     };
-    return visit(encoded, 0);
+    const decoded = visit(encoded, 0);
+    // Use the writer's raw logical-byte accounting, structural bounds and canonical
+    // typed representation too, including any reduced bounds declared by this file.
+    need(JSON.stringify(encodeWireBacklogValue(decoded, bounds)) === text, 'Non-canonical capture value');
+    return decoded;
 }
 
 export function createWireBacklogCapture({enabled = false, identity, limits = wireBacklogCaptureLimits} = {}) {
@@ -204,9 +213,9 @@ export function validateWireBacklogCapture(bytes, expected) {
     let retainedBytes = 0;
     for (const row of value.rows) {
         need(row.sequence === ++sequence && /^[0-9]+$/.test(row.monotonicNs) && typeof row.kind === 'string', 'Capture row chronology');
-        const fields = decodeWireBacklogValue(row.value);
+        const fields = decodeWireBacklogValue(row.value, value.limits);
         if (row.body) {
-            need(Number.isSafeInteger(row.body.bytes) && row.body.bytes >= 0 && row.body.bytes <= wireBacklogCaptureLimits.maximumBodyBytes
+            need(Number.isSafeInteger(row.body.bytes) && row.body.bytes >= 0 && row.body.bytes <= value.limits.maximumBodyBytes
                 && typeof row.body.base64 === 'string' && row.body.base64.length <= 4 * Math.ceil(row.body.bytes / 3), 'Capture body identity');
             const body = Buffer.from(row.body.base64, 'base64');
             need(body.toString('base64') === row.body.base64 && body.length === row.body.bytes && hash(body) === row.body.sha256, 'Capture body hash differs');
