@@ -10,7 +10,7 @@
     "build:watch": "tsc --watch",
     "postinstall": "npm run build && npm run fix-permissions",
     "fix-permissions": "node scripts/fix-permissions.cjs",
-    "test": "bun test tests/unit"
+    "test": "bun test ./tests/unit"
   },
   "engines": {
     "node": ">=24"
@@ -29,7 +29,7 @@
     "@elastic/elasticsearch": "8.19.1",
     "@eosrio/hyperion-backend-mongodb": "file:packages/backend-mongodb",
     "@eosrio/hyperion-plugin-core": "^0.1.0",
-    "@eosrio/hyperion-sdk": "git+https://github.com/eosrio/hyperion-sdk.git#339b5c93d1338968c18ed14254961439dcab16a0",
+    "@eosrio/hyperion-sdk": "git+https://github.com/eosrio/hyperion-sdk.git#8d37e932df5e0e7d671c9682505de3dd55f0edb4",
     "@eosrio/hyperion-wire-plugin": "git+https://github.com/eosrio/hyperion-wire-plugin.git#7167659e9c043cb3351074fcacb40200cc57f3a3",
     "@eosrio/node-abieos": "4.2.0-f7d5b45",
     "@fastify/autoload": "6.3.1",

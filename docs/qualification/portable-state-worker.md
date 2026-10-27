@@ -175,6 +175,10 @@ providers, native decisions, transport responses, receipts or worker services.
 This is a guarded replay of the production implementations, with that explicit
 engineering activation, rather than qualification of public/default activation.
 
+The guarded observer also records a bounded [projection startup lifecycle window](projection-startup-fencing.md).
+It distinguishes initialization retries from first-frame fencing without changing either behavior.
+Its descriptions are observations; original lifecycle methods still decide drainage and retry eligibility.
+
 The replay holds actual source prefixes 1/33/122/256/397 before the original
 Mongo prefixes 1244/1480. Prefix 256 keeps all genuine notification occurrences
 within the **default 256-block** proof ancestry; no recovery-window override is
@@ -250,6 +254,26 @@ release readiness. Preserve the incumbent Wire node/binary/listeners before and
 after the isolated bare-metal-hosted run and verify external fixture cleanup as
 described below.
 
+For the private [#288](https://github.com/eosrio/hyperion-history-api/issues/288)
+attempt-adjudication investigation, an optional `--native --authority-rpc URL`
+mode checks the retained source against a current Wire testnet RPC. Pass an HTTP
+origin ending in `/` after the normal state, plan and new output-directory
+arguments. The driver first verifies the chain ID and retained irreversible
+height. It permits only `get_info` and `get_block` for a block in the original
+1..1480 source or an original SHiP irreversible anchor. Each fetched block ID
+must match the original captured ID; captured blocks also require the exact
+predecessor. Replay `get_info` follows the released original irreversible
+prefix. The source frames and original status bytes remain unchanged. This
+mode checks historical identity against the running RPC; it does not exercise
+live SHiP fork recovery or qualify public activation.
+
+The native observer records the actual persistent, mandatory AMQP action send
+and broker confirmation callback on the owned publisher. The DS worker's
+confirmed-publication helper bypasses the older `publishAdmitted` method, so
+that older observation alone cannot prove action handoff. The original
+confirmed-publication evidence and journal seal still govern drain, source
+membership and effects; the observer does not issue a replacement receipt.
+
 The production worker reserves the exact certified source target as non-serving
 before contract-dependent source materialization or declarative mapping. Only
 successful exact-source application clears that durable intent. Failure to persist
@@ -301,3 +325,477 @@ default 256-block verified ancestry. The full Node 22 replay and final 1480
 acceptance remain pending. Follow #277 for measured worker/proof backpressure;
 keep #270/#274 open. Do not widen ancestry or relax queue/seal guards to turn
 that failed run into a passing result.
+
+## Owned broker restart instrumentation
+
+For the additional #331 decision and original-custody observations, see
+[worker rejection provenance](worker-rejection-provenance.md). These diagnostics
+do not classify failed exits as expected or weaken the shared shutdown checker.
+
+The initial #319 fault mode uses `--native --authority-rpc URL --broker-recovery`
+on native Linux Node 24/26. It excludes profiling and other fault modes. Create
+its private services with `services.py create NEW_DIRECTORY --pin-rabbit-ports`.
+The ordinary fixture still uses dynamic Docker ports. The explicit option
+reserves two distinct loopback ports, persists the intended binds, then releases
+the reservations immediately before Docker binds them. A competing bind fails
+setup; it does not choose replacement endpoints after recording intent.
+
+The preload holds the actual block-33 DS handoff manifest response after the
+original publication confirmation and before its fresh-write observation or
+ACK. The original store call stays awaited when its attempt is fenced. The
+controller releases that response separately; it neither replaces the returned
+bytes nor converts cancellation into a successful write. Store validation and
+the original owner checks still decide what can happen after release.
+Channel errors use passive `errorMonitor` observation so the existing handled
+error path and unhandled worker exit both retain their original behavior. A
+native counterexample against the pinned amqplib dispatch distinguishes passive
+observation from an ordinary listener that would suppress an unhandled error.
+The first held receipt remains strictly an original delivery. Subsequent selected
+transport returns are observed after validating that retained cut; their original
+store validates the new response. A native bundle CAS regression holds and fences
+the old return, obtains a fresh receipt in a separate scope, and verifies that a
+partial-copy response still fails in the original store.
+
+Only a privately issued, single-use census can restart the owned RabbitMQ
+container. The helper rechecks the exact run, image, container, exclusive data
+volume, unchanged CPU/memory budgets, fixed loopback binds, Docker socket/daemon
+identity and Linux process birth/command before the single-container restart.
+It preserves the daemon and other fixture services. Before/after counters retain
+their separate broker process incarnations; reset counters are not cumulative
+work, durable completion, ACK settlement, source authority or capacity evidence.
+
+The replay permits one block-34 stream after the issued broker restart and the
+unchanged run control match the original source. Its original stream must have
+sent and acknowledged exactly blocks 1-33. Reconnection releases no new source
+bytes: the controller first observes the old socket physically closed and one
+new, empty block-34 stream. Copied restart or control JSON cannot authorize this
+transition or release its continuation.
+
+Run the original block-33 API and native oracles before the restart while the
+selected handoff receipt is held. Only that DS queue may remain unacknowledged;
+every other queue must drain. Query-visible data does not settle that original
+attempt. After reconnecting, observe retryable source unavailability, then release
+only the original block 34 so the new reader can establish canonical authority.
+Verify its actual source ACK, projection checkpoint, restored predeployment API
+contract and native frontier before the remaining original prefix holds. Waiting
+for settled prefix-33 authority while withholding this continuation deadlocks the
+fixture: opening a reader session deliberately fences the old proof authority.
+Source credits, bytes, budgets, ancestry and deadlines remain unchanged.
+
+The controller reads back the replacement's actual attempt association and its
+original source/confirmed handoff. The old fenced attempt must have no fresh
+write, ACK or association. The replacement needs its own conditional two-copy
+receipt, accepted fresh observation, authenticated returned end and the master's
+source-checked association. Broker settlement remains unknown. Only that completed
+readback can identify the two physical publishers of the exact original
+transaction; copied audit JSON cannot do so. The native oracle rechecks block 33
+after recovery and keeps ordinary single-publication checks for all other work.
+The prefix-34 checkpoint also reconciles the two broker incarnations' source
+counters before any later source is released.
+
+These assertions are **not completed broker-recovery qualification**. The report
+retains `recoveryQualified: false` and records the full workload verdict separately
+from cleanup. #319 still requires their actual owned Linux baseline/fault execution
+and independently verified terminal custody. Unexpected duplicates and unavailable
+inputs remain visible failures.
+Do not close #288 or #277 from these resource-free guards or a restart observation.
+
+## Production-master worker replacement
+
+For #288, append `--worker-recovery` to the native, source-bounded RPC command
+instead of `--profile`. This opt-in case exits one actual Wire DS worker after
+its confirmed handoff has a fresh durable acknowledgment and before its original
+consumer ACK. The existing Hyperion master replaces the worker; RabbitMQ owns
+redelivery. The source archive, 1..1480 interval, grants, queue budgets, ancestry,
+independent Mongo/action oracles and deadlines stay unchanged.
+
+At the original block-33 hold, the additional oracle requires the production
+master to retain the dead attempt as unresolved, with no private association.
+The replacement must receive the same body and headers on a distinct physical
+receipt/channel, obtain a fresh acknowledged write for the same semantic handoff,
+ACK the broker delivery and produce its own authenticated end and stored
+association. Actual broker delivery/ACK/redelivery totals must reconcile. Stored
+association metadata continues to say broker settlement is unknown; the
+independently observed broker counters do not change that runtime contract.
+
+Ordinary runs still require exactly one confirmed publication for each stored
+output. For the exact recovered transaction, a completed in-process recovery
+audit declares the original and replacement physical publication owners. The
+fault case requires exactly one confirmation from each, and checks every copy's
+full payload hash, admission, fragment, block, persistence and mandatory routing.
+Copied/stored audit JSON, another transaction, a missing/extra copy or a different
+owner cannot declare this expectation. Physical stored effects and independent
+source oracles remain unchanged.
+
+The fault control binds the owned output/config, exact source frame, chain and
+installed engineering profile. Its exclusive durable marker permits one exit.
+Raw observer and process outcomes remain unchanged. Cleanup validates the full
+process census and precisely the expected exit before feeding a detached view
+to the normal shutdown verifier. This mode does not capture CPU profiles.
+
+An observed block-33 recovery case remains separate from the full replay result.
+A later replay failure is still a failed run. This case does not qualify parent
+restart, broker/server restart, forks, launch pins or the complete release.
+
+## Reader handover during canonical RPC
+
+On native Linux, use `--reader-recovery` with `--native --authority-rpc URL`.
+This mode requires the original Wire 1..1480 source and excludes CPU capture and
+the other fault modes. It is an opt-in engineering fixture; ordinary launches
+load no reader-fault controller.
+
+The original block-33 handoff/end reaches the actual master's canonical callback.
+The fixture holds its real RPC result, retains the source-checked node response
+bytes, and captures the current native reader's IPC, PID, Linux birth, command,
+role, executable, working directory and parent. Only that captured child receives
+the deliberate SIGKILL. The same master stays running and uses its normal reader
+disconnect, source revocation, relaunch and source-open paths.
+
+Fixture reconnect permission requires an opaque receipt issued after the original
+parent's correlated native IPC reply and independently checked process death.
+Copied controls, snapshots, exit diagnostics and replies cannot issue it. The
+original stream must have closed with exactly 1..33 sent and acknowledged before
+the next original frame is permitted. The expected resume is the coordinator's
+next block, 34; no duplicate block is added. Neither this permission nor an exit
+receipt grants runtime source membership, broker settlement or count/byte credit.
+
+After the new reader/session/generation and its LIB are current, release the old
+RPC result. Its original call must reject, its association must remain absent,
+and the fresh source must have its own authenticated end, conditional write and
+association. Retain the original Elasticsearch missing-document response beside
+the typed absence audit. Check native output, physical history and both MongoDB
+checkpoints for the resumed source; predeployment state must still return 503.
+
+Keep every raw observer row and the interrupted reader log, including any partial
+tail. Exclude that tail from parsed evidence. The cleanup oracle accepts only
+the privately issued intentional reader fault; it checks every other physical
+start, fork, exit, flush and disabled-profile receipt. Its detached normal-lifecycle
+input excludes the killed reader and accounts for that one expected failed child.
+The raw master exit and shutdown report remain unchanged, including exit 1 when
+the observer reports the deliberate child crash. Any other failed, forced,
+unresolved or omitted process makes cleanup fail.
+
+Record this boundary separately from the complete replay verdict. Passing it does
+not qualify live SHIP forks, the remaining recovery matrix, prospective capacity,
+full replay, launch pins or the release. Source bytes/oracles, queue budgets,
+256-block ancestry, durability, activation and phase/run deadlines are unchanged.
+
+## Replica restart before broker handover
+
+For [#329](https://github.com/eosrio/hyperion-history-api/issues/329), create a fresh
+owned fixture with both explicit port options:
+
+```sh
+python tests/fixtures/portable-state-worker/services.py create out/storage-services --pin-rabbit-ports --pin-elasticsearch-ports
+node scripts/qualification/portable-state-worker.ts out/storage-services/worker-state.json out/p191-source/plan.json out/storage-node24 --native --authority-rpc http://SELECTED_RPC_ORIGIN --broker-storage-recovery
+```
+
+The baseline uses the same checkout, runtimes and fixed-port fixture creation with
+`--broker-recovery`. Each run needs fresh services and output. Both options are
+qualification-only; ordinary fixture creation retains random loopback ports.
+Endpoint intent is saved before creation. A competing bind fails without choosing
+another endpoint. Cleanup retains its existing exclusive ownership checks.
+
+The combined case first requires the unchanged block-33 source/native/API oracles.
+It holds the actual confirmed-handoff manifest response after the original
+two-copy write, before its fresh observation and consumer ACK. The new controller
+checks the current private Docker socket/daemon, target container, fixed loopback
+bind, exclusive volume, exact image/environment/budgets, private network members
+and Linux process births. An opaque, single-use capability restarts only the
+secondary data-node container, retaining its volume. Copied diagnostics and a
+changed census cannot authorize that mutation.
+
+Before broker handover, require the original cluster/index UUIDs, a green
+three-node/two-data-node cluster and the exact original manifest on both configured
+copies. Refresh and physical-copy reads establish visibility; the held original
+write response remains the write acknowledgment. Its record must remain unchanged
+and held, with no fresh result, ACK, end or association during storage recovery.
+The existing broker restart then fences the original attempt before releasing its
+return. Exactly one original block-34 continuation allows the replacement to obtain
+its own conditional two-copy receipt, authenticated end and retained association.
+Only the exact two original block-33 publishers may reconcile this retry.
+
+`prefixes/storage-restart-33.json` records the storage boundary separately from
+`prefixes/broker-restart-34.json`. The final report links that replacement attempt
+and retains the full workload verdict, software shutdown and physical cleanup
+separately. A later 685/full replay failure remains failed. This case tests an
+already acknowledged two-copy write surviving one replica restart before the
+caller observes it. It does not qualify new writes during node loss, power-loss
+durability, live forks, prospective capacity, deployment or the release. Keep
+settlement unknown and preserve all original inputs, grants, ancestry, budgets
+and deadlines. Node 24/26 actual Linux runs and retained raw evidence are required;
+resource-free/native capability controls alone cannot complete #329.
+
+## Production master restart before adjudication
+
+The irreversible canonical RPC check retains the original physical live-reader
+anchor across awaited reads. It checks current role ownership, reader IPC and process liveness
+and compatible LIB state before and after each block read. A replacement, disconnect,
+exit, shutdown, withdrawn/regressed anchor or same-height conflicting ID cannot
+authorize a stale RPC completion. Each successful recheck retains the latest
+validated LIB height and ID, so an inter-read regression or conflict after an
+accepted advance also rejects. Routine same-owner LIB advances and identical
+refreshes remain valid. Offline/no-live-reader and reversible selection retain
+their existing authority paths. When a canonical source coordinator is present,
+its original source, reader session and generation must also remain available
+and current across those reads. A synchronous coordinator revocation guard covers
+its own fork fence before the master receives the new generation and immediate
+source revocation before storage completes. This local guard adds no reads and
+does not replace source membership, certificates or canonical RPC verification.
+The native `action-canonical-reader-fencing`
+fixture uses the actual emitted master callback and physical native worker
+identities with controlled RPC/handover inputs; it does not qualify a live SHIP
+fork or the complete recovery matrix.
+
+On native Linux, use `--master-recovery` in place of `--profile` or
+`--worker-recovery`. This case holds the actual master's adjudication after the
+original block-33 DS handoff has a fresh durable write and an authenticated
+quiescent end. The original state/native hold and owned queue drain must pass
+before the crash. The old association must still be absent.
+
+A current-parent source transition may fence projection initialization while a
+Mongo connection or setup operation is pending. The production projection worker
+allows at most four separately accepted initialization attempts. Each recovery
+waits for the old physical root and retained operations to drain and for its real
+parent end reply. Only a source-fence failure issued by the original proof scope,
+including its own abort reason, can consume one retry claim. A constructed or
+foreign-scope error cannot authorize recovery even after a real active fence.
+A stop, retired/disconnected owner, uncertain end reply, ordinary
+storage/configuration error or copied diagnostic cannot authorize recovery. Frame
+and broker-delivery attempts retain their existing behavior. The native
+`projection-startup-fencing` cases use the actual emitted worker/client/supervisor
+and cluster IPC with controlled Mongo/controller I/O; real-service restart and
+full replay acceptance remain separate gates.
+
+The controller checks the launched master's parent, executable, command, working
+directory, session/process group and birth identities against the physical
+observer census. It refuses unobserved members or a changed group, then sends
+SIGKILL only to that owned group and verifies the original identities have gone.
+This process fence proves no storage effect, source completeness or broker ACK
+settlement. Copied census and exit JSON cannot issue a restart receipt.
+
+The normal Hyperion launcher then starts another master against the same owned
+RabbitMQ, Elasticsearch, Redis, MongoDB and configuration. The source permits
+one resumed stream from block 34 only after the original stream has closed and
+the genuine crash receipt matches the original frames/profile/chain. The
+existing coordinator resumes at its completed head plus one; it does not replay
+the already acknowledged block 33. Ordinary runs still start at block 1. Source
+grants, queue budgets, ancestry and deadlines are unchanged.
+
+The replacement's real adjudicator must reject a JSON copy of the old end. Its
+own block-34 attempt needs a fresh conditional write, authenticated end and
+persisted association against that block's original source; reading the old
+block-33 result cannot substitute for those facts. The old association remains
+absent, and stored broker settlement stays unknown.
+
+The exact replay remains `1..1480`: 1,480 unique original inputs and deliveries/ACKs
+if the complete run succeeds, without skips or duplicates across the restart.
+The old block-33 hold retains its independent native/state/publication checks.
+The resumed block-34 source, physical owner, canonical native observations,
+admission/publication fingerprints, captured successful bulk and recovery state
+are checked before continuing. The ordinary single-version stored-output oracle
+remains unchanged.
+
+Raw pre-crash observer files retain their actual bytes and any unterminated tail;
+they are not rewritten into successful shutdowns. The crash census and file
+hashes are reported separately. The replacement master and persistent API still
+require normal complete shutdown evidence. CPU capture remains disabled.
+
+The driver continues through the unchanged full source and independent physical
+Mongo barriers. An observed restart boundary is separate from the final replay
+result: a later failure is still a failed run. This single drained-queue crash
+does not qualify other crash windows, broker/server restart, generic reversible
+inputs, live forks, launch pins or the complete release.
+
+## Native history query and bulk chronology
+
+[#334](https://github.com/eosrio/hyperion-history-api/issues/334) tracks the original
+native block-397 missing-row failure. A matching successful bulk receipt in a
+terminal capture cannot establish what an earlier search saw. Native runs now
+retain `history-diagnostics/NNN-action-search.json` before the existing response,
+identity, value and proof assertions. Each record contains the exact client
+request and complete deserialized response, including hits, exact totals and shard
+status. Target holds also retain the original expected identity, frame/oracle
+hashes, source position, current control/commit, selection and relevant observed
+worker events. A client rejection retains its original error and server body.
+
+`NNN-action-refresh.json` records the original refresh request/response, phase,
+source progress, recovery snapshot and latest existing owned-queue sample with its
+observation time. The sample can predate the refresh; it does not add a queue read
+or establish a new state/history barrier. Raw worker journals retain membership,
+publication, seal and source-ACK evidence independently.
+
+Native bulk captures additionally retain `bulk/NNNNN-chronology.json`, linked to
+the unchanged request and response files by hashes. The record distinguishes
+request arrival, the invocation of upstream `remote.end` and the actual upstream
+response-end callback, including failed/in-flight requests. Dispatch invocation
+does not prove server receipt. Compare monotonic nanoseconds only when the clock
+domains have the same driver PID and process time origin. Child-process sequences
+and timestamps are not automatically in that domain. The original response and
+copy checks still establish write acknowledgment; refreshes and later reads do
+not replace them.
+
+History diagnostics allow 128 records, 16 MiB per record and 64 MiB total. Full
+records are written exclusively and are never silently truncated. Serialization,
+file or budget failures preserve the original operation's result/error and mark
+the qualification evidence incomplete. The run cannot pass with such a failure.
+Bulk chronology bytes count against the existing 256 MiB bulk capture cap, with
+the existing request count and per-message limits. Observation and file-write
+overhead is part of this diagnostic run; it is not a production performance result.
+
+The native controlled feedback loop uses the sealed original `1..1480` corpus and
+installed Wire codec while controlling canonical/storage/search reads. It calls
+the original factory and `hold(397)`, then stops the visible-row control at an
+always-throwing independent proof guard. It never manufactures a successful grant.
+
+```sh
+node --experimental-strip-types tests/unit/portable-native-history-capture.mjs
+node --experimental-strip-types tests/unit/portable-native-history-capture.mjs delayed
+```
+
+The first command checks the visible, delayed, missing, wrong-identity, wrong-fork,
+timeout, failed-shard and incomplete-source cases, including a repeated delayed
+case. The second intentionally exits 1 at the unchanged missing-row assertion.
+These controls validate diagnostic capture, not a fix or service qualification.
+An actual owned Linux run must still retain the failed query and correlated
+write/refresh chronology before choosing a behavioral change. Keep the historical
+failure failed and preserve the original oracles, single search, default ancestry,
+queues, budgets, deadlines and separate full-replay/shutdown/cleanup verdicts.
+
+The later `f9a27adb` Linux capture failed a different comparison: the exact
+publication count at block 397. Its retained query contains row 637, and terminal
+worker evidence contains one confirmation matching its canonical payload hash,
+admission, fragment, block and owned queue. The earlier event array and the
+confirmation's arrival relative to that array were not retained. The native
+checker reused a snapshot taken before its asynchronous storage and proof reads.
+
+Publication checks now read observations again after those reads. If a receipt is
+still absent, they reuse the original hold or handover deadline; no output gets a
+fresh timeout. Handover reads retain their original restarted-worker filter.
+Count, publisher, payload, admission, fragment, queue, persistence and mandatory
+checks remain strict. Missing or duplicate confirmations still fail. The native
+component regression exercises the receipt matcher without constructing proof
+authority:
+
+```sh
+node --experimental-strip-types tests/unit/portable-native-publications.mjs
+```
+
+This fixes the stale publication observation. It does not retroactively accept
+the failed run, establish when its confirmation arrived, or resolve the older
+missing-row case. Fresh full-worker Linux qualification remains required.
+
+### Storage-cut owner and terminal records
+
+The storage qualifier receives the actual captured master PID from the driver. It validates
+the held child's parent against that PID, then checks the original attempt's child operation
+records and the master's `end`/`adjudicated` records separately. The precondition runs before
+storage inspection, again before issuing the restart capability, and after recovery. Missing
+or foreign owners and any original terminal evidence fail the cut; unrelated attempts and
+foreign process records do not count as the held original's terminal state.
+
+The native controlled-record regression exercises both pre-inspection and post-snapshot
+guards without Docker or service actions. It establishes no source, end or restart authority.
+
+## Coherent logical/API/physical Mongo sampling (#341)
+
+At physical barriers, the driver carries the deadline returned by the original invalid-mapping
+isolation phase into the complete logical/API/physical sample. It never starts a fresh physical
+window or resets the phase on a retry. A qualification-only recovery adapter caps its read timeout
+to the remaining phase budget; API requests and every supported native read use that same remainder.
+The original worker liveness, diagnostic-error, source hold and exact replica ownership guards still
+run. A read stays awaited through settlement; completion or capture/fsync after expiration cannot
+pass the phase.
+
+Each sample obtains a fresh detached recovery view and an actual unavailable API response before
+the strict physical inspection. Rows, keys/values, receipts, bindings/generations, source/digest,
+checkpoint, storage version, namespace/read consistency and server identity remain strict. An exact
+same-source generic admission reason, or the corresponding reason-only change between snapshots,
+is classified only after the complete physical checks. Every other mismatch is fatal. A later
+required-field-error sample must pass using its own logical/API observations. Earlier views cannot
+satisfy it, and permanent admission-pending still fails within the inherited deadline.
+
+`mongo-physical-samples/NNN-physical-mongo.json` retains every attempted physical sample, including
+rejected samples, completed bounded server/namespace/metadata/snapshot/row observations, timeout
+bounds and original errors/causes. Early fatal failures retain the partial observations and mark
+the inspection incomplete. `report.mongoPhysicalSamples` records attempt/rejection/coherent-sample
+counts, file bytes/hashes and explicit capture failures. Records are exclusive and synced; none is
+silently dropped or overwritten. Diagnostic capture allows 64 records, 8 MiB per record and 64 MiB
+in total; exhaustion/serialization/write failure is fatal. The original physical read bounds
+(9 projections, 256 rows, 4,096 receipts, 1 MiB per document, 4 MiB total, at most 5 seconds per
+operation) remain unchanged. A coherent-sample count is not a phase or run acceptance verdict.
+
+```sh
+node --experimental-strip-types tests/unit/portable-state-mongo-sampling.mjs
+node --experimental-strip-types tests/unit/portable-state-mongo-admission-red.mjs characterize
+```
+
+The second command preserves the original red-capable 1243/1244 controller/runtime/adapter/auditor
+loop; use `red` instead of `characterize` for its intentional nonzero assertion. The first also
+uses the real Fastify query handler and tests transient/snapshot settlement, permanent pending,
+expired/held/timed-out reads, each independent invariant, and capture limits/failures on native
+Node 24/26. Mongo transport is controlled; the tests return no source proofs or successful
+revalidation. They establish no real-server durability or historical transaction ordering.
+The original failed Linux run remains failed. Focused real Mongo checks and a fresh full
+`1..1480` worker replay, strict shutdown and physical cleanup remain separate qualification gates.
+
+### Native oracle write completion before refresh
+
+The #334 controlled original-hold loop distinguishes refresh ordering: the same exact block-397
+row and single query fail at `assert.ok(row)` when refresh precedes its write completion, and
+reach the independent proof boundary when only that order is reversed. The source-pinned
+Node 26 combined capture records refresh, then the sequence-637 bulk response, then a zero-hit
+query in one driver clock. This supports testing the ordering mechanism; it does not establish
+that capture's server-side cause or reconstruct the older missing response. All failures remain failed.
+
+The native qualifier now joins the exact original oracle output's captured write before its
+existing phase refresh. This applies to oracle targets **33, 122 and 397**, not every history
+output. Notification-only holds such as 256 retain their original strict checks and scheduling
+assumption. No global state/history barrier or query retry is added.
+
+The expectation binds original frame/schema/selection/source, the admission's original target,
+and its sealed full logical-document/sequence-metadata fingerprint. The actual ledger request
+and response files must match their retained byte counts/hashes. The original index/create
+item must match the exact target and ID, original native identity/value/raw bytes and canonical
+payload, with two successful configured copies and zero failures. A sealed record is only an
+expectation; it cannot replace the actual item response or issue a fresh-write receipt.
+
+`captureComplete` describes local observation only: it is set after raw request/response files
+and enabled chronology have completed. In-flight or failed captures cannot satisfy readiness.
+Chronology capture failure remains an explicit run error and preserves the proxy's original
+HTTP response bytes/status/headers. The marker does not establish client receipt, worker end,
+broker settlement, power-loss durability or progress authority.
+
+Only absent completion or the original not-yet-created seal may wait. Invalid/incomplete
+references, failed writes, changed bytes, wrong identities and partial copies fail. All new
+work shares the original native PREPARE hold budget, checked before/after witness work and
+refresh; refresh request timeout is capped to its remaining time. Ready-but-expired observations,
+late settlement and late refresh cannot extend that budget. The single original strict search,
+full-response capture, native proof/grant, seals, admission and fresh publication checks follow.
+
+```sh
+node --experimental-strip-types tests/unit/portable-native-history-capture.mjs witness
+```
+
+Repeat using native Node 24 and 26. The loop audits the unchanged 1..1480 source and installed
+official/native oracle, uses controlled storage/transport, and stops at an always-throwing proof
+boundary. It creates no successful native grant or full-worker verdict. The older `delayed`
+characterization without a write witness remains a required negative control. Fresh unchanged
+owned-service replay, strict software shutdown, physical cleanup and release acceptance are
+separate pending evidence; this qualifier change does not retroactively accept any recorded case.
+
+The same inherited phase budget continues through strict search settlement and diagnostic capture,
+value encoding, proof/metadata reads, HTTP observations, publication readiness and final hold acceptance.
+Supported Elasticsearch and HTTP read timeouts are capped to its remaining time. Pending operations
+remain awaited; their original rejections are preserved. An expired observation cannot dispatch the
+next proof or serving operation, complete a ready publication, or enter the accepted hold list.
+Restoring a constructed owned-row negative control still runs to settlement as cleanup after expiry;
+that restoration cannot accept the phase or restart proof/serving work.
+
+The native `witness` controls retain the original cases and add a strict search settling late at 397
+and a public non-oracle hold at 1244 that expires while consuming the refresh result. The latter
+exercises final hold acceptance without manufacturing a native grant. Separate ready-publication
+controls reject both already-expired and late-ready observations, keep an outstanding read awaited,
+and preserve its original rejection. Native proof guards always throw: successful proof/authorization
+tails still require real owned-service qualification; these controls do not claim dynamic coverage
+of successful grants or retroactively qualify an earlier run.

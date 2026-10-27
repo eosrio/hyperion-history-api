@@ -36,6 +36,11 @@ import {createHash} from 'node:crypto';
 import type {ProtocolAbiActionInput} from '@eosrio/hyperion-sdk/protocol';
 import {currentProofConsumerScope, trackProofConsumerOperation} from '../protocol/proof-consumer-scope.js';
 
+type ActionAdmissionPredicate = 'owner_current' | 'producer_epoch' | 'executable' | 'source_chain'
+    | 'source_block_number' | 'source_block_id' | 'source_producer' | 'source_timestamp' | 'target_identity'
+    | 'transaction_dispatch_present' | 'dispatch_payload' | 'dispatch_inline_count' | 'dispatch_filtered'
+    | 'source_selection' | 'bound_owner_current' | 'bound_configuration';
+
 interface ProtocolActionWork {
     original: ActionTrace;
     metadata: ProtocolActionMetadata;
@@ -156,6 +161,31 @@ export default class DSPoolWorker extends HyperionWorker {
     private readonly ioRedisClient: Redis;
     txCacheExpiration = 3600;
 
+    private createConsumerQueue() {
+        return cargo((payload: ConsumeMessage[], cb) => {
+            this.processMessages(payload).then(() => cb()).catch((error) =>
+                this.handleActionProcessingFailure(error, payload, cb));
+        }, this.conf.prefetch.block);
+    }
+
+    private handleActionProcessingFailure(error: any, _payload: ConsumeMessage[], callback: () => void) {
+        if (this.usesExtensionProtocol || this.actionSourceAdmissionEnabled) {
+            return this.exitForActionProcessing(error, _payload);
+        }
+        hLog('NackAll:', error);
+        if (this.ch && this.ch_ready) {
+            try {this.ch.nackAll();} catch (e: any) {hLog(e.message);}
+        }
+        callback();
+    }
+
+    private exitForActionProcessing(error: any, _payload: ConsumeMessage[]): never {
+        hLog('Protocol action processing failed; supervised replacement required:', error.message);
+        this.ch_ready = false;
+        this.consumerQueue.kill();
+        return process.exit(1);
+    }
+
     constructor() {
         super();
 
@@ -168,26 +198,7 @@ export default class DSPoolWorker extends HyperionWorker {
             }
         }
 
-        this.consumerQueue = cargo((payload: ConsumeMessage[], cb) => {
-            // hLog(`Processing ${payload.length} messages`);
-            this.processMessages(payload).then(() => cb()).catch((err) => {
-                if (this.usesExtensionProtocol || this.actionSourceAdmissionEnabled) {
-                    hLog('Protocol action processing failed; supervised replacement required:', err.message);
-                    this.ch_ready = false;
-                    this.consumerQueue.kill();
-                    return process.exit(1);
-                }
-                hLog('NackAll:', err);
-                if (this.ch && this.ch_ready) {
-                    try {
-                        this.ch.nackAll();
-                    } catch (e: any) {
-                        hLog(e.message);
-                    }
-                }
-                cb();
-            });
-        }, this.conf.prefetch.block);
+        this.consumerQueue = this.createConsumerQueue();
 
         this.preIndexingQueue = queue((data: any, cb) => {
             if (data.publish) {try {data.publish(); cb();} catch (error) {cb(error instanceof Error ? error : new Error(String(error)));} return;}
@@ -595,10 +606,19 @@ export default class DSPoolWorker extends HyperionWorker {
         work.metadata = Object.freeze({schemaVersion: 1, source: Object.freeze({...metadata.source}), selectionId: metadata.selectionId,
             input: Object.freeze({...input, inputActionOrdinal: selected.binding.inputActionOrdinal})});
         try {
-            const abi: any = this.protocol.contractCodec.decodeAbi(protocolBytes(selected.state.abiHex));
-            const type = abi.actions?.find(entry => String(entry.name) === input.name)?.type;
-            if (!type) throw new Error('Certified ABI has no action mapping');
-            action.act.data = this.protocol.contractCodec.decodeValue(abi, type, protocolBytes(input.rawHex));
+            if (this.usesExtensionProtocol) {
+                const abi: any = this.protocol.contractCodec.decodeAbi(protocolBytes(selected.state.abiHex));
+                const type = abi.actions?.find(entry => String(entry.name) === input.name)?.type;
+                if (!type) throw new Error('Certified ABI has no action mapping');
+                action.act.data = this.protocol.contractCodec.decodeValue(abi, type, protocolBytes(input.rawHex));
+            } else {
+                // Select the certified ABI in the existing native decoder, without historical/RPC fallbacks.
+                if (!this.loadActionAbi(input.account, {kind: 'historical', block: metadata.source.blockNum, hex: selected.state.abiHex},
+                    () => this.abieos.loadAbiHex(input.account, selected.state.abiHex))) throw new Error('Certified Antelope ABI was rejected');
+                const type = this.abieos.getTypeForAction(input.account, input.name);
+                if (!type) throw new Error('Certified ABI has no action mapping');
+                action.act.data = this.abieos.binToJson(input.account, type, protocolBytes(input.rawHex));
+            }
             action.protocol = work.metadata; delete action['ds_error'];
         } catch (error: any) {
             if (this.activeActionAdmission) throw this.contractOutputFailure('contract-abi-invalid', error);
@@ -711,7 +731,7 @@ export default class DSPoolWorker extends HyperionWorker {
 
     private assertProtocolDelivery(): void {
         this.assertWorkerAttemptActive();
-        if (!this.usesExtensionProtocol) return;
+        if (!this.usesProtocolSourceBindings) return;
         if (!this.activeProtocolDelivery || this.activeProtocolDelivery.channel !== this.ch || !this.ch_ready)
             throw new Error('Protocol action delivery lost its original broker channel');
     }
@@ -783,7 +803,7 @@ export default class DSPoolWorker extends HyperionWorker {
                 // batch fails to deserialize. Worst case the flush itself
                 // fails and we log it; the durable AMQP path for those
                 // traces is unaffected.
-                if (!this.usesExtensionProtocol) await this.flushRedisBatch();
+                if (!this.usesProtocolSourceBindings) await this.flushRedisBatch();
                 else {this.redisBatchPipeline = null; this.redisBatchHasOps = false; this.activeProtocolDelivery = undefined;}
             }
         } finally {
@@ -795,7 +815,7 @@ export default class DSPoolWorker extends HyperionWorker {
 
     private async processActionMessage(data: Message): Promise<void> {
         if (this.actionSourceAdmissionEnabled) await this.beginActionAdmission(data);
-        if (this.usesExtensionProtocol) {
+        if (this.usesProtocolSourceBindings) {
             const owner = this.protocolDeliveryOwners.get(data);
             if (!owner || owner !== this.ch || !this.ch_ready) throw new Error('Protocol action delivery lacks its original broker channel');
             this.activeProtocolDelivery = {message: data, channel: owner};
@@ -827,8 +847,12 @@ export default class DSPoolWorker extends HyperionWorker {
                 if (scope.handoff.rawIncomplete) {
                     const evidence = await this.getActionAdmissionStore().prepareRawIncompleteAttemptDisposition(handoffInput);
                     await this.assertActionHandoffCurrent(scope);
-                    await this.getActionAdmissionStore().recordAttemptDisposition({owner: scope.owner, evidence});
-                } else await this.getActionAdmissionStore().recordConfirmedHandoff(handoffInput);
+                    const recorded = await this.getActionAdmissionStore().recordAttemptDisposition({owner: scope.owner, evidence});
+                    await this.observeFreshActionWrite(recorded);
+                } else {
+                    const recorded = await this.getActionAdmissionStore().recordConfirmedHandoff(handoffInput);
+                    await this.observeFreshActionWrite(recorded);
+                }
                 await this.assertActionHandoffCurrent(scope);
                 this.assertActionAdmissionOwner(scope);
             }
@@ -838,7 +862,8 @@ export default class DSPoolWorker extends HyperionWorker {
                     traceOrdinal: scope.traceOrdinal, dispatchPayload: scope.payload, configuration: scope.configuration,
                     owner: scope.owner, failure: scope.contractFailure});
                 await this.assertActionAttemptCurrent(scope);
-                await this.getActionAdmissionStore().recordAttemptDisposition({owner: scope.owner, evidence});
+                const recorded = await this.getActionAdmissionStore().recordAttemptDisposition({owner: scope.owner, evidence});
+                await this.observeFreshActionWrite(recorded);
                 await this.assertActionAttemptCurrent(scope);
             }
             if (scope.attemptEligible) {
@@ -846,7 +871,10 @@ export default class DSPoolWorker extends HyperionWorker {
                 const evidence = await this.getActionAdmissionStore().prepareTransactionAttemptDisposition({admissionId: scope.admission.id,
                     traceOrdinal: scope.traceOrdinal, dispatchPayload: scope.payload, configuration: scope.configuration, owner: scope.owner});
                 await this.assertActionAttemptCurrent(scope);
-                if (evidence) await this.getActionAdmissionStore().recordAttemptDisposition({owner: scope.owner, evidence});
+                if (evidence) {
+                    const recorded = await this.getActionAdmissionStore().recordAttemptDisposition({owner: scope.owner, evidence});
+                    await this.observeFreshActionWrite(recorded);
+                }
                 await this.assertActionAttemptCurrent(scope);
             }
             this.assertWorkerAttemptActive(); this.markWorkerAcknowledgementAttempt(); scope.owner.consumer.ack(data);
@@ -882,14 +910,14 @@ export default class DSPoolWorker extends HyperionWorker {
 
     private async flushRedisBatch(): Promise<void> {
         if (this.redisBatchPipeline && this.redisBatchHasOps) {
-            if (this.usesExtensionProtocol && !await this.protocolCacheIsCurrent()) {
+            if (this.usesProtocolSourceBindings && !await this.protocolCacheIsCurrent()) {
                 this.redisBatchPipeline = null; this.redisBatchHasOps = false; return;
             }
             try {
                 const stopRedis = this.profiler.start('redis_batch_exec');
                 try { await trackProofConsumerOperation(() => this.redisBatchPipeline.exec()); } finally { stopRedis(); }
             } catch (e) {
-                if (this.usesExtensionProtocol) throw e;
+                if (this.usesProtocolSourceBindings) throw e;
                 hLog(e);
             }
         }
@@ -903,27 +931,56 @@ export default class DSPoolWorker extends HyperionWorker {
         const admission = await this.getActionAdmissionStore().resolve(headers?.[actionSourceAdmissionHeader]);
         const epoch = await actionProducerEpoch(this);
         const source = admission.source.inventoryInput.source, ordinal = headers?.action_trace_ordinal;
-        if (!owner.current() || actionHistoryImmutableJson(epoch.producer) !== actionHistoryImmutableJson(admission.source.producer)
-            || epoch.executableSha256 !== admission.source.executableSha256 || source.chainId !== this.chainId
-            || headers?.block_num !== source.blockNum || headers?.block_id !== source.blockId || headers?.producer !== source.producer
-            || headers?.ts !== source.timestamp || actionHistoryImmutableJson(await this.actionTarget(source.blockNum)) !== actionHistoryImmutableJson(admission.target))
-            throw new Error('Action admission producer/source/target epoch mismatch');
+        // Keep the original short-circuit order and evaluate each operand once. The rejection
+        // boundary exposes the actual failed decision to engineering observers, without a recheck.
+        let reason = 'Action admission producer/source/target epoch mismatch';
+        const equal = (predicate: ActionAdmissionPredicate, actual: unknown, expected: unknown, sensitiveOperands = false): void => {
+            if (actual === expected) return;
+            const operand = (value: unknown) => sensitiveOperands
+                ? {sha256: createHash('sha256').update(value as string).digest('hex'), bytes: Buffer.byteLength(value as string)} : value;
+            this.rejectActionAdmission(reason, {
+                predicate, actual: operand(actual), expected: operand(expected), operandFormat: sensitiveOperands ? 'sha256' : 'value',
+                message, admission, epoch, owner});
+        };
+        equal('owner_current', owner.current(), true);
+        equal('producer_epoch', actionHistoryImmutableJson(epoch.producer), actionHistoryImmutableJson(admission.source.producer));
+        equal('executable', epoch.executableSha256, admission.source.executableSha256);
+        equal('source_chain', source.chainId, this.chainId);
+        equal('source_block_number', headers?.block_num, source.blockNum);
+        equal('source_block_id', headers?.block_id, source.blockId);
+        equal('source_producer', headers?.producer, source.producer);
+        equal('source_timestamp', headers?.ts, source.timestamp);
+        equal('target_identity', actionHistoryImmutableJson(await this.actionTarget(source.blockNum)), actionHistoryImmutableJson(admission.target));
         if (admission.inventory) {
+            reason = 'Action admission input payload or source ordinal mismatch';
             const transaction = admission.inventory.transactions.find(value => value.traceOrdinal === ordinal);
-            if (!transaction?.dispatch || createHash('sha256').update(payload).digest('hex') !== transaction.dispatch.bodySha256
-                || headers?.inline_count !== transaction.dispatch.inlineCount || headers?.filtered !== transaction.dispatch.filtered
-                || (this.usesExtensionProtocol && headers?.[protocolSourceSelectionHeader] !== admission.inventory.sourceSelectionId))
-                throw new Error('Action admission input payload or source ordinal mismatch');
+            if (!transaction?.dispatch) this.rejectActionAdmission(reason, {
+                predicate: 'transaction_dispatch_present', actual: false, expected: true, operandFormat: 'value', message, admission, epoch, owner});
+            equal('dispatch_payload', createHash('sha256').update(payload).digest('hex'), transaction.dispatch.bodySha256);
+            equal('dispatch_inline_count', headers?.inline_count, transaction.dispatch.inlineCount);
+            equal('dispatch_filtered', headers?.filtered, transaction.dispatch.filtered);
+            if (this.usesProtocolSourceBindings) equal('source_selection', headers?.[protocolSourceSelectionHeader], admission.inventory.sourceSelectionId);
         }
         this.actionHookFailure = undefined;
         this.activeActionAdmission = {admission, traceOrdinal: ordinal, payload, headers, configuration: epoch.configuration, owner};
         await this.bindWorkerAttempt({admissionId: admission.id, planId: admission.planId, blockNum: source.blockNum, blockId: source.blockId,
             ...(admission.inventory ? {traceOrdinal: ordinal} : {}),
+            ...(admission.inventory?.sourceSelectionId ? {selectionId: admission.inventory.sourceSelectionId} : {}),
             configurationSha256: createHash('sha256').update(epoch.configuration).digest('hex'),
             targetName: admission.target.name, targetUuid: admission.target.uuid});
         this.assertWorkerAttemptActive();
-        if (!owner.current() || currentActionConfiguration(this) !== epoch.configuration)
-            throw new Error('Action admission producer/channel epoch changed during attempt binding');
+        reason = 'Action admission producer/channel epoch changed during attempt binding';
+        equal('bound_owner_current', owner.current(), true);
+        equal('bound_configuration', currentActionConfiguration(this), epoch.configuration, true);
+        this.observeProofDemandBinding(message, admission, ordinal);
+    }
+
+    /** Diagnostic boundary only: never grants attempt, source, retry, settlement or progress authority. */
+    private rejectActionAdmission(reason: string, decision: {
+        predicate: ActionAdmissionPredicate; actual: unknown; expected: unknown; operandFormat: 'value' | 'sha256'; message: Message; admission: ActionSourceAdmission;
+        epoch: Awaited<ReturnType<typeof actionProducerEpoch>>; owner: ActionPublicationOwner
+    }): never {
+        throw Object.assign(new Error(reason), {actionAdmissionPredicate: decision.predicate});
     }
 
     private async assertActionAdmissionCurrent(): Promise<void> {
@@ -934,7 +991,7 @@ export default class DSPoolWorker extends HyperionWorker {
         this.assertActionAdmissionOwner(scope);
         if (actionHistoryImmutableJson(target) !== actionHistoryImmutableJson(scope.admission.target))
             throw new Error('Action admission target identity changed');
-        if (this.usesExtensionProtocol && this.protocolTrace?.view) await this.getProtocolProofReader().revalidate(this.protocolTrace.view);
+        if (this.usesProtocolSourceBindings && this.protocolTrace?.view) await this.getProtocolProofReader().revalidate(this.protocolTrace.view);
         this.assertActionAdmissionOwner(scope);
     }
 
@@ -946,7 +1003,7 @@ export default class DSPoolWorker extends HyperionWorker {
 
     contractOutputFailure(reason: ActionContractFailureReason, error: unknown): ActionContractOutputFailure | ActionSourceInventoryError {
         const scope = this.activeActionAdmission!;
-        if (this.usesExtensionProtocol && !scope.proofView) return actionSourceValidationFailure('Output validation lacks original contract proof authority');
+        if (this.usesProtocolSourceBindings && !scope.proofView) return actionSourceValidationFailure('Output validation lacks original contract proof authority');
         return actionContractOutputFailure({admissionId: scope.admission.id, traceOrdinal: scope.traceOrdinal, dispatchPayload: scope.payload,
             configuration: scope.configuration, owner: scope.owner}, reason, error instanceof Error ? error.message : String(error));
     }
@@ -1011,7 +1068,7 @@ export default class DSPoolWorker extends HyperionWorker {
 
             if (transaction_trace.status === 0) {
                 const selectionId = extra?.[protocolSourceSelectionHeader];
-                if (this.usesExtensionProtocol) {
+                if (this.usesProtocolSourceBindings) {
                     this.protocolActions = new WeakMap();
                     this.protocolCacheViews ??= new Set();
                     this.protocolNativeCacheEntries ??= new Set();
@@ -1094,9 +1151,10 @@ export default class DSPoolWorker extends HyperionWorker {
 
                 // Group action traces: merge notification receipts while preserving
                 // genuinely distinct duplicate actions (fixes #148)
-                if (this.usesExtensionProtocol) for (const action of _processedTraces) await this.revalidateProtocolAction(action);
+                if (this.usesProtocolSourceBindings) for (const action of _processedTraces) await this.revalidateProtocolAction(action);
                 let _finalTraces: ActionTrace[];
-                try {_finalTraces = groupActionTraces(_processedTraces, this.usesExtensionProtocol);} catch (error) {
+                try {_finalTraces = groupActionTraces(_processedTraces, this.usesProtocolSourceBindings
+                    ? (this.usesExtensionProtocol ? 'certified-extension' : 'certified-antelope') : 'legacy-antelope');} catch (error) {
                     // A later hook may have corrupted an earlier action. Only pure grouping is classified here.
                     if (!this.activeActionAdmission) throw error;
                     throw this.contractOutputFailure('contract-grouping-invalid', error);
@@ -1109,7 +1167,7 @@ export default class DSPoolWorker extends HyperionWorker {
                 const finalized: ActionTrace[] = [];
                 for (const uniqueAction of _finalTraces) {
 
-                    if (this.usesExtensionProtocol) {
+                    if (this.usesProtocolSourceBindings) {
                         await this.revalidateProtocolAction(uniqueAction);
                         this.assertProtocolDelivery();
                         const work = this.protocolActions.get(uniqueAction);
@@ -1221,9 +1279,9 @@ export default class DSPoolWorker extends HyperionWorker {
                         // one for any subsequent traces in the same batch.
                         const stopLive = this.profiler.start('redis_live_flush');
                         try {
-                            if (!this.usesExtensionProtocol || await this.protocolCacheIsCurrent()) await this.redisBatchPipeline.exec();
+                            if (!this.usesProtocolSourceBindings || await this.protocolCacheIsCurrent()) await this.redisBatchPipeline.exec();
                         } catch (e) {
-                            if (this.usesExtensionProtocol) throw e;
+                            if (this.usesProtocolSourceBindings) throw e;
                             hLog(e);
                         } finally {
                             stopLive();
@@ -1309,7 +1367,7 @@ export default class DSPoolWorker extends HyperionWorker {
                 if (data) {
                     this.captureWorkerAttemptDelivery(data, consumer, 'ds-delivery');
                     if (this.actionSourceAdmissionEnabled) this.captureActionAdmissionDelivery(data, consumer);
-                    if (this.usesExtensionProtocol) this.captureProtocolActionDelivery(data, consumer);
+                    if (this.usesProtocolSourceBindings) this.captureProtocolActionDelivery(data, consumer);
                     this.consumerQueue.push(data);
                 }
             });

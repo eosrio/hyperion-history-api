@@ -34,8 +34,9 @@ export interface UndoImage {
     /** null means the key was absent before this block, including repeated mutations. */
     readonly before: ProjectionRecord | null;
 }
-export interface RollbackMetadata extends Omit<ProjectionMetadata, 'storageVersion'> {
-    readonly storageVersion: typeof ROLLBACK_STORAGE_VERSION;
+export interface RollbackMetadata<D = ProjectionMetadata['definition']> extends Omit<ProjectionMetadata, 'storageVersion' | 'definition'> {
+    readonly storageVersion: string;
+    readonly definition: D;
     readonly revision: string;
     readonly policy: RollbackPolicy;
     readonly coverageFloor: ProjectionCheckpoint;
@@ -51,7 +52,7 @@ export function storedRollbackCheckpoint(checkpoint: ProjectionCheckpoint, revis
     return { blockNum: checkpoint.blockNum, blockId: checkpoint.blockId, revision };
 }
 
-export function storedRollbackMetadata(metadata: RollbackMetadata): RollbackMetadata & { checkpoint: StoredRollbackCheckpoint } {
+export function storedRollbackMetadata<D>(metadata: RollbackMetadata<D>): RollbackMetadata<D> & { checkpoint: StoredRollbackCheckpoint } {
     return { ...metadata, checkpoint: storedRollbackCheckpoint(metadata.checkpoint, metadata.revision) };
 }
 
@@ -68,11 +69,11 @@ export function retainedBytes(undo: readonly UndoDescriptor[]): number {
     return bsonBytes({ undo }) - bsonBytes({ undo: [] }) + undo.reduce((total, item) => total + item.imageBytes, 0);
 }
 
-export function rollbackView(metadata: RollbackMetadata): ProjectionRollbackReadView {
+export function rollbackView(metadata: RollbackMetadata<unknown>): ProjectionRollbackReadView {
     return snapshot({ binding: metadata.binding, checkpoint: metadata.checkpoint, revision: metadata.revision });
 }
 
-export function rollbackRecovery(metadata: RollbackMetadata): ProjectionRollbackRecoveryView {
+export function rollbackRecovery(metadata: RollbackMetadata<unknown>): ProjectionRollbackRecoveryView {
     return snapshot({
         binding: metadata.binding, checkpoint: metadata.checkpoint, initialized: metadata.initialized,
         pending: metadata.pending, gap: metadata.gap, revision: metadata.revision,
@@ -82,19 +83,19 @@ export function rollbackRecovery(metadata: RollbackMetadata): ProjectionRollback
     });
 }
 
-export function assertRevision(metadata: RollbackMetadata, revision: string): void {
+export function assertRevision(metadata: RollbackMetadata<unknown>, revision: string): void {
     if (revision !== metadata.revision) {
         throw new ProjectionContractError('projection.stale-revision', 'Projection revision changed; an earlier writer or read view cannot adopt the new revision');
     }
 }
 
-export function assertNotRollingBack(metadata: RollbackMetadata): void {
+export function assertNotRollingBack(metadata: RollbackMetadata<unknown>): void {
     if (metadata.rollback && metadata.rollback.status !== 'complete') {
         throw new ProjectionContractError('projection.incomplete', 'Projection rollback must finish or obtain missing recovery data before serving or applying sources');
     }
 }
 
-export function assertRollbackReady(metadata: RollbackMetadata): void {
+export function assertRollbackReady(metadata: RollbackMetadata<unknown>): void {
     if (!metadata.initialized) {
         throw new ProjectionContractError('projection.not-initialized', 'Projection initialization has not completed');
     }
@@ -104,7 +105,7 @@ export function assertRollbackReady(metadata: RollbackMetadata): void {
     }
 }
 
-export function assertRollbackView(metadata: RollbackMetadata, view: ProjectionRollbackReadView): void {
+export function assertRollbackView(metadata: RollbackMetadata<unknown>, view: ProjectionRollbackReadView): void {
     assertRevision(metadata, view.revision);
     assertRollbackReady(metadata);
     if (stableJson(metadata.binding) !== stableJson(view.binding) || !sameCheckpoint(metadata.checkpoint, view.checkpoint)) {
@@ -116,8 +117,23 @@ export function undoImage(blockId: string, key: string, before: ProjectionRecord
     return { _id: hash({ blockId, key }), blockId, key, before: snapshot(before) };
 }
 
-export function validateUndoImages(input: readonly UndoImage[], descriptor: UndoDescriptor,
-    metadata: RollbackMetadata): readonly UndoImage[] {
+/** Private storage dialect: no contextual batch is reinterpreted as a v1 source operation. */
+export interface RollbackMetadataDialect<D> {
+    readonly storageVersion: string;
+    validateBase(input: RollbackMetadata<D>, binding: ProjectionBinding): void;
+    validBlock(definition: D, binding: ProjectionBinding, previous: ProjectionCheckpoint, block: ProjectionBlock): boolean;
+    validRecord(definition: D, binding: ProjectionBinding, block: ProjectionBlock, key: string, value: ProjectionRecord | null): boolean;
+}
+export const legacyMetadataDialect: RollbackMetadataDialect<ProjectionMetadata['definition']> = {
+    storageVersion: ROLLBACK_STORAGE_VERSION,
+    validateBase: (input, binding) => {validateMetadata({...input, storageVersion: STORAGE_VERSION}, binding);},
+    validBlock: (definition, binding, previous, block) => validateProjectionApply(definition, {binding, previous, block, mutations: []}).valid,
+    validRecord: (definition, binding, block, key, value) => validateProjectionApply(definition, {binding, block,
+        previous: {blockNum: block.blockNum - 1, blockId: block.previousBlockId},
+        mutations: [value === null ? {kind: 'delete', key} : {kind: 'put', key, value}]}).valid,
+};
+export function validateRecoveryUndoImages<D>(input: readonly UndoImage[], descriptor: UndoDescriptor,
+    metadata: RollbackMetadata<D>, dialect: RollbackMetadataDialect<D>): readonly UndoImage[] {
     if (input.length !== descriptor.count || input.some(image => !image || typeof image !== 'object' || typeof image._id !== 'string')) return invalidStorage();
     const images = [...input].sort((a, b) => a._id < b._id ? -1 : a._id > b._id ? 1 : 0);
     const keys = new Set<string>();
@@ -126,12 +142,7 @@ export function validateUndoImages(input: readonly UndoImage[], descriptor: Undo
         if (!image || typeof image !== 'object' || Object.keys(image).sort().join(',') !== '_id,before,blockId,key' ||
             image.blockId !== descriptor.block.blockId || image._id !== hash({ blockId: image.blockId, key: image.key }) ||
             typeof image.key !== 'string' || keys.has(image.key) ||
-            !validateProjectionApply(metadata.definition, {
-                binding: metadata.binding,
-                previous: { blockNum: descriptor.block.blockNum - 1, blockId: descriptor.block.previousBlockId },
-                block: descriptor.block,
-                mutations: [image.before === null ? { kind: 'delete', key: image.key } : { kind: 'put', key: image.key, value: image.before }],
-            }).valid) return invalidStorage();
+            !dialect.validRecord(metadata.definition, metadata.binding, descriptor.block, image.key, image.before)) return invalidStorage();
         keys.add(image.key);
         size += bsonBytes(image);
     }
@@ -139,26 +150,28 @@ export function validateUndoImages(input: readonly UndoImage[], descriptor: Undo
     return images;
 }
 
-export function validateRollbackMetadata(input: unknown, binding: ProjectionBinding, policy: RollbackPolicy): RollbackMetadata {
+export function validateRecoveryMetadata<D>(input: unknown, binding: ProjectionBinding, policy: RollbackPolicy,
+    dialect: RollbackMetadataDialect<D>): RollbackMetadata<D> {
     if (!input || typeof input !== 'object') return invalidStorage();
-    const stored = input as RollbackMetadata & { checkpoint: StoredRollbackCheckpoint };
-    if (stored.storageVersion !== ROLLBACK_STORAGE_VERSION) {
+    const stored = input as RollbackMetadata<D> & { checkpoint: StoredRollbackCheckpoint };
+    if (stored.storageVersion !== dialect.storageVersion) {
         throw new ProjectionContractError('projection.capability-unavailable', 'Projection must explicitly initialize the revision-fenced rollback interface before use');
     }
     if (!stored.checkpoint || Object.keys(stored.checkpoint).sort().join(',') !== 'blockId,blockNum,revision' ||
         stored.checkpoint.revision !== stored.revision) return invalidStorage();
-    return validateRollbackState({ ...stored, checkpoint: checkpointOf(stored.checkpoint) }, binding, policy);
+    return validateRecoveryState({ ...stored, checkpoint: checkpointOf(stored.checkpoint) }, binding, policy, dialect);
 }
 
 /** Validate the logical state before serializing its native checkpoint fence. */
-export function validateRollbackState(input: unknown, binding: ProjectionBinding, policy: RollbackPolicy): RollbackMetadata {
+export function validateRecoveryState<D>(input: unknown, binding: ProjectionBinding, policy: RollbackPolicy,
+    dialect: RollbackMetadataDialect<D>): RollbackMetadata<D> {
     if (!input || typeof input !== 'object') return invalidStorage();
-    const data = input as RollbackMetadata;
-    if (data.storageVersion !== ROLLBACK_STORAGE_VERSION) {
+    const data = input as RollbackMetadata<D>;
+    if (data.storageVersion !== dialect.storageVersion) {
         throw new ProjectionContractError('projection.capability-unavailable', 'Projection must explicitly initialize the revision-fenced rollback interface before use');
     }
     // Reuse the established definition, binding, contiguous source and receipt checks unchanged.
-    validateMetadata({ ...data, storageVersion: STORAGE_VERSION }, binding);
+    dialect.validateBase(data, binding);
     if (!data.policy || stableJson(data.policy) !== stableJson(policy) ||
         !Number.isSafeInteger(data.policy.maxBlocks) || data.policy.maxBlocks < 1 ||
         data.policy.maxBlocks > PROJECTION_ROLLBACK_LIMITS.retainedBlocks ||
@@ -183,7 +196,7 @@ export function validateRollbackState(input: unknown, binding: ProjectionBinding
             descriptor.imageBytes + bsonBytes({ undo: [descriptor] }) - bsonBytes({ undo: [] }) > data.policy.maxBlockBytes ||
             (descriptor.count === 0 ? descriptor.imageBytes !== 0 : descriptor.imageBytes === 0) ||
             !/^[a-f0-9]{64}$/.test(descriptor.digest) || !/^[a-f0-9]{64}$/.test(descriptor.imagesHash) ||
-            !validateProjectionApply(data.definition, { binding, previous, block: descriptor.block, mutations: [] }).valid ||
+            !dialect.validBlock(data.definition, binding, previous, descriptor.block) ||
             ids.has(descriptor.block.blockId)) return invalidStorage();
         previous = checkpointOf(descriptor.block);
         ids.add(previous.blockId);
@@ -191,4 +204,15 @@ export function validateRollbackState(input: unknown, binding: ProjectionBinding
     if (!sameCheckpoint(previous, data.checkpoint)) return invalidStorage();
     if (data.rollback && data.rollback.status !== 'complete' && (data.pending !== null || data.gap !== null)) return invalidStorage();
     return data;
+}
+
+export function validateUndoImages(input: readonly UndoImage[], descriptor: UndoDescriptor,
+    metadata: RollbackMetadata): readonly UndoImage[] {
+    return validateRecoveryUndoImages(input, descriptor, metadata, legacyMetadataDialect);
+}
+export function validateRollbackMetadata(input: unknown, binding: ProjectionBinding, policy: RollbackPolicy): RollbackMetadata {
+    return validateRecoveryMetadata(input, binding, policy, legacyMetadataDialect);
+}
+export function validateRollbackState(input: unknown, binding: ProjectionBinding, policy: RollbackPolicy): RollbackMetadata {
+    return validateRecoveryState(input, binding, policy, legacyMetadataDialect);
 }

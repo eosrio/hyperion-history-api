@@ -41,7 +41,7 @@ export default class ProjectionWorker extends HyperionWorker {
                 onProgress: data => {try {process.send?.({event: 'portable_state_progress', data});} catch {}}});
             this.assertWorkerAttemptActive();
             return {client};
-            });
+            }, () => !this.stopped);
             while (!this.stopped) {
                 await this.controller!.drain();
                 if (!this.stopped) await delay(100);
@@ -51,9 +51,13 @@ export default class ProjectionWorker extends HyperionWorker {
             this.profiler.stopReporting();
             process.exit(0);
         } catch (error) {
-            hLog('Portable state worker failed; history indexing remains independent:', error);
-            this.profiler.stopReporting();
-            process.exit(1);
+            this.handleProjectionFailure(error);
         }
+    }
+
+    private handleProjectionFailure(error: unknown): void {
+        hLog('Portable state worker failed; history indexing remains independent:', error);
+        this.profiler.stopReporting();
+        process.exit(1);
     }
 }

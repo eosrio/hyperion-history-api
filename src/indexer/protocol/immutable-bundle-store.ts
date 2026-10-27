@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import type {Client} from '@elastic/elasticsearch';
 import {boundedCanonicalJson} from '../helpers/bounded-json.js';
+import {currentProofConsumerScope, type ProofConsumerScope} from './proof-consumer-scope.js';
 interface StoredDocument {
     kind: 'chunk' | 'manifest';
     bundle_id: string;
@@ -34,6 +35,19 @@ export class ImmutableProtocolBundleReadError extends Error {
     }
 }
 export interface ImmutableProtocolBundleBounds {chunkBytes:number;maximumBytes:number;maximumChunks:number}
+declare const freshPrepareBrand: unique symbol;
+export interface FreshBundlePrepare {readonly id:string;readonly digest:string;readonly [freshPrepareBrand]:true}
+const freshPrepares=new WeakMap<object,{store:ImmutableProtocolBundleStore;id:string;digest:string;scope?:ProofConsumerScope}>();
+/** A record read cannot recreate the actual acknowledged immutable PREPARE return. */
+export function assertFreshBundlePrepare(store:ImmutableProtocolBundleStore,proof:FreshBundlePrepare,id:string,digest:string):ProofConsumerScope|undefined {
+    const issued=freshPrepares.get(proof);
+    if(!issued||issued.store!==store||issued.id!==id||issued.digest!==digest
+        ||(currentProofConsumerScope()!==undefined&&issued.scope!==currentProofConsumerScope()))
+        throw new Error('Immutable bundle lacks a fresh acknowledged prepare result');
+    issued.scope?.assertActive();
+    freshPrepares.delete(proof);
+    return issued.scope;
+}
 /** Immutable bytes only; no canonical or readiness authority. */
 export class ImmutableProtocolBundleStore {
     readonly index:string;
@@ -165,7 +179,8 @@ export class ImmutableProtocolBundleStore {
         throw new Error('ABI observation CAS retry budget exhausted');
     }
 
-    async prepare(id:string, record:unknown, signal?: AbortSignal): Promise<{id:string;digest:string}> {
+    async prepare(id:string, record:unknown, signal?: AbortSignal): Promise<FreshBundlePrepare> {
+        const scope=currentProofConsumerScope();
         signal?.throwIfAborted();
         if(this.options.readOnly)throw new Error('Read-only protocol bundles cannot prepare records');
         const bytes=Buffer.from(canonical(record,this.bounds.maximumBytes));
@@ -191,7 +206,8 @@ export class ImmutableProtocolBundleStore {
         }
         // The immutable manifest is the sole PREPARE completion marker; partial chunks grant nothing.
         await this.createImmutable(id, manifest, signal);
-        return {id, digest};
+        const result=Object.freeze({id,digest}) as FreshBundlePrepare;
+        scope?.assertActive();freshPrepares.set(result,{store:this,id,digest,scope});return result;
     }
 
     async read(id: string, signal?:AbortSignal): Promise<unknown> {

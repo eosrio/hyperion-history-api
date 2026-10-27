@@ -1,0 +1,100 @@
+import {expect, test} from 'bun:test';
+import {fileURLToPath} from 'node:url';
+import {assertSuccessfulWorkerShutdown} from '../../scripts/qualification/es955-workers.ts';
+import {auditWorkerRejectionDiagnostics} from '../../scripts/qualification/worker-rejection-diagnostics.mjs';
+
+test('native worker rejection provenance retains original decisions, custody, real forks and reader exit failures', async () => {
+    const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node',
+        fileURLToPath(new URL('./worker-rejection-provenance.mjs', import.meta.url))],
+    {stdout: 'pipe', stderr: 'pipe', timeout: 45000});
+    const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
+    expect({code, stderr}).toEqual({code: 0, stderr: ''});
+    const result = JSON.parse(stdout.trim());
+    expect(result.status).toBe('passed'); expect(result.checks).toBe(31); expect(result.rows).toBe(49);
+    expect(result.endAssociationRows).toBe(1); expect(result.rows - result.endAssociationRows).toBe(48);
+}, 50000);
+
+test('diagnostic copies cannot normalize failed shutdowns, extra deaths or a nonzero master exit', () => {
+    const raw = [{kind: 'shutdown', pid: 100, success: false, forced: [], unresolved: [], failedChildren: [101]},
+        {kind: 'native_boundary', event: 'action_admission_rejected', pid: 101, observationOnly: true,
+            predicate: 'producer_epoch', parentIncarnation: 'copied-stale-incarnation'},
+        {kind: 'worker_exit', pid: 100, childPid: 101, code: 1, signal: null}];
+    const preserved = structuredClone(raw);
+    expect(() => assertSuccessfulWorkerShutdown(raw, 100, 1, null)).toThrow('master process did not exit successfully');
+    expect(() => assertSuccessfulWorkerShutdown(raw, 100, 0, null)).toThrow('full-worker shutdown did not complete cleanly');
+    expect(raw).toEqual(preserved);
+    const normal = [{kind: 'shutdown', pid: 100, success: true, forced: [], unresolved: [], failedChildren: [],
+        childExits: [{pid: 101, code: 0, signal: null}]},
+        {kind: 'worker_fork', pid: 100, childPid: 101}, {kind: 'worker_exit', pid: 100, childPid: 101, code: 0, signal: null},
+        {kind: 'start', pid: 100}, {kind: 'start', pid: 101}, {kind: 'exit', pid: 100, code: 0}, {kind: 'exit', pid: 101, code: 0}, raw[1]];
+    expect(assertSuccessfulWorkerShutdown(normal, 100, 0, null).success).toBe(true);
+    const extra = [...normal, {kind: 'worker_exit', pid: 100, childPid: 102, code: 1, signal: null}];
+    expect(() => assertSuccessfulWorkerShutdown(extra, 100, 0, null)).toThrow('parent-observed child exits incomplete');
+    const unrelated = normal.map(row => row.kind === 'worker_exit' ? {...row, code: 1} : row);
+    expect(() => assertSuccessfulWorkerShutdown(unrelated, 100, 0, null)).toThrow('child process failed: 101');
+    expect(raw).toEqual(preserved);
+});
+
+test('capture failures, omitted decisions and changed limits fail the diagnostic audit independently of raw shutdown', () => {
+    const row = {kind: 'native_boundary', event: 'observer_metrics', pid: 101, rejectionDiagnostics: {
+        observationOnly: true, maximumRejections: 32, maximumPendingPublications: 64, maximumWorkers: 256,
+        reportFailures: 0, omittedRejections: 0, fences: {maximumFenceEvents: 1024, membersPerRow: 32, omitted: 0,
+            enabled: {client: true, host: true, supervisor: true, master: true}},
+        failures: {maximumFailureEvents: 128, maximumErrorMatches: 8, omitted: 0, omittedRoots: 0,
+            enabled: {root: true, attempts: true, pool: true, reader: true, projection: true, master: true, cluster: true, supervisor: true}},
+        endAssociation: {enabled: true, maximumSuccesses: 8, maximumFailures: 128, maximumNesting: 32,
+            successes: 0, failures: 0, omittedSuccesses: 0, omittedFailures: 0, reportFailures: 0}}};
+    const starts = [{kind: 'start', pid: 101}, {kind: 'native_boundary', event: 'start', pid: 101}];
+    expect(auditWorkerRejectionDiagnostics([...starts, row], 101).status).toBe('complete');
+    expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics, reportFailures: 1}}], 101)).toThrow('capture failed');
+    expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics, omittedRejections: 1}}], 101)).toThrow('omitted');
+    expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics, maximumRejections: 33}}], 101)).toThrow();
+    expect(() => auditWorkerRejectionDiagnostics([row, structuredClone(row)], 101)).toThrow('Duplicated');
+    expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: undefined}], 101)).toThrow('unavailable');
+    expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics, fences: undefined}}], 101)).toThrow('Fence diagnostic bounds');
+    expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics, failures: undefined}}], 101)).toThrow('Failure diagnostic bounds');
+    expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics,
+        failures: {...row.rejectionDiagnostics.failures, omittedRoots: 1}}}], 101)).toThrow('roots were omitted');
+    expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics,
+        failures: {...row.rejectionDiagnostics.failures, enabled: {...row.rejectionDiagnostics.failures.enabled, master: false}}}}], 101)).toThrow('master is unavailable');
+    expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics,
+        fences: {...row.rejectionDiagnostics.fences, omitted: 1}}}], 101)).toThrow('fence diagnostic events were omitted');
+    expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics,
+        fences: {...row.rejectionDiagnostics.fences, enabled: {...row.rejectionDiagnostics.fences.enabled, client: false}}}}], 101)).toThrow('client is unavailable');
+    expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics,
+        endAssociation: undefined}}], 101)).toThrow('End diagnostic success bound');
+    for (const [patch, error] of [[{enabled: false}, 'hooks are unavailable'], [{reportFailures: 1}, 'end diagnostic capture failed'],
+        [{omittedFailures: 1}, 'failures were omitted'], [{maximumFailures: 129}, 'failure bound changed'],
+        [{failures: 1}, 'failure record census differs']] as const)
+        expect(() => auditWorkerRejectionDiagnostics([{...row, rejectionDiagnostics: {...row.rejectionDiagnostics,
+            endAssociation: {...row.rejectionDiagnostics.endAssociation, ...patch}}}], 101)).toThrow(error);
+    expect(auditWorkerRejectionDiagnostics([], 101)).toMatchObject({status: 'incomplete', processes: [{pid: 101, missing: ['native-start', 'diagnostic-summary']}]});
+    expect(auditWorkerRejectionDiagnostics(starts, 101)).toMatchObject({status: 'incomplete', processes: [{pid: 101, missing: ['diagnostic-summary']}]});
+    const physicalFork = {kind: 'worker_fork', pid: 101, childPid: 102};
+    const raw = [...starts, row, physicalFork, {kind: 'start', pid: 102}];
+    expect(auditWorkerRejectionDiagnostics(raw, 101).processes.find(value => value.pid === 102)?.missing).toEqual(['native-start', 'diagnostic-summary']);
+    const nativeStart = {kind: 'native_boundary', event: 'start', pid: 102};
+    expect(auditWorkerRejectionDiagnostics([...raw, nativeStart], 101).processes.find(value => value.pid === 102)?.missing).toEqual(['diagnostic-summary']);
+    // The metadata audit creates no fault permission. Only the caller's existing verified
+    // original-object fault view can select survivors; the raw absent summary remains unknown.
+    const checked = raw.filter(value => value !== physicalFork && value.pid !== 102);
+    expect(auditWorkerRejectionDiagnostics(checked, 101).status).toBe('complete');
+    const orphanEnd = {kind: 'native_boundary', event: 'worker_attempt_end_association', pid: 202,
+        reply: {ok: false, error: 'Invalid worker attempt end association'}};
+    expect(auditWorkerRejectionDiagnostics([...checked, orphanEnd], 101)).toMatchObject({status: 'incomplete',
+        processes: [{pid: 101, missing: []}, {pid: 202, missing: ['physical-census-membership', 'native-start', 'diagnostic-summary']}]});
+    for (const pid of [undefined, 0, -1, '202'])
+        expect(() => auditWorkerRejectionDiagnostics([...checked, {...orphanEnd, pid}], 101)).toThrow('Invalid end diagnostic process');
+    expect(auditWorkerRejectionDiagnostics([...checked, nativeStart], 101).processes.find(value => value.pid === 102)?.missing)
+        .toEqual(['physical-census-membership', 'diagnostic-summary']);
+    expect(() => auditWorkerRejectionDiagnostics(checked, undefined)).toThrow('Original primary PID');
+});
+
+test.each([['--record-limit', 34, 32], ['--byte-limit', 1, 0]])('native %s exhaustion preserves every original rejection', async (mode, checks, rows) => {
+    const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node',
+        fileURLToPath(new URL('./worker-rejection-provenance.mjs', import.meta.url)), String(mode)],
+    {stdout: 'pipe', stderr: 'pipe', timeout: 15000});
+    const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
+    expect({code, stderr}).toEqual({code: 0, stderr: ''});
+    expect(JSON.parse(stdout.trim())).toMatchObject({status: 'passed', checks, rows});
+}, 20000);

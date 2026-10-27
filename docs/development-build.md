@@ -15,13 +15,17 @@ the dependency tree, matching `.github/workflows/build.yml`:
 npm ci
 npm run typecheck
 npm run build
-bun test tests/unit
+npm test
 ```
 
 `npm run typecheck` runs `bun check -p tsconfig.json` over the complete application
 project. Use it for routine development feedback and the CI typecheck gate.
 `npm run build` uses the pinned TypeScript 7 compiler to emit Node.js JavaScript
 and source maps. `bun check` performs checking only and does not emit artifacts.
+
+`npm test` runs `bun test ./tests/unit`. Keep the `./` prefix: Bun treats a bare
+path as a substring filter and can also discover copied fixtures beneath `out/`.
+See [Bun's test discovery rules](https://bun.sh/docs/test/discovery).
 
 Hyperion 4.5 requires Node.js 24 or newer. The workflow runs this sequence on Node.js 24 and 26
 for pushes and pull requests to `main`, `dev`, and `release/4.5`. Bun checks and runs the unit tests against
@@ -42,8 +46,11 @@ the same invocation-scoped policy as the Node 24/26 CI jobs:
 npm ci --allow-git=all
 ```
 
-The root and Wire plugin now share an exact SDK revision; the MongoDB adapter retains
-its separately pinned development SDK under its own package. Transitive Git dependencies
+The root and MongoDB adapter pin SDK `8d37e932df5e0e7d671c9682505de3dd55f0edb4` for
+contextual recovery. Wire remains at `7167659e9c043cb3351074fcacb40200cc57f3a3`, with its
+own nested SDK `339b5c93d1338968c18ed14254961439dcab16a0`. The installed native-provider
+check verifies both exact pins, identical protocol-contract bytes and unchanged source/component
+receipts; updating projection contracts does not repin a qualified protocol profile. Transitive Git dependencies
 require the invocation-scoped policy above; `--allow-git=root` previously rejected the
 separate Wire SDK on npm 11.19.0 before any qualification test ran. Keep all Git
 revisions pinned in the committed lockfile and preparation scripts enabled. Do

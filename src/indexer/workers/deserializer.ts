@@ -365,7 +365,7 @@ export default class MainDSWorker extends HyperionWorker {
             this.activeActionSource = {message, frameHex, ingressId, schemaJson: ingress.schemaJson, owner};
             try {await processBound(result);} finally {this.activeActionSource = undefined;}
         };
-        if (this.usesExtensionProtocol) {
+        if (this.usesProtocolSourceBindings) {
             await this.processProtocolSourceDelivery(message, async result => {
                 if (this.activeProtocolShipSchemaJson !== ingress.schemaJson) throw new Error('Action source and protocol handshakes disagree');
                 await run(result);
@@ -407,9 +407,9 @@ export default class MainDSWorker extends HyperionWorker {
                 producer: String(block?.producer ?? ''), timestamp: String(block?.timestamp ?? '')},
             policy: epoch.policy, traces: traces ?? null, ...(rootActions ? {rootActions} : {}),
             ...(wireActionInputs ? {wireActionInputs} : {}),
-            ...(this.usesExtensionProtocol ? {sourceSelectionId: this.activeSourceSelectionId} : {})};
+            ...(this.usesProtocolSourceBindings ? {sourceSelectionId: this.activeSourceSelectionId} : {})};
         const store = this.getActionAdmissionStore();
-        const sourceId = await store.retainSource({schemaVersion: 1, frameHex: scope.frameHex,
+        const sourceId = await store.retainSource({schemaVersion: 2, frameHex: scope.frameHex,
             schemaJson: scope.schemaJson, captureSha256: capture.captureSha256, ingressId: scope.ingressId,
             previousBlockId: capture.source.previousBlockId, producer: epoch.producer,
             executableSha256: epoch.executableSha256, inventoryInput});
@@ -455,7 +455,9 @@ export default class MainDSWorker extends HyperionWorker {
             configuration: configuration!, owner: scope!.owner});
         await revalidate();
         for (const evidence of observations) {
-            await store.recordAttemptDisposition({owner: scope!.owner, evidence}); await revalidate();
+            const recorded = await store.recordAttemptDisposition({owner: scope!.owner, evidence});
+            await this.observeFreshActionWrite(recorded);
+            await revalidate();
         }
         assertCurrent(); this.assertWorkerAttemptActive(); this.markWorkerAcknowledgementAttempt(); scope!.owner.consumer.ack(message);
     }
@@ -579,7 +581,7 @@ export default class MainDSWorker extends HyperionWorker {
 
     /** Journal PREPARE precedes history filters and source ACK; it grants no decoding authority. */
     async prepareProtocolAbiObservations(res: GetBlocksResultV0): Promise<{traces?: any; deltas?: any[]; wireActionInputs?: readonly ProtocolAbiActionInput[]}> {
-        if (!this.usesExtensionProtocol) return {};
+        if (!this.usesProtocolSourceBindings) return {};
         this.assertWorkerAttemptActive();
         if (!this.activeSourceSelectionId || !this.activeProtocolShipSchemaJson || !this.protocolSourceBindingStore) {
             throw new Error('ABI observations require a verified reader source selection');
@@ -622,7 +624,7 @@ export default class MainDSWorker extends HyperionWorker {
                 if (typeof provider.observeBlockAbi !== 'function') throw new Error('Selected provider has no ABI observation hook');
                 const facts = provider.observeBlockAbi({traces: decoded.traces, accountRows}, position);
                 assertProtocolAbiObservationFacts(facts);
-                decoded.wireActionInputs = facts.actionInputs;
+                if (this.usesExtensionProtocol) decoded.wireActionInputs = facts.actionInputs;
                 // Validate malformed provider output here so raw source survives as an incomplete record.
                 observation = {status: 'observed', facts};
             }
@@ -742,7 +744,7 @@ export default class MainDSWorker extends HyperionWorker {
                 if (!data) return;
                 this.captureWorkerAttemptDelivery(data, consumer, 'source-delivery');
                 if (this.actionSourceAdmissionEnabled) this.captureActionAdmissionDelivery(data, consumer);
-                if (this.usesExtensionProtocol) this.captureProtocolSourceDelivery(data, consumer);
+                if (this.usesProtocolSourceBindings) this.captureProtocolSourceDelivery(data, consumer);
                 this.consumerQueue.push(data).catch(console.log);
             });
             consumer.on('drain', () => {
@@ -990,7 +992,7 @@ export default class MainDSWorker extends HyperionWorker {
                             inline_count: transaction.dispatch.inlineCount, filtered: transaction.dispatch.filtered,
                             live: process.env['live_mode'], [actionSourceAdmissionHeader]: admission.id,
                             action_trace_ordinal: transaction.traceOrdinal,
-                            ...(this.usesExtensionProtocol ? {[protocolSourceSelectionHeader]: this.activeSourceSelectionId} : {})};
+                            ...(this.usesProtocolSourceBindings ? {[protocolSourceSelectionHeader]: this.activeSourceSelectionId} : {})};
                         await this.routeToPool(transaction.dispatch.body, headers, scope.owner, transaction.dispatch.canonicalJson);
                         if (process.env['live_mode'] === 'true') onBlockTransactions.push(transaction.transactionId);
                     }
@@ -1046,7 +1048,7 @@ export default class MainDSWorker extends HyperionWorker {
                                     filtered,
                                     live: process.env['live_mode'],
                                     ...(this.activeActionSource?.admission ? {[actionSourceAdmissionHeader]: this.activeActionSource.admission.id} : {}),
-                                    ...(this.usesExtensionProtocol ? {[protocolSourceSelectionHeader]: this.activeSourceSelectionId} : {})
+                                    ...(this.usesProtocolSourceBindings ? {[protocolSourceSelectionHeader]: this.activeSourceSelectionId} : {})
                                 }, this.activeActionSource?.owner);
                             } catch (e) {
                                 if (this.actionSourceAdmissionEnabled) throw e;

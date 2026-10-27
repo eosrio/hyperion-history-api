@@ -23,12 +23,12 @@ async function fixture(options:{maxPendingBlocks?:number;recoveryWindowBlocks?:n
     const make=(ownerId:string)=>new ProtocolAbiCoordinator({chainId,profile,ownerId,bindings,observations,store,...options});
     const coordinator=make('master-1');await coordinator.start();let session='session-a';
     let generation=(await coordinator.openSource(contextId,session)).generation;
-    async function selected(number:number,identity=number,parent=number-1,facts=empty(),incomplete=false){
+    async function selected(number:number,identity=number,parent=number-1,facts=empty(),incomplete=false,headNumber=number,tracesHex='00'){
         const source={chainId,blockNum:number,blockId:block(identity),previousBlockId:number===1?null:block(parent)};
-        const capture={kind:'unattested-ship-result-sections-v1' as const,schemaJson,blockHex:'00',tracesHex:'00',deltasHex:'00'};
+        const capture={kind:'unattested-ship-result-sections-v1' as const,schemaJson,blockHex:'00',tracesHex,deltasHex:'00'};
         const captureSha256=protocolAbiCaptureDigest(source,capture),frame=Buffer.from('fixture-frame-'+identity);
         const selectionId=(await bindings.prepareSelection({schemaVersion:1,contextId,readerSessionId:session,readerRole:'live',assignmentId:null,
-            source,captureSha256,frameSha256:hash(frame),head:{blockNum:number,blockId:source.blockId},irreversible:{blockNum:0,blockId:block(0)}})).id;
+            source,captureSha256,frameSha256:hash(frame),head:{blockNum:headNumber,blockId:block(headNumber)},irreversible:{blockNum:0,blockId:block(0)}})).id;
         const record:ProtocolAbiObservationRecord={schemaVersion:1,protocol:profile,source:{...source,inputSha256:captureSha256},capture,
             observation:incomplete?{status:'incomplete',error:{code:'malformed-source',message:'Retained raw bytes'}}:{status:'observed',facts}};
         return {selectionId,record};
@@ -47,6 +47,113 @@ async function fixture(options:{maxPendingBlocks?:number;recoveryWindowBlocks?:n
 }
 
 describe('canonical ABI runtime coordinator',()=>{
+    it('retains local source revocation across held fork recovery without additional storage reads',async()=>{
+        const f=await fixture();await f.append(1);
+        const calls=f.memory.calls.length,current=f.coordinator.retainSourceFence('session-a',f.generation);
+        expect(current()).toBe(true);expect(f.memory.calls).toHaveLength(calls);
+        await f.append(2);expect(current()).toBe(true);
+        const generation=f.generation,fork=await f.selected(2,20,1);
+        const recover=(f.coordinator as any).recoverParent.bind(f.coordinator);
+        let release!:()=>void,entered!:()=>void;
+        const gate=new Promise<void>(resolve=>{release=resolve;}),waiting=new Promise<void>(resolve=>{entered=resolve;});
+        (f.coordinator as any).recoverParent=async(...args:any[])=>{entered();await gate;return recover(...args);};
+        const pending=f.admit(fork);void pending.catch(()=>{});
+        try {
+            await waiting;
+            const heldCalls=f.memory.calls.length;
+            expect(current()).toBe(false);
+            expect(f.coordinator.retainSourceFence('session-a',generation)()).toBe(false);
+            expect(f.memory.calls).toHaveLength(heldCalls);
+            release();await pending;
+            expect(current()).toBe(false);
+            expect(f.coordinator.retainSourceFence('session-a',f.generation)()).toBe(true);
+        } finally {release();(f.coordinator as any).recoverParent=recover;}
+    });
+    it('does not restore a locally revoked session from repaired old control after failed storage',async()=>{
+        const f=await fixture(),generation=f.generation,current=f.coordinator.retainSourceFence('session-a',generation);
+        const save=f.store.compareAndSet.bind(f.store);
+        let release!:()=>void,entered!:()=>void;
+        const gate=new Promise<void>(resolve=>{release=resolve;}),waiting=new Promise<void>(resolve=>{entered=resolve;});
+        f.store.compareAndSet=async()=>{entered();await gate;throw new Error('controlled revoke write failure');};
+        const pending=f.coordinator.revokeSource('session-a');void pending.catch(()=>{});
+        try {
+            expect(current()).toBe(false);
+            expect(f.coordinator.retainSourceFence('session-a',generation)()).toBe(false);
+            await waiting;release();await expect(pending).rejects.toThrow('controlled revoke write failure');
+        } finally {release();f.store.compareAndSet=save;}
+        expect((await f.coordinator.inspect()).source?.readerSessionId).toBe('session-a');
+        expect(f.coordinator.retainSourceFence('session-a',generation)()).toBe(false);
+        const opened=await f.coordinator.openSource(f.contextId,'session-b');
+        expect(f.coordinator.retainSourceFence('session-b',opened.generation)()).toBe(true);
+        expect(current()).toBe(false);
+    });
+    it('remembers an accepted replay of the committed head with a new source selection ID',async()=>{
+        const f=await fixture(),first=await f.append(1);
+        const conflict=await f.selected(1,1,0,empty(),false,3,'ff');
+        expect((await f.admit(conflict)).status).toBe('stale');
+        const {inputSha256:_conflictInputSha256,...conflictSource}=conflict.record.source;
+        expect(await f.coordinator.currentlyAdmittedSource(conflict.selectionId,conflictSource,'session-a',f.generation)).toBe(false);
+        const replay=await f.selected(1,1,0,empty(),false,2);
+        expect(replay.selectionId).not.toBe(first.selectionId);
+        expect((await f.admit(replay)).status).toBe('accepted');
+        const {inputSha256:_inputSha256,...source}=replay.record.source;
+        expect(await f.coordinator.currentlyAdmittedSource(replay.selectionId,source,'session-a',f.generation)).toBe(true);
+    });
+    it('keeps bounded live source membership through drain but revokes it on fork, reconnect and owner replacement',async()=>{
+        const f=await fixture({recoveryWindowBlocks:2});
+        const a=await f.selected(1),b=await f.selected(2),c=await f.selected(3);
+        await f.admit(a);
+        const position=(value:typeof a)=>{const {inputSha256:_inputSha256,...source}=value.record.source;return source;};
+        const current=(value:typeof a,session='session-a',generation=f.generation)=>
+            f.coordinator.currentlyAdmittedSource(value.selectionId,position(value),session,generation);
+        expect(await current(a)).toBe(true);
+        const read=f.store.readControl.bind(f.store);
+        f.store.readControl=async (...args)=>{const visible=await read(...args);return {...visible!,seqNo:visible!.seqNo+1};};
+        expect(await current(a)).toBe(false);
+        f.store.readControl=read;
+        expect(await f.coordinator.currentlyAdmittedSource(a.selectionId,
+            {...position(a),blockId:block(99)},'session-a',f.generation)).toBe(false);
+        expect(await current(a,'other-session')).toBe(false);
+        await f.admit(b);await f.prepare(a);await f.prepare(b);await f.coordinator.drain();
+        expect(await current(a)).toBe(true);expect(await current(b)).toBe(true);
+        await f.admit(c);
+        expect(await current(a)).toBe(false);expect(await current(b)).toBe(true);expect(await current(c)).toBe(true);
+        const oldGeneration=f.generation,fork=await f.selected(2,20,1);
+        await f.admit(fork);
+        expect(f.generation).not.toBe(oldGeneration);
+        expect(await current(b,'session-a',oldGeneration)).toBe(false);
+        expect(await current(c)).toBe(false);expect(await current(fork)).toBe(true);
+        await f.coordinator.revokeSource('session-a');
+        expect(await current(fork)).toBe(false);
+        const restarted=f.make('master-2');await restarted.start();
+        expect(await current(fork)).toBe(false);
+        const opened=await restarted.openSource(f.contextId,'session-b');
+        expect(await restarted.currentlyAdmittedSource(fork.selectionId,position(fork),'session-b',opened.generation)).toBe(false);
+    });
+
+    it('does not hold the coordinator mutation lane during a slow current-source control read',async()=>{
+        const f=await fixture({recoveryWindowBlocks:1}),a=await f.selected(1),b=await f.selected(2);
+        await f.admit(a);
+        const {inputSha256:_inputSha256,...position}=a.record.source;
+        const read=f.store.readControl.bind(f.store);
+        let release!:()=>void,entered!:()=>void,once=false;
+        const gate=new Promise<void>(resolve=>{release=resolve;}),waiting=new Promise<void>(resolve=>{entered=resolve;});
+        f.store.readControl=async (...args)=>{
+            if(!once){once=true;entered();await gate;}
+            return read(...args);
+        };
+        let timer:ReturnType<typeof setTimeout>|undefined;
+        try {
+            const probe=f.coordinator.currentlyAdmittedSource(a.selectionId,position,'session-a',f.generation);
+            await waiting;
+            const admitted=await Promise.race([f.admit(b),new Promise<never>((_resolve,reject)=>{
+                timer=setTimeout(()=>{release();reject(new Error('Current-source read blocked ABI admission'));},1000);
+            })]);
+            expect(admitted.status).toBe('accepted');
+            release();expect(await probe).toBe(false);
+        } finally {if(timer)clearTimeout(timer);release();f.store.readControl=read;}
+    });
+
     it('activates source order rather than parallel PREPARE completion, including refresh-independent restart reads',async()=>{
         const f=await fixture();const firstFacts=empty();firstFacts.finalStates=[{account:'alpha',present:true,abiHex:'aa',deltaOrdinal:0}];
         const a=await f.selected(1,1,0,firstFacts),b=await f.selected(2);

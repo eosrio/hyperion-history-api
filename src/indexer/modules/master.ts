@@ -4,7 +4,7 @@ import { API, APIClient } from '@wharfkit/antelope';
 import { queue, QueueObject } from 'async';
 
 import cluster, { Worker } from 'cluster';
-import {randomUUID} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 
 import { createWriteStream, existsSync, mkdirSync, readFileSync, symlinkSync, unlinkSync, writeFileSync, WriteStream } from 'fs';
 
@@ -45,22 +45,150 @@ import { HyperionQueueMonitor } from './queueMonitor.js';
 import {loadChainProtocol} from '../protocol/selection.js';
 import {ProtocolAbiCoordinator} from '../protocol/abi-coordinator.js';
 import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
-import {ProtocolSourceBindingStore} from '../protocol/source-bindings.js';
+import {ProtocolSourceBindingStore, type ProtocolSourcePosition} from '../protocol/source-bindings.js';
 import {ProtocolAbiObservationStore} from '../protocol/abi-observation-store.js';
 import {isProtocolAbiCoordinatorRequest, type ProtocolAbiCoordinatorReply} from '../protocol/abi-coordinator-rpc.js';
 import {ensureProtocolActionMapping} from '../protocol/action-proof-mapping.js';
 import {resolvePortableStateConfiguration} from '../projection/config.js';
 import {WorkerAttemptSupervisor, type WorkerAttemptRole} from '../protocol/worker-attempt-supervisor.js';
+import {ActionAttemptAdjudicator, type CurrentAttemptCanonicalBlock} from '../history/action-attempt-adjudicator.js';
+import {ActionSourceAdmissionStore} from '../history/action-source-admission.js';
+import {actionConfigurationSnapshot} from '../history/action-producer-epoch.js';
 import {assertActionSequenceTemplateReadback, ensureActionSequenceMappings,
     ensureActionSequenceWriteTemplate} from '../history/action-sequence-storage.js';
 
 import Timeout = NodeJS.Timeout;
 import { IPermission } from '../../interfaces/table-permissions.js';
 
+interface ActionLibAnchor {readonly worker: Worker; readonly blockNum: number; readonly blockId: string}
+
 export class HyperionMaster {
     // Own physical Worker objects independently of the replaceable logical workerMap entries.
     private workerAttemptSupervisor?: WorkerAttemptSupervisor;
-    private get attemptSupervisor(): WorkerAttemptSupervisor {return this.workerAttemptSupervisor ??= new WorkerAttemptSupervisor();}
+    private actionAttemptAdjudicator?: ActionAttemptAdjudicator;
+    private actionCanonicalLib?: ActionLibAnchor;
+    private readonly protocolSourceProbes = new Map<string, {worker: Worker; readerSessionId: string;
+        generation: string; resolve: (current: boolean) => void}>();
+    private probePhysicalReversibleSource(worker: Worker, readerSessionId: string, generation: string,
+                                          source: ProtocolSourcePosition): Promise<boolean> {
+        return new Promise(resolve => {
+            const requestId = randomUUID();
+            let timer: Timeout;
+            const finish = (current: boolean) => {
+                if (!this.protocolSourceProbes.delete(requestId)) return;
+                clearTimeout(timer);
+                resolve(current);
+            };
+            timer = setTimeout(() => finish(false), 5000);
+            this.protocolSourceProbes.set(requestId, {worker, readerSessionId, generation, resolve: finish});
+            try {worker.send({event: 'protocol_source_probe_request', data: {requestId, readerSessionId, generation, source}},
+                error => {if (error) finish(false);});}
+            catch {finish(false);}
+        });
+    }
+    private get attemptSupervisor(): WorkerAttemptSupervisor {
+        if (!this.workerAttemptSupervisor) {
+            const supervisor = new WorkerAttemptSupervisor({onEnd: evidence => this.attemptAdjudicatorFor(supervisor).enqueue(evidence)});
+            this.workerAttemptSupervisor = supervisor;
+        }
+        return this.workerAttemptSupervisor;
+    }
+    /** Canonical identity checks do not decode a chain-specific signed block header. */
+    private async readCanonicalRpcBlock(blockNum: number) {
+        if (!Number.isSafeInteger(blockNum) || blockNum < 1 || blockNum > 0xffffffff)
+            throw new Error('Invalid canonical RPC block number');
+        const response = await this.rpc.call<unknown>({path: '/v1/chain/get_block', params: {block_num_or_id: blockNum}});
+        const block = response as {block_num?: unknown; id?: unknown; previous?: unknown};
+        if (!block || typeof block !== 'object' || Array.isArray(block) || block.block_num !== blockNum
+            || typeof block.id !== 'string' || !/^[0-9a-f]{64}$/i.test(block.id)
+            || typeof block.previous !== 'string' || !/^[0-9a-f]{64}$/i.test(block.previous))
+            throw new Error('RPC returned an inconsistent canonical block identity');
+        return {blockId: block.id.toLowerCase(), previousBlockId: blockNum === 1 ? null : block.previous.toLowerCase()};
+    }
+    private captureActionLibAnchor(blockNum: number): () => ActionLibAnchor {
+        const anchor = this.actionCanonicalLib, coordinator = this.protocolAbiCoordinator, source = this.protocolAbiSource;
+        const readerSessionId = source?.readerSessionId, generation = source?.generation;
+        const sourceFence = coordinator && source && generation ? coordinator.retainSourceFence(source.readerSessionId, generation) : undefined;
+        let lastValidatedBlockNum = anchor?.blockNum ?? 0, lastValidatedBlockId = anchor?.blockId;
+        return () => {
+            const current = this.actionCanonicalLib;
+            if (!anchor || this.shutdownStarted || this.liveReader?.wref !== anchor.worker
+                || !anchor.worker.isConnected() || anchor.worker.isDead() || anchor.blockNum < blockNum
+                || !this.workerMap.some(definition => definition.wref === anchor.worker && definition.worker_role === 'continuous_reader')
+                || !current || current.worker !== anchor.worker || current.blockNum < lastValidatedBlockNum
+                || current.blockNum === lastValidatedBlockNum && current.blockId !== lastValidatedBlockId
+                || this.protocolAbiCoordinator !== coordinator || this.protocolAbiSource !== source
+                || source?.readerSessionId !== readerSessionId || source?.generation !== generation
+                || (coordinator ? !source || !generation || source.worker !== anchor.worker
+                    || !this.isCurrentProtocolLiveReader(anchor.worker) || !sourceFence?.() : !!source))
+                throw new Error('Current live SHIP irreversible anchor is unavailable');
+            lastValidatedBlockNum = current.blockNum; lastValidatedBlockId = current.blockId;
+            return anchor;
+        };
+    }
+    private attemptAdjudicatorFor(supervisor: WorkerAttemptSupervisor): ActionAttemptAdjudicator {
+        if (this.actionAttemptAdjudicator) return this.actionAttemptAdjudicator;
+        const canonicalChecks = new WeakMap<CurrentAttemptCanonicalBlock, () => void>();
+        return this.actionAttemptAdjudicator = new ActionAttemptAdjudicator(supervisor,
+            new ActionSourceAdmissionStore(this.esClient, this.chain, this.conf.settings.es_replicas ?? 0),
+            new ProtocolSourceBindingStore(this.esClient, this.chain, this.conf.settings.es_replicas ?? 0, {readOnly: true}), {
+                configurationSha256: () => createHash('sha256').update(actionConfigurationSnapshot(this.conf, this.cm.filters,
+                    this.mLoader.snapshotActionHandlers())).digest('hex'),
+                canonicalBlock: async blockNum => {
+                    const info = await this.rpc.v1.chain.get_info();
+                    if (info.head_block_num.toNumber() < blockNum) throw new Error('Canonical node is behind the original worker source');
+                    const irreversible = info.last_irreversible_block_num.toNumber() >= blockNum;
+                    const checkAnchor = irreversible && this.conf.indexer.live_reader ? this.captureActionLibAnchor(blockNum) : undefined;
+                    const live = !irreversible ? this.protocolAbiSource : undefined, coordinator = this.protocolAbiCoordinator;
+                    const readerSessionId = live?.readerSessionId, generation = live?.generation;
+                    const sourceFence = live && generation ? coordinator?.retainSourceFence(live.readerSessionId, generation) : undefined;
+                    // RPC alone can lag a SHIP fork. An authenticated live reader's LIB anchors its branch.
+                    if (checkAnchor) {
+                        const lib = checkAnchor();
+                        const anchored = await this.readCanonicalRpcBlock(lib.blockNum);
+                        checkAnchor();
+                        if (anchored.blockId !== lib.blockId)
+                            throw new Error('RPC and live SHIP irreversible branches differ');
+                    }
+                    const block = await this.readCanonicalRpcBlock(blockNum);
+                    checkAnchor?.();
+                    const observation = Object.freeze({chainId: String(info.chain_id).toLowerCase(), ...block, irreversible});
+                    canonicalChecks.set(observation, () => {
+                        if (this.shutdownStarted) throw new Error('Canonical action observation is no longer current');
+                        checkAnchor?.();
+                        if (!irreversible && (!live || !generation || !coordinator || this.protocolAbiSource !== live
+                            || this.protocolAbiCoordinator !== coordinator || live.readerSessionId !== readerSessionId
+                            || live.generation !== generation || !this.isCurrentProtocolLiveReader(live.worker)
+                            || !live.worker.isConnected() || live.worker.isDead() || !sourceFence?.()))
+                            throw new Error('Canonical action source scope is no longer current');
+                    });
+                    return observation;
+                },
+                assertCanonicalCurrent: block => {
+                    const check = canonicalChecks.get(block);
+                    if (!check) throw new Error('Unissued canonical action observation');
+                    check();
+                },
+                reversibleSelection: async (selectionId, source, readerSessionId) => {
+                    const live = this.protocolAbiSource, coordinator = this.protocolAbiCoordinator;
+                    if (!live?.generation || !coordinator || live.readerSessionId !== readerSessionId
+                        || !this.isCurrentProtocolLiveReader(live.worker)) return false;
+                    const generation = live.generation;
+                    if (!await coordinator.currentlyAdmittedSource(selectionId, source, readerSessionId, generation)) return false;
+                    if (!await this.probePhysicalReversibleSource(live.worker, readerSessionId, generation, source)) return false;
+                    // The reader barrier may have processed a fork and changed the coordinator during the round trip.
+                    const admitted = await coordinator.currentlyAdmittedSource(selectionId, source, readerSessionId, generation);
+                    return admitted && this.protocolAbiSource === live && live.generation === generation
+                        && this.isCurrentProtocolLiveReader(live.worker);
+                },
+                targetUuid: async name => {
+                    const settings = await this.esClient.indices.getSettings({index: name, flat_settings: true});
+                    const uuid = settings[name]?.settings?.['index.uuid'];
+                    if (Object.keys(settings).length !== 1 || typeof uuid !== 'string') throw new Error('Action target is unavailable');
+                    return uuid;
+                }
+            });
+    }
     // global configuration
     conf: HyperionConfig;
 
@@ -286,6 +414,12 @@ export class HyperionMaster {
         this.msgHandlerMap = {
             protocol_abi_coordinator_request: async (worker: Worker, msg: WorkerMessage) => {
                 await this.handleProtocolAbiCoordinatorRequest(worker, msg);
+            },
+            protocol_source_probe_reply: (worker: Worker, msg: WorkerMessage) => {
+                const reply = msg.data, pending = this.protocolSourceProbes.get(reply?.requestId);
+                if (pending?.worker !== worker || pending.readerSessionId !== reply.readerSessionId
+                    || pending.generation !== reply.generation || typeof reply.current !== 'boolean') return;
+                pending.resolve(reply.current);
             },
             protocol_abi_source_revoked: (worker: Worker, msg: WorkerMessage) => {
                 if (!this.isCurrentProtocolLiveReader(worker) || typeof msg.data?.readerSessionId !== 'string') return;
@@ -533,9 +667,13 @@ export class HyperionMaster {
                     }
                 }
             },
-            lib_update: (_worker: Worker, msg: WorkerMessage) => {
+            lib_update: (worker: Worker, msg: WorkerMessage) => {
+                if (this.liveReader?.wref !== worker) return;
                 // publish LIB to hub
                 if (msg.data) {
+                    const blockNum = Number(msg.data.block_num), blockId = String(msg.data.block_id).toLowerCase();
+                    if (!Number.isSafeInteger(blockNum) || blockNum < 1 || !/^[0-9a-f]{64}$/.test(blockId)) return;
+                    this.actionCanonicalLib = {worker, blockNum, blockId};
                     // save local lib
                     this.lastIrreversibleBlock = msg.data.block_num;
 
@@ -621,9 +759,10 @@ export class HyperionMaster {
 
     private async initializeProtocolAbiCoordinator(): Promise<void> {
         // A bulk-only process must never acquire or replace live-source ownership.
-        if (this.conf.settings.protocol?.provider !== 'extension' || !this.conf.indexer.live_reader || this.protocolAbiCoordinator) return;
+        if ((this.conf.settings.protocol?.provider !== 'extension' && this.engineering?.exactActionSequenceStorage !== true)
+            || !this.conf.indexer.live_reader || this.protocolAbiCoordinator) return;
         try {
-            const selected = await loadChainProtocol(this.conf.settings.protocol);
+            const selected = await loadChainProtocol(this.conf.settings.protocol, {sourceEvidence: true});
             const replicas = this.conf.settings.es_replicas ?? 0;
             const options = this.conf.settings.protocol_abi_coordination;
             const coordinator = new ProtocolAbiCoordinator({chainId: this.manager.conn.chains[this.chain].chain_id,
@@ -2182,20 +2321,21 @@ export class HyperionMaster {
                 }
                 hLog(`New worker defined: ${workerReference.worker_role} for ${queueName}`);
                 setTimeout(() => {
-                    this.launchWorkers();
-                    setTimeout(() => {
-                        if (workerReference.worker_role === 'deserializer' && workerReference.wref) {
-                            workerReference.wref.send({
-                                event: 'initialize_abi',
-                                data: this.cachedInitABI
-                            });
-                        }
-                    }, 1000);
+                    this.relaunchDisconnectedWorker(worker, workerReference);
                 }, 5000);
             } else {
                 hLog(`The worker #${worker.id} has disconnected`);
             }
         }
+    }
+
+    private relaunchDisconnectedWorker(_worker: Worker, workerReference: HyperionWorkerDef): void {
+        this.launchWorkers();
+        setTimeout(() => {
+            if (workerReference.worker_role === 'deserializer' && workerReference.wref) {
+                workerReference.wref.send({event: 'initialize_abi', data: this.cachedInitABI});
+            }
+        }, 1000);
     }
 
     private async verifyMongoDbClient() {

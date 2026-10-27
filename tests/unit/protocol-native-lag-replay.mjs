@@ -19,7 +19,15 @@ const hooks = registerHooks({resolve(specifier, context, next) {
 }});
 const previousDirectory = process.cwd(), previousSend = process.send;
 const directory = mkdtempSync(join(tmpdir(), 'hyperion-native-worker-original-'));
+// Current regression only. Historical diagnostic/default/measurement modes retain their original source scope.
+const boundaryArgument = process.argv.find(value => value.startsWith('--queued-proof-boundary='));
+const queuedDistance = boundaryArgument === undefined ? undefined : Number(boundaryArgument.split('=')[1]);
+assert(queuedDistance === undefined || [256, 257].includes(queuedDistance));
+const finalHead = queuedDistance === undefined ? 290 : 33 + queuedDistance;
 const elasticsearchUrl = process.env.HYPERION_PROOF_ES_URL;
+if (queuedDistance !== undefined) assert(!elasticsearchUrl && !process.argv.includes('--measure')
+    && !process.argv.includes('--assert-pending-native-preserved') && !process.env.HYPERION_PROOF_CPU_PROFILE_DIR,
+    'current queued regression uses only the controlled transport, without diagnostic measurement modes');
 const chain = elasticsearchUrl ? process.env.HYPERION_PROOF_ES_CHAIN : 'native-worker-original';
 assert.equal(typeof chain, 'string');
 const chainId = '9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d', blockId = number => number.toString(16).padStart(64, '0');
@@ -32,6 +40,7 @@ const events = [], sourceFrames = [], blockWrites = [], cache = [];
 const cpuProfiles = [];
 const setupBegan = process.hrtime.bigint(), setupCpu = process.cpuUsage();
 let reader, coordinator, transport, draining = Promise.resolve();
+const attemptClients = [];
 process.send = (event, callback) => {
     events.push(event);
     if (event.event === 'protocol_abi_prepared') draining = coordinator.drain();
@@ -238,6 +247,25 @@ try {
     };
     reader = worker(Reader.prototype, readerConsumer, readerPublisher);
     const main = worker(Main.prototype, mainConsumer, mainPublisher), pool = worker(Pool.prototype, poolConsumer, poolPublisher);
+    let supervisor, describeEnd;
+    const acceptedEnds = [];
+    if (queuedDistance !== undefined) {
+        const [{WorkerAttemptSupervisor, describeWorkerAttemptEnd}, {WorkerAttemptClient}] = await Promise.all([
+            import('../../build/indexer/protocol/worker-attempt-supervisor.js'),
+            import('../../build/indexer/protocol/worker-attempt-client.js')]);
+        supervisor = new WorkerAttemptSupervisor({onEnd: end => acceptedEnds.push(end)});
+        describeEnd = end => describeWorkerAttemptEnd(supervisor, end);
+        for (const [worker, role] of [[main, 'deserializer'], [pool, 'ds_pool_worker']]) {
+            // Same explicit controlled IPC seam as the supervisor tests; only production methods issue accepted ends.
+            const physical = new EventEmitter(), child = new EventEmitter();
+            physical.isConnected = () => true;
+            physical.send = (message, callback) => {child.emit('message', structuredClone(message)); callback?.(null); return true;};
+            child.send = (message, callback) => {physical.emit('message', structuredClone(message)); callback?.(null); return true;};
+            supervisor.attach(physical, role);
+            const client = new WorkerAttemptClient({mode: 'managed', role, transport: child});
+            worker.configureWorkerAttemptLifecycle(client); attemptClients.push(client);
+        }
+    }
     Object.assign(reader, {baseRequest: {}, shipRev: 0, socketGeneration: 0, activeIngressGeneration: 0,
         isLiveReader: true, local_block_num: 0, local_lib: 0, receivedFirstBlock: true,
         reversibleBlockMap: new Map(), forkedBlocks: new Map(), publications: new Map(),
@@ -303,7 +331,7 @@ try {
         if (numberFrom(bytes) === 1) {
             // Original genesis omits traces. Retain that missing-input boundary, never manufacture an empty vector.
             assert.ok(admission.incomplete); assert.equal(messages.length, 0);
-            await assert.rejects(pool.getProtocolNativeReader().waitForOpen({chainId, blockNum: 1,
+            if (queuedDistance === undefined) await assert.rejects(pool.getProtocolNativeReader().waitForOpen({chainId, blockNum: 1,
                 blockId: admission.source.inventoryInput.source.blockId}, sourceSelectionId), {code: 'native_source_incomplete'});
             return {admission, messages, sourceSelectionId};
         }
@@ -324,13 +352,13 @@ try {
     assert.equal(lock.packages['node_modules/@eosrio/hyperion-wire-plugin'].resolved,
         'git+ssh://git@github.com/eosrio/hyperion-wire-plugin.git#7167659e9c043cb3351074fcacb40200cc57f3a3');
     assert.equal(lock.packages['node_modules/@eosrio/hyperion-sdk'].resolved,
-        'git+ssh://git@github.com/eosrio/hyperion-sdk.git#339b5c93d1338968c18ed14254961439dcab16a0');
+        'git+ssh://git@github.com/eosrio/hyperion-sdk.git#8d37e932df5e0e7d671c9682505de3dd55f0edb4');
     const began = process.hrtime.bigint();
     const stageTimings = {setup: {elapsedMs: Number(began - setupBegan) / 1e6, cpu: process.cpuUsage(setupCpu)}, sourcePreparation: []};
     let pending, control, rewindSelection, lastMeasuredNativeView, lastMeasuredNativeGrant;
     const controls = [], duplicateCommitReads = [];
     const original = expected.get(33), point = {chainId, blockNum: 33, blockId: original.blockId};
-    for (let number = 1; number <= 290; number++) {
+    for (let number = 1; number <= finalHead; number++) {
         const bytes = readFileSync(join(sourceDir, 'block-' + String(number).padStart(6, '0') + '.bin'));
         assert.equal(bytes.length, frameIndex.get(number).bytes); assert.equal(hash(bytes), frameIndex.get(number).sha256);
         const prepareBegan = process.hrtime.bigint(), prepareCpu = process.cpuUsage();
@@ -340,7 +368,7 @@ try {
         if (number === 289) rewindSelection = prepared.sourceSelectionId;
         if (number === 33) {pending = prepared; assert.equal(pending.messages.length, 1);
             assert.deepEqual(bytes, readFileSync(join(originalDir, 'block-000033.bin')));}
-        if (number === 34) {
+        if (number === 34 && queuedDistance === undefined) {
             const proof = await pool.getProtocolProofReader().waitForOpen(point, pending.sourceSelectionId);
             const nativeReader = pool.getProtocolNativeReader(), view = await nativeReader.waitForOpen(point, pending.sourceSelectionId);
             const input = pending.admission.source.inventoryInput.wireActionInputs.find(value => value.globalSequence === original.globalSequence);
@@ -440,8 +468,75 @@ try {
             }
         }
     }
-    const current = await frontier.readControl(); assert.equal(current.value.head.blockNum, 290);
+    const current = await frontier.readControl(); assert.equal(current.value.head.blockNum, finalHead);
     assert(pending.messages.every(message => !poolConsumer.acked.includes(message)), 'the genuine original action must still be queued');
+    if (queuedDistance !== undefined) {
+        const delivery = pending.messages[0], originalPayload = Buffer.from(delivery.content), originalHeaders = structuredClone(delivery.properties.headers);
+        assert.equal(hash(originalPayload), '52ff71eac764d107780fca90bfda9dc60808402adc5e760db91a12443d12365c');
+        assert.equal(typeof original.globalSequence, 'string');
+        assert(pending.admission.source.inventoryInput.wireActionInputs.some(input => input.globalSequence === original.globalSequence
+            && input.rawHex === original.rawHex && input.actionOrdinal === original.actionOrdinal && input.transactionId === original.transactionId));
+        const originalEnds = () => acceptedEnds.map(describeEnd).filter(end => end.role === 'ds_pool_worker'
+            && end.binding.admissionId === pending.admission.id);
+        assert.equal(originalEnds().length, 0);
+        const broker = [], before = poolPublisher.sent.length, ackBefore = poolConsumer.acked.length;
+        poolPublisher.observer = event => broker.push(event);
+        poolConsumer.onAck = message => {assert.equal(message, delivery); broker.push('consumer-ack');};
+        let release, entered;
+        const held = new Promise(yes => {release = yes;}), confirming = new Promise(yes => {entered = yes;});
+        poolPublisher.held = held; poolPublisher.entered = entered;
+        const processing = pool.processMessages(pending.messages);
+        if (queuedDistance === 256) {
+            try {
+                await Promise.race([confirming, processing.then(() => assert.fail('original publication must await its confirm'))]);
+                assert.equal(poolConsumer.acked.length, ackBefore);
+                assert.equal(originalEnds().length, 0, 'held original operation has no accepted end');
+                await assert.rejects(admissionStore.journal.readManifest(pending.admission.planId), {code: 'missing', recordKind: 'seal'});
+            } finally {release();}
+        }
+        await processing;
+        const output = poolPublisher.sent.slice(before), sealed = await admissionStore.trySeal(pending.admission);
+        const incomplete = ids(memory, 'h45actionincomplete1:').map(id => JSON.parse(retained(memory, admissionStore.index, id).payloadJson))
+            .filter(value => value.admissionId === pending.admission.id);
+        assert(delivery.content.equals(originalPayload)); assert.deepEqual(delivery.properties.headers, originalHeaders);
+        assert.equal(poolConsumer.acked.length - ackBefore, 1);
+        const ends = originalEnds(); assert.equal(ends.length, 1);
+        const end = ends[0];
+        assert.throws(() => describeEnd({...end}), /Unissued/, 'copied end metadata is not a supervisor-issued capability');
+        assert.equal(end.status, 'quiescent'); assert.equal(end.rootResult, 'returned'); assert.equal(end.acknowledgementAttempted, true);
+        assert.equal(end.descriptor.payloadSha256, hash(originalPayload)); assert.equal(end.descriptor.kind, 'ds-delivery');
+        assert.equal(end.binding.selectionId, pending.sourceSelectionId); assert.equal(end.binding.planId, pending.admission.planId);
+        assert.equal(end.binding.blockNum, 33); assert.equal(end.binding.blockId, original.blockId); assert.equal(end.binding.traceOrdinal, 0);
+        if (queuedDistance === 256) {
+            assert.equal(output.length, 1); assert.equal(sealed, true); assert.equal(incomplete.length, 0);
+            const document = JSON.parse(output[0].payload);
+            assert.deepEqual(document.act.data, original.expectedValue); assert.equal(document.protocol.kind, 'native');
+            assert.equal(typeof document.global_sequence, 'string'); assert.equal(document.global_sequence, original.globalSequence);
+            assert.equal(document.protocol.selectionId, pending.sourceSelectionId);
+            assert.equal(document.protocol.input.rawHex, original.rawHex); assert.equal(document.protocol.native.nativeKind, original.nativeKind);
+            assert.equal(document.ds_error, undefined); assert.equal(output[0].payload.toString(), actionHistoryImmutableJson(document));
+            assert.equal(output[0].options.persistent, true); assert.equal(output[0].options.mandatory, true);
+            const manifest = await admissionStore.journal.readManifest(pending.admission.planId);
+            assert.deepEqual(manifest.manifest.fragments.flatMap(fragment => fragment.effects), [fingerprintActionHistoryEffect(document)]);
+            assert.deepEqual(broker, ['publication-start', 'publication-confirmed', 'consumer-ack']);
+            assert.equal(end.freshWrites.filter(write => write.kind === 'confirmed-handoff').length, 1);
+        } else {
+            assert.equal(output.length, 0); assert.equal(sealed, false); assert.equal(incomplete.length, 1);
+            assert(events.some(value => value.event === 'ds_error' && value.data?.type === 'protocol_action_incomplete'
+                && value.data.message.includes('outside verified ancestry')));
+            assert.deepEqual(broker, ['consumer-ack']);
+            assert.equal(end.freshWrites.filter(write => write.classification === 'confirmed-handoff').length, 0);
+        }
+        console.log(JSON.stringify({scenario: 'current-queued-native-proof-boundary', passed: true, runtime: process.version,
+            sourceHead: finalHead, sourceDistance: queuedDistance, queuedBlock: 33, defaultAncestryBlocks: 256,
+            originalArchiveSha256: extracted.archiveSha256, originalPendingFrameSha256: frameIndex.get(33).sha256,
+            originalPayloadSha256: hash(originalPayload), originalSelectionId: pending.sourceSelectionId, originalGlobalSequence: original.globalSequence,
+            publishedActions: output.length, sealed, retainedIncomplete: incomplete.length,
+            consumerAcknowledgments: poolConsumer.acked.length - ackBefore, acceptedOriginalEnd: true, originalEnd: end,
+            controlledBrokerStorage: true, controlledLifecycleTransport: true, brokerSettlement: 'unknown',
+            recoveredPersistedAssociation: false,
+            fullWorkerQualification: false, productionPerformanceQualified: false}));
+    } else {
     const nativeReader = pool.getProtocolNativeReader();
     await assert.rejects(nativeReader.waitForOpen(point, pending.sourceSelectionId), {code: 'ancestry_unavailable'});
     assert.deepEqual(await selected.provider.nativeActions.decodeValue(original.nativeKind, Buffer.from(original.rawHex, 'hex')), original.expectedValue,
@@ -505,7 +600,9 @@ try {
         assert.equal(matchingIncomplete.length, 1); assert(failures.some(value => value.data.message.includes('outside verified ancestry')));
         assert.equal(poolConsumer.acked.length - ackBefore, 1);
     }
+    }
 } finally {
+    for (const client of attemptClients) client.dispose();
     reader?.coordinatorRpc?.cancel(); reader?.shipSession?.close?.();
     await transport?.close();
     process.send = previousSend; process.chdir(previousDirectory); hooks.deregister();

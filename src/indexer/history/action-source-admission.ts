@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import type {Client} from '@elastic/elasticsearch';
 import {ImmutableProtocolBundleStore} from '../protocol/immutable-bundle-store.js';
+import type {FreshBundlePrepare} from '../protocol/immutable-bundle-store.js';
 import {ActionHistorySourceJournal, ActionHistorySourceJournalReadError} from './action-source-journal.js';
 import {actionHistoryImmutableJson, validateActionHistoryBlockPlan, fingerprintActionHistoryEffect,
     createActionHistoryFragment, actionHistoryFragmentId, type ActionHistoryBlockPlan, type ActionHistoryEffect} from './action-history-manifest.js';
@@ -12,6 +13,9 @@ import {actionAttemptDispositionBounds, actionAttemptDispositionId, issueActionA
     readActionContractOutputFailure, validateActionAttemptDisposition, type ActionContractOutputFailure, type ActionContractFailureBinding,
     type ActionAttemptDisposition, type ActionAttemptDispositionEvidence} from './action-attempt-disposition.js';
 import {assertCompleteProtocolSearch} from '../protocol/search.js';
+import {issueFreshActionWrite} from './action-fresh-write.js';
+import {describeWorkerAttemptEnd, type AcceptedWorkerAttemptEnd, type WorkerAttemptSupervisor,
+    type WorkerAttemptEndDescription} from '../protocol/worker-attempt-supervisor.js';
 
 export const actionSourceAdmissionHeader = 'hyperion-action-admission-v1';
 export const actionSourceIngressHeader = 'hyperion-action-source-v1';
@@ -20,7 +24,8 @@ export interface ActionSourceIngress {
     readerSessionId: string; schemaJson: string; frameHex: string; captureSha256: string;
 }
 export interface RetainedActionSource {
-    readonly schemaVersion: 1;
+    /** Schema 2 scopes the output plan to this immutable input; schema 1 retains its legacy identity. */
+    readonly schemaVersion: 1 | 2;
     /** Original broker frame and handshake, retained before filtering. These bytes are not consensus attestation. */
     readonly frameHex: string;
     readonly schemaJson: string;
@@ -59,6 +64,16 @@ export interface ActionSourceConfirmedHandoffInput {
     readonly configuration: string; readonly owner: ActionPublicationOwner;
     readonly publications: readonly ConfirmedActionPublication[];
 }
+export interface ActionAttemptAssociation {
+    readonly schemaVersion: 1; readonly kind: 'action-attempt-association';
+    readonly end: WorkerAttemptEndDescription;
+    /** An ACK call is not a broker settlement acknowledgement. */
+    readonly brokerSettlement: 'unknown';
+    readonly results: readonly {id: string; classification: 'confirmed-handoff' | 'intentional-no-effect'
+        | 'intentional-suppression' | 'source-incomplete' | 'contract-incomplete' | 'raw-incomplete'}[];
+    /** Observed at write time only; readers must revalidate before granting any authority. */
+    readonly sourceChecked: true;
+}
 const sha = (value: string | Uint8Array) => createHash('sha256').update(value).digest('hex');
 const hex64 = /^[0-9a-f]{64}$/;
 const sourceSyntax = /^h45actionsource1:[0-9a-f]{64}$/;
@@ -85,9 +100,9 @@ export class ActionSourceAdmissionStore {
         this.operations++;
         try {return await work();} finally {this.operations--;}
     }
-    private async put(id: string, value: unknown, signal?: AbortSignal): Promise<void> {
+    private async put(id: string, value: unknown, signal?: AbortSignal): Promise<FreshBundlePrepare> {
         // The outer bundle uses integer-only JSON; retained opaque JSON may contain finite fractional values.
-        await this.bundles.prepare(id, {schemaVersion: 1, payloadJson: actionHistoryImmutableJson(value)}, signal);
+        return this.bundles.prepare(id, {schemaVersion: 1, payloadJson: actionHistoryImmutableJson(value)}, signal);
     }
     private async get(id: string, signal?: AbortSignal): Promise<any> {
         const value: any = await this.bundles.read(id, signal);
@@ -119,7 +134,7 @@ export class ActionSourceAdmissionStore {
     }
     private validateSource(input: unknown): RetainedActionSource {
         const source = copy(input) as RetainedActionSource;
-        if (!source || source.schemaVersion !== 1 || typeof source.frameHex !== 'string' || !/^(?:[0-9a-f]{2})+$/.test(source.frameHex)
+        if (!source || (source.schemaVersion !== 1 && source.schemaVersion !== 2) || typeof source.frameHex !== 'string' || !/^(?:[0-9a-f]{2})+$/.test(source.frameHex)
             || typeof source.schemaJson !== 'string' || !source.schemaJson.length || !hex64.test(source.captureSha256)
             || !hex64.test(source.executableSha256) || (source.previousBlockId !== null && !hex64.test(source.previousBlockId)))
             throw new Error('Invalid retained action source');
@@ -136,12 +151,13 @@ export class ActionSourceAdmissionStore {
         if (sourceIdentity(source) !== id) throw new Error('Retained action source identity mismatch');
         return source;
     }
-    private compile(source: RetainedActionSource, target: ActionHistoryBlockPlan['target']) {
+    private compile(source: RetainedActionSource, target: ActionHistoryBlockPlan['target'], sourceId: string) {
         const inventory = deriveActionSourceInventory(source.inventoryInput);
         if (source.previousBlockId === null) throw new Error('Missing source predecessor cannot establish complete action membership');
         const plan = validateActionHistoryBlockPlan({schemaVersion: 1,
             source: {chainId: inventory.source.chainId, blockNum: inventory.source.blockNum, blockId: inventory.source.blockId,
-                previousBlockId: source.previousBlockId, captureSha256: source.captureSha256}, producer: source.producer, target,
+                previousBlockId: source.previousBlockId, captureSha256: source.captureSha256,
+                ...(source.schemaVersion === 2 ? {retainedSourceId: sourceId} : {})}, producer: source.producer, target,
             transactions: inventory.transactions.map(({transactionId, traceOrdinal, traceSha256, disposition}) =>
                 ({transactionId, traceOrdinal, traceSha256, disposition}))});
         return {inventory, plan};
@@ -151,7 +167,7 @@ export class ActionSourceAdmissionStore {
         return this.bounded(async () => {
             const source = await this.source(sourceId, signal);
             let compiled: ReturnType<ActionSourceAdmissionStore['compile']> | undefined, incomplete: string | null = null;
-            try {compiled = this.compile(source, target);} catch (error) {
+            try {compiled = this.compile(source, target, sourceId);} catch (error) {
                 // Only this pure compilation is classified as source-incomplete. I/O errors must escape without ACK.
                 incomplete = String((error as Error)?.message ?? error).slice(0, 4096).toWellFormed();
             }
@@ -180,7 +196,7 @@ export class ActionSourceAdmissionStore {
         }
         if (link.incomplete !== null) throw new Error('Complete action admission has an incomplete cause');
         // Re-issue from original retained source/policy. Stored expected output JSON is never authority.
-        const {inventory, plan} = this.compile(source, link.target);
+        const {inventory, plan} = this.compile(source, link.target, link.sourceId);
         const stored = await this.journal.readPlan(link.planId, signal);
         if (actionHistoryImmutableJson(stored.plan) !== actionHistoryImmutableJson(plan)) throw new Error('Action admission plan mismatch');
         return {id, sourceId: link.sourceId, source, target: link.target, planId: link.planId, inventory, incomplete: null};
@@ -266,8 +282,8 @@ export class ActionSourceAdmissionStore {
             const outcome: ActionSourceConfirmedHandoff = {schemaVersion: 1, kind: 'confirmed-action-handoff', work,
                 fragmentId: prepared.fragmentId, effectRoot, effects};
             const id = this.handoffId(work);
-            currentOwner(); await this.put(id, outcome, signal); currentOwner();
-            return {id, outcome: copy(outcome)};
+            currentOwner(); const proof = await this.put(id, outcome, signal); currentOwner();
+            return issueFreshActionWrite({id, outcome: copy(outcome)}, 'confirmed-handoff', id, outcome, proof, this.bundles);
         });
     }
 
@@ -286,7 +302,7 @@ export class ActionSourceAdmissionStore {
                     || !hex64.test(entry.payloadSha256) || !hex64.test(entry.headersSha256))
                 || outcome.effectRoot !== sha(actionHistoryImmutableJson({fragmentId: outcome.fragmentId, effects: outcome.effects})))
                 throw new Error('Invalid observed confirmed action handoff');
-            const plan = this.compile(current.source, current.target).plan;
+            const plan = this.compile(current.source, current.target, current.sourceId).plan;
             const fragment = createActionHistoryFragment(plan, work.transactionId, outcome.effects.map(entry => entry.effect));
             if (actionHistoryFragmentId(fragment, plan) !== outcome.fragmentId) throw new Error('Observed action handoff fragment/root mismatch');
             signal?.throwIfAborted(); return {id, outcome: copy(outcome)};
@@ -338,7 +354,7 @@ export class ActionSourceAdmissionStore {
             let reason: ActionAttemptDisposition['reason'] | undefined;
             if (current.source.inventoryInput.traces === null || current.source.inventoryInput.traces === undefined) reason = 'source-traces-missing';
             else if (current.source.previousBlockId === null) reason = 'source-predecessor-missing';
-            else try {this.compile(current.source, current.target);} catch (error) {if (isActionSourceValidationFailure(error)) reason = 'source-inventory-invalid';}
+            else try {this.compile(current.source, current.target, current.sourceId);} catch (error) {if (isActionSourceValidationFailure(error)) reason = 'source-inventory-invalid';}
             return reason ? [observation(reason, 'source-unprocessable')] : [];
         }
         const transactions = current.inventory!.transactions, result: ActionAttemptDisposition[] = [];
@@ -485,9 +501,9 @@ export class ActionSourceAdmissionStore {
             if (!evidence.current() || actionHistoryImmutableJson(observation) !== actionHistoryImmutableJson(evidence.observation))
                 throw new Error('Action attempt source/output association changed');
             const id = actionAttemptDispositionId(observation);
-            await this.put(id, observation, signal); signal?.throwIfAborted();
+            const proof = await this.put(id, observation, signal); signal?.throwIfAborted();
             if (!evidence.current()) throw new Error('Action attempt owner changed across persistence');
-            return {id, observation: copy(observation)};
+            return issueFreshActionWrite({id, observation: copy(observation)}, 'attempt-disposition', id, observation, proof, this.bundles);
         });
     }
     async readAttemptDisposition(id: string, signal?: AbortSignal): Promise<{id: string; observation: ActionAttemptDisposition}> {
@@ -497,6 +513,49 @@ export class ActionSourceAdmissionStore {
             validateActionAttemptDisposition(observation);
             if (actionAttemptDispositionId(observation) !== id)
                 throw new Error('Invalid observed action attempt record');
+            return {id, observation: copy(observation)};
+        });
+    }
+    /** Stores a private observation only after the actual supervisor-issued end has been joined in this process.
+     * Reading this JSON later cannot reissue the original end, fresh write, or broker settlement. */
+    async recordAttemptAssociation(supervisor: WorkerAttemptSupervisor, evidence: AcceptedWorkerAttemptEnd,
+                                   association: Omit<ActionAttemptAssociation, 'schemaVersion' | 'kind' | 'end' | 'brokerSettlement'>,
+                                   signal?: AbortSignal): Promise<{id: string; observation: ActionAttemptAssociation}> {
+        const end = describeWorkerAttemptEnd(supervisor, evidence);
+        if (end.status !== 'quiescent' || end.rootResult !== 'returned' || end.acknowledgementAttempted !== true
+            || end.freshWriteOverflow || end.descriptor.headersSha256 === null || !association.sourceChecked
+            || !Array.isArray(association.results) || association.results.length !== end.freshWrites.length
+            || association.results.length < 1 || association.results.length > 32
+            || association.results.some(result => !result || typeof result.id !== 'string'
+                || !['confirmed-handoff','intentional-no-effect','intentional-suppression','source-incomplete',
+                    'contract-incomplete','raw-incomplete'].includes(result.classification))
+            || association.results.some((result, index) => result.id !== end.freshWrites[index]?.id
+                || result.classification !== end.freshWrites[index]?.classification))
+            throw new Error('Invalid bounded worker attempt association');
+        const observation: ActionAttemptAssociation = {schemaVersion: 1, kind: 'action-attempt-association', end,
+            brokerSettlement: 'unknown', results: copy(association.results), sourceChecked: association.sourceChecked};
+        const id = 'h45actionassociation1:' + sha(actionHistoryImmutableJson([end.epoch, end.incarnation, end.attemptId]));
+        return this.bounded(async () => {await this.put(id, observation, signal); return {id, observation: copy(observation)};});
+    }
+    /** Restart inspection only: a stored association cannot recreate its opaque end or settle its broker ACK. */
+    async readAttemptAssociation(id: string, signal?: AbortSignal): Promise<{id: string; observation: ActionAttemptAssociation}> {
+        if (!/^h45actionassociation1:[0-9a-f]{64}$/.test(id)) throw new Error('Invalid action attempt association ID');
+        return this.bounded(async () => {
+            const observation = await this.get(id, signal) as ActionAttemptAssociation;
+            const end = observation?.end;
+            if (observation.schemaVersion !== 1 || observation.kind !== 'action-attempt-association'
+                || observation.brokerSettlement !== 'unknown' || observation.sourceChecked !== true
+                || !end || end.status !== 'quiescent' || end.rootResult !== 'returned'
+                || end.acknowledgementAttempted !== true || end.freshWriteOverflow !== false
+                || !Array.isArray(end.freshWrites) || !Array.isArray(observation.results)
+                || observation.results.length !== end.freshWrites.length || observation.results.length < 1
+                || observation.results.length > 32
+                || observation.results.some((result, index) => result.id !== end.freshWrites[index]?.id
+                    || !['confirmed-handoff','intentional-no-effect','intentional-suppression','source-incomplete',
+                        'contract-incomplete','raw-incomplete'].includes(result.classification)
+                    || result.classification !== end.freshWrites[index]?.classification)
+                || id !== 'h45actionassociation1:' + sha(actionHistoryImmutableJson([end.epoch, end.incarnation, end.attemptId])))
+                throw new Error('Invalid retained action attempt association');
             return {id, observation: copy(observation)};
         });
     }

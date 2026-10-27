@@ -73,6 +73,26 @@ function searchResponse(ids: string[]): any {
 }
 
 describe('source admission and complete grouped transaction preparation', () => {
+    it('scopes schema-2 history plans to each retained input context while preserving legacy plans', async () => {
+        const {store, source, sourceId} = await retained();
+        const legacy = await store.admit(sourceId, target);
+        const legacyPlan = await store.journal.readPlan(legacy.planId!);
+        expect(Object.hasOwn(legacyPlan.plan.source, 'retainedSourceId')).toBe(false);
+        const first: RetainedActionSource = {...source, schemaVersion: 2};
+        const firstId = await store.retainSource(first), admittedFirst = await store.admit(firstId, target);
+        const nextIngress = await store.retainIngress({schemaVersion: 1, chainId: hex('1'), protocolId: 'antelope',
+            profileId: 'antelope-default-v1', readerSessionId: 'reader-session-2', components: [], schemaJson: source.schemaJson,
+            frameHex: source.frameHex, captureSha256: source.captureSha256});
+        const secondId = await store.retainSource({...first, ingressId: nextIngress});
+        const admittedSecond = await store.admit(secondId, target);
+        expect(admittedFirst.planId).not.toBe(admittedSecond.planId);
+        expect((await store.journal.readPlan(admittedFirst.planId!)).plan.source).toMatchObject({retainedSourceId: firstId});
+        expect((await store.journal.readPlan(admittedSecond.planId!)).plan.source).toMatchObject({retainedSourceId: secondId});
+        expect((await store.resolve(legacy.id)).planId).toBe(legacy.planId);
+        expect((await store.admit(sourceId, target)).planId).toBe(legacy.planId);
+        expect((await store.resolve(admittedFirst.id)).planId).toBe(admittedFirst.planId);
+        expect((await store.resolve(admittedSecond.id)).planId).toBe(admittedSecond.planId);
+    });
     it('re-derives actual source inventory, persists both groups and seals after restart', async () => {
         const {memory, store, sourceId, admission, inventory, payload} = await admitted();
         expect(inventory.transactions[0].groups.map(value => value.actionOrdinals)).toEqual([[1, 2], [3]]);

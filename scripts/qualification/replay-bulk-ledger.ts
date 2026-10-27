@@ -6,6 +6,7 @@ import {writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {performance} from 'node:perf_hooks';
 import {digest} from './contract-fixture.ts';
+import {portableHistoryClock, portableHistoryClockDomain} from './portable-state-history-diagnostics.ts';
 
 export function bulkOperations(path: string, bytes: Buffer) {
     const index = decodeURIComponent(path.split('?')[0].split('/').filter(Boolean)[0]);
@@ -48,18 +49,29 @@ export function summarizeBulkLedger(receipts: any[]) {
         attemptsAfterObservedFailure: afterObservedFailure, acknowledgedCopies,
         limits: ['Repeated IDs alone do not establish retries; only attempts following an observed failure are correlated.']};
 }
-export async function startBulkLedger(url: string, directory: string, errors: string[], maximumRequests = 10000) {
+export async function startBulkLedger(url: string, directory: string, errors: string[], maximumRequests = 10000, captureChronology = false) {
     assert.ok(Number.isSafeInteger(maximumRequests) && maximumRequests >= 1 && maximumRequests <= 20000,
         'maximumRequests must be an integer between 1 and 20000');
     const target = new URL(url); assert.equal(target.protocol, 'http:'); assert.equal(target.hostname, '127.0.0.1'); assert.ok(target.port && target.port !== '9200');
     const receipts: any[] = []; let next = 0; let capturedBytes = 0; let active = 0;
     const upstreamRequests = new Set<ReturnType<typeof request>>();
     const server = createServer(async (incoming, outgoing) => {
-        active++; const started = performance.now(); const chunks: Buffer[] = []; let size = 0;
+        active++; const started = performance.now(); const chunks: Buffer[] = []; let size = 0; let receipt: any;
+        const chronology = captureChronology ? {requestObserved: portableHistoryClock(), dispatchInvoked: null as ReturnType<typeof portableHistoryClock> | null,
+            responseObserved: null as ReturnType<typeof portableHistoryClock> | null, error: null as string | null} : undefined;
+        const retainChronology = async () => {
+            if (!chronology || !receipt || receipt.chronology) return;
+            try {
+                const bytes = Buffer.from(JSON.stringify({schemaVersion: 1, clock: portableHistoryClockDomain, number: receipt.number,
+                    path: receipt.path, status: receipt.status, request: receipt.request, response: receipt.responseBody, ...chronology}) + '\n');
+                assert.ok(capturedBytes + bytes.length <= 256 * 1024 * 1024, 'bulk chronology byte budget exceeded'); capturedBytes += bytes.length;
+                const file = `${String(receipt.number).padStart(5, '0')}-chronology.json`;
+                await writeFile(join(directory, file), bytes, {flag: 'wx'}); receipt.chronology = {file, bytes: bytes.length, sha256: digest(bytes)};
+            } catch (error) {errors.push('Bulk chronology capture incomplete: ' + String(error));}
+        };
         try {
             for await (const chunk of incoming) { size += chunk.length; assert.ok(size <= 16 * 1024 * 1024, 'HTTP request byte budget exceeded'); chunks.push(Buffer.from(chunk)); }
             const body = Buffer.concat(chunks); const bulk = incoming.url?.split('?')[0].endsWith('/_bulk');
-            let receipt: any;
             if (bulk) {
                 assert.ok(receipts.length < maximumRequests, 'bulk receipt budget exceeded'); capturedBytes += body.length; assert.ok(capturedBytes <= 256 * 1024 * 1024);
                 const name = String(++next).padStart(5, '0'); receipt = {number: next, startedAt: Date.now(), path: incoming.url,
@@ -72,20 +84,27 @@ export async function startBulkLedger(url: string, directory: string, errors: st
                     response.on('data', chunk => { responseBytes += chunk.length; if (responseBytes > 16 * 1024 * 1024) response.destroy(new Error('HTTP response byte budget exceeded')); else chunks.push(Buffer.from(chunk)); });
                     response.on('error', reject);
                     response.on('end', () => { void (async () => {
+                        if (chronology && receipt) chronology.responseObserved = portableHistoryClock();
                         const bytes = Buffer.concat(chunks);
                         if (receipt) {
                             capturedBytes += bytes.length; assert.ok(capturedBytes <= 256 * 1024 * 1024);
                             receipt.status = response.statusCode; receipt.responseReceivedAt = Date.now(); receipt.elapsedMs = performance.now() - started; receipt.response = JSON.parse(bytes.toString());
                             receipt.responseBody = {file: `${String(receipt.number).padStart(5, '0')}-response.json`, bytes: bytes.length, sha256: digest(bytes)};
                             await writeFile(join(directory, receipt.responseBody.file), bytes, {flag: 'wx'});
+                            await retainChronology();
+                            receipt.captureComplete = !captureChronology || !!receipt.chronology;
                         }
                         outgoing.writeHead(response.statusCode!, response.headers); outgoing.end(bytes); done();
                     })().catch(reject); });
                 });
                 upstreamRequests.add(remote); remote.once('close', () => upstreamRequests.delete(remote));
-                remote.on('error', reject); remote.setTimeout(20000, () => remote.destroy(new Error('bounded upstream timeout'))); remote.end(body);
+                remote.on('error', reject); remote.setTimeout(20000, () => remote.destroy(new Error('bounded upstream timeout')));
+                if (chronology && receipt) chronology.dispatchInvoked = portableHistoryClock();
+                remote.end(body);
             });
-        } catch (error) { errors.push(String(error)); outgoing.destroy(error as Error); }
+        } catch (error) { errors.push(String(error));
+            if (chronology) {chronology.error = String(error).slice(0, 4096); await retainChronology();}
+            outgoing.destroy(error as Error); }
         finally { active--; }
     });
     server.listen(0, '127.0.0.1'); await once(server, 'listening');

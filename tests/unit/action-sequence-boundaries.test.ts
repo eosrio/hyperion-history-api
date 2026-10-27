@@ -30,7 +30,7 @@ describe('3.2 parser sequence boundary', () => {
                 inputActionOrdinal: 1, globalSequence: value.global_sequence}};
         }
         notification.receipt.receiver = 'bob';
-        const grouped: any[] = groupActionTraces([notification, root], true);
+        const grouped: any[] = groupActionTraces([notification, root], 'certified-extension');
         expect(grouped).toHaveLength(1);
         expect(grouped[0].global_sequence).toBe('9007199254740993');
         expect(grouped[0].receipts.map(receipt => receipt.global_sequence)).toEqual(['9007199254740994', '9007199254740993']);
@@ -49,7 +49,7 @@ describe('3.2 parser sequence boundary', () => {
             const parser = new HyperionParser({config: {settings: {chain: 'sequence-test', eosio_alias: 'eosio'}},
                 filters: {action_whitelist: new Set(), action_blacklist: new Set()}} as any);
             const seen: string[] = [];
-            const worker: any = {usesExtensionProtocol: extension, profiler: {start: () => () => {}},
+            const worker: any = {usesExtensionProtocol: extension, usesProtocolSourceBindings: extension, profiler: {start: () => () => {}},
                 conf: {indexer: {}}, common: {
                     deserializeActionAtBlockNative: async (_worker, act) => {seen.push('native'); return {amount: 7};},
                     attachActionExtras: (_worker, trace) => {expect(trace.receipt[1].global_sequence).toBe('9007199254740993');}

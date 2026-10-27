@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "main", "dev", "release/4.5" ]
   pull_request:
-    branches: [ "main", "dev", "release/4.5", "fix/stream-client-compatibility-45", "codex/fix-action-abi-epochs", "codex/wire-protocol-host", "codex/protocol-abi-observations", "codex/protocol-abi-coverage", "codex/protocol-abi-frontier", "codex/protocol-abi-consumers", "codex/exact-sequence-history-adapter", "codex/action-source-journal", "codex/portable-state-production", "feat/protocol-action-occurrence-proof", "fix/protocol-source-read-cancellation", "build/native-action-dependencies", "feat/native-observation-prepare", "feat/native-action-authorization", "feat/native-action-consumers", "build/native-wire-profile-pin", "build/bun-1.4.4", "fix/native-wire-worker-proofs", "fix/live-reader-ship-credits", "feat/source-handoff-outcomes", "feat/action-attempt-dispositions", "codex/wire-full-worker-replay" ]
+    branches: ["main", "dev", "release/4.5", "codex/fix-action-abi-epochs", "codex/wire-protocol-host", "codex/protocol-abi-observations", "codex/protocol-abi-coverage", "codex/protocol-abi-frontier", "codex/protocol-abi-consumers", "codex/exact-sequence-history-adapter", "codex/action-source-journal", "codex/portable-state-production", "feat/protocol-action-occurrence-proof", "fix/protocol-source-read-cancellation", "build/native-action-dependencies", "feat/native-observation-prepare", "feat/native-action-authorization", "feat/native-action-consumers", "build/native-wire-profile-pin", "build/bun-1.4.4", "fix/native-wire-worker-proofs", "fix/live-reader-ship-credits", "feat/source-handoff-outcomes", "feat/action-attempt-dispositions", "fix/worker-attempt-quiescence", "fix/stream-client-compatibility-45", "codex/wire-full-worker-replay", "feat/source-bound-attempt-adjudication", "perf/native-wire-worker-profiles", "codex/wire-storage-recovery"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
@@ -40,12 +40,30 @@ jobs:
         run: node --test tests/native/stream-filter-parity.test.mjs
       - name: Check pinned native stream JSON and credit windows on Node ${{ matrix.node-version }}
         run: node --test tests/native/native-stream-json.test.mjs tests/native/native-stream-credits.test.mjs
+      - name: Check opt-in contextual projection runtime and original Wire timestamps on native Node
+        run: node --test tests/native/contextual-projection-runtime.test.mjs tests/native/contextual-projection-fixture.test.mjs tests/unit/contextual-source-native.mjs
       - name: Typecheck Elasticsearch qualification runner
         run: bun check -p scripts/qualification/tsconfig.json
       - name: Check retained Wire source and replay credits with native Node
         run: node --experimental-strip-types scripts/qualification/check-wire-replay-fixture.mjs
+      - name: Check coherent Mongo qualification sampling with native Node
+        run: |
+          node --experimental-strip-types tests/unit/portable-state-mongo-sampling.mjs
+          node --experimental-strip-types tests/unit/portable-state-mongo-admission-red.mjs characterize
       - name: Check portable state source and fixture ownership guards
         run: python3 tests/fixtures/portable-state-worker/test_helpers.py
+      - name: Verify published native Wire CPU evidence
+        run: |
+          python3 -m unittest discover -s scripts/qualification -p test_native_wire_profile_evidence.py
+          python3 scripts/qualification/native-wire-profile-evidence.py verify docs/performance/evidence/native-wire-profile-20261024 --node "$(command -v node)"
+          python3 -m unittest discover -s scripts/qualification -p test_native_wire_io_evidence.py
+          python3 scripts/qualification/native-wire-io-evidence.py verify docs/performance/evidence/native-wire-io-20261024 --node "$(command -v node)"
+      - name: Verify native Wire CPU evidence checksums
+        working-directory: docs/performance/evidence/native-wire-profile-20261024
+        run: sha256sum -c SHA256SUMS
+      - name: Verify native Wire I/O evidence checksums
+        working-directory: docs/performance/evidence/native-wire-io-20261024
+        run: sha256sum -c SHA256SUMS
       - name: Verify Elasticsearch evidence checksums
         working-directory: docs/performance/evidence/es955-20261018
         run: sha256sum -c SHA256SUMS
@@ -78,6 +96,8 @@ jobs:
         run: ./scripts/qualification/check-worker-cleanup.ps1
       - name: Check worker observation and shutdown
         run: node scripts/qualification/check-worker-observer.mjs
+      - name: Check qualification proof and observer I/O accounting
+        run: node --test tests/native/portable-worker-proof-metrics.test.mjs
       - name: Verify Elasticsearch review follow-up evidence checksums
         working-directory: docs/performance/evidence/es955-failure-review-20261019
         run: sha256sum -c SHA256SUMS
@@ -102,7 +122,7 @@ jobs:
       - name: Verify native proof read evidence and diagnostic boundaries
         working-directory: docs/performance/evidence/native-proof-reads-20261022
         run: python3 verify.py
-      - run: bun test tests/unit
+      - run: npm test
       - name: Check ABI/native journals, source bindings and canonical frontier against disposable Elasticsearch 9.5.5
         if: matrix.node-version == '24.x'
         run: node scripts/qualification/check-protocol-abi-store.mjs protocol-journals.json
@@ -140,6 +160,8 @@ jobs:
         run: |
           bun check -p packages/backend-mongodb/tsconfig.json
           npm test --prefix packages/backend-mongodb
+      - name: Check installed legacy and contextual adapter declarations
+        run: npm run test:package --prefix packages/backend-mongodb
       - name: Exercise the portable runtime and adapter against owned MongoDB 8.0.34
         run: node scripts/qualification/check-projection-mongodb.mjs projection-report.json
       - name: Retain portable MongoDB conformance report

@@ -7,6 +7,7 @@ import {tmpdir} from 'node:os';
 import {basename, dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {auditPortableWorkerSource} from '../../scripts/qualification/portable-state-worker-source.ts';
+import {portableSourceRpcIdentity} from '../../scripts/qualification/portable-state-worker.ts';
 import {portableWorkerAbiAvailability, assertPortableWorkerOracle} from '../../scripts/qualification/portable-state-worker-oracle.ts';
 import {auditPortableNativeOracle, createPortableNativeQualification, portableNativeProfile} from '../../scripts/qualification/portable-state-worker-native.ts';
 assertNativeQualificationRuntime();
@@ -20,6 +21,11 @@ try {
     const plan = JSON.parse(readFileSync(metadata.plan)), source = await auditPortableWorkerSource(plan.source, portableNativeProfile);
     assert.equal(source.records[0].previousBlockId, null); assert.equal(source.records[0].headerPreviousBlockId, '0'.repeat(64));
     for (const block of source.records.slice(1)) assert.equal(block.headerPreviousBlockId, block.previousBlockId);
+    assert.equal(source.irreversibleAnchors['196419'],
+        '0002ff43f4faf9ca1db4a2d756b1566ebd1fdba0bb7229fe1e32494613042c22');
+    assert.equal(portableSourceRpcIdentity(source, 1), source.records[0].blockId);
+    assert.equal(portableSourceRpcIdentity(source, 196419), source.irreversibleAnchors['196419']);
+    assert.equal(portableSourceRpcIdentity(source, 999999), undefined);
     const rowOracle = plan.oracleFiles.map(item => JSON.parse(readFileSync(item.path))).find(item => item.sourceAbi && Array.isArray(item.rows));
     assertPortableWorkerOracle(source, plan, rowOracle);
     const stateAbiAvailability = portableWorkerAbiAvailability(plan, rowOracle); assert.equal(stateAbiAvailability.fromBlock, 222);

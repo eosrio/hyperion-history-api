@@ -9,7 +9,7 @@ import {fileURLToPath} from 'node:url';
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 const profileId = 'wire-sysio-6508c9e8-native-engineering-v1';
 const wireRevision = '7167659e9c043cb3351074fcacb40200cc57f3a3';
-const sdkRevision = '339b5c93d1338968c18ed14254961439dcab16a0';
+const sdkRevision = '8d37e932df5e0e7d671c9682505de3dd55f0edb4';
 const archiveSha256 = '42d092f3ecf6f428ecdba4825580377acdd27f2818ce445d4f197719e6ab72b7';
 const oracleSha256 = 'f2d022f14e493f2297034dd8e7e1846d1504f19bbf1278afee8cd30a955b9720';
 const readJson = path => JSON.parse(readFileSync(path, 'utf8'));

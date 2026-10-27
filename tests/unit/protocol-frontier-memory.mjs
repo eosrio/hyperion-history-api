@@ -53,5 +53,5 @@ export function frontierMemoryClient(replicas=0) {
             return faults.read?.(result,request)??result;
         },
     };
-    return {client,documents,mappings,settings,calls,faults,key};
+    return {client,documents,mappings,settings,sequences,calls,faults,key};
 }

@@ -71,6 +71,27 @@ function captureIo(memory: ReturnType<typeof frontierMemoryClient>, after: (meth
 }
 
 describe('durable action source membership journal', () => {
+    it('retains complete session provenance in distinct source-scoped plans and refuses changes within one plan', async () => {
+        const {journal} = fixture(1), legacy = plan();
+        const firstPlan = {...legacy, source: {...legacy.source, retainedSourceId: 'h45actionsource1:' + hex('a')},
+            transactions: legacy.transactions.slice(0, 1)};
+        const secondPlan = {...firstPlan, source: {...firstPlan.source, retainedSourceId: 'h45actionsource1:' + hex('b')}};
+        const firstId = (await journal.preparePlan(firstPlan)).id, secondId = (await journal.preparePlan(secondPlan)).id;
+        // Constructed locator shapes test byte identity only; they confer no native/source authority.
+        const first = {...action(), protocol: {selectionId: 'h45srcsel1:' + hex('c'), native: {linkId: 'h45srcnat1:' + hex('d')}}};
+        const second = {...action(), protocol: {selectionId: 'h45srcsel1:' + hex('e'), native: {linkId: 'h45srcnat1:' + hex('f')}}};
+        expect(first.act.data).toEqual(second.act.data);
+        expect(fingerprintActionHistoryEffect(first).documentSha256).not.toBe(fingerprintActionHistoryEffect(second).documentSha256);
+        const original = await journal.recordFragment(firstId, txA, [first]);
+        const recovered = await journal.recordFragment(secondId, txA, [second]);
+        expect(original.id).not.toBe(recovered.id);
+        const firstSeal = await journal.seal(firstId), secondSeal = await journal.seal(secondId);
+        expect(firstSeal.manifest.fragments[0]).toEqual(original.fragment);
+        expect(secondSeal.manifest.fragments[0]).toEqual(recovered.fragment);
+        await expect(journal.recordFragment(firstId, txA, [second])).rejects.toThrow('Immutable ABI observation conflict');
+        expect(await journal.readManifest(firstId)).toEqual(firstSeal);
+        expect(await journal.readManifest(secondId)).toEqual(secondSeal);
+    });
     it('stores a strict independent namespace and survives restart with source-ordered complete membership', async () => {
         const {memory, journal, id, source, fragments} = await prepared(1), sealed = await journal.seal(id);
         expect(journal.index).toBe('fixture-history-source-journal-v1');
