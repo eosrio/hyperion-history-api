@@ -19,10 +19,12 @@ const mode = process.argv[2] ?? 'main';
 const missingHeaderAccounting = process.argv.includes('--shadow-missing-headers');
 const receiptBridgeEnabled = process.argv.includes('--receipt-bridge');
 const receiptRegistrationHolds = process.argv.includes('--receipt-registration-holds');
+const receiptRegistrationDelayed = process.argv.includes('--receipt-registration-delayed');
 const lateReceipt = process.argv.includes('--receipt-late-capture') ? 'capture'
     : process.argv.includes('--receipt-late-binding') ? 'binding' : undefined;
 const receiptWorkerUnavailable = process.argv.includes('--receipt-worker-unavailable');
 const unavailableReceipt = !!lateReceipt || receiptWorkerUnavailable;
+assert(!receiptRegistrationDelayed || receiptBridgeEnabled && lateReceipt === 'capture' && !receiptRegistrationHolds && !receiptWorkerUnavailable);
 const accountingEnabled = process.argv.includes('--shadow-accounting') || missingHeaderAccounting || receiptBridgeEnabled;
 const shadowTransition = process.argv.includes('--shadow-transition') || accountingEnabled;
 assert(!shadowTransition || ['handoff-held-confirm', 'handoff-late-source-manifest', 'handoff-unknown-association'].includes(mode));
@@ -120,9 +122,9 @@ child.on('message', message => {
 });
 child.on('exit', (code, signal) => {exited = true; exitCode = code; exitSignal = signal;});
 supervisor.attach(child, role);
-let heldReceiptRegistration, heldReceiptReply, receiptRegistrationReleased = !receiptRegistrationHolds;
+let heldReceiptRegistration, heldReceiptReply, receiptRegistrationReleased = !receiptRegistrationHolds && !receiptRegistrationDelayed;
 const originalReceiptHandle = supervisor.handle.bind(supervisor), originalReceiptSend = child.send.bind(child);
-if (receiptRegistrationHolds) {
+if (receiptRegistrationHolds || receiptRegistrationDelayed) {
     supervisor.handle = (worker, message) => {
         if (!receiptRegistrationReleased && message?.event === 'worker_attempt_request' && message.payload?.operation === 'register') {
             assert(!heldReceiptRegistration || heldReceiptRegistration.requestId === message.requestId);
@@ -130,6 +132,8 @@ if (receiptRegistrationHolds) {
         }
         return originalReceiptHandle(worker, message);
     };
+}
+if (receiptRegistrationHolds) {
     child.send = (message, ...args) => {
         if (message?.event === 'worker_attempt_reply' && message.result?.descriptorSha256 && !heldReceiptReply) {
             heldReceiptReply = {message, args}; return true;
@@ -206,7 +210,23 @@ try {
             assert.equal(receiptEnrollment.snapshot().receipts[0].sourceClaim, null);
             originalReceiptSend(heldReceiptReply.message, ...heldReceiptReply.args);
         }
-        if (receiptWorkerUnavailable) await waitFor(() => receiptEnrollment.snapshot().receipts.length === 1, 'original registration owns unknown diagnostic input');
+        if (receiptRegistrationDelayed) {
+            await waitFor(() => heldReceiptRegistration, 'original registration request delayed while capture and cargo stay held');
+            assert.equal(supervisor.snapshot().active, 0);
+            assert.equal(receiptEnrollment.snapshot().receipts.length, 0);
+            // The old immediate snapshot runs before this explicit release. An actual observation wait yields to it.
+            queueMicrotask(() => {
+                receiptRegistrationReleased = true;
+                originalReceiptHandle(child, heldReceiptRegistration);
+            });
+        }
+        // Queued cargo and the diagnostic capture do not establish arrival of the separate registration IPC.
+        await waitFor(() => {
+            const registration = messages.find(message => message?.event === 'worker_attempt_request'
+                && message.payload?.operation === 'register');
+            return receiptEnrollment.snapshot().receipts.some(receipt => receipt.receiptId === registration?.payload.descriptor.receiptId
+                && receipt.owner?.attemptId === registration.payload.attemptId && receipt.phase === 'registered-custody');
+        }, 'original registration owns the queued receipt before its custody snapshot');
         const before = receiptEnrollment.snapshot();
         assert.equal(before.receipts.length, 1); assert.equal(before.receipts[0].payloadBytes, lateReceipt === 'capture' || receiptWorkerUnavailable ? null : 1369);
         assert.equal(before.receipts[0].sourceClaim, null); assert.equal(before.receipts[0].enrolled, false);
@@ -720,7 +740,7 @@ try {
         ...(shadowTransition ? {shadowTransition: true, verifiedDsTransitionCallbacks: verifiedTransitions.length} : {}),
         ...(shadow ? {shadowAccounting: true, missingHeaderAccounting,
             accountingBefore: shadow.before, accountingAfter: shadow.after} : {}),
-        ...(receiptBridgeEnabled ? {receiptBridge: true, receiptRegistrationHolds, lateReceipt: lateReceipt ?? null,
+        ...(receiptBridgeEnabled ? {receiptBridge: true, receiptRegistrationHolds, receiptRegistrationDelayed, lateReceipt: lateReceipt ?? null,
             receiptWorkerUnavailable, receiptEnrollment: receiptEnrollment.snapshot()} : {}),
         ...recovery,
         classification: observation.results[0].classification,

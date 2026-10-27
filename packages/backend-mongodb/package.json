@@ -12,16 +12,19 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    }
+    },
+    "./stateful": {"types": "./dist/stateful.d.ts", "import": "./dist/stateful.js"}
   },
   "files": [
     "dist/",
-    "README.md"
+    "README.md",
+    "STATEFUL.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "bun check -p tsconfig.json",
-    "test": "npm run build && node --test tests/*.test.mjs"
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "test:package": "node scripts/check-package.mjs"
   },
   "repository": {
     "type": "git",
@@ -35,7 +38,7 @@
     "mongodb": "7.2.0"
   },
   "devDependencies": {
-    "@eosrio/hyperion-sdk": "git+https://github.com/eosrio/hyperion-sdk.git#c0156c7bc65bee780b2215ba731ee6e5fe2bb52d",
+    "@eosrio/hyperion-sdk": "git+https://github.com/eosrio/hyperion-sdk.git#b64bac478fc8015d409d44aa6f100668e0e091d2",
     "@types/node": "25.5.0",
     "typescript": "7.0.2"
   }

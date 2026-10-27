@@ -1,5 +1,8 @@
 # MongoDB portable projection adapter
 
+The separate [stateful development factory](STATEFUL.md) is available only through the explicit
+`/stateful` subpath. It does not change these existing factories or activate production workers.
+
 This development package implements native MongoDB operations behind the shared
 Hyperion projection contract. Contract definitions, source selection and API
 response shaping remain outside this package. The application owns the connected
