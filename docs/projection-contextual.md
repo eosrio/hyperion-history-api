@@ -101,6 +101,13 @@ ordered/null preservation, final record bounds, original replay, restart reconst
 revisions/views, legacy-family refusal and standalone undo/replacement controls. Their in-memory
 database boundary is explicitly not MongoDB atomicity or durability evidence.
 
+The crash-worker reply controls execute its original native entry point and the installed driver's
+original command construction, monitoring and write-concern error path, with scripted BSON at the
+external database wire boundary during a controlled connect. No socket or engine is started, and
+the adapter is not reached. A write-concern failure retains the original driver error and cleanup;
+`writeErrors` cannot issue a durable receipt. A successful reply still exits before the driver promise
+settles or cleanup runs. These controls establish reply discrimination, not storage durability.
+
 `npm run test:package --prefix packages/backend-mongodb` normally installs a packed adapter with the
 exact Git-pinned SDK and compiles/runs an independent strict declaration/runtime consumer, including
 the legacy factory types. It attempts no database connection. Native tests and this package check
@@ -111,7 +118,8 @@ checks. It is written for actual A/B/repeated-key/replay/conflict controls, serv
 transaction failure, a child exit after the original driver's durable intent acknowledgement, exact
 recovery after restart, bounded undo, replacement C and stale/isolated failure checks. The child is
 restricted to the owned loopback endpoint and namespace; source/digest/majority response identity
-must match before its deliberate exit. The runner retains native command and physical-record evidence
+must match, with `ok: 1`, no write-concern error and no write errors, before its deliberate exit.
+The runner retains native command and physical-record evidence
 and uses the existing fixture's ownership/cleanup checks. It accepts no external cluster CLI URL.
 
 Writing/wiring that runner does not establish a successful engine run. Record its exact source and
