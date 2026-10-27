@@ -2,6 +2,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import {isPromise} from 'node:util/types';
 import {actionHistoryImmutableJson} from '../history/action-history-manifest.js';
 import type {FreshActionWrite} from '../history/action-fresh-write.js';
+import {QueuedPublicationLineage, type QueuedPublicationOrigin, type QueuedPublicationOptions} from '../history/queued-publication-lineage.js';
 
 export type WorkerAttemptRole = 'deserializer' | 'ds_pool_worker' | 'projection';
 export type WorkerAttemptKind = 'source-delivery' | 'ds-delivery' | 'projection-initialization' | 'projection-frame';
@@ -32,6 +33,7 @@ interface Entry {
     size: number;
     id: string; sequence: number; descriptor: WorkerAttemptDescriptor; descriptorJson: string; challenge: string;
     registrationRequest: string; binding: WorkerAttemptBinding; bindingVersion: number; bindingRequest?: string;
+    queuedPublicationJson?: string;
     freshWrites: FreshActionWrite[]; freshWriteBytes: number; freshWriteOverflow: boolean;
     endRequest?: string; endJson?: string; end?: WorkerAttemptEndDescription;
 }
@@ -112,9 +114,12 @@ export class WorkerAttemptSupervisor {
     private overflow = false;
     private observationFailures = 0;
     private observationEmitted = 0;
+    private readonly queuedPublications?: QueuedPublicationLineage;
     constructor(private readonly options: {onEnd?: (end: AcceptedWorkerAttemptEnd) => void;
         /** Internal synchronous observation only; never grants processing, source or capacity authority. */
         onObservation?: (value: WorkerAttemptObservation) => void;
+        /** Private host injection only; absent in the ordinary master. No reader-credit authority. */
+        queuedPublications?: QueuedPublicationOptions;
         maximumOwners?: number; maximumActive?: number; maximumRetainedEndsPerOwner?: number; maximumMetadataBytes?: number; fenceTimeoutMs?: number} = {}) {
         for (const [key, maximum] of Object.entries(workerAttemptBounds)) {
             const value = (options as any)[key];
@@ -122,6 +127,15 @@ export class WorkerAttemptSupervisor {
         }
         if (options.fenceTimeoutMs !== undefined && (!Number.isSafeInteger(options.fenceTimeoutMs) || options.fenceTimeoutMs < 10 || options.fenceTimeoutMs > 30000))
             throw new Error('Invalid worker fence deadline');
+        if (options.queuedPublications) this.queuedPublications = new QueuedPublicationLineage(options.queuedPublications);
+    }
+    private publicationOrigin(owner: Owner, entry: Entry): QueuedPublicationOrigin {
+        return {worker: owner.worker, epoch: this.epoch, incarnation: owner.incarnation, attemptId: entry.id,
+            descriptor: {...entry.descriptor}, binding: {...entry.binding}, isCurrent: () => {
+                const current = owner.entries.get(entry.id);
+                return !this.stopped && this.owners.get(owner.worker) === owner && owner.state === 'active'
+                    && !!current && !current.end && !owner.fencedAttempts.has(entry.id);
+            }};
     }
     attach(worker: PhysicalAttemptWorker, role: WorkerAttemptRole): void {
         if (!roles.has(role) || this.stopped) throw new Error('Worker attempt supervisor is unavailable');
@@ -166,7 +180,8 @@ export class WorkerAttemptSupervisor {
                 if (this.stopped || owner.state !== 'active' || owner.clientId && owner.clientId !== input.clientId)
                     throw new Error('Worker attempt owner was retired or replaced');
                 owner.clientId = input.clientId;
-                this.reply(worker, requestId, {ok: true, epoch: this.epoch, incarnation: owner.incarnation, role: owner.role}); return true;
+                this.reply(worker, requestId, {ok: true, epoch: this.epoch, incarnation: owner.incarnation, role: owner.role,
+                    queuedPublications: !!this.queuedPublications}); return true;
             }
             if (input.epoch !== this.epoch || input.incarnation !== owner.incarnation || input.clientId !== owner.clientId)
                 throw new Error('Stale or foreign physical attempt authority');
@@ -176,8 +191,11 @@ export class WorkerAttemptSupervisor {
             if (input.operation === 'register') {
                 validateWorkerAttemptDescriptor(input.descriptor, owner.role);
                 const descriptorJson = workerAttemptJson(input.descriptor);
+                const queuedPublicationJson = this.queuedPublications && owner.role === 'ds_pool_worker'
+                    ? workerAttemptJson(input.publication) : undefined;
                 if (entry) {
-                    if (entry.registrationRequest !== requestId || entry.sequence !== input.sequence || entry.descriptorJson !== descriptorJson)
+                    if (entry.registrationRequest !== requestId || entry.sequence !== input.sequence || entry.descriptorJson !== descriptorJson
+                        || entry.queuedPublicationJson !== queuedPublicationJson)
                         throw new Error('Mismatched attempt registration retry');
                 } else {
                     if (this.stopped || owner.state !== 'active' || input.sequence !== owner.sequence + 1)
@@ -188,14 +206,26 @@ export class WorkerAttemptSupervisor {
                     }
                     entry = this.account({size: 0, id: input.attemptId, sequence: input.sequence, descriptor: JSON.parse(descriptorJson), descriptorJson,
                         challenge: randomUUID(), registrationRequest: requestId, binding: {}, bindingVersion: 0,
+                        ...(queuedPublicationJson === undefined ? {} : {queuedPublicationJson}),
                         freshWrites: [], freshWriteBytes: 0, freshWriteOverflow: false});
                     owner.entries.set(entry.id, entry); owner.sequence = entry.sequence; this.active++;
                     this.observe(owner, entry, 'registered');
+                }
+                if (this.queuedPublications && owner.role === 'ds_pool_worker') {
+                    if (!input.publication || typeof input.publication.redelivered !== 'boolean') throw new Error('Queued delivery lineage is missing');
+                    this.queuedPublications.capture(this.publicationOrigin(owner, entry), input.publication.messageId,
+                        input.publication.data, input.publication.redelivered);
                 }
                 this.reply(worker, requestId, {ok: true, epoch: this.epoch, incarnation: owner.incarnation,
                     attemptId: entry.id, challenge: entry.challenge, descriptorSha256: workerAttemptDigest(entry.descriptor)}); return true;
             }
             if (!entry || entry.sequence !== input.sequence || entry.challenge !== input.challenge) throw new Error('Unknown or mismatched worker attempt');
+            if (input.operation === 'queued-publication') {
+                if (!this.queuedPublications || owner.role !== 'deserializer') throw new Error('Queued publication lineage is not enabled');
+                const messageId = this.queuedPublications.issue(this.publicationOrigin(owner, entry), requestId, input.publication);
+                this.reply(worker, requestId, {ok: true, epoch: this.epoch, incarnation: owner.incarnation,
+                    attemptId: entry.id, publicationSha256: workerAttemptDigest(input.publication), messageId}); return true;
+            }
             if (input.operation === 'retire') {
                 this.retire(worker); this.reply(worker, requestId, {ok: true, retired: true}); return true;
             }
@@ -270,6 +300,7 @@ export class WorkerAttemptSupervisor {
         if (!owner.fencedAttempts.size && owner.activeFenceTimer) {clearTimeout(owner.activeFenceTimer); owner.activeFenceTimer = undefined;}
         const evidence = Object.freeze({}) as AcceptedWorkerAttemptEnd;
         accepted.set(evidence, {supervisor: this, value: end});
+        this.queuedPublications?.ended(this.publicationOrigin(owner, entry), status);
         this.observe(owner, entry, 'ended');
         try {this.options.onEnd?.(evidence);} catch {this.overflow = true;}
         return status === 'quiescent' ? entry : next;
@@ -343,6 +374,7 @@ export class WorkerAttemptSupervisor {
         }
     }
     snapshot() {return Object.freeze({epoch: this.epoch, active: this.active, metadataBytes: this.metadataBytes, overflow: this.overflow,
+        ...(this.queuedPublications ? {queuedPublications: this.queuedPublications.snapshot()} : {}),
         owners: [...this.owners.values()].map(owner => ({incarnation: owner.incarnation, role: owner.role, state: owner.state,
             attempts: [...owner.entries.values()].map(entry => ({attemptId: entry.id, descriptor: {...entry.descriptor}, binding: {...entry.binding},
                 status: entry.end?.status ?? 'registered'}))}))});}

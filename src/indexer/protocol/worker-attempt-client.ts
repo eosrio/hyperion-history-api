@@ -1,6 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {ProofConsumerScope, ProofConsumerFencedError, currentProofConsumerScope, assertProofConsumerEnd} from './proof-consumer-scope.js';
 import {consumeFreshActionWrite, type FreshActionWrite} from '../history/action-fresh-write.js';
+import {queuedPublicationData, type QueuedPublicationData} from '../history/queued-publication-lineage.js';
 import {workerAttemptJson, workerAttemptDigest, validateWorkerAttemptDescriptor, validateWorkerAttemptBinding,
     validateFreshActionWrite,
     type WorkerAttemptDescriptor, type WorkerAttemptBinding, type WorkerAttemptRole, type WorkerAttemptTransport,
@@ -18,7 +19,7 @@ interface Attempt {
 }
 type Managed = {mode: 'managed'; role: WorkerAttemptRole; transport: WorkerAttemptTransport};
 type Controlled = {mode: 'controlled-local-only'; role: WorkerAttemptRole};
-type Options = (Managed | Controlled) & {timeoutMs?: number; drainTimeoutMs?: number; retries?: number};
+type Options = (Managed | Controlled) & {timeoutMs?: number; drainTimeoutMs?: number; retries?: number; queuedPublicationLineage?: boolean};
 /** Existing worker IPC only. Controlled local scopes can never issue master-accepted end authority. */
 export class WorkerAttemptClient {
     private readonly clientId = randomUUID();
@@ -29,6 +30,7 @@ export class WorkerAttemptClient {
     private authority?: {epoch: string; incarnation: string};
     private opening?: Promise<void>;
     private stopped = false;
+    private queuedPublications = false;
     private pendingFence?: {epoch: string; incarnation: string; sequence: number; stop: boolean};
     private readonly timeout: number;
     private readonly drainTimeout: number;
@@ -57,6 +59,8 @@ export class WorkerAttemptClient {
     }
     get mode() {return this.options.mode;}
     get role() {return this.options.role;}
+    get queuedPublicationLineageRequested() {return this.options.queuedPublicationLineage === true;}
+    get queuedPublicationLineageEnabled() {return this.queuedPublicationLineageRequested && this.queuedPublications;}
     private async request(payload: Record<string, unknown>): Promise<any> {
         if (this.options.mode !== 'managed') throw new Error('Local-only scope has no master IPC authority');
         if (this.pending.size >= 4096) throw new Error('Worker lifecycle request budget exhausted');
@@ -87,6 +91,8 @@ export class WorkerAttemptClient {
             if (this.stopped || result.role !== this.options.role || typeof result.epoch !== 'string' || typeof result.incarnation !== 'string')
                 throw new Error('Worker lifecycle parent/role changed');
             this.authority = {epoch: result.epoch, incarnation: result.incarnation};
+            this.queuedPublications = result.queuedPublications === true;
+            if (this.queuedPublicationLineageRequested && !this.queuedPublications) throw new Error('Queued publication parent injection is unavailable');
             const fence = this.pendingFence; this.pendingFence = undefined;
             if (fence && fence.epoch === result.epoch && fence.incarnation === result.incarnation) {
                 if (fence.stop) this.stopped = true;
@@ -98,7 +104,7 @@ export class WorkerAttemptClient {
         void this.opening.catch(() => {}); return this.opening;
     }
     /** Capture at physical receipt before cargo can wait. Semantic membership is deliberately optional. */
-    capture(descriptor: WorkerAttemptDescriptor): WorkerAttempt {
+    capture(descriptor: WorkerAttemptDescriptor, publication?: {messageId: string; data: QueuedPublicationData; redelivered: boolean}): WorkerAttempt {
         if (this.stopped || this.scopes.size >= 4096 || this.sequence === Number.MAX_SAFE_INTEGER) throw new Error('Worker lifecycle custody is unavailable');
         validateWorkerAttemptDescriptor(descriptor, this.options.role);
         const handle = Object.freeze({}) as WorkerAttempt, id = randomUUID(), sequence = ++this.sequence;
@@ -115,7 +121,8 @@ export class WorkerAttemptClient {
             await this.open();
             if (this.stopped) throw new Error('Worker lifecycle stopped before registration');
             if (this.options.mode === 'controlled-local-only') return;
-            const result = await this.request({operation: 'register', ...this.authority, attemptId: id, sequence, descriptor: record.descriptor});
+            const result = await this.request({operation: 'register', ...this.authority, attemptId: id, sequence, descriptor: record.descriptor,
+                ...(this.queuedPublicationLineageEnabled && this.role === 'ds_pool_worker' ? {publication} : {})});
             if (result.epoch !== this.authority?.epoch || result.incarnation !== this.authority?.incarnation || result.attemptId !== id
                 || typeof result.challenge !== 'string' || result.descriptorSha256 !== workerAttemptDigest(record.descriptor))
                 throw new Error('Worker lifecycle registration response mismatch');
@@ -145,6 +152,23 @@ export class WorkerAttemptClient {
         const scope = currentProofConsumerScope(true)!, record = this.scopes.get(scope);
         if (!record) throw new Error('Proof context is not owned by this worker lifecycle');
         await this.bind(record.handle, fields);
+    }
+    async prepareQueuedPublication(queue: string, payload: Buffer, headers: unknown): Promise<{messageId: string; assertBeforeSend: () => void}> {
+        const scope = currentProofConsumerScope(true)!, record = this.scopes.get(scope);
+        if (!record || !this.queuedPublicationLineageEnabled || this.role !== 'deserializer') throw new Error('Queued publication lacks its enabled original worker');
+        scope.assertActive();
+        const publication = queuedPublicationData(queue, payload, headers);
+        const result = await scope.operation(() => this.request({operation: 'queued-publication', ...this.authority,
+            attemptId: record.id, sequence: record.sequence, challenge: record.challenge, publication}));
+        scope.assertActive();
+        if (result.epoch !== this.authority?.epoch || result.incarnation !== this.authority?.incarnation || result.attemptId !== record.id
+            || result.publicationSha256 !== workerAttemptDigest(publication) || typeof result.messageId !== 'string'
+            || !/^[0-9a-f-]{36}$/.test(result.messageId)) throw new Error('Queued publication parent response mismatch');
+        return Object.freeze({messageId: result.messageId, assertBeforeSend: () => {
+            scope.assertActive();
+            if (currentProofConsumerScope(true) !== scope || workerAttemptDigest(queuedPublicationData(queue, payload, headers)) !== workerAttemptDigest(publication))
+                throw new Error('Original queued publication bytes changed before send');
+        }});
     }
     markAcknowledgementAttempt(): void {
         const scope = currentProofConsumerScope(true)!, record = this.scopes.get(scope);

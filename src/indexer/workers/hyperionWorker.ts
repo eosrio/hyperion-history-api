@@ -21,7 +21,8 @@ import {inflateSync} from 'node:zlib';
 import { HyperionAbi } from "../../interfaces/hyperion-abi.js";
 import { WorkerProfiler } from "../helpers/profiler.js";
 import {ActionSourceAdmissionStore} from '../history/action-source-admission.js';
-import {publishAdmittedAction, bindActionPublicationOwnerToScope, type ActionPublicationOwner} from '../history/action-confirmed-publication.js';
+import {publishAdmittedAction, bindActionPublicationOwnerToScope, bindActionQueuedPublicationLineage, type ActionPublicationOwner} from '../history/action-confirmed-publication.js';
+import {queuedPublicationData} from '../history/queued-publication-lineage.js';
 import {createHash, randomUUID} from 'node:crypto';
 import {serialize} from 'node:v8';
 import {WorkerProofDemandObserver} from '../history/action-proof-demand-enrollment.js';
@@ -167,7 +168,11 @@ export abstract class HyperionWorker {
         const handle = this.attemptClient().capture({kind, receiptId, payloadSha256, headersSha256,
             consumerId: this.attemptChannelId(channel), publisherId: this.attemptChannelId(this.cch),
             queue: typeof process.env.worker_queue === 'string' ? process.env.worker_queue : null,
-            deliveryTag: Number.isSafeInteger(message.fields?.deliveryTag) ? message.fields.deliveryTag : null});
+            deliveryTag: Number.isSafeInteger(message.fields?.deliveryTag) ? message.fields.deliveryTag : null},
+            kind === 'ds-delivery' && this.attemptClient().queuedPublicationLineageRequested ? {
+                messageId: message.properties.messageId ?? '', redelivered: message.fields.redelivered === true,
+                data: queuedPublicationData(typeof process.env.worker_queue === 'string' ? process.env.worker_queue : '', message.content, message.properties.headers ?? {})
+            } : undefined);
         this.workerAttemptDeliveries.set(message, {handle, receiptId, payloadSha256, headersSha256, consumer: channel});
         if (kind === 'ds-delivery' && this.proofDemandObserver) try {
             const content = Object.getOwnPropertyDescriptor(message, 'content')?.value;
@@ -297,6 +302,8 @@ export abstract class HyperionWorker {
             return consumer === this.ch && publisher === this.cch && this.ch_ready && this.cch_ready;
         }};
         if (!owner.current()) throw new Error('Admitted action channels are unavailable');
+        if (this.workerAttemptClient?.queuedPublicationLineageEnabled && this.workerAttemptClient.role === 'deserializer')
+            bindActionQueuedPublicationLineage(owner, (queue, payload, headers) => this.workerAttemptClient!.prepareQueuedPublication(queue, payload, headers));
         return bindActionPublicationOwnerToScope(owner);
     }
     async publishAdmitted(owner: ActionPublicationOwner, queue: string, content: Buffer, headers: any): Promise<void> {
