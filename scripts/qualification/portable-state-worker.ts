@@ -767,7 +767,12 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                     !writeFailureObserved ? faultThrough - 1 : source.endBlock); replay.releaseThrough(through);
                 const block = source.records[through - 1];
                 await wait(`durable contiguous projection cursor ${through}`, async () => {
+                    const pollStartedMs = performance.now();
                     const recoveries = await Promise.all(adapters.map((adapter, index) => adapter.recovery(bindings[index])));
+                    // Retain only the last completed poll, including failures of the following assertions.
+                    report.lastRecoveryPoll = {target: {blockNum: through, blockId: block.blockId},
+                        clock: {kind: 'performance.now', pid: process.pid, processTimeOriginMs: performance.timeOrigin,
+                            startedMs: pollStartedMs, completedMs: performance.now()}, recoveries};
                     for (const recovery of recoveries) {assert.equal(recovery.initialized, true); assert.deepEqual(recovery.checkpoint, {blockNum: through, blockId: block.blockId});
                         assert.equal(recovery.pending, null); assert.equal(recovery.gap, null);}
                     replay!.assertThrough(through); report.lastRecovery = recoveries;
