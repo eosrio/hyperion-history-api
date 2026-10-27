@@ -41,6 +41,10 @@ or domain reduction. Factory admission refuses value/key profiles beyond MongoDB
 envelope; it also reserves the full configured metadata/receipt/undo descriptor envelope below the
 existing8MiB metadata ceiling. Actual before-images and descriptor BSON bytes count toward the
 explicit per-block/retained policies. Oversized work refuses; it is never truncated or acknowledged.
+The metadata reservation includes full receipt/undo arrays, a retained floor receipt, maximum BSON
+numeric widths, completed recovery with pending or gap, and running/unavailable recovery separately.
+Reason strings reserve their permitted UTF-8 bytes; the fixed native unavailable reason must fit the
+offered key/text profile. Near-ceiling profiles refuse before capabilities or native I/O are exposed.
 
 Outside transactions, uniquely addressed metadata uses bounded primary **linearizable** reads.
 Keyed reads use one snapshot transaction for metadata and records, with majority/journaled transaction

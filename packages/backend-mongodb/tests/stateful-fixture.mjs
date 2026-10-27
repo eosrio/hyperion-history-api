@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import {BSON} from 'mongodb';
 import * as sdk from '@eosrio/hyperion-sdk/projection-stateful';
 import {createMongoDbStatefulAdapter} from '../dist/stateful.js';
 import {databaseFixture, hex, genesis} from './fixture.mjs';
@@ -37,3 +38,30 @@ export const physical = s => {
     const values=[...s.fixture.storage.entries()];
     return {metadata:[...values.find(([n])=>n.endsWith('_metadata'))[1].values()][0],rows:[...values.find(([n])=>n.includes('_r_'))[1].values()],images:[...values.find(([n])=>n.includes('_u_'))[1].values()]};
 };
+
+// Byte oracle starts with a real controlled-driver state: full one-block arrays, a retained
+// floor receipt and completed rollback followed by forward work. Phase copies only measure BSON;
+// they do not claim source authority or inject fabricated records into a running adapter.
+export async function metadataEnvelopeBoundary() {
+    const keyBytes=4*1024*1024,bounds={...limits(),keyBytes,envelope:{...limits().envelope,stringBytes:16*1024*1024,recordBytes:32*1024*1024},candidateBytes:32*1024*1024};
+    const input=definition();input.binding.generation='g';
+    const draft=await sdk.captureStatefulDeclaration(input,bounds),s=await setup(undefined,{declaration:draft,receiptRetention:1,rollbackRetentionBlocks:1});
+    await run(s,source(s,1),async()=>{});await run(s,source(s,2),async()=>{});const current=await view(s);
+    await s.adapter.rollback({declarationDigest:s.declaration.digest,revision:current.revision,operationId:hex(90),from:current.checkpoint,ancestor:current.checkpoint,maxBlocks:1});
+    await run(s,source(s,3),async()=>{});
+    const m=structuredClone(physical(s).metadata),shift=Number.MAX_SAFE_INTEGER-5;
+    for(const point of [m.checkpoint,m.floor,m.floorReceipt,...m.receipts,...m.undo.map(u=>u.block),m.rollback.from,m.rollback.ancestor])point.blockNum+=shift;
+    const point={blockNum:m.checkpoint.blockNum+1,blockId:hex(4)},reason='🙂'.repeat(keyBytes/4);
+    assertReasonBytes(reason,keyBytes);
+    const phases=[m,{...m,pending:{sourceDigest:hex(91),candidateDigest:hex(92),block:point}},
+        {...m,gap:{sourceDigest:hex(91),block:point,reason}},
+        {...m,rollback:{...m.rollback,status:'running'}},{...m,rollback:{...m.rollback,status:'unavailable',reason}}];
+    const baseline=Math.max(...phases.map(p=>BSON.calculateObjectSize(p))),lastLength=8*1024*1024-baseline+1;
+    if(lastLength<=1||lastLength>=keyBytes)throw new Error('Boundary fixture no longer straddles the existing native ceiling');
+    const lastInput=definition();lastInput.binding.generation='g'.repeat(lastLength);
+    const nextInput=definition();nextInput.binding.generation='g'.repeat(lastLength+1);
+    const last=await sdk.captureStatefulDeclaration(lastInput,bounds),next=await sdk.captureStatefulDeclaration(nextInput,bounds);
+    const sizes=phases.map(p=>BSON.calculateObjectSize({...p,declaration:JSON.stringify(last),declarationDigest:last.digest}));
+    return {last,next,reason,lastLength,keyBytes,sizes,maximum:Math.max(...sizes),policy:{receiptRetention:1,rollbackRetentionBlocks:1}};
+}
+function assertReasonBytes(reason,bytes){if(Buffer.byteLength(reason)!==bytes)throw new Error('UTF-8 reason byte oracle differs');}

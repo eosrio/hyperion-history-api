@@ -30,6 +30,7 @@ export interface MongoDbStatefulAdapterOptions {
     readonly transactionTimeoutMS: number;
 }
 const token = () => randomBytes(32).toString('hex');
+const UNAVAILABLE_ANCESTOR_REASON = 'Ancestor outside retained exact-branch undo';
 
 class MongoDbStatefulAdapter implements StatefulAdapter {
     readonly capabilities;
@@ -55,11 +56,26 @@ class MongoDbStatefulAdapter implements StatefulAdapter {
         // envelope covers both the row wrapper and the larger before-image wrapper.
         requireState(declaration.limits.value.recordBytes + 2 * declaration.limits.keyBytes + 1024 <= MAX_BSON_BYTES,
             'Offered value/key profile exceeds the BSON document envelope', 'stateful.capability-unavailable');
-        const sample = this.initial();
-        const receipt: StatefulReceipt = {blockNum: Number.MAX_SAFE_INTEGER, blockId: 'f'.repeat(64), sourceDigest: 'f'.repeat(64), candidateDigest: 'f'.repeat(64)};
-        const undo: StatefulUndo = {block: {...receipt, previousBlockId: 'f'.repeat(64)}, sourceDigest: receipt.sourceDigest,
-            digest: receipt.candidateDigest, count: Number.MAX_SAFE_INTEGER, imageBytes: Number.MAX_SAFE_INTEGER, imagesHash: 'f'.repeat(64)};
-        requireState(bsonBytes({...sample, receipts: Array(this.policy.receiptRetention).fill(receipt), undo: Array(this.policy.maxBlocks).fill(undo)}) <= MAX_METADATA_BYTES,
+        const reasonBytes = Math.min(declaration.limits.keyBytes, declaration.limits.envelope.stringBytes);
+        requireState(Buffer.byteLength(UNAVAILABLE_ANCESTOR_REASON) <= reasonBytes,
+            'Offered text profile cannot retain the native unavailable-ancestor reason', 'stateful.capability-unavailable');
+        const point = {blockNum: Number.MAX_SAFE_INTEGER, blockId: 'f'.repeat(64)};
+        const receipt: StatefulReceipt = {...point, sourceDigest: 'f'.repeat(64), candidateDigest: 'f'.repeat(64)};
+        const undo: StatefulUndo = {block: {...point, previousBlockId: 'f'.repeat(64)}, sourceDigest: receipt.sourceDigest,
+            digest: receipt.candidateDigest, count: declaration.limits.mutations, imageBytes: this.policy.maxBlockBytes, imagesHash: 'f'.repeat(64)};
+        const completed = {operationId: point.blockId, sourceRevision: point.blockId, from: point, ancestor: point, status: 'complete' as const, reason: null};
+        const sample = {...this.initial(), initialized: true, checkpoint: point, floor: point, floorReceipt: receipt, rollback: completed,
+            receipts: Array(this.policy.receiptRetention).fill(receipt), undo: Array(this.policy.maxBlocks).fill(undo)};
+        // A completed rollback survives forward application and gap/pending admission. Reserve it
+        // with full arrays/floor receipt and maximum numeric BSON widths. Pending and gap are
+        // exclusive; running/unavailable rollback owns neither. BSON string growth is exactly its
+        // UTF-8 byte count, so reason reservation needs no large synthetic string allocation.
+        const phases = [bsonBytes(sample),
+            bsonBytes({...sample, pending: {sourceDigest: receipt.sourceDigest, candidateDigest: receipt.candidateDigest, block: point}}),
+            bsonBytes({...sample, gap: {sourceDigest: receipt.sourceDigest, block: point, reason: ''}}) + reasonBytes,
+            bsonBytes({...sample, rollback: {...completed, status: 'running'}}),
+            bsonBytes({...sample, rollback: {...completed, status: 'unavailable', reason: ''}}) + reasonBytes];
+        requireState(Math.max(...phases) <= MAX_METADATA_BYTES,
             'Declaration/retention profile exceeds native metadata envelope', 'stateful.capability-unavailable');
         this.capabilities = Object.freeze({family: STATEFUL_FAMILY, interfaceVersion: 1 as const, supported: STATEFUL_ADAPTER_CAPABILITIES, limits: declaration.limits});
         this.db = options.client.db(options.databaseName, {readPreference: 'primary'});
@@ -254,7 +270,7 @@ class MongoDbStatefulAdapter implements StatefulAdapter {
                 requireState(m.rollback === null || m.rollback.status === 'complete', 'Unavailable ancestry requires historical recovery or qualified reinitialization', 'stateful.rollback-unavailable');
                 const available = equalPoint(m.floor, request.ancestor) || m.undo.some(u => equalPoint(u.block, request.ancestor));
                 const rollback = {operationId: request.operationId, sourceRevision: request.revision, from: request.from, ancestor: request.ancestor,
-                    status: available ? 'running' as const : 'unavailable' as const, reason: available ? null : 'Ancestor outside retained exact-branch undo'};
+                    status: available ? 'running' as const : 'unavailable' as const, reason: available ? null : UNAVAILABLE_ANCESTOR_REASON};
                 m = await this.save(m, {revision: token(), rollback, pending: null, gap: null});
                 requireState(available, 'Ancestor outside retained exact-branch undo', 'stateful.rollback-unavailable');
             }

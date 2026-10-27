@@ -3,7 +3,7 @@ import test from 'node:test';
 import {pathToFileURL} from 'node:url';
 import {resolve} from 'node:path';
 import {createMongoDbStatefulAdapter} from '../dist/stateful.js';
-import {sdk,configured,setup,source,run,view,read,physical,limits,definition,hex,guard,databaseFixture} from './stateful-fixture.mjs';
+import {sdk,configured,setup,source,run,view,read,physical,limits,definition,hex,guard,databaseFixture,metadataEnvelopeBoundary} from './stateful-fixture.mjs';
 const code=n=>e=>e.code===n;
 const A=async p=>{p.put('asset','one',{id:'9007199254740993',vector:['0','18446744073709551615'],owner:'alice',mutable:{old:true},nil:null});
     p.put('asset','one',{...(await p.get('asset','one')).value,mutable:{replacement:true},owner:'bob'});p.put('collection','one',{name:'initial'});};
@@ -146,4 +146,21 @@ test('native metadata corruption cannot fabricate a different retained branch re
     const s=await setup();await run(s,source(s,1),A);physical(s).metadata.receipts[0].blockId=hex(999);
     await assert.rejects(view(s),code('stateful.invalid-contract'));
     assert.equal(physical(s).rows.length,2);
+});
+
+test('metadata envelope admits the last byte and refuses the next before native I/O or hooks',async()=>{
+    const boundary=await metadataEnvelopeBoundary();assert.equal(boundary.maximum,8*1024*1024);
+    assert.equal(Buffer.byteLength(boundary.reason),boundary.keyBytes);
+    const accepted=await configured(undefined,{declaration:boundary.last,...boundary.policy});assert.equal(accepted.fixture.native.length,0);
+    const refused=databaseFixture();
+    await assert.rejects(configured(refused,{declaration:boundary.next,...boundary.policy}),code('stateful.capability-unavailable'));
+    assert.equal(refused.native.length,0);
+});
+
+test('native recovery reason must fit the explicit UTF-8 key/text profile before capability exposure',async()=>{
+    const bytes=Buffer.byteLength('Ancestor outside retained exact-branch undo');
+    const bounds={...limits(),keyBytes:bytes},draft=await sdk.captureStatefulDeclaration(definition(),bounds);
+    const accepted=await configured(undefined,{declaration:draft});assert.equal(accepted.fixture.native.length,0);
+    const narrow=await sdk.captureStatefulDeclaration(definition(),{...bounds,keyBytes:bytes-1}),fixture=databaseFixture();
+    await assert.rejects(configured(fixture,{declaration:narrow}),code('stateful.capability-unavailable'));assert.equal(fixture.native.length,0);
 });
