@@ -121,6 +121,10 @@ restricted to the owned loopback endpoint and namespace; source/digest/majority 
 must match, with `ok: 1`, no write-concern error and no write errors, before its deliberate exit.
 The runner retains native command and physical-record evidence
 and uses the existing fixture's ownership/cleanup checks. It accepts no external cluster CLI URL.
+The owner passes its exact replica-set name into contextual readiness, including after restart.
+The runner requires `h45rs_<run nonce>` before owned I/O; the original strict primary/set-name
+checks and 60-second readiness deadline remain unchanged. A failed engine run at the preceding
+revision remains failure evidence; native controls do not establish the corrected engine result.
 
 Writing/wiring that runner does not establish a successful engine run. Record its exact source and
 Node24/26 Mongo results separately. No production fork/finality, HTTP, initialization snapshot, Wire

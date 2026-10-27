@@ -316,6 +316,7 @@ try {
         assertOwned: () => fixture.ownedContainer('replica')});
     check('opt-in rollback retains canonical effects and progress across real worker process crashes', report.rollback);
     report.contextual = await runContextualProjectionQualification({uri: fixture.endpoint('replica'), run: fixture.run,
+        replicaSet: fixture.replicaSet,
         assertOwned: () => fixture.ownedContainer('replica'),
         restart: async () => {fixture.restart(); return fixture.endpoint('replica');}});
     check('explicit contextual recovery preserves original candidates/creation across native transaction failure, process loss, restart and rollback', report.contextual);
