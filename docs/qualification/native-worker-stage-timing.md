@@ -40,7 +40,7 @@ histograms, active operations and the bounded tail of settled records.
 
 | Stages | Original operations |
 |---|---|
-| Attempt admission, run, root, drain, bind, fresh-write observation, end | Actual accepted registration promise, root promise, bounded physical drainage and original managed IPC requests |
+| Attempt admission, root, drain, bind, fresh-write observation, end | Actual accepted registration promise, root promise, bounded physical drainage and original managed IPC requests; generic `attempt.run` settlement is explicitly unobservable |
 | Native opening, retained inventory, issued revalidation | Existing paired or standalone open, whole-source verification and original retained selection reads; the input records whether the opening is paired |
 | Canonical opening and opening recheck | Original canonical walk and the final paired opening revalidation, retaining the eight-opening and 256 ancestry guards |
 | Action admission and trace | Original source/producer/target admission and trace processing, including its existing confirm-and-drain wait |
@@ -69,10 +69,9 @@ histograms are fixed. Counters saturate safely. Exhaustion omits observations,
 increments explicit omission counts and continues the original operation;
 missing/unsettled work cannot silently become a completed measurement.
 
-Each wrapper returns the exact original promise, opaque result or thrown error.
-It adds a side reaction to native promises; it does not await a replacement,
-resolve an opaque value again, inspect a `then` getter, race cancellation, retry,
-release a held callback or change arguments. Cancellation counts require an
+The probe uses only the finite policies audited below. It does not inspect a
+`then` getter on an opaque result, race cancellation, retry, release a held
+callback or change arguments. Cancellation counts require an
 actual error owned by that attempt's scope. Ordinary/foreign failures remain
 failed even if the scope is aborted; codes are labels only. A normal drain's
 scope fence does not turn a returned operation into cancellation.
@@ -82,6 +81,33 @@ Its timing settlement is therefore distinct from the original physical drain
 and accepted end. Active drain records and the existing proof late-I/O evidence
 retain that distinction. Snapshot/identity failures remain explicit diagnostics;
 the guarded qualifier rejects failed observer accounting.
+
+### Finite promise and return audit
+
+The original `7ded9d47` probe returned original promises after attaching a
+fulfilling error reaction. That reaction suppressed otherwise unhandled
+rejections. Its artifacts remain rejected evidence; a timing label cannot
+excuse a worker fatal error. There are three distinct policies:
+
+| Original boundary | Observation policy and source evidence |
+|---|---|
+| `WorkerAttemptClient.capture` admission | `worker-attempt-client.ts` attaches `void record.accepted.catch(() => {})` before returning its handle. Observe that already-handled shared promise with a nonthrowing side reaction; neither replace it nor create a detached rejected promise. |
+| `ProofConsumerScope.run` root | `proof-consumer-scope.ts` stores the root and attaches `void root.catch(() => {})` before invoking the operation. Keep that exact shared promise and its existing handling, including arbitrary opaque values. |
+| `WorkerAttemptClient.run` | The generic root result is arbitrary caller data. Return the original promise without a reaction. Record one `unobservable` boundary with `elapsedNs: null`, remove its diagnostic active slot, and add no completed/failed/cancelled/wall sample. A child's `settledAfterParent` is `null` when its parent settlement is unobservable. Root, physical drain and managed end remain separate observations. |
+| `boundedDrain`, `bind`, `observeFreshActionWrite`, end `request` | Original callers await or return these results; none uses promise identity as a key, ownership token or equality guard. Returns are void/boolean or the validated JSON end response. Return a diagnostic reaction promise, forwarding the identical value or throwing the identical error. |
+| Native `openSelected`, `revalidateIssued`; canonical `open`, `revalidateOpening`; retained `readSelection` | Their original callers await/return the result, including the existing scope-operation and cancellation race. Issued views retain object identity; returns are void, issued empty/fixed-field views or validated fixed-field readback records. No caller depends on the method's promise identity. |
+| Pool `beginActionAdmission`, `processTraces`, `revalidateProtocolDeliveryNativeOutputs`, `assertActionHandoffCurrent`, `assertActionAttemptCurrent`, `flushRedisBatch` | All original call sites await them; each returns void. The original operation, parser, broker confirm/drain, cache writes and current-owner checks remain inside the same call. |
+| Admission `trySeal`, `recordConfirmedHandoff`, `prepareContractAttemptDisposition`, `prepareRawIncompleteAttemptDisposition`, `recordAttemptDisposition` | Callers await boolean, privately issued empty evidence, or fixed-field `{id, outcome}` / `{id, observation}` records. Fresh-write and evidence authority is keyed by the returned object, which is forwarded unchanged, never by the promise. |
+
+The twenty typed boundaries use a returned reaction promise with a success
+handler that records and returns the original value, and a failure handler
+that records and throws the original error. An ignored returned promise still
+exposes the original unhandled rejection/fatal path; a handled call does not
+leave an orphan rejection. This adds a promise reaction and microtask overhead;
+it is private qualification instrumentation, not a public API or performance
+optimization. These audited returns cannot contain an executable `then` getter
+at their top level. Arbitrary data is deliberately excluded at the generic
+root/result boundaries. No process rejection handler is installed by the probe.
 
 ## Focused controls
 
@@ -103,3 +129,13 @@ guarded preload is checked both with and without the new flag.
 These checks establish instrumentation behavior. They do not qualify the full
 worker replay, live broker/storage behavior, Windows lifecycle timeout, capacity,
 fork recovery or the Hyperion 4.5 release.
+
+The native-child controls compare the actual emitted `WorkerAttemptClient.run`
+and `bind` methods with the probe off/on. They independently check immediate
+handling, `unhandledRejection`, native fatal exit under
+`--unhandled-rejections=throw`, and later handling with `rejectionHandled`.
+The fatal child installs only `uncaughtExceptionMonitor`, which cannot handle
+the failure. Exact error identity and the caller-visible rejected promise are
+checked. Separate ignored shared-root/admission controls reject false detached
+failures; the opaque-result and pending-root controls verify unchanged getter
+reads, honest unknown parent settlement and bounded active records.

@@ -21,7 +21,7 @@ const nextCount = value => Math.min(Number.MAX_SAFE_INTEGER, value + 1);
 const increment = (value, key) => {value[key] = nextCount(value[key]);};
 
 /** Off unless explicitly installed by the guarded native qualification preload or component tests.
- * Fixed stage inventory, bounded active/tail custody, exact original Promise/result/error returns.
+ * Fixed stage inventory and bounded records. See the finite return/identity audit in the qualification doc.
  */
 export function installNativeWorkerStageTimings({enabled = false, maximumStarts = nativeStageTimingBounds.maximumStarts,
     maximumActive = nativeStageTimingBounds.maximumActive, maximumTail = nativeStageTimingBounds.maximumTail} = {}) {
@@ -59,7 +59,7 @@ export function installNativeWorkerStageTimings({enabled = false, maximumStarts 
             increment(metric, 'omittedStarts'); omittedStarts = nextCount(omittedStarts); return;
         }
         const parent = context.getStore(), frame = {id: ++starts, stage, parent, start: process.hrtime.bigint(),
-            attempt: ownAttempt ?? parent?.attempt, input: input ?? null, settled: false};
+            attempt: ownAttempt ?? parent?.attempt, input: input ?? null, settlement: 'pending'};
         increment(metric, 'started'); increment(metric, 'active'); active.set(frame.id, frame); return frame;
     };
     const finish = (frame, error, rejected) => observe(() => {
@@ -67,34 +67,51 @@ export function installNativeWorkerStageTimings({enabled = false, maximumStarts 
         const cancelled = rejected && !!frame.attempt?.scope.ownsFenceError(error);
         const outcome = rejected ? cancelled ? 'cancelled' : 'failed' : 'completed';
         const elapsed = process.hrtime.bigint() - frame.start;
-        frame.settled = true; active.delete(frame.id); metric.active--; increment(metric, outcome);
+        frame.settlement = 'settled'; active.delete(frame.id); metric.active--; increment(metric, outcome);
         metric.wall.add(elapsed); metric[outcome + 'Wall'].add(elapsed);
-        const late = frame.parent?.settled === true;
+        const late = frame.parent?.settlement === 'unobservable' ? null : frame.parent?.settlement === 'settled';
         if (late) increment(metric, 'settledAfterParent');
         const record = row(frame, {elapsedNs: String(elapsed), outcome, settledAfterParent: late,
             scopeAborted: signal?.aborted ?? null,
             ...(rejected ? {error: fields(error, ['name', 'code'])} : {})});
         tail.push(record); if (tail.length > maximumTail) tail.shift();
     });
-    const follow = (frame, result) => {
-        if (isPromise(result)) observe(() => {
-            // Side observation only: return the ORIGINAL promise; never inspect opaque then getters.
-            Promise.prototype.then.call(result, () => {finish(frame, undefined, false);}, error => {finish(frame, error, true);});
-        });
-        else finish(frame, undefined, false);
+    const unobservable = frame => observe(() => {
+        const metric = stages[frame.stage];
+        frame.settlement = 'unobservable'; active.delete(frame.id); metric.active--; increment(metric, 'unobservable');
+        tail.push(row(frame, {outcome: 'unobservable', elapsedNs: null, settledAfterParent: null,
+            reason: 'generic-result-promise-not-observed'}));
+        if (tail.length > maximumTail) tail.shift();
+    });
+    const follow = (frame, result, policy) => {
+        if (!isPromise(result)) {finish(frame, undefined, false); return result;}
+        if (policy === 'unobservable') {unobservable(frame); return result;}
+        if (policy === 'already-handled') {
+            // Only accepted and Scope.run: their ORIGINAL bodies already attach catch before returning.
+            // Keep the shared original promise. This detached reaction must never rethrow.
+            observe(() => Promise.prototype.then.call(result,
+                () => {finish(frame, undefined, false);}, error => {finish(frame, error, true);}));
+            return result;
+        }
+        // Audited void/boolean/owned plain-record returns only. The caller receives this reaction;
+        // ignoring it still exposes the exact original rejection, while handling it creates no orphan.
+        const followed = observe(() => Promise.prototype.then.call(result,
+            value => {finish(frame, undefined, false); return value;}, error => {finish(frame, error, true); throw error;}));
+        if (followed) return followed;
+        unobservable(frame); // A diagnostic failure never substitutes the original method result.
         return result;
     };
     const metric = name => stages[name] ??= {started: 0, completed: 0, failed: 0, cancelled: 0, active: 0,
-        omittedStarts: 0, settledAfterParent: 0, wall: new LatencyHistogram(), completedWall: new LatencyHistogram(),
+        omittedStarts: 0, unobservable: 0, settledAfterParent: 0, wall: new LatencyHistogram(), completedWall: new LatencyHistogram(),
         failedWall: new LatencyHistogram(), cancelledWall: new LatencyHistogram()};
-    const patch = (prototype, name, stage, details) => {
+    const patch = (prototype, name, stage, details, policy) => {
         const original = prototype[name];
         if (typeof original !== 'function') throw new Error('Original native stage method unavailable: ' + name);
         metric(stage);
         prototype[name] = function(...args) {
             const detail = observe(() => details?.call(this, args)), frame = observe(() => begin(stage, detail?.attempt, detail?.input));
             if (!frame) return original.apply(this, args);
-            try {return follow(frame, context.run(frame, () => original.apply(this, args)));}
+            try {return follow(frame, context.run(frame, () => original.apply(this, args)), policy);}
             catch (error) {finish(frame, error, true); throw error;}
         };
         restores.push(() => {prototype[name] = original;});
@@ -106,13 +123,13 @@ export function installNativeWorkerStageTimings({enabled = false, maximumStarts 
         const frame = observe(() => begin('attempt.admission'));
         try {
             const handle = capture.apply(this, args);
-            if (frame) observe(() => {frame.attempt = attempt(this, handle); follow(frame, this.attempts.get(handle).accepted);});
+            if (frame) observe(() => {frame.attempt = attempt(this, handle); follow(frame, this.attempts.get(handle).accepted, 'already-handled');});
             return handle;
         } catch (error) {if (frame) finish(frame, error, true); throw error;}
     };
     restores.push(() => {WorkerAttemptClient.prototype.capture = capture;});
-    patch(WorkerAttemptClient.prototype, 'run', 'attempt.run', function(args) {return {attempt: attempt(this, args[0])};});
-    patch(ProofConsumerScope.prototype, 'run', 'attempt.root');
+    patch(WorkerAttemptClient.prototype, 'run', 'attempt.run', function(args) {return {attempt: attempt(this, args[0])};}, 'unobservable');
+    patch(ProofConsumerScope.prototype, 'run', 'attempt.root', undefined, 'already-handled');
     patch(WorkerAttemptClient.prototype, 'boundedDrain', 'attempt.drain');
     patch(WorkerAttemptClient.prototype, 'bind', 'attempt.bind');
     patch(WorkerAttemptClient.prototype, 'observeFreshActionWrite', 'attempt.fresh-write-observation');
