@@ -70,6 +70,16 @@ Controlled broker/storage/RPC boundaries remain explicit. Source controls cover 
 original bytes/headers, distinct physical owners/redelivery/selections, foreign/expired tokens,
 metadata/count/byte/in-flight exhaustion, failed ended observations and bounded unknown headers.
 
+The queued diagnostic notification does not synchronize the separate asynchronous registration
+request. In the late-capture control, withholding capture can therefore leave the parent receipt
+window empty until that registration arrives. Under [#363](https://github.com/eosrio/hyperion-history-api/issues/363),
+the fixture waits for original registered custody matching both receipt and attempt identity before
+sampling it. A delayed-registration control holds the real supervisor request while capture and
+cargo remain held, then releases it through an explicit microtask gate. The old immediate snapshot
+fails with receipt count zero versus one; the observation wait preserves the original unknown-byte,
+authority, enrollment, physical-drain and ACK assertions, errors and deadlines. This is a fixture
+ordering correction; it changes no production callback or release gate.
+
 Record exact final native Node 24/26 results, source/emission pins, focused checks, independent
 reviews, full-suite result and CI before merging. Focused component success does not establish
 full worker/Wire or release qualification.
