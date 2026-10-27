@@ -330,7 +330,7 @@ export async function portableSourceRpc(source: PortableWorkerSource, errors: st
         close: () => new Promise<void>(done => {server.closeAllConnections(); server.close(() => done());})};
 }
 
-export interface PortableWorkerOptions {readonly native?: boolean; readonly authorityRpc?: string; readonly profile?: boolean;
+export interface PortableWorkerOptions {readonly native?: boolean; readonly authorityRpc?: string; readonly profile?: boolean; readonly stageTiming?: boolean;
     readonly workerRecovery?: boolean; readonly masterRecovery?: boolean; readonly readerRecovery?: boolean;
     readonly brokerRecovery?: boolean; readonly storageRecovery?: boolean}
 
@@ -345,10 +345,11 @@ function portableAuthorityRpcOrigin(value: string): URL {
 export function validatePortableWorkerOptions(options: unknown): asserts options is PortableWorkerOptions {
     assert.ok(options && typeof options === 'object' && !Array.isArray(options)
         && [Object.prototype, null].includes(Object.getPrototypeOf(options))
-        && Object.keys(options).every(key => ['native', 'authorityRpc', 'profile', 'workerRecovery', 'masterRecovery', 'readerRecovery', 'brokerRecovery', 'storageRecovery'].includes(key)));
+        && Object.keys(options).every(key => ['native', 'authorityRpc', 'profile', 'stageTiming', 'workerRecovery', 'masterRecovery', 'readerRecovery', 'brokerRecovery', 'storageRecovery'].includes(key)));
     const selected = options as PortableWorkerOptions;
     if (Object.hasOwn(selected, 'native')) assert.equal(typeof selected.native, 'boolean');
     if (Object.hasOwn(selected, 'profile')) assert.equal(typeof selected.profile, 'boolean');
+    if (Object.hasOwn(selected, 'stageTiming')) assert.equal(typeof selected.stageTiming, 'boolean');
     if (Object.hasOwn(selected, 'workerRecovery')) assert.equal(typeof selected.workerRecovery, 'boolean');
     if (Object.hasOwn(selected, 'masterRecovery')) assert.equal(typeof selected.masterRecovery, 'boolean');
     if (Object.hasOwn(selected, 'readerRecovery')) assert.equal(typeof selected.readerRecovery, 'boolean');
@@ -374,20 +375,24 @@ export function validatePortableWorkerOptions(options: unknown): asserts options
         'Broker recovery requires native source-bounded RPC qualification without CPU capture or another fault');
     assert.ok(!selected.storageRecovery || selected.brokerRecovery === true,
         'Storage recovery requires the explicit native broker handover case');
+    assert.ok(!selected.stageTiming || selected.native === true && typeof selected.authorityRpc === 'string'
+        && !selected.workerRecovery && !selected.masterRecovery && !selected.readerRecovery && !selected.brokerRecovery,
+        'Stage timing requires the original native source-bounded replay without an added recovery case');
 }
 
-export function parsePortableWorkerArguments(args: readonly string[]) {
+export function parsePortableWorkerArguments(input: readonly string[]) {
+    const stageTiming = input.at(-1) === '--stage-timing', args = stageTiming ? input.slice(0, -1) : input;
     assert.ok(args.slice(0, 3).length === 3 && args.slice(0, 3).every(value => typeof value === 'string' && value.length > 0)
         && (args.length === 3 || args.length === 4 && args[3] === '--native'
             || (args.length === 6 || args.length === 7 && ['--profile', '--worker-recovery', '--master-recovery', '--reader-recovery', '--broker-recovery', '--broker-storage-recovery'].includes(args[6]))
                 && args[3] === '--native' && args[4] === '--authority-rpc'),
-    'usage: node portable-state-worker.ts STATE_FILE PLAN_JSON NEW_OUTPUT_DIRECTORY [--native [--authority-rpc URL [--profile|--worker-recovery|--master-recovery|--reader-recovery|--broker-recovery|--broker-storage-recovery]]]');
+    'usage: node portable-state-worker.ts STATE_FILE PLAN_JSON NEW_OUTPUT_DIRECTORY [--native [--authority-rpc URL [--profile|--worker-recovery|--master-recovery|--reader-recovery|--broker-recovery|--broker-storage-recovery]]] [--stage-timing]');
     const options = {...(args.length > 3 ? {native: true} : {}), ...(args.length >= 6 ? {authorityRpc: args[5]} : {}),
         ...(args[6] === '--profile' ? {profile: true} : {}), ...(args[6] === '--worker-recovery' ? {workerRecovery: true} : {}),
         ...(args[6] === '--master-recovery' ? {masterRecovery: true} : {}),
         ...(args[6] === '--reader-recovery' ? {readerRecovery: true} : {}),
         ...(['--broker-recovery', '--broker-storage-recovery'].includes(args[6]) ? {brokerRecovery: true} : {}),
-        ...(args[6] === '--broker-storage-recovery' ? {storageRecovery: true} : {})};
+        ...(args[6] === '--broker-storage-recovery' ? {storageRecovery: true} : {}), ...(stageTiming ? {stageTiming: true} : {})};
     validatePortableWorkerOptions(options);
     return {stateFile: args[0], planFile: args[1], outputDirectory: args[2], options};
 }
@@ -446,6 +451,8 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         mode: options.authorityRpc ? 'installed-native-wire-source-bounded-rpc'
             : options.native ? 'installed-native-wire-engineering' : 'legacy-wire-state',
         preloads: options.native ? ['action-source-admission-preload.mjs', 'portable-state-worker-native-observer.mjs', 'es955-worker-observer.mjs'] : ['es955-worker-observer.mjs'],
+        stageTiming: {enabled: options.stageTiming === true, observationOnly: true,
+            evidence: 'native-<pid>.jsonl observer_metrics.stageTimings; nested wall times, bounded tail and explicit active/omitted counts'},
         runtime: {node: process.version, executable: process.execPath}, inspections, network, volumes: volumeEvidence,
         profiling: {enabled: options.profile === true, status: options.profile === true ? 'pending' : 'disabled',
             limits: portableWorkerProfileLimits, components: [], failures: []},
@@ -537,6 +544,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         try {const child = spawn(process.execPath, [...nativePreloads, '--import', pathToFileURL(join(repo, 'scripts/qualification/es955-worker-observer.mjs')).href, join(repo, entry)],
             {cwd: output, env: {...portableWorkerEnvironment(process.env, output, config, chain, options.profile === true), ES198_OBSERVER_DIR: join(output, 'observer', instance),
                 ...(options.native ? {HYPERION_PORTABLE_NATIVE_QUALIFICATION: '1'} : {}),
+                ...(options.stageTiming ? {HYPERION_PORTABLE_NATIVE_STAGE_TIMING: '1'} : {}),
                 ...(name === 'master' && recoveryControl ? {ES198_WIRE_RECOVERY_CONTROL: recoveryControl.file} : {}),
                 ...(name === 'master' && masterControl ? {ES198_WIRE_MASTER_CONTROL: masterControl.file,
                     ES198_WIRE_MASTER_PHASE: masterRestarted ? 'after' : 'before'} : {}),

@@ -45,6 +45,8 @@ const record = (event, value) => {
 record('start', {profileId: config.settings.protocol.profileId, observationOnly: true});
 const proofMetrics = installProofMetrics({ProofReader: ProtocolAbiProofReader, BundleStore: ImmutableProtocolBundleStore,
     Connection: UndiciConnection, record});
+const stageTimings = process.env.HYPERION_PORTABLE_NATIVE_STAGE_TIMING === '1'
+    ? (await import('./portable-native-stage-timing.mjs')).installNativeWorkerStageTimings({enabled: true}) : undefined;
 const projectionDiagnostics = cluster.isPrimary || process.env.worker_role === 'projection'
     ? installProjectionDiagnostics({WorkerClient: WorkerAttemptClient, Supervisor: WorkerAttemptSupervisor,
         Master: cluster.isPrimary ? (await import('../../build/indexer/modules/master.js')).HyperionMaster : undefined, record})
@@ -56,9 +58,11 @@ const rejectionDiagnostics = installWorkerRejectionDiagnostics({Pool: DSPool, Re
 process.once('exit', () => {
     // Snapshot excludes this summary row and the following exit row's own writes/syncs.
     record('observer_metrics', {coverage: 'before-this-row', io: observerIo.snapshot(), proofs: proofMetrics.snapshot(),
-        projectionDiagnostics: projectionDiagnostics?.snapshot(), rejectionDiagnostics: rejectionDiagnostics.snapshot()});
+        projectionDiagnostics: projectionDiagnostics?.snapshot(), rejectionDiagnostics: rejectionDiagnostics.snapshot(),
+        ...(stageTimings ? {stageTimings: stageTimings.snapshot()} : {})});
     record('exit', {bytes}); closeSync(descriptor);
-    if (proofMetrics.snapshot().reportFailures || projectionDiagnostics?.snapshot().reportFailures || rejectionDiagnostics.snapshot().reportFailures) process.exitCode = 1;
+    if (proofMetrics.snapshot().reportFailures || projectionDiagnostics?.snapshot().reportFailures
+        || rejectionDiagnostics.snapshot().reportFailures || stageTimings?.snapshot().reportFailures) process.exitCode = 1;
 });
 
 const prepare = ProtocolNativeObservationStore.prototype.prepare;
