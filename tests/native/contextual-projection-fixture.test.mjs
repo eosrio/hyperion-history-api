@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os';
 import {basename, dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {validateContextualWorkerJob} from '../../scripts/qualification/projection-contextual-worker.mjs';
+import {runContextualProjectionQualification} from '../../scripts/qualification/projection-contextual.mjs';
 
 const run = 'a'.repeat(32), backendId = `fixture-contextual-${run}`;
 const definition = {schemaVersion: 2, id: 'fixture', mappingRevision: 'a'.repeat(64),
@@ -21,6 +22,17 @@ const job = () => ({schemaVersion: 1, run, uri: 'mongodb://127.0.0.1:34567/?dire
         source: {contract: 'token', table: 'items', blockTimeMs: 1000},
         policy: {preserveOnReplace: ['created'], onAbsent: 'incomplete'},
         mutations: [{kind: 'put-preserving', key: 'one', value: {created: '1'}, preserveFields: ['created']}]}}});
+
+test('contextual qualification refuses missing or foreign replica identity before owned I/O', async () => {
+    let ownershipCalls = 0, restartCalls = 0;
+    for (const replicaSet of [undefined, null, '', 'h45rs_' + 'b'.repeat(32), 'h45rs_' + run + '-other']) {
+        await assert.rejects(runContextualProjectionQualification({uri: job().uri, run, replicaSet,
+            assertOwned() {ownershipCalls++; throw new Error('Unexpected owned I/O');},
+            restart() {restartCalls++; throw new Error('Unexpected restart');}}),
+        {code: 'ERR_ASSERTION', message: /requires the owned run replica-set identity/});
+    }
+    assert.equal(ownershipCalls, 0); assert.equal(restartCalls, 0);
+});
 
 test('the contextual crash worker accepts only a bounded pinned own-fixture job before any connection', () => {
     const input = job(); const captured = validateContextualWorkerJob(input);

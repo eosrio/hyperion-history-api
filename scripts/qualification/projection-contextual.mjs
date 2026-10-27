@@ -20,8 +20,9 @@ const hash = value => createHash('sha256').update(value).digest('hex');
 const workerPath = fileURLToPath(new URL('./projection-contextual-worker.mjs', import.meta.url));
 
 /** Called only by the refusal-first owned Mongo fixture. No cluster URL CLI or service activation. */
-export async function runContextualProjectionQualification({uri, run, assertOwned, restart}) {
+export async function runContextualProjectionQualification({uri, run, replicaSet, assertOwned, restart}) {
     assertNativeQualificationRuntime(); assert.match(run, /^[0-9a-f]{32}$/);
+    assert.equal(replicaSet, `h45rs_${run}`, 'Contextual qualification requires the owned run replica-set identity');
     assert.equal(typeof assertOwned, 'function'); assert.equal(typeof restart, 'function'); assertOwned();
     const databaseName = `hyp_context_${run}`, backendId = `fixture-contextual-${run}`, collectionPrefix = 'h45_contextual';
     const definition = {schemaVersion: 2, id: 'contextual-items', mappingRevision: 'a'.repeat(64),
@@ -59,7 +60,7 @@ export async function runContextualProjectionQualification({uri, run, assertOwne
                 if (report.commands.length < 256) report.commands.push({phase: 'failed', command: event.commandName, code: event.failure?.code ?? null});
             });
             return value;
-        }, {primary: true});
+        }, {primary: true, replicaSet});
         adapter = createMongoDbContextualRecoveryAdapter({client, databaseName, backendId, collectionPrefix});
         runtime = await ContextualProjectionRuntime.create({adapter, definition, binding, genesis});
     };
