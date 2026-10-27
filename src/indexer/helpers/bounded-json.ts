@@ -16,6 +16,12 @@ export function boundedCanonicalJson(input: unknown, options: BoundedJsonOptions
     const string = (value: string) => {
         if (!value.isWellFormed()) throw new Error(errorPrefix + ' contains malformed UTF-16');
         take(2);
+        // Refuse the minimum size before scanning or allocating the encoded string.
+        if (bytes + value.length > maximumBytes) take(value.length);
+        if (!/["\\\x00-\x1f\x7f-\uffff]/.test(value)) {
+            take(value.length);
+            return JSON.stringify(value);
+        }
         for (let index = 0; index < value.length; index++) {
             const code = value.charCodeAt(index);
             if (code < 32) take([8, 9, 10, 12, 13].includes(code) ? 2 : 6);
