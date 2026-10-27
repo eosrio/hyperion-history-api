@@ -56,6 +56,10 @@ async function main() {
     });
     client.on('commandSucceeded', event => {
         if (event.commandName !== 'findAndModify' || event.requestId !== intentRequest) return;
+        // Monitoring precedes the driver's write-concern check: requested durability is not an acknowledgment.
+        if (event.reply?.ok !== 1 || event.reply.writeConcernError !== undefined
+            || (event.reply.writeErrors !== undefined
+                && (!Array.isArray(event.reply.writeErrors) || event.reply.writeErrors.length !== 0))) return;
         const stored = event.reply.value;
         assert.equal(stored.storageVersion, 'h45-contextual-mongodb-recovery-v1');
         assert.deepEqual(stored.binding, job.binding); assert.equal(stored.revision, job.request.revision);
