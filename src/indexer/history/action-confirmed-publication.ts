@@ -5,6 +5,13 @@ import {currentProofConsumerScope, assertProofConsumerCapability, trackProofCons
 
 export interface ActionPublicationOwner {consumer: Channel; publisher: ConfirmChannel; current: () => boolean}
 const ownerScopes = new WeakMap<ActionPublicationOwner, ProofConsumerScope>();
+const queuedLineages = new WeakMap<ActionPublicationOwner, (queue: string, payload: Buffer, headers: unknown) => Promise<{messageId: string; assertBeforeSend: () => void}>>();
+/** Internal host association. It issues no business or broker-settlement authority. */
+export function bindActionQueuedPublicationLineage(owner: ActionPublicationOwner,
+    prepare: (queue: string, payload: Buffer, headers: unknown) => Promise<{messageId: string; assertBeforeSend: () => void}>): void {
+    if (queuedLineages.has(owner)) throw new Error('Original publication lineage owner cannot be replaced');
+    queuedLineages.set(owner, prepare);
+}
 function publicationScope(owner: ActionPublicationOwner): ProofConsumerScope | undefined {
     const current = currentProofConsumerScope(), prior = ownerScopes.get(owner);
     if (prior) {assertProofConsumerCapability(prior); return prior;}
@@ -23,7 +30,14 @@ async function confirmAdmittedAction(owner: ActionPublicationOwner, queue: strin
     signal = proofConsumerSignal(signal);
     signal?.throwIfAborted();
     if (!owner.current()) throw new Error('Action publication lost its original channels');
-    const publisher = owner.publisher, messageId = randomUUID();
+    const publisher = owner.publisher, prepare = queuedLineages.get(owner);
+    let lineage: {messageId: string; assertBeforeSend: () => void} | undefined;
+    if (prepare) {
+        lineage = await prepare(queue, payload, options.headers ?? {});
+        signal?.throwIfAborted(); assertProofConsumerCapability(scope);
+        if (!owner.current() || owner.publisher !== publisher) throw new Error('Queued publication lost its original publisher');
+    }
+    const messageId = lineage?.messageId ?? randomUUID();
     await new Promise<void>((resolve, reject) => {
         let confirmed = false, drained = false, sent = false, settled = false;
         let invocationEnded = false, channelClosed = false, physicalStarted = false, physicalEnded = false;
@@ -62,6 +76,7 @@ async function confirmAdmittedAction(owner: ActionPublicationOwner, queue: strin
             // Cancellation during listener setup must not authorize a new send.
             signal?.throwIfAborted(); assertProofConsumerCapability(scope);
             if (settled) return;
+            lineage?.assertBeforeSend();
             if (scope) {
                 // Keep the actual callback/buffer lifecycle separate from the abortable caller wait.
                 // A thrown/unknown send remains pending until confirm+drain or observed channel close.
