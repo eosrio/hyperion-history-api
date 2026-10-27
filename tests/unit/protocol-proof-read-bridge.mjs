@@ -36,7 +36,7 @@ export async function proofReadBridge(memory) {
         end() {
             assert(active); const result = active; active = undefined;
             const reads = memory.calls.slice(result.callOffset);
-            return {...result, metadataReads: reads.filter(call => ['getMapping', 'getSettings'].includes(call.method)).length,
+            return {...result, metadataReads: reads.filter(call => ['getIndex', 'getMapping', 'getSettings'].includes(call.method)).length,
                 certificateManifests: result.http.filter(call => call.kind === 'manifest' && call.bundleId.startsWith('h45abicert1:')).length,
                 commitManifests: result.http.filter(call => call.kind === 'manifest' && call.bundleId.startsWith('h45abicmt1:')).length,
                 responseBytes: result.http.reduce((total, call) => total + call.bytes, 0)};

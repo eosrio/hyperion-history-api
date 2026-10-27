@@ -17,7 +17,7 @@ hooks.deregister();
 const pairFor = fixture => ProtocolNativeActionReader.forWorker({chainId, profile, provider: fixture.provider,
     proofReader: fixture.proofs(), store: fixture.nativeStore});
 const open = (pair, fixture, options) => pair.waitForOpen(fixture.selected.source, fixture.selected.selectionId, options);
-const readOwners = fixture => [[fixture.client, 'get'], [fixture.client.indices, 'getMapping'], [fixture.client.indices, 'getSettings']];
+const readOwners = fixture => [[fixture.client, 'get'], [fixture.client.indices, 'get']];
 // Coordinator generations give each fixture different content-addressed IDs. Compare the I/O role
 // and manifest/chunk shape, while the real stores still verify each complete source-bound identity.
 const readLabel = (method, request) => ({method, index: request.index,

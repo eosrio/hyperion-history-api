@@ -10,6 +10,14 @@ export function frontierMemoryClient(replicas=0) {
     const note=(method,request)=>calls.push({method,request:structuredClone(request)});
     const client={
         indices:{
+            async get(request){
+                note('getIndex',request);if(!mappings.has(request.index))throw missingIndex(request.index);
+                const mapping=structuredClone(mappings.get(request.index)),setting=structuredClone(settings.get(request.index));
+                const left=await (faults.mapping?.(mapping,request)??{[request.index]:{mappings:mapping}});
+                const right=await (faults.settings?.(setting,request)??{[request.index]:{settings:setting}});
+                return Object.fromEntries([...new Set([...Object.keys(left),...Object.keys(right)])]
+                    .map(index=>[index,{...left[index],...right[index]}]));
+            },
             async create(request){
                 note('createIndex',request);await faults.beforeIndex?.(request);
                 if(mappings.has(request.index))throw Object.assign(new Error('index exists'),{meta:{statusCode:400,body:{error:{type:'resource_already_exists_exception'}}}});

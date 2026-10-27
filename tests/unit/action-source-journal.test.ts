@@ -58,8 +58,8 @@ function replaceRecord(memory: ReturnType<typeof frontierMemoryClient>, index: s
 function writes(memory: ReturnType<typeof frontierMemoryClient>) {return memory.calls.filter((call: any) => ['create', 'index'].includes(call.method));}
 function captureIo(memory: ReturnType<typeof frontierMemoryClient>, after: (method: string, request: any) => void = () => {}) {
     const seen: Array<{method: string; request: any; signal?: AbortSignal}> = [];
-    for (const [owner, name, method] of [[memory.client.indices, 'create', 'createIndex'], [memory.client.indices, 'getMapping', 'getMapping'],
-        [memory.client.indices, 'getSettings', 'getSettings'], [memory.client, 'get', 'get'], [memory.client, 'create', 'create'],
+    for (const [owner, name, method] of [[memory.client.indices, 'create', 'createIndex'], [memory.client.indices, 'get', 'getIndex'],
+        [memory.client, 'get', 'get'], [memory.client, 'create', 'create'],
         [memory.client, 'index', 'index']] as const) {
         const original = owner[name].bind(owner);
         (owner as any)[name] = async (request: any, options?: any) => {
@@ -376,7 +376,7 @@ describe('journal cancellation through immutable preparation and repair', () => 
         expect(memory.calls.length).toBe(0);
     });
 
-    it.each(['createIndex', 'getMapping', 'getSettings', 'get', 'create', 'index'])('forwards cancellation to %s and prevents subsequent I/O after it completes', async target => {
+    it.each(['createIndex', 'getIndex', 'get', 'create', 'index'])('forwards cancellation to %s and prevents subsequent I/O after it completes', async target => {
         const {memory, journal} = fixture(); if (target === 'index' || target === 'get') await journal.preparePlan(plan());
         const controller = new AbortController(), reason = new Error('cancel after ' + target); let triggered = false;
         const calls = captureIo(memory, method => {if (!triggered && method === target) {triggered = true; controller.abort(reason);}});

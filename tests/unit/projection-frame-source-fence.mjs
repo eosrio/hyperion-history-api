@@ -61,8 +61,8 @@ if (cluster.isWorker) {
                 }};
             }};
             if (boundary === 'recovery') {
-                const original = prepared.client.indices.getMapping.bind(prepared.client.indices);
-                prepared.client.indices.getMapping = async request => {
+                const original = prepared.client.indices.get.bind(prepared.client.indices);
+                prepared.client.indices.get = async request => {
                     await original(request);
                     assert.equal(currentProofConsumerScope(true).signal.aborted, false); throw cause();
                 };
