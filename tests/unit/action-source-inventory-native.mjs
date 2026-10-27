@@ -16,7 +16,7 @@ const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const profileId = 'wire-sysio-6508c9e8-native-engineering-v1';
 const legacyProfiles = ['wire-sysio-6508c9e8-engineering-v1', 'wire-sysio-7dede884-engineering-v1'];
 const wireRevision = '7167659e9c043cb3351074fcacb40200cc57f3a3';
-const sdkRevision = '339b5c93d1338968c18ed14254961439dcab16a0';
+const sdkRevision = '8d37e932df5e0e7d671c9682505de3dd55f0edb4';
 const archiveSha256 = '42d092f3ecf6f428ecdba4825580377acdd27f2818ce445d4f197719e6ab72b7';
 const chainId = '9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d';
 const repo = fileURLToPath(new URL('../../', import.meta.url));
