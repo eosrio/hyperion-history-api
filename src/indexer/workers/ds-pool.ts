@@ -18,7 +18,7 @@ import {protocolSourceSelectionHeader} from '../protocol/source-bindings.js';
 import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
 import {ProtocolNativeObservationStore} from '../protocol/native-observation-store.js';
 import {ProtocolNativeActionReader, ProtocolNativeActionUnavailableError,
-    type ProtocolNativeActionView, type ProtocolNativeActionGrant} from '../protocol/native-authorization.js';
+    type ProtocolNativeActionView, type ProtocolNativeActionGrant, type ProtocolNativeWorkerReaders} from '../protocol/native-authorization.js';
 import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, type ProtocolAbiProofView,
     type ProtocolActionMetadata, type ProtocolActionSourceMetadata} from '../protocol/abi-proof.js';
 import type {TrxMetadata} from '../../interfaces/trx-metadata.js';
@@ -147,7 +147,7 @@ export default class DSPoolWorker extends HyperionWorker {
     customAbiMap: Map<string, CustomAbiDef[]> = new Map();
     private noActionCounter = 0;
     private protocolProofReader?: ProtocolAbiProofReader;
-    private protocolNativeReader?: ProtocolNativeActionReader;
+    private protocolWorkerReaders?: ProtocolNativeWorkerReaders;
     private protocolTrace?: {view?: ProtocolAbiProofView; nativeView?: ProtocolNativeActionView;
         error?: ProtocolAbiProofUnavailableError | ProtocolNativeActionUnavailableError};
     private protocolActions = new WeakMap<ActionTrace, ProtocolActionWork>();
@@ -533,6 +533,10 @@ export default class DSPoolWorker extends HyperionWorker {
     }
 
     private getProtocolProofReader(): ProtocolAbiProofReader {
+        return this.protocol.nativeActions ? this.getProtocolWorkerReaders().proofs : this.getStandaloneProtocolProofReader();
+    }
+
+    private getStandaloneProtocolProofReader(): ProtocolAbiProofReader {
         return this.protocolProofReader ??= new ProtocolAbiProofReader({chainId: this.chainId,
             profile: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
             store: new ProtocolAbiFrontierStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0, {readOnly: true}),
@@ -541,9 +545,13 @@ export default class DSPoolWorker extends HyperionWorker {
     }
 
     private getProtocolNativeReader(): ProtocolNativeActionReader {
-        return this.protocolNativeReader ??= new ProtocolNativeActionReader({chainId: this.chainId,
+        return this.getProtocolWorkerReaders().native;
+    }
+
+    private getProtocolWorkerReaders(): ProtocolNativeWorkerReaders {
+        return this.protocolWorkerReaders ??= ProtocolNativeActionReader.forWorker({chainId: this.chainId,
             profile: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
-            provider: this.protocol, proofReader: this.getProtocolProofReader(),
+            provider: this.protocol, proofReader: this.getStandaloneProtocolProofReader(),
             store: new ProtocolNativeObservationStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0,
                 undefined, {readOnly: true})});
     }
@@ -1077,13 +1085,15 @@ export default class DSPoolWorker extends HyperionWorker {
                     try {
                         if (typeof selectionId !== 'string' || !/^h45srcsel1:[0-9a-f]{64}$/.test(selectionId))
                             throw new ProtocolAbiProofUnavailableError('source_unbound', 'Action trace lacks its source selection');
-                        const view = await this.getProtocolProofReader().waitForOpen({chainId: this.chainId,
-                            blockNum: Number(block_num), blockId: String(block_id)}, selectionId);
-                        if (view.nativeActionInterfaceVersion === 1 && !this.protocol.nativeActions)
-                            throw new ProtocolNativeActionUnavailableError('native_capability_unavailable', 'Canonical source requires its selected native action capability');
-                        this.protocolTrace = {view};
-                        if (this.protocol.nativeActions) this.protocolTrace.nativeView = await this.getProtocolNativeReader().waitForOpen({chainId: this.chainId,
-                            blockNum: Number(block_num), blockId: String(block_id)}, selectionId);
+                        const source = {chainId: this.chainId, blockNum: Number(block_num), blockId: String(block_id)};
+                        if (this.protocol.nativeActions) {
+                            this.protocolTrace = await this.getProtocolWorkerReaders().waitForOpen(source, selectionId);
+                        } else {
+                            const view = await this.getProtocolProofReader().waitForOpen(source, selectionId);
+                            if (view.nativeActionInterfaceVersion === 1)
+                                throw new ProtocolNativeActionUnavailableError('native_capability_unavailable', 'Canonical source requires its selected native action capability');
+                            this.protocolTrace = {view};
+                        }
                     } catch (error) {
                         if (!(error instanceof ProtocolAbiProofUnavailableError) && !(error instanceof ProtocolNativeActionUnavailableError)) throw error;
                         this.protocolTrace = {error};
