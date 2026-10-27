@@ -25,7 +25,7 @@ import type {TrxMetadata} from '../../interfaces/trx-metadata.js';
 import {normalizeActionSequences} from '../helpers/action-sequences.js';
 import {compatibleUint64, compareUint64} from '../helpers/uint64.js';
 import {transactionSequenceCacheKey} from '../helpers/transaction-cache.js';
-import {actionSourceAdmissionHeader, type ActionSourceAdmission} from '../history/action-source-admission.js';
+import {actionSourceAdmissionHeader, type ActionSourceAdmission, type ActionSourceAdmissionStore} from '../history/action-source-admission.js';
 import {actionProducerEpoch, currentActionConfiguration} from '../history/action-producer-epoch.js';
 import {actionHistoryImmutableJson} from '../history/action-history-manifest.js';
 import {ActionSourceInventoryError, isActionSourceValidationFailure, actionSourceValidationFailure} from '../history/action-source-inventory.js';
@@ -789,20 +789,28 @@ export default class DSPoolWorker extends HyperionWorker {
 
             try {
                 for (const data of messages) {
-                    if (this.tracksWorkerAttempts) await this.runWorkerAttemptDelivery(data, async () => {
-                        try {await this.processActionMessage(data);}
-                        finally {
-                            // Proof-bearing cargo memos cannot outlive their issuing delivery.
-                            try {await this.flushRedisBatch();}
-                            finally {
-                                this.activeActionAdmission = undefined; this.activeProtocolDelivery = undefined;
-                                this.protocolDeliveryNativeEntries = undefined; this.protocolTrace = undefined;
-                                this.protocolCacheViews?.clear(); this.protocolNativeCacheEntries?.clear();
-                                this.poolAbiCache.clear(); this.poolTypeCache.clear();
-                                this.redisBatchPipeline = this.ioRedisClient ? this.ioRedisClient.pipeline() : null;
-                            }
-                        }
-                    }); else await this.processActionMessage(data);
+                    if (this.tracksWorkerAttempts) {
+                        const stopDelivery = this.profiler.start('action_service_delivery');
+                        try {
+                            await this.runWorkerAttemptDelivery(data, async () => {
+                                const stopCallback = this.profiler.start('action_service_callback');
+                                try {
+                                    try {await this.processActionMessage(data);}
+                                    finally {
+                                        // Proof-bearing cargo memos cannot outlive their issuing delivery.
+                                        try {await this.flushRedisBatch();}
+                                        finally {
+                                            this.activeActionAdmission = undefined; this.activeProtocolDelivery = undefined;
+                                            this.protocolDeliveryNativeEntries = undefined; this.protocolTrace = undefined;
+                                            this.protocolCacheViews?.clear(); this.protocolNativeCacheEntries?.clear();
+                                            this.poolAbiCache.clear(); this.poolTypeCache.clear();
+                                            this.redisBatchPipeline = this.ioRedisClient ? this.ioRedisClient.pipeline() : null;
+                                        }
+                                    }
+                                } finally {stopCallback();}
+                            });
+                        } finally {stopDelivery();}
+                    } else await this.processActionMessage(data);
                 }
             } finally {
                 // ALWAYS attempt the end-of-batch flush — even if the for-loop
@@ -822,7 +830,10 @@ export default class DSPoolWorker extends HyperionWorker {
     }
 
     private async processActionMessage(data: Message): Promise<void> {
-        if (this.actionSourceAdmissionEnabled) await this.beginActionAdmission(data);
+        if (this.actionSourceAdmissionEnabled) {
+            const stopAdmission = this.profiler.start('action_service_admission_begin');
+            try {await this.beginActionAdmission(data);} finally {stopAdmission();}
+        }
         if (this.usesProtocolSourceBindings) {
             const owner = this.protocolDeliveryOwners.get(data);
             if (!owner || owner !== this.ch || !this.ch_ready) throw new Error('Protocol action delivery lacks its original broker channel');
@@ -841,51 +852,114 @@ export default class DSPoolWorker extends HyperionWorker {
         }
         if (this.actionSourceAdmissionEnabled) {
             await this.flushRedisBatch();
-            await this.revalidateProtocolDeliveryNativeOutputs();
+            {
+                const stopNative = this.profiler.start('action_service_native_revalidate');
+                try {await this.revalidateProtocolDeliveryNativeOutputs();} finally {stopNative();}
+            }
             const scope = this.activeActionAdmission!;
-            if (!scope.owner.current()) throw new Error('Action admission consumer changed before ACK');
-            await this.getActionAdmissionStore().trySeal(scope.admission);
-            await this.revalidateProtocolDeliveryNativeOutputs();
-            if (!scope.owner.current()) throw new Error('Action admission consumer changed during seal');
+            {
+                const stopOwner = this.profiler.start('action_service_owner_current');
+                try {if (!scope.owner.current()) throw new Error('Action admission consumer changed before ACK');} finally {stopOwner();}
+            }
+            {
+                const stopSeal = this.profiler.start('action_service_try_seal');
+                try {await this.getActionAdmissionStore().trySeal(scope.admission);} finally {stopSeal();}
+            }
+            {
+                const stopNative = this.profiler.start('action_service_native_revalidate');
+                try {await this.revalidateProtocolDeliveryNativeOutputs();} finally {stopNative();}
+            }
+            {
+                const stopOwner = this.profiler.start('action_service_owner_current');
+                try {if (!scope.owner.current()) throw new Error('Action admission consumer changed during seal');} finally {stopOwner();}
+            }
             if (scope.handoff) {
-                await this.assertActionHandoffCurrent(scope);
+                {
+                    const stopCurrent = this.profiler.start('action_service_handoff_current');
+                    try {await this.assertActionHandoffCurrent(scope);} finally {stopCurrent();}
+                }
                 // This await is outside contract-incomplete handling. Unknown or failed I/O cannot ACK.
                 const handoffInput = {admissionId: scope.admission.id, traceOrdinal: scope.traceOrdinal, dispatchPayload: scope.payload,
                     configuration: scope.configuration, owner: scope.owner, publications: scope.handoff.publications};
                 if (scope.handoff.rawIncomplete) {
-                    const evidence = await this.getActionAdmissionStore().prepareRawIncompleteAttemptDisposition(handoffInput);
-                    await this.assertActionHandoffCurrent(scope);
-                    const recorded = await this.getActionAdmissionStore().recordAttemptDisposition({owner: scope.owner, evidence});
-                    await this.observeFreshActionWrite(recorded);
+                    let evidence: Awaited<ReturnType<ActionSourceAdmissionStore['prepareRawIncompleteAttemptDisposition']>>;
+                    const stopPrepare = this.profiler.start('action_service_prepare_raw_disposition');
+                    try {evidence = await this.getActionAdmissionStore().prepareRawIncompleteAttemptDisposition(handoffInput);} finally {stopPrepare();}
+                    {
+                        const stopCurrent = this.profiler.start('action_service_handoff_current');
+                        try {await this.assertActionHandoffCurrent(scope);} finally {stopCurrent();}
+                    }
+                    let recorded: Awaited<ReturnType<ActionSourceAdmissionStore['recordAttemptDisposition']>>;
+                    const stopRecord = this.profiler.start('action_service_record_raw_disposition');
+                    try {recorded = await this.getActionAdmissionStore().recordAttemptDisposition({owner: scope.owner, evidence});} finally {stopRecord();}
+                    const stopObserve = this.profiler.start('action_service_observe_fresh');
+                    try {await this.observeFreshActionWrite(recorded);} finally {stopObserve();}
                 } else {
-                    const recorded = await this.getActionAdmissionStore().recordConfirmedHandoff(handoffInput);
-                    await this.observeFreshActionWrite(recorded);
+                    let recorded: Awaited<ReturnType<ActionSourceAdmissionStore['recordConfirmedHandoff']>>;
+                    const stopRecord = this.profiler.start('action_service_record_handoff');
+                    try {recorded = await this.getActionAdmissionStore().recordConfirmedHandoff(handoffInput);} finally {stopRecord();}
+                    const stopObserve = this.profiler.start('action_service_observe_fresh');
+                    try {await this.observeFreshActionWrite(recorded);} finally {stopObserve();}
                 }
-                await this.assertActionHandoffCurrent(scope);
-                this.assertActionAdmissionOwner(scope);
+                {
+                    const stopCurrent = this.profiler.start('action_service_handoff_current');
+                    try {await this.assertActionHandoffCurrent(scope);} finally {stopCurrent();}
+                }
+                const stopOwner = this.profiler.start('action_service_owner_assert');
+                try {this.assertActionAdmissionOwner(scope);} finally {stopOwner();}
             }
             if (scope.contractFailure) {
-                await this.assertActionAttemptCurrent(scope);
-                const evidence = await this.getActionAdmissionStore().prepareContractAttemptDisposition({admissionId: scope.admission.id,
+                {
+                    const stopCurrent = this.profiler.start('action_service_attempt_current');
+                    try {await this.assertActionAttemptCurrent(scope);} finally {stopCurrent();}
+                }
+                let evidence: Awaited<ReturnType<ActionSourceAdmissionStore['prepareContractAttemptDisposition']>>;
+                const stopPrepare = this.profiler.start('action_service_prepare_contract_disposition');
+                try {evidence = await this.getActionAdmissionStore().prepareContractAttemptDisposition({admissionId: scope.admission.id,
                     traceOrdinal: scope.traceOrdinal, dispatchPayload: scope.payload, configuration: scope.configuration,
-                    owner: scope.owner, failure: scope.contractFailure});
-                await this.assertActionAttemptCurrent(scope);
-                const recorded = await this.getActionAdmissionStore().recordAttemptDisposition({owner: scope.owner, evidence});
-                await this.observeFreshActionWrite(recorded);
-                await this.assertActionAttemptCurrent(scope);
+                    owner: scope.owner, failure: scope.contractFailure});} finally {stopPrepare();}
+                {
+                    const stopCurrent = this.profiler.start('action_service_attempt_current');
+                    try {await this.assertActionAttemptCurrent(scope);} finally {stopCurrent();}
+                }
+                let recorded: Awaited<ReturnType<ActionSourceAdmissionStore['recordAttemptDisposition']>>;
+                const stopRecord = this.profiler.start('action_service_record_contract_disposition');
+                try {recorded = await this.getActionAdmissionStore().recordAttemptDisposition({owner: scope.owner, evidence});} finally {stopRecord();}
+                const stopObserve = this.profiler.start('action_service_observe_fresh');
+                try {await this.observeFreshActionWrite(recorded);} finally {stopObserve();}
+                {
+                    const stopCurrent = this.profiler.start('action_service_attempt_current');
+                    try {await this.assertActionAttemptCurrent(scope);} finally {stopCurrent();}
+                }
             }
             if (scope.attemptEligible) {
-                await this.assertActionAttemptCurrent(scope);
-                const evidence = await this.getActionAdmissionStore().prepareTransactionAttemptDisposition({admissionId: scope.admission.id,
-                    traceOrdinal: scope.traceOrdinal, dispatchPayload: scope.payload, configuration: scope.configuration, owner: scope.owner});
-                await this.assertActionAttemptCurrent(scope);
-                if (evidence) {
-                    const recorded = await this.getActionAdmissionStore().recordAttemptDisposition({owner: scope.owner, evidence});
-                    await this.observeFreshActionWrite(recorded);
+                {
+                    const stopCurrent = this.profiler.start('action_service_attempt_current');
+                    try {await this.assertActionAttemptCurrent(scope);} finally {stopCurrent();}
                 }
-                await this.assertActionAttemptCurrent(scope);
+                let evidence: Awaited<ReturnType<ActionSourceAdmissionStore['prepareTransactionAttemptDisposition']>>;
+                const stopPrepare = this.profiler.start('action_service_prepare_transaction_disposition');
+                try {evidence = await this.getActionAdmissionStore().prepareTransactionAttemptDisposition({admissionId: scope.admission.id,
+                    traceOrdinal: scope.traceOrdinal, dispatchPayload: scope.payload, configuration: scope.configuration, owner: scope.owner});} finally {stopPrepare();}
+                {
+                    const stopCurrent = this.profiler.start('action_service_attempt_current');
+                    try {await this.assertActionAttemptCurrent(scope);} finally {stopCurrent();}
+                }
+                if (evidence) {
+                    let recorded: Awaited<ReturnType<ActionSourceAdmissionStore['recordAttemptDisposition']>>;
+                    const stopRecord = this.profiler.start('action_service_record_transaction_disposition');
+                    try {recorded = await this.getActionAdmissionStore().recordAttemptDisposition({owner: scope.owner, evidence});} finally {stopRecord();}
+                    const stopObserve = this.profiler.start('action_service_observe_fresh');
+                    try {await this.observeFreshActionWrite(recorded);} finally {stopObserve();}
+                }
+                {
+                    const stopCurrent = this.profiler.start('action_service_attempt_current');
+                    try {await this.assertActionAttemptCurrent(scope);} finally {stopCurrent();}
+                }
             }
-            this.assertWorkerAttemptActive(); this.markWorkerAcknowledgementAttempt(); scope.owner.consumer.ack(data);
+            this.assertWorkerAttemptActive(); this.markWorkerAcknowledgementAttempt();
+            const stopAck = this.profiler.start('action_service_ack');
+            try {scope.owner.consumer.ack(data);} finally {stopAck();}
             this.activeActionAdmission = undefined;
             this.activeProtocolDelivery = undefined;
             this.protocolDeliveryNativeEntries = undefined;
@@ -894,9 +968,15 @@ export default class DSPoolWorker extends HyperionWorker {
         }
         if (this.usesExtensionProtocol) {
             await this.flushRedisBatch();
-            await this.revalidateProtocolDeliveryNativeOutputs();
-            this.assertProtocolDelivery();
-            this.assertWorkerAttemptActive(); this.markWorkerAcknowledgementAttempt(); this.activeProtocolDelivery!.channel.ack(data);
+            {
+                const stopNative = this.profiler.start('action_service_native_revalidate');
+                try {await this.revalidateProtocolDeliveryNativeOutputs();} finally {stopNative();}
+            }
+            const stopOwner = this.profiler.start('action_service_protocol_owner');
+            try {this.assertProtocolDelivery();} finally {stopOwner();}
+            this.assertWorkerAttemptActive(); this.markWorkerAcknowledgementAttempt();
+            const stopAck = this.profiler.start('action_service_ack');
+            try {this.activeProtocolDelivery!.channel.ack(data);} finally {stopAck();}
             this.activeProtocolDelivery = undefined;
             this.protocolDeliveryNativeEntries = undefined;
             this.redisBatchPipeline = this.ioRedisClient ? this.ioRedisClient.pipeline() : null;
@@ -905,7 +985,9 @@ export default class DSPoolWorker extends HyperionWorker {
         // ack message
         if (this.ch_ready && this.ch) {
             try {
-                    this.assertWorkerAttemptActive(); this.markWorkerAcknowledgementAttempt(); this.ch.ack(data);
+                    this.assertWorkerAttemptActive(); this.markWorkerAcknowledgementAttempt();
+                    const stopAck = this.profiler.start('action_service_ack');
+                    try {this.ch.ack(data);} finally {stopAck();}
             } catch (e) {
                 console.log(e);
                 console.log(parsedData);
@@ -918,8 +1000,11 @@ export default class DSPoolWorker extends HyperionWorker {
 
     private async flushRedisBatch(): Promise<void> {
         if (this.redisBatchPipeline && this.redisBatchHasOps) {
-            if (this.usesProtocolSourceBindings && !await this.protocolCacheIsCurrent()) {
-                this.redisBatchPipeline = null; this.redisBatchHasOps = false; return;
+            if (this.usesProtocolSourceBindings) {
+                let current: boolean;
+                const stopCurrent = this.profiler.start('action_service_redis_current');
+                try {current = await this.protocolCacheIsCurrent();} finally {stopCurrent();}
+                if (!current) {this.redisBatchPipeline = null; this.redisBatchHasOps = false; return;}
             }
             try {
                 const stopRedis = this.profiler.start('redis_batch_exec');
