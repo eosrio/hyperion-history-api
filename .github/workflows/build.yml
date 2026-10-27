@@ -40,6 +40,8 @@ jobs:
         run: node --test tests/native/stream-filter-parity.test.mjs
       - name: Check pinned native stream JSON and credit windows on Node ${{ matrix.node-version }}
         run: node --test tests/native/native-stream-json.test.mjs tests/native/native-stream-credits.test.mjs
+      - name: Check opt-in contextual projection runtime and original Wire timestamps on native Node
+        run: node --test tests/native/contextual-projection-runtime.test.mjs tests/native/contextual-projection-fixture.test.mjs tests/unit/contextual-source-native.mjs
       - name: Typecheck Elasticsearch qualification runner
         run: bun check -p scripts/qualification/tsconfig.json
       - name: Check retained Wire source and replay credits with native Node
@@ -158,6 +160,8 @@ jobs:
         run: |
           bun check -p packages/backend-mongodb/tsconfig.json
           npm test --prefix packages/backend-mongodb
+      - name: Check installed legacy and contextual adapter declarations
+        run: npm run test:package --prefix packages/backend-mongodb
       - name: Exercise the portable runtime and adapter against owned MongoDB 8.0.34
         run: node scripts/qualification/check-projection-mongodb.mjs projection-report.json
       - name: Retain portable MongoDB conformance report

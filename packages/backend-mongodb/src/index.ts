@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+export {createMongoDbContextualRecoveryAdapter} from './contextual.js';
 import {
     canonicalProjectionBatch,
     PROJECTION_CAPABILITIES,

@@ -131,24 +131,7 @@ export function validateMetadata(input: unknown, binding: ProjectionBinding): Pr
     const definition = validateProjectionDefinition(data.definition);
     if (!definition.valid || !validateProjectionBinding(definition.value, binding).valid ||
         data.definitionHash !== hash(definition.value) || !validateProjectionView(readView(data)).valid) return corrupt();
-    if (!Array.isArray(data.receipts) || data.receipts.length > MAX_RECEIPTS) return corrupt();
-    const blocks = new Set<number>();
-    const ids = new Set<string>();
-    let previousNumber = -1;
-    for (const receipt of data.receipts) {
-        if (!receipt || !Number.isSafeInteger(receipt.blockNum) || receipt.blockNum < 1 ||
-            receipt.blockNum > data.checkpoint.blockNum || receipt.blockNum <= previousNumber ||
-            !/^[a-f0-9]{64}$/.test(receipt.blockId) || !/^[a-f0-9]{64}$/.test(receipt.digest) ||
-            blocks.has(receipt.blockNum) || ids.has(receipt.blockId)) return corrupt();
-        blocks.add(receipt.blockNum);
-        ids.add(receipt.blockId);
-        previousNumber = receipt.blockNum;
-    }
-    if (data.checkpoint.blockNum === 0) {
-        if (!sameCheckpoint(data.checkpoint, GENESIS) || data.receipts.length !== 0) return corrupt();
-    } else if (data.receipts.length === 0 || !sameCheckpoint(data.receipts[data.receipts.length - 1], data.checkpoint)) {
-        return corrupt();
-    }
+    validateReceiptProgress(data);
     if (data.pending !== null) {
         if (!data.pending || typeof data.pending !== 'object' ||
             !(data.pending.digest === null || /^[a-f0-9]{64}$/.test(data.pending.digest)) ||
@@ -182,6 +165,28 @@ export function validateMetadata(input: unknown, binding: ProjectionBinding): Pr
         return corrupt();
     }
     return data;
+}
+
+/** Metadata-only progress checks shared across explicit families; never synthesize a source batch. */
+export function validateReceiptProgress(data: Pick<ProjectionMetadata, 'checkpoint' | 'receipts'>): void {
+    if (!Array.isArray(data.receipts) || data.receipts.length > MAX_RECEIPTS) return corrupt();
+    const blocks = new Set<number>();
+    const ids = new Set<string>();
+    let previousNumber = -1;
+    for (const receipt of data.receipts) {
+        if (!receipt || !Number.isSafeInteger(receipt.blockNum) || receipt.blockNum < 1 ||
+            receipt.blockNum > data.checkpoint.blockNum || receipt.blockNum <= previousNumber ||
+            !/^[a-f0-9]{64}$/.test(receipt.blockId) || !/^[a-f0-9]{64}$/.test(receipt.digest) ||
+            blocks.has(receipt.blockNum) || ids.has(receipt.blockId)) return corrupt();
+        blocks.add(receipt.blockNum);
+        ids.add(receipt.blockId);
+        previousNumber = receipt.blockNum;
+    }
+    if (data.checkpoint.blockNum === 0) {
+        if (!sameCheckpoint(data.checkpoint, GENESIS) || data.receipts.length !== 0) return corrupt();
+    } else if (data.receipts.length === 0 || !sameCheckpoint(data.receipts[data.receipts.length - 1], data.checkpoint)) {
+        return corrupt();
+    }
 }
 
 export function storedRecord(key: string, value: ProjectionRecord): StoredRecord {
