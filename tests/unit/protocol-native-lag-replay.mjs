@@ -352,7 +352,7 @@ try {
     assert.equal(lock.packages['node_modules/@eosrio/hyperion-wire-plugin'].resolved,
         'git+ssh://git@github.com/eosrio/hyperion-wire-plugin.git#7167659e9c043cb3351074fcacb40200cc57f3a3');
     assert.equal(lock.packages['node_modules/@eosrio/hyperion-sdk'].resolved,
-        'git+ssh://git@github.com/eosrio/hyperion-sdk.git#339b5c93d1338968c18ed14254961439dcab16a0');
+        'git+ssh://git@github.com/eosrio/hyperion-sdk.git#8d37e932df5e0e7d671c9682505de3dd55f0edb4');
     const began = process.hrtime.bigint();
     const stageTimings = {setup: {elapsedMs: Number(began - setupBegan) / 1e6, cpu: process.cpuUsage(setupCpu)}, sourcePreparation: []};
     let pending, control, rewindSelection, lastMeasuredNativeView, lastMeasuredNativeGrant;

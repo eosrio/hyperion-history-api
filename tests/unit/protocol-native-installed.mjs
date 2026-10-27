@@ -6,7 +6,8 @@ import {fileURLToPath} from 'node:url';
 import {loadChainProtocol} from '../../build/indexer/protocol/selection.js';
 
 const wireRevision = '7167659e9c043cb3351074fcacb40200cc57f3a3';
-const sdkRevision = '339b5c93d1338968c18ed14254961439dcab16a0';
+const hostSdkRevision = '8d37e932df5e0e7d671c9682505de3dd55f0edb4';
+const wireSdkRevision = '339b5c93d1338968c18ed14254961439dcab16a0';
 const profileId = 'wire-sysio-6508c9e8-native-engineering-v1';
 const host = fileURLToPath(new URL('../../', import.meta.url));
 const wire = dirname(dirname(fileURLToPath(import.meta.resolve('@eosrio/hyperion-wire-plugin/protocol-provider.json'))));
@@ -20,10 +21,20 @@ assert.equal(lock.packages[''].dependencies['@eosrio/hyperion-wire-plugin'],
 assert.equal(lock.packages['node_modules/@eosrio/hyperion-wire-plugin'].resolved,
     `git+ssh://git@github.com/eosrio/hyperion-wire-plugin.git#${wireRevision}`);
 assert.equal(lock.packages['node_modules/@eosrio/hyperion-sdk'].resolved,
-    `git+ssh://git@github.com/eosrio/hyperion-sdk.git#${sdkRevision}`);
+    `git+ssh://git@github.com/eosrio/hyperion-sdk.git#${hostSdkRevision}`);
+assert.equal(lock.packages['node_modules/@eosrio/hyperion-wire-plugin/node_modules/@eosrio/hyperion-sdk'].resolved,
+    `git+ssh://git@github.com/eosrio/hyperion-sdk.git#${wireSdkRevision}`);
+// The independently released projection SDK advances without repinning Wire's frozen protocol
+// package. Its physical nested SDK retains the original pin and identical protocol contract bytes.
+assert.equal(json('package.json').dependencies['@eosrio/hyperion-sdk'],
+    `git+https://github.com/eosrio/hyperion-sdk.git#${wireSdkRevision}`);
+for (const path of ['dist/protocol.js', 'dist/protocol-native-actions.js']) {
+    assert.equal(hash(readFileSync(resolve(host, 'node_modules/@eosrio/hyperion-sdk', path))),
+        hash(read(`node_modules/@eosrio/hyperion-sdk/${path}`)), path);
+}
 const preparedLock = json('dist/protocol-npm-lock.json');
 assert.equal(preparedLock.packages[''].dependencies['@eosrio/hyperion-sdk'],
-    `git+https://github.com/eosrio/hyperion-sdk.git#${sdkRevision}`);
+    `git+https://github.com/eosrio/hyperion-sdk.git#${wireSdkRevision}`);
 const receipt = json('dist/protocol-source-receipt.json');
 assert.equal(receipt.sourceRevision, wireRevision);
 for (const member of receipt.outputFiles) assert.equal(hash(read(member.path)), member.sha256, member.path);
