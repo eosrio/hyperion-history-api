@@ -90,19 +90,21 @@ export class ProtocolAbiFrontierStore {
         }
         await this.provisioning.get(index);
         signal?.throwIfAborted();
-        const mappingResponse=await this.client.indices.getMapping({index},{signal}),mapping=mappingResponse[index]?.mappings;
+        const metadata=await this.client.indices.get({index,features:['mappings','settings'],flat_settings:true,include_defaults:true},{signal});
+        const mapping=metadata[index]?.mappings;
         signal?.throwIfAborted();
-        if(Object.keys(mappingResponse).length!==1||mapping?._meta?.hyperion_kind!==kind||mapping._meta.schema_version!==1
+        if(Object.keys(metadata).length!==1||metadata[index]?.data_stream!==undefined
+            ||mapping?._meta?.hyperion_kind!==kind||mapping._meta.schema_version!==1
             ||mapping.dynamic!=='strict'||mapping._source?.enabled===false
             ||(mapping._source&&(Object.hasOwn(mapping._source,'includes')||Object.hasOwn(mapping._source,'excludes')
                 ||(Object.hasOwn(mapping._source,'mode')&&mapping._source.mode!=='stored')))
             ||Object.entries(fields).some(([name,field])=>mapping.properties?.[name]?.type!==field.type)) {
             throw new Error('Unowned or incompatible ABI frontier index mapping');
         }
-        const settings=await this.client.indices.getSettings({index,flat_settings:true,include_defaults:true},{signal}),entry=settings[index];
+        const entry=metadata[index];
         signal?.throwIfAborted();
         const mode=settingsValue(entry,'mapping.source.mode');
-        if(Object.keys(settings).length!==1||!entry||settingsValue(entry,'translog.durability')!=='request'
+        if(!entry||settingsValue(entry,'translog.durability')!=='request'
             ||Number(settingsValue(entry,'number_of_shards'))!==1||Number(settingsValue(entry,'number_of_replicas'))!==this.replicas
             ||!['false',false].includes(settingsValue(entry,'auto_expand_replicas'))
             ||(mode!==undefined&&String(mode).toLowerCase()!=='stored')

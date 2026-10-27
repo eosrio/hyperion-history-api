@@ -132,7 +132,13 @@ if (cluster.isWorker && process.env.worker_role === 'continuous_reader') {
         };
     }
     const mongo = {async connect() {connectionCalls++; await pause('connect'); return mongo;}, async close() {send({event: 'fixture_closed'});}};
-    const elastic = {indices: {async getMapping({index}) {
+    const elastic = {indices: {
+        // Assemble one controlled metadata response while preserving the original held callbacks.
+        async get(request, options) {
+            const mapping = await this.getMapping(request); options?.signal?.throwIfAborted();
+            const settings = await this.getSettings(request); options?.signal?.throwIfAborted();
+            return {[request.index]: {...mapping[request.index], ...settings[request.index]}};
+        }, async getMapping({index}) {
         const scope = currentProofConsumerScope(true);
         if (['frame-ordinary', 'frame-foreign', 'frame-copied'].includes(stage)) {
             if (failedFrameScope && failedFrameScope !== scope.id) {

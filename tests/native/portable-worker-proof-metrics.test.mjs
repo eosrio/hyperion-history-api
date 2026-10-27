@@ -76,6 +76,7 @@ async function fixture(run, {compressed = false, retry = false} = {}) {
             const [index, route, key] = segments;
             let body, statusCode = 200;
             if (retry && requests.length === 0) {statusCode = 503; body = {error: {type: 'unavailable_shards_exception', reason: 'constructed retry'}, status: 503};}
+            else if (route === undefined) body = await memory.client.indices.get({index});
             else if (route === '_mapping') body = await memory.client.indices.getMapping({index});
             else if (route === '_settings') body = await memory.client.indices.getSettings({index});
             else {assert.equal(route, '_doc'); body = await memory.client.get({index, id: key});}

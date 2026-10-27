@@ -78,14 +78,14 @@ export class ImmutableProtocolBundleStore {
             .catch(error => {this.initialized = undefined; throw error;});
         await this.initialized;
         signal?.throwIfAborted();
-        await this.validateMapping(signal);
+        const metadata = await checkedIo(signal, () => this.client.indices.get({index: this.index,
+            features: ['mappings', 'settings'], flat_settings: true, include_defaults: true}, {signal}));
+        this.validateMapping(metadata);
         // Do not retain a stale startup assumption if an operator changes this projection's durability.
         signal?.throwIfAborted();
-        const settings = await checkedIo(signal, () => this.client.indices.getSettings({index: this.index, flat_settings: true, include_defaults: true}, {signal}));
-        signal?.throwIfAborted();
-        const entry = settings[this.index];
+        const entry = metadata[this.index];
         const sourceMode = settingsValue(entry, 'mapping.source.mode');
-        if (Object.keys(settings).length !== 1 || !entry || settingsValue(entry, 'translog.durability') !== 'request'
+        if (!entry || settingsValue(entry, 'translog.durability') !== 'request'
             || Number(settingsValue(entry, 'number_of_shards')) !== 1
             || Number(settingsValue(entry, 'number_of_replicas')) !== this.replicas
             || !['false', false].includes(settingsValue(entry, 'auto_expand_replicas'))
@@ -116,14 +116,12 @@ export class ImmutableProtocolBundleStore {
         }
     }
 
-    private async validateMapping(signal?:AbortSignal) {
-        signal?.throwIfAborted();
-        const mappings = await checkedIo(signal, () => this.client.indices.getMapping({index: this.index}, {signal}));
-        signal?.throwIfAborted();
+    private validateMapping(mappings: Awaited<ReturnType<Client['indices']['get']>>) {
         const mapping = mappings[this.index]?.mappings;
         const expectedFields = {kind: 'keyword', bundle_id: 'keyword', digest: 'keyword', byte_length: 'long',
             chunk_index: 'integer', chunk_ids: 'keyword', payload: 'binary'};
-        if (Object.keys(mappings).length !== 1 || mapping?._meta?.hyperion_kind !== this.kind
+        if (Object.keys(mappings).length !== 1 || mappings[this.index]?.data_stream !== undefined
+            || mapping?._meta?.hyperion_kind !== this.kind
             || mapping._meta.schema_version !== 1 || mapping.dynamic !== 'strict' || mapping._source?.enabled === false
             || (mapping._source && (Object.hasOwn(mapping._source, 'includes') || Object.hasOwn(mapping._source, 'excludes')
                 || (Object.hasOwn(mapping._source, 'mode') && mapping._source.mode !== 'stored')))

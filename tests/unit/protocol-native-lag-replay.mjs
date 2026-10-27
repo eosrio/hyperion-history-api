@@ -184,6 +184,7 @@ try {
         }
     };
     memory.client.get = instrument('get', memory.client.get.bind(memory.client));
+    memory.client.indices.get = instrument('getIndex', memory.client.indices.get.bind(memory.client.indices));
     memory.client.indices.getMapping = instrument('getMapping', memory.client.indices.getMapping.bind(memory.client.indices));
     memory.client.indices.getSettings = instrument('getSettings', memory.client.indices.getSettings.bind(memory.client.indices));
     memory.client.create = instrument('create', memory.client.create.bind(memory.client));

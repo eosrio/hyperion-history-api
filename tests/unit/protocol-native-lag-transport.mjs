@@ -22,6 +22,10 @@ export async function proofMeasurementTransport({chain, url}) {
     const note = (method, request) => calls.push({method, request: structuredClone(request)});
     const client = {
         indices: {
+            async get(request, options) {
+                note('getIndex', request); const result = await transport.indices.get(request, options);
+                return faults.metadata?.(result, request) ?? result;
+            },
             async create(request, options) {
                 assert(request.index.startsWith(chain + '-'), 'diagnostic writes must stay inside the owned namespace');
                 note('createIndex', request);

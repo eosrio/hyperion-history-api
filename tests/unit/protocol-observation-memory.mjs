@@ -6,6 +6,13 @@ export function observationMemoryClient(replicas=0) {
         _shards:{total:replicas+1,successful:replicas+1,failed:0}});
     const client={
         indices:{
+            async get(request){
+                calls.push({method:'getIndex',request});
+                const left=faults.mapping?.(mapping,request)??{[request.index]:{mappings:mapping}};
+                const right=faults.settings?.(settings,request)??{[request.index]:{settings}};
+                return Object.fromEntries([...new Set([...Object.keys(left),...Object.keys(right)])]
+                    .map(index=>[index,{...left[index],...right[index]}]));
+            },
             async create(request){calls.push({method:'createIndex',request});mapping=structuredClone(request.mappings);
                 settings={'index.number_of_shards':'1','index.number_of_replicas':String(replicas),
                     'index.translog.durability':'request','index.auto_expand_replicas':'false'};

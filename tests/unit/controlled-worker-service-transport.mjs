@@ -39,7 +39,7 @@ export function fixtureWorkerTransport(endpoint = process, observe) {
     const client = {}, indices = {};
     for (const method of ['create', 'index', 'get', 'search'])
         client[method] = (body, options) => request('es', {method, body}, options);
-    for (const method of ['create', 'getMapping', 'getSettings', 'exists'])
+    for (const method of ['create', 'get', 'getMapping', 'getSettings', 'exists'])
         indices[method] = (body, options) => request('es', {method: 'indices.' + method, body}, options);
     client.indices = indices;
     class Consumer extends EventEmitter {
@@ -78,7 +78,7 @@ export async function dispatchFixtureService(worker, message, memory, publish, b
             const {method, body} = message.body;
             if (method.startsWith('indices.')) {
                 const name = method.slice(8);
-                assert(['create', 'getMapping', 'getSettings', 'exists'].includes(name));
+                assert(['create', 'get', 'getMapping', 'getSettings', 'exists'].includes(name));
                 value = await memory.client.indices[name](body);
             } else {
                 assert(['create', 'index', 'get', 'search'].includes(method));
