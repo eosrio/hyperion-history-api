@@ -121,11 +121,17 @@ function instrument(memory, store) {
         [memory.client, 'get', 'get'], [memory.client, 'create', 'create'], [memory.client, 'index', 'index'],
         ...(typeof memory.client.mget === 'function' ? [[memory.client, 'mget', 'mget']] : [])]) {
         wrap(owner, method, async function (original, args) {
+            const record = active;
             if (active) {
                 increment(active.transport, label); increment(active.transportByPhase[phase] ??= {}, label);
-                if (label === 'mget') increment(active.methodCalls, 'hintItems', args[0].ids.length);
+                if (label === 'mget') {
+                    increment(active.methodCalls, 'hintItems', args[0].ids.length);
+                    increment(active.methodCalls, 'hintRequestJsonBytes', Buffer.byteLength(JSON.stringify({ids: args[0].ids})));
+                }
             }
-            return Reflect.apply(original, this, args);
+            const result = await Reflect.apply(original, this, args);
+            if (record && label === 'mget') increment(record.methodCalls, 'hintResponseJsonBytes', Buffer.byteLength(JSON.stringify(result)));
+            return result;
         });
     }
     return {
@@ -140,6 +146,8 @@ function instrument(memory, store) {
                 assert.deepEqual(record.transport, logged, 'Wrapper counts must match the unchanged transport seam log');
                 assert.equal(record.methodCalls.hintItems ?? 0, memory.calls.slice(logStart)
                     .filter(call => call.method === 'mget').reduce((sum, call) => sum + call.request.ids.length, 0));
+                assert.equal(record.methodCalls.hintRequestJsonBytes ?? 0, memory.calls.slice(logStart)
+                    .filter(call => call.method === 'mget').reduce((sum, call) => sum + Buffer.byteLength(JSON.stringify({ids: call.request.ids})), 0));
                 record.transportVerifiedFromExistingSeamLog = true;
             }
         },
@@ -186,6 +194,13 @@ async function run(count, schedule) {
             for (const record of records) for (const group of ['methodCalls', 'prepares', 'transport'])
                 for (const [key, value] of Object.entries(record[group])) increment(sum[group], key, value);
             phaseTotals[name] = sum;
+        }
+        // Measured one-chunk/single-hint-batch bounds only; not CPU, bytes, multi-batch plans or full-worker throughput.
+        if (totals.transport.mget) {
+            const requests = record => Object.values(record.transport).reduce((sum, value) => sum + value, 0);
+            assert.ok(requests(phaseTotals.incomplete) <= 14 * count);
+            assert.ok(requests(phaseTotals.complete) <= 22 * count + 30);
+            assert.ok(requests(totals) <= (schedule === 'incremental' ? 36 * count + 30 : 22 * count + 30));
         }
         return {transactions: count, schedule, sourceId, planId: admission.planId, attempts, preparations, phaseTotals,
             successfulFragmentVisits: actual.read, missingFragmentVisits: actual.missing, totals,

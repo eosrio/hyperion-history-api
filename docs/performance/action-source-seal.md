@@ -84,3 +84,32 @@ counts, payload bytes, compilation work and elapsed time are separate costs:
 even a linear request count in the measured single-batch range does not imply
 linear CPU or transmitted bytes, or a linear bound across all multi-batch plans.
 Actual full-worker replay acceptance remains separate.
+
+The controlled one-chunk measurement of runtime source `6db1ffd4` gives the
+following sealing-request counts against the preceding two-pass source. Native
+Windows Node 24.19.0 and 26.4.0 checks remain component evidence, not native ES,
+Wire decoding or release acceptance:
+
+| Transactions | Two-pass incremental | Hint incremental |
+| --- | ---: | ---: |
+| 1 | 64 | 66 |
+| 2 | 106 | 102 |
+| 8 | 484 | 318 |
+| 16 | 1324 | 606 |
+| 32 | 4156 | 1182 |
+| 64 | 14428 | 2334 |
+
+Within this measured range, incomplete attempts use at most `14N` requests in
+aggregate and the complete attempt at most `22N+30`; incremental sealing totals
+at most `36N+30`. The harness asserts those bounds for the controlled hint path.
+Transaction preparation remains separate at `28N` requests. The complete attempt
+pays two extra requests for the hint, so N=1 regresses from64 to66; a membership
+hint does not optimize already-complete work.
+
+Compiled transactions remain `N²` across incomplete attempts, `N` in the complete
+attempt, and another `N²` during preparation. Aggregate hinted IDs are `N(N+1)`.
+The harness records logical JSON request/response bytes for hints separately;
+these are not captured wire bytes or an all-traffic census. Linear request count
+over one bounded hint batch is not a linear byte/CPU bound, nor an extrapolation
+to larger multi-batch plans. Pure compile memoization and broader batching remain
+separate measured follow-ups; no metadata freshness or durable receipts are cached.
