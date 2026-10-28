@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "caseId": null,
+  "caseRoot": null,
+  "databaseName": null,
+  "collectionPrefix": null,
+  "uri": null,
+  "server": {"replicaSet": null, "replicaSetId": null, "member": null, "version": null, "failpointBaselineCount": null},
+  "owner": {"pid": null, "birthTicks": null, "executable": null, "executableSha256": null, "cmdlineSha256": null, "netNamespace": null, "socketInode": null},
+  "runtime": {"version": null, "executableSha256": null},
+  "modules": {
+    "root": null,
+    "entries": {
+      "sdk": "host-sdk/dist/projection-stateful.js",
+      "adapterSdk": "node_modules/@eosrio/hyperion-sdk/dist/projection-stateful.js",
+      "adapter": "dist/stateful.js",
+      "driver": "node_modules/mongodb/lib/index.js",
+      "runner": "qualification/runner.mjs",
+      "guard": "qualification/guard.mjs"
+    },
+    "files": []
+  },
+  "input": {"path": null, "bytes": null, "sha256": null},
+  "bounds": {"phaseMS": null, "operationMS": null, "transactionMS": null, "candidateBytes": null, "maxRecords": null, "outputBytes": null, "moduleFiles": null, "moduleBytes": null, "moduleFileBytes": null},
+  "policy": {"receiptRetention": 2, "rollbackRetentionBlocks": 2, "rollbackRetentionBytes": null, "rollbackMaxBlockBytes": null},
+  "adapterHead": "e4a46cfa69f0a0cf7f6ca51847a0efa51da80795",
+  "sdkHead": "b64bac478fc8015d409d44aa6f100668e0e091d2"
+}
