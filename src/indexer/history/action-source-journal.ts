@@ -197,8 +197,9 @@ export class ActionHistorySourceJournal {
         const {plan} = await this.loadPlan(planId, signal);
         const fragments: ActionHistoryTransactionFragment[] = [];
         let effects = 0, bytes = Buffer.byteLength(actionHistoryImmutableJson({schemaVersion: 1, planId, fragments: []}));
-        // Sequential I/O bounds concurrency independently of transaction count; no persistent plan/fragment cache.
-        await this.bundles.prepare(planId, plan, signal);
+        // Incomplete attempts only read: defer opportunistic repairs and their possible write errors
+        // until the entire bounded membership is present. No seal or durable authority is granted.
+        // Sequential I/O bounds concurrency independently of transaction count; no persistent cache.
         for (const transaction of plan.transactions) {
             const value = await this.referenced(() => this.readFragment(planId, transaction.transactionId, plan, signal));
             effects += value.fragment.effects.length;
@@ -206,11 +207,18 @@ export class ActionHistorySourceJournal {
             if (effects > actionHistoryManifestBounds.maximumEffects || bytes > actionHistoryManifestBounds.maximumBytes) {
                 invalid('Action source journal block exceeds bounded manifest membership');
             }
-            await this.bundles.prepare(value.id, value.fragment, signal);
-            await this.bundles.prepare(linkId(planId, transaction.transactionId), value.link, signal);
             fragments.push(value.fragment);
         }
         const manifest = assembleActionHistoryManifest(plan, fragments), id = actionHistoryManifestId(manifest, plan);
+        // The complete candidate still needs fresh receipts for every reference, in publication order.
+        // readFragment verified each exact link against this plan and the derived fragment identity.
+        await this.bundles.prepare(planId, plan, signal);
+        for (const fragment of fragments) {
+            const fragmentId = actionHistoryFragmentId(fragment, plan);
+            const link: FragmentLink = {schemaVersion: 1, planId, transactionId: fragment.transactionId, fragmentId};
+            await this.bundles.prepare(fragmentId, fragment, signal);
+            await this.bundles.prepare(linkId(planId, fragment.transactionId), link, signal);
+        }
         await this.bundles.prepare(id, manifest, signal);
         const seal: SealLink = {schemaVersion: 1, planId, manifestId: id};
         await this.bundles.prepare(sealId(planId), seal, signal);
