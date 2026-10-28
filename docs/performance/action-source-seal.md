@@ -23,6 +23,8 @@ inflated response, so this path owns its bounded collection/inflate. It does not
 change a shared client or global transport. Abort, invalid headers/status, limits
 and parse failures destroy the acquired body and await its actual settlement;
 the hint stays owned until that drain completes. No new timer or retry loop is added.
+After the byte cap, decoding uses the configured SDK Serializer, preserving its
+prototype protection and custom parser policy.
 The request-local child borrows the configured parent pool/authentication/TLS.
 Its connection facade registers stream settlement before the SDK product-header
 check can reject and hide an acquired body; that SDK check remains enabled.

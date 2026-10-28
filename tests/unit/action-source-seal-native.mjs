@@ -288,6 +288,21 @@ test('SDK product-header rejection destroys and joins an acquired live stream wi
     assert.equal(closed.length, 1, 'only explicit parent close may close the shared pool');
 });
 
+test('bounded hint decoding retains the configured SDK Serializer and its prototype protection', async () => {
+    const f = await hintFixture(), {client, deserializedBytes} = pinnedHintClient(f);
+    f.memory.faults.mgetStream = reply => {
+        reply.body.destroy();
+        const raw = `{"docs":[{"_index":"${f.store.index}","_id":"hint:present","found":false,"__proto__":{"polluted":true}}]}`;
+        return {...reply, body: Readable.from([Buffer.from(raw)])};
+    };
+    try {
+        const store = new ImmutableProtocolBundleStore(client, 'fixture', 1, 'hint', 'hint-v1', undefined, {readOnly: true});
+        await assert.rejects(store.missingManifestHint(['hint:present']), /prototype|proto|Deserialization/i);
+        assert.ok(deserializedBytes.length >= 2, 'the configured Serializer must see the bounded hint after metadata');
+        assert.equal({}.polluted, undefined);
+    } finally {await client.close();}
+});
+
 test('hint retries retain original pooled connection identity and parent authentication', async () => {
     const f = await hintFixture();
     const {client, calls} = pinnedHintClient(f, {maxRetries: 1, resurrectStrategy: 'optimistic',

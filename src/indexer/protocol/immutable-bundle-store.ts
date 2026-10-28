@@ -32,7 +32,7 @@ export const protocolBundleMembershipHintBounds = Object.freeze({maximumItems: 2
     maximumRequestBytes: 64 * 1024, maximumResponseBytes: 1024 * 1024});
 
 /** The pinned transport inflates compressed responses before its JSON serializer without an output cap. */
-async function membershipHintResponse(reply: any, signal?: AbortSignal): Promise<unknown> {
+async function membershipHintResponse(reply: any, deserialize: (text: string) => unknown, signal?: AbortSignal): Promise<unknown> {
     const body = reply?.body;
     if (!(body instanceof Readable)) throw new Error('Invalid immutable bundle membership hint stream');
     const settled = finished(body, {cleanup: true}); void settled.catch(() => {});
@@ -59,7 +59,7 @@ async function membershipHintResponse(reply: any, signal?: AbortSignal): Promise
         const decoded = ['gzip', 'deflate'].includes(encoding.toLowerCase())
             ? unzipSync(wire, {maxOutputLength: protocolBundleMembershipHintBounds.maximumResponseBytes}) : wire;
         if (decoded.length > protocolBundleMembershipHintBounds.maximumResponseBytes) throw new Error('Immutable bundle membership hint decoded byte bound exceeded');
-        const result = JSON.parse(decoded.toString('utf8')); completed = true;
+        const result = deserialize(decoded.toString('utf8')); completed = true;
         return result;
     } finally {
         signal?.removeEventListener('abort', abort);
@@ -110,7 +110,7 @@ async function ownedMembershipHint(client: Client, index: string, ids: string[],
         const reply = await child.mget({index, ids, realtime: true, _source: false},
             {signal, asStream: true, meta: true, maxResponseSize: protocolBundleMembershipHintBounds.maximumResponseBytes,
                 maxCompressedResponseSize: protocolBundleMembershipHintBounds.maximumResponseBytes});
-        const result = await membershipHintResponse(reply, signal); completed = true; return result;
+        const result = await membershipHintResponse(reply, text => child.serializer.deserialize(text), signal); completed = true; return result;
     } finally {
         for (const body of acquired.keys()) if (!body.destroyed) body.destroy();
         await Promise.allSettled(acquired.values());
