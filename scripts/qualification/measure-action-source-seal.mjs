@@ -11,11 +11,11 @@ import {execFileSync} from 'node:child_process';
 import {parseArgs} from 'node:util';
 import {performance} from 'node:perf_hooks';
 
-const reference = '032813e243d4451dbac0fcb15a73296f21e47054';
+const reference = '7d112d4c2ba4f6bd1091b2b1dfc748b762740966';
 const ownRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const {values} = parseArgs({options: {'module-root': {type: 'string', default: ownRoot},
     'expected-source': {type: 'string', default: reference},
-    output: {type: 'string'}, sizes: {type: 'string', default: '1,4,8,16,32'}}});
+    output: {type: 'string'}, sizes: {type: 'string', default: '1,2,8,16,32,64'}}});
 assert.ok(values.output, '--output is required');
 const frozen = values['expected-source'];
 assert.match(frozen, /^[0-9a-f]{40}$/, '--expected-source must be an exact immutable Git commit');
@@ -118,22 +118,28 @@ function instrument(memory, store) {
         return Reflect.apply(original, this, args);
     });
     for (const [owner, method, label] of [[memory.client.indices, 'get', 'getIndex'], [memory.client.indices, 'create', 'createIndex'],
-        [memory.client, 'get', 'get'], [memory.client, 'create', 'create'], [memory.client, 'index', 'index']]) {
+        [memory.client, 'get', 'get'], [memory.client, 'create', 'create'], [memory.client, 'index', 'index'],
+        ...(typeof memory.client.mget === 'function' ? [[memory.client, 'mget', 'mget']] : [])]) {
         wrap(owner, method, async function (original, args) {
-            if (active) {increment(active.transport, label); increment(active.transportByPhase[phase] ??= {}, label);}
+            if (active) {
+                increment(active.transport, label); increment(active.transportByPhase[phase] ??= {}, label);
+                if (label === 'mget') increment(active.methodCalls, 'hintItems', args[0].ids.length);
+            }
             return Reflect.apply(original, this, args);
         });
     }
     return {
-        async measure(prefix, work) {
+        async measure(prefix, work, stage = 'trySeal') {
             assert.equal(active, undefined);
             const record = {prefix, methodCalls: {}, wallMs: {}, fragmentVisits: [], prepares: {}, preparesByPhase: {}, transport: {}, transportByPhase: {}};
-            active = record; phase = 'trySeal'; const start = performance.now(), logStart = memory.calls.length;
+            active = record; phase = stage; const start = performance.now(), logStart = memory.calls.length;
             try {record.result = await work(); return record;} finally {
-                record.wallMs.trySeal = performance.now() - start; active = undefined; phase = 'outside';
+                record.wallMs[stage] = performance.now() - start; active = undefined; phase = 'outside';
                 const logged = {};
                 for (const call of memory.calls.slice(logStart)) increment(logged, call.method);
                 assert.deepEqual(record.transport, logged, 'Wrapper counts must match the unchanged transport seam log');
+                assert.equal(record.methodCalls.hintItems ?? 0, memory.calls.slice(logStart)
+                    .filter(call => call.method === 'mget').reduce((sum, call) => sum + call.request.ids.length, 0));
                 record.transportVerifiedFromExistingSeamLog = true;
             }
         },
@@ -157,8 +163,9 @@ async function run(count, schedule) {
             const dispatch = admission.inventory.transactions[ordinal].dispatch;
             assert.ok(dispatch, 'Every synthetic transaction must require processing');
             const before = memory.calls.length, start = performance.now();
-            await store.prepareTransaction(admission, ordinal, Buffer.from(dispatch.canonicalJson), [finalAction(ordinal)]);
-            preparations.push({ordinal, wallMs: performance.now() - start, transportCalls: memory.calls.length - before});
+            const measured = await metrics.measure(ordinal, () => store.prepareTransaction(admission, ordinal,
+                Buffer.from(dispatch.canonicalJson), [finalAction(ordinal)]), 'prepareTransaction');
+            preparations.push({ordinal, wallMs: performance.now() - start, transportCalls: memory.calls.length - before, counters: measured});
             if (schedule === 'incremental') attempts.push(await metrics.measure(ordinal + 1, () => store.trySeal(admission)));
         }
         if (schedule === 'final-only') attempts.push(await metrics.measure(count, () => store.trySeal(admission)));
@@ -172,7 +179,15 @@ async function run(count, schedule) {
             for (const visit of attempt.fragmentVisits) increment(actual, visit.outcome);
             for (const key of Object.keys(totals)) for (const [name, value] of Object.entries(attempt[key])) increment(totals[key], name, value);
         }
-        return {transactions: count, schedule, sourceId, planId: admission.planId, attempts, preparations,
+        const phaseTotals = {};
+        for (const [name, records] of [['incomplete', attempts.filter(value => !value.result)],
+            ['complete', attempts.filter(value => value.result)], ['prepareTransaction', preparations.map(value => value.counters)]]) {
+            const sum = {attempts: records.length, methodCalls: {}, prepares: {}, transport: {}};
+            for (const record of records) for (const group of ['methodCalls', 'prepares', 'transport'])
+                for (const [key, value] of Object.entries(record[group])) increment(sum[group], key, value);
+            phaseTotals[name] = sum;
+        }
+        return {transactions: count, schedule, sourceId, planId: admission.planId, attempts, preparations, phaseTotals,
             successfulFragmentVisits: actual.read, missingFragmentVisits: actual.missing, totals,
             verifiedManifest: {id: manifest.id, fragments: count, effects: count}};
     } finally {metrics.restore();}

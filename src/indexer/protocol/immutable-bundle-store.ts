@@ -23,6 +23,10 @@ export function protocolImmutableJson(input: unknown, maximumBytes = 128 * 1024 
 }
 const canonical = protocolImmutableJson;
 
+/** Per-request bounds only; callers may scan multiple batches within their existing record budget. */
+export const protocolBundleMembershipHintBounds = Object.freeze({maximumItems: 256,
+    maximumRequestBytes: 64 * 1024, maximumResponseBytes: 1024 * 1024});
+
 async function checkedIo<T>(signal: AbortSignal | undefined, operation: () => Promise<T>): Promise<T> {
     signal?.throwIfAborted();
     try {return await operation();} finally {signal?.throwIfAborted();}
@@ -206,6 +210,39 @@ export class ImmutableProtocolBundleStore {
         await this.createImmutable(id, manifest, signal);
         const result=Object.freeze({id,digest}) as FreshBundlePrepare;
         scope?.assertActive();freshPrepares.set(result,{store:this,id,digest,scope});return result;
+    }
+
+    /** Realtime existence hint only: presence grants no integrity, durability or canonical authority. */
+    async missingManifestHint(input: readonly string[], signal?: AbortSignal): Promise<string | null> {
+        signal?.throwIfAborted();
+        const scope = currentProofConsumerScope(); scope?.assertActive();
+        if (!Array.isArray(input) || input.length < 1 || input.length > protocolBundleMembershipHintBounds.maximumItems)
+            throw new Error('Immutable bundle membership hint exceeds its item bound');
+        const ids = [...input];
+        if (ids.some(id => typeof id !== 'string' || !/^[a-zA-Z0-9_.:-]{1,256}$/.test(id)) || new Set(ids).size !== ids.length)
+            throw new Error('Invalid immutable bundle membership hint IDs');
+        canonical({ids}, protocolBundleMembershipHintBounds.maximumRequestBytes);
+        await this.initialize(signal); scope?.assertActive();
+        const response: any = await checkedIo(signal, () => this.client.mget({index: this.index, ids,
+            realtime: true, _source: false}, {signal, maxResponseSize: protocolBundleMembershipHintBounds.maximumResponseBytes}));
+        scope?.assertActive();
+        if (!response || Object.keys(response).length !== 1 || !Array.isArray(response.docs) || response.docs.length !== ids.length)
+            throw new Error('Incomplete immutable bundle membership hint response');
+        canonical(response, protocolBundleMembershipHintBounds.maximumResponseBytes);
+        let missing: string | null = null;
+        for (let index = 0; index < ids.length; index++) {
+            const doc = response.docs[index];
+            if (doc && Object.hasOwn(doc, 'error'))
+                throw new Error('Failed immutable bundle membership hint item', {cause: doc.error});
+            if (!doc || doc._index !== this.index || doc._id !== ids[index] || typeof doc.found !== 'boolean'
+                || Object.keys(doc).some(key => !['_index', '_id', 'found', '_version', '_seq_no', '_primary_term'].includes(key))
+                || ['_version', '_seq_no', '_primary_term'].some(key => Object.hasOwn(doc, key)
+                    && (!Number.isSafeInteger(doc[key]) || doc[key] < (key === '_seq_no' ? 0 : 1))))
+                throw new Error('Invalid or failed immutable bundle membership hint item');
+            if (!doc.found) missing ??= ids[index];
+        }
+        signal?.throwIfAborted(); scope?.assertActive();
+        return missing;
     }
 
     async read(id: string, signal?:AbortSignal): Promise<unknown> {

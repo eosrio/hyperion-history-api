@@ -52,6 +52,16 @@ export function frontierMemoryClient(replicas=0) {
             documents.set(key(request.index,request.id),{document:structuredClone(request.document),seq:result._seq_no,primaryTerm:1});
             return faults.receipt?.(result,request)??result;
         },
+        async mget(request,options){
+            note('mget',request);await faults.beforeMget?.(request,options);
+            if(!mappings.has(request.index))throw missingIndex(request.index);
+            const docs=request.ids.map(id=>{
+                const stored=documents.get(key(request.index,id));
+                return stored?{_index:request.index,_id:id,found:true,_seq_no:stored.seq,_primary_term:stored.primaryTerm}
+                    :{_index:request.index,_id:id,found:false};
+            });
+            return faults.mget?.({docs},request,options)??{docs};
+        },
         async get(request){
             note('get',request);await faults.beforeRead?.(request);
             if(!mappings.has(request.index))throw missingIndex(request.index);

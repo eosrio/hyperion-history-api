@@ -8,7 +8,22 @@ fragments and 528 transaction links. A single final-only diagnostic seal read
 and prepared 32 of each. These were synthetic parser-boundary inputs and the
 existing controlled ES transport, not a Wire capture or Elasticsearch engine.
 
-`sealPlan` now first reads and validates all bounded plan membership, including
+Before traversing prefix fragments, `sealPlan` checks transaction-link manifest
+existence with a bounded realtime `_mget`, with `_source:false`. Each batch still
+freshly validates index mappings/settings. All returned items must match the exact
+index and ordered IDs; malformed responses, item errors, transport failures and
+cancellation throw, including when another item is genuinely missing. No ordinary
+search, forced refresh, cached settings or durable-format change is involved.
+
+A hint request contains at most 256 IDs and 64 KiB of canonical request JSON; response
+bytes are bounded to 1 MiB both at the pinned transport and parsed-response boundary.
+The journal scans multiple batches within its existing 100,000-transaction/128 MiB
+plan limits. These per-request bounds do not lower the accepted plan size. The
+hint is not a snapshot and proves no integrity, durability or canonical authority.
+An observed missing manifest returns incomplete; presence continues through all
+original fresh reads, validation and write receipts.
+
+The complete path reads and validates all bounded plan membership, including
 the assembled manifest. An incomplete attempt performs no sealing repairs.
 Only a complete candidate starts the existing fresh plan/fragment/link prepares,
 followed by manifest then seal publication. It keeps fragment-before-link order,
@@ -24,6 +39,13 @@ repair; it does not grant a seal, coverage, durability, visibility or query
 authority. Every actually attempted infrastructure operation can still fail,
 and every successful seal still needs fresh complete-copy receipts for every
 reference. Current-fragment and confirmed-handoff guards remain independent.
+
+The realtime hint deliberately also defers prefix corruption/missing-chunk
+observation while a link manifest elsewhere is absent. Once the final link arrives,
+the next attempt must observe the same corrupt prefix and refuse a seal. A positive
+hint never skips the full reads: deletion or mutation after it is handled by the
+existing missing/integrity checks and fresh preparation. Caller cancellation and
+owner/fork fencing apply after either positive or negative hint settlement.
 
 The native differential control covers both partial and unknown receipt faults:
 the original emission throws before discovering missing membership; the new
@@ -54,6 +76,11 @@ The arrival schedule and logical/transport counters are unchanged by selecting
 another source revision. The harness verifies tracked source bytes and records
 emission hashes; retain normal-build provenance with each result. Treat nested
 wall times as descriptive elapsed time, never exclusive CPU or a full Wire
-speedup. The two-pass change still scans prior fragments and re-derives source
-membership on incomplete attempts; actual full-worker replay acceptance remains
-separate.
+speedup. The harness now separates incomplete and complete seal attempts from
+transaction preparation, with independent compilation and hinted-item counts.
+Default sizes are 1/2/8/16/32/64. The hint targets incomplete prefix reads; source
+membership is still freshly re-derived on every attempt and preparation. Request
+counts, payload bytes, compilation work and elapsed time are separate costs:
+even a linear request count in the measured single-batch range does not imply
+linear CPU or transmitted bytes, or a linear bound across all multi-batch plans.
+Actual full-worker replay acceptance remains separate.
