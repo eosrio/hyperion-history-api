@@ -1,8 +1,8 @@
 # Stateful MongoDB fixture: native Node 24 result
 
 The bounded synthetic stateful-adapter fixture passed on Linux Node 24.19.0 with
-MongoDB 8.0.34 and JavaScript driver 7.2.0. This covers a single-member replica set,
-transaction abort, clean application-process restart, rollback and a small retention
+MongoDB 8.0.34 and JavaScript driver 7.2.0. This covers a single-member replica set
+with majority+journal writes, transaction abort, clean application-process restart, rollback and a small retention
 window. It does not complete [#366](https://github.com/eosrio/hyperion-history-api/issues/366)
 or the [Wire integration gate](https://github.com/eosrio/hyperion-history-api/issues/191).
 
