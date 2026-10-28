@@ -47,16 +47,16 @@ function transport(memory) {
     return {client, calls, control};
 }
 
-test('frontier read retains two fresh layout boundaries with one metadata response at each', async () => {
+test('frontier read uses one fresh response for the complete records-index validation union', async () => {
     const memory = frontierMemoryClient(), writer = new ProtocolAbiFrontierStore(memory.client, chain);
     const prepared = await writer.prepareCommit({height: 42}), fixture = transport(memory);
     const writesBefore = memory.calls.filter(call => ['create', 'index', 'createIndex'].includes(call.method)).length;
     try {
         const reader = new ProtocolAbiFrontierStore(fixture.client, chain, 0, {readOnly: true});
         assert.deepEqual(await reader.readCommit(prepared.id), {height: 42});
-        assert.equal(fixture.calls.length, 4, 'two metadata responses plus original manifest and chunk');
+        assert.equal(fixture.calls.length, 3, 'one fresh metadata response plus original manifest and chunk');
         const metadata = fixture.calls.filter(call => call.params.path === '/' + reader.recordsIndex);
-        assert.equal(metadata.length, 2, 'outer frontier and inner bundle validations remain independent');
+        assert.equal(metadata.length, 1, 'frontier and bundle predicates validate the same fresh response');
         for (const call of metadata) {
             const query = new URLSearchParams(call.params.querystring);
             assert.equal(query.get('features'), 'mappings,settings');
@@ -93,7 +93,7 @@ for (const kind of ['frontier', 'bundle']) {
             }
             f.control.metadata = undefined;
             f.memory.mappings.get(f.index).properties.payload.type = 'keyword';
-            await assert.rejects(f.read(), kind === 'frontier' ? /frontier index mapping/ : /ABI observation index/);
+            await assert.rejects(f.read(), /ABI observation index/);
         } finally {await f.client.close();}
     });
 
@@ -154,8 +154,7 @@ for (const kind of ['frontier', 'bundle']) {
         const f = await retained(kind);
         try {
             f.control.metadata = body => {body[f.index].mappings.dynamic = true; body[f.index].settings = {}; return body;};
-            await assert.rejects(f.read(), kind === 'frontier' ? /^Error: Unowned or incompatible ABI frontier index mapping$/
-                : /^Error: Unowned or incompatible ABI observation index$/);
+            await assert.rejects(f.read(), /^Error: Unowned or incompatible ABI observation index$/);
         } finally {await f.client.close();}
     });
 
@@ -182,18 +181,15 @@ for (const kind of ['frontier', 'bundle']) {
         } finally {await f.client.close();}
     });
 
-    test(`${kind} keeps its abort precedence when a held metadata request returns a late server failure`, async () => {
+    test(`${kind} honors the caller abort reason when a held metadata request returns a late server failure`, async () => {
         const f = await retained(kind), entered = gate(), release = gate(), controller = new AbortController(), reason = new Error('caller already cancelled');
-        let clientError;
         try {
-            const get = f.client.indices.get.bind(f.client.indices);
-            f.client.indices.get = async (...args) => {try {return await get(...args);} catch (error) {clientError = error; throw error;}};
             f.control.beforeRequest = async row => {if (row.signal === controller.signal) {entered.release(); await release.promise;}};
             f.control.reply = row => row.signal === controller.signal
                 ? {statusCode: 503, body: JSON.stringify({error: {type: 'unavailable_shards_exception', reason: 'late failure'}, status: 503})} : undefined;
             const pending = f.read(controller.signal), result = pending.then(() => null, error => error);
             await entered.promise; controller.abort(reason); release.release();
-            const error = await result; assert.equal(error, kind === 'frontier' ? clientError ?? reason : reason);
+            const error = await result; assert.equal(error, reason);
             assert.equal(f.calls.length, 1);
         } finally {release.release(); await f.client.close();}
     });
@@ -211,13 +207,10 @@ for (const kind of ['frontier', 'bundle']) {
     });
 
     test(`${kind} cancels after each remaining metadata/document await and does not affect another consumer`, async t => {
-        const maximum = kind === 'frontier' ? 4 : 3;
+        const maximum = 3;
         for (let target = 1; target <= maximum; target++) await t.test(`await ${target}`, async () => {
             const f = await retained(kind), entered = gate(), release = gate(), controller = new AbortController(), reason = new Error('one caller stopped');
             try {
-                let clientError;
-                const get = f.client.indices.get.bind(f.client.indices);
-                f.client.indices.get = async (...args) => {try {return await get(...args);} catch (error) {clientError = error; throw error;}};
                 let held = false;
                 f.control.beforeRequest = async row => {
                     if (!held && f.calls.length === target) {held = true; entered.release(); await release.promise;}
@@ -228,9 +221,8 @@ for (const kind of ['frontier', 'bundle']) {
                 const healthy = await f.read(); assert.equal(kind === 'frontier' ? healthy.height : healthy.value.height, 42);
                 const before = f.calls.length; controller.abort(reason); release.release();
                 const outcome = await result;
-                // Frontier preserves the actual client's rejection at its outer await; the inner
-                // bundle checkedIo boundary preserves the caller's exact late-abort reason.
-                assert.equal(outcome.error, kind === 'frontier' && target === 1 ? clientError ?? reason : reason);
+                // The shared bundle checkedIo boundary preserves the caller's exact late-abort reason.
+                assert.equal(outcome.error, reason);
                 assert.equal(f.calls.length, before);
                 assert.ok(f.calls.slice(0, target).every(row => row.signal === controller.signal));
             } finally {release.release(); await f.client.close();}
@@ -238,40 +230,56 @@ for (const kind of ['frontier', 'bundle']) {
     });
 }
 
-test('the inner bundle boundary observes metadata changed after the outer frontier validation', async () => {
+test('each logical frontier read fetches fresh metadata after an earlier successful read', async () => {
     const f = await retained(); let metadata = 0;
     try {
         f.control.metadata = body => {if (++metadata === 2) body[f.index].settings['index.translog.durability'] = 'async'; return body;};
+        assert.deepEqual(await f.read(), {height: 42});
+        assert.equal(metadata, 1); assert.equal(f.calls.length, 3);
         await assert.rejects(f.read(), /^Error: ABI observation index durability or retention is incompatible:/);
-        assert.equal(metadata, 2); assert.equal(f.calls.length, 2);
+        assert.equal(metadata, 2); assert.equal(f.calls.length, 4, 'changed next response refuses before a document read');
     } finally {await f.client.close();}
 });
 
-async function proofFixture(requireAttemptScope = false) {
+test('frontier retention predicates stay scoped to frontier reads and do not change generic bundle policy', async () => {
+    const f = await retained('bundle');
+    try {
+        f.memory.settings.get(f.index)['index.lifecycle.name'] = 'generic-existing-policy';
+        assert.equal((await f.read()).value.height, 42);
+        assert.equal(f.calls.length, 3);
+    } finally {await f.client.close();}
+});
+
+async function proofFixture(requireAttemptScope = false, distance = 0) {
     const memory = frontierMemoryClient(), writer = new ProtocolAbiFrontierStore(memory.client, chain);
     const hex = number => number.toString(16).padStart(64, '0');
     const profile = {id: 'fixture', profileId: 'combined-metadata-proof', components: [
         {id: 'fixture-node', runtime: 'node', version: '0.0.0', sourceRevision: 'b'.repeat(40), sha256: 'c'.repeat(64)}]};
     const source = {chainId: hex(100), blockNum: 1, blockId: hex(1), previousBlockId: null};
     const selectionId = 'h45srcsel1:' + hex(1);
-    const commit = await writer.prepareCommit({schemaVersion: 1, kind: 'canonical-abi-block', chainId: source.chainId, profile,
-        generation: 'fixture-generation', source, selectionId, previousCommitId: null, status: 'complete', stateRootId: null,
-        bindings: [], coverageStart: 1, lastGlobalSequence: null, observationId: 'h45abi1:' + hex(1), observationDigest: hex(1)});
+    let commit, previousCommitId = null;
+    for (let height = 1; height <= distance + 1; height++) {
+        commit = await writer.prepareCommit({schemaVersion: 1, kind: 'canonical-abi-block', chainId: source.chainId, profile,
+            generation: 'fixture-generation', source: {...source, blockNum: height, blockId: hex(height), previousBlockId: height === 1 ? null : hex(height - 1)},
+            selectionId: 'h45srcsel1:' + hex(height), previousCommitId, status: 'complete', stateRootId: null,
+            bindings: [], coverageStart: 1, lastGlobalSequence: null, observationId: 'h45abi1:' + hex(height), observationDigest: hex(height)});
+        previousCommitId = commit.id;
+    }
     const control = {schemaVersion: 1, chainId: source.chainId, profile, ownerId: 'fixture-owner', generation: 'fixture-generation',
         revision: 1, phase: 'following', replayFromBlock: null, source: {contextId: 'h45srcctx1:' + hex(1), readerSessionId: 'fixture-session'},
-        head: {blockNum: 1, blockId: source.blockId, commitId: commit.id, stateRootId: null, coverageStart: 1, lastGlobalSequence: null}};
+        head: {blockNum: distance + 1, blockId: hex(distance + 1), commitId: commit.id, stateRootId: null, coverageStart: 1, lastGlobalSequence: null}};
     await writer.prepareCertificate(protocolAbiCertificateForControl(control)); await writer.compareAndSet(null, control);
     const f = transport(memory);
     const reader = new ProtocolAbiProofReader({chainId: source.chainId, profile,
         store: new ProtocolAbiFrontierStore(f.client, chain, 0, {readOnly: true}), requireAttemptScope});
-    return {...f, reader, writer, source, selectionId, control};
+    return {...f, reader, writer, source, selectionId, control, transportControl: f.control};
 }
 
 test('combined metadata leaves certificate issuance, exact membership and fresh authority revocation active', async () => {
     const f = await proofFixture();
     try {
         const view = await f.reader.open(f.source, f.selectionId);
-        assert.equal(f.calls.length, 12, 'fresh authority twice plus unchanged settled certificate and commit bundles');
+        assert.equal(f.calls.length, 10, 'fresh authority twice plus one metadata response per certificate and commit bundle');
         let before = f.calls.length;
         await assert.rejects(f.reader.revalidate({...view}), {code: 'invalid_proof'}); assert.equal(f.calls.length, before);
         const stored = await f.writer.readControl();
@@ -279,6 +287,52 @@ test('combined metadata leaves certificate issuance, exact membership and fresh 
         before = f.calls.length;
         await assert.rejects(f.reader.revalidate(view), {code: 'authority_changed'});
         assert.equal(f.calls.length - before, 2, 'fresh complete metadata and realtime control are never cached');
+    } finally {await f.client.close();}
+});
+
+test('fresh union reads measure 3D+10 requests while each repeated open retains fresh authority and metadata', async t => {
+    for (const distance of [0, 1, 8, 19, 32, 66]) await t.test(`distance ${distance}`, async () => {
+        const f = await proofFixture(false, distance);
+        try {
+            for (const repetitions of [1, 8]) {
+                const before = f.calls.length;
+                for (let repeat = 0; repeat < repetitions; repeat++) {
+                    const view = await f.reader.open(f.source, f.selectionId);
+                    assert.deepEqual(view.source, f.source);
+                }
+                const calls = f.calls.slice(before);
+                assert.equal(calls.length, repetitions * (3 * distance + 10));
+                assert.equal(calls.filter(row => row.params.path === '/' + chain + '-protocol-abi-frontier-records-v1').length,
+                    repetitions * (distance + 2), 'one fresh response per certificate/commit logical read');
+                assert.equal(calls.filter(row => row.params.path === '/' + chain + '-protocol-abi-frontier-v1').length,
+                    repetitions * 2, 'opening and final authority reads remain fresh');
+                assert.ok(calls.every(row => row.params.method === 'GET'));
+            }
+        } finally {await f.client.close();}
+    });
+});
+
+for (const change of ['owner', 'fork']) test(`coalesced metadata preserves final ${change} rejection after the response arrives`, async () => {
+    const f = await proofFixture(); let changed = false;
+    try {
+        f.transportControl.afterResponse = async (_body, row) => {
+            if (changed || row.params.path !== '/' + chain + '-protocol-abi-frontier-records-v1') return;
+            changed = true;
+            let next = {...f.control};
+            if (change === 'owner') next.ownerId = 'replacement-owner';
+            else {
+                const blockId = 'd'.repeat(64), selectionId = 'h45srcsel1:' + 'e'.repeat(64);
+                const commit = await f.writer.prepareCommit({schemaVersion: 1, kind: 'canonical-abi-block', chainId: f.source.chainId,
+                    profile: next.profile, generation: next.generation, source: {...f.source, blockId}, selectionId, previousCommitId: null,
+                    status: 'complete', stateRootId: null, bindings: [], coverageStart: 1, lastGlobalSequence: null,
+                    observationId: 'h45abi1:' + 'f'.repeat(64), observationDigest: 'f'.repeat(64)});
+                next.head = {...next.head, blockId, commitId: commit.id};
+            }
+            await f.writer.prepareCertificate(protocolAbiCertificateForControl(next));
+            await f.writer.compareAndSet(await f.writer.readControl(), next);
+        };
+        await assert.rejects(f.reader.open(f.source, f.selectionId), error => error.code === 'authority_changed');
+        assert.equal(changed, true);
     } finally {await f.client.close();}
 });
 

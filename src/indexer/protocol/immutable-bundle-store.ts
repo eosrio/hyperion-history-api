@@ -152,7 +152,7 @@ export class ImmutableProtocolBundleStore {
     constructor(private readonly client:Client,chain:string,private readonly replicas:number,
                 private readonly kind:string,suffix:string,
                 bounds:ImmutableProtocolBundleBounds={chunkBytes:512*1024,maximumBytes:128*1024*1024,maximumChunks:256},
-                private readonly options:{readOnly?:boolean}={}) {
+                private readonly options:{readOnly?:boolean;rejectLifecycleOnRead?:boolean}={}) {
         if(!/^[a-z0-9][a-z0-9_.-]{0,120}$/.test(chain)||!/^[a-z0-9-]{1,80}$/.test(suffix)||!/^[a-z0-9-]{1,80}$/.test(kind)
             ||!Number.isSafeInteger(replicas)||replicas<0
             ||!Number.isSafeInteger(bounds.chunkBytes)||bounds.chunkBytes<1||bounds.chunkBytes>1024*1024
@@ -167,7 +167,7 @@ export class ImmutableProtocolBundleStore {
         return error?.meta?.statusCode===404&&error?.meta?.body?.found===false
             &&error?.meta?.body?._index===this.index&&error?.meta?.body?._id===id;
     }
-    private async initialize(signal?:AbortSignal) {
+    private async initialize(signal?:AbortSignal,rejectLifecycle=false) {
         signal?.throwIfAborted();
         if (!this.initialized) this.initialized = (this.options.readOnly?Promise.resolve():this.provision(signal))
             .catch(error => {this.initialized = undefined; throw error;});
@@ -186,7 +186,10 @@ export class ImmutableProtocolBundleStore {
             || !['false', false].includes(settingsValue(entry, 'auto_expand_replicas'))
             || (sourceMode !== undefined && String(sourceMode).toLowerCase() !== 'stored')
             || [settingsValue(entry, 'default_pipeline'), settingsValue(entry, 'final_pipeline')]
-                .some(pipeline => pipeline !== undefined && pipeline !== '_none')) {
+                .some(pipeline => pipeline !== undefined && pipeline !== '_none')
+            || (rejectLifecycle && ['lifecycle.name', 'lifecycle.rollover_alias'].some(name => {
+                const lifecycle = settingsValue(entry, name); return lifecycle !== undefined && lifecycle !== '';
+            }))) {
             throw new Error('ABI observation index durability or retention is incompatible: ' + JSON.stringify({
                 durability: settingsValue(entry, 'translog.durability'), shards: settingsValue(entry, 'number_of_shards'),
                 replicas: settingsValue(entry, 'number_of_replicas'), autoExpand: settingsValue(entry, 'auto_expand_replicas'), sourceMode,
@@ -337,7 +340,7 @@ export class ImmutableProtocolBundleStore {
     }
 
     async read(id: string, signal?:AbortSignal): Promise<unknown> {
-        await this.initialize(signal);
+        await this.initialize(signal,this.options.rejectLifecycleOnRead===true);
         let manifest;
         try {manifest=(await this.get(id,signal))._source;} catch(error) {
             if(this.isMissing(error,id))throw new ImmutableProtocolBundleReadError('missing',id,'Immutable protocol bundle is missing');
