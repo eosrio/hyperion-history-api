@@ -71,7 +71,8 @@ export class ProtocolAbiFrontierStore {
                 private readonly options:{readOnly?:boolean}={}) {
         if(!/^[a-z0-9][a-z0-9_.-]{0,120}$/.test(chain)||!Number.isSafeInteger(replicas)||replicas<0)throw new Error('Invalid ABI frontier store configuration');
         this.controlIndex=chain+'-protocol-abi-frontier-v1';this.recordsIndex=chain+'-protocol-abi-frontier-records-v1';
-        this.bundles=new ImmutableProtocolBundleStore(client,chain,replicas,'protocol-abi-frontier-records','protocol-abi-frontier-records-v1',undefined,options);
+        this.bundles=new ImmutableProtocolBundleStore(client,chain,replicas,'protocol-abi-frontier-records','protocol-abi-frontier-records-v1',undefined,
+            {...options,rejectLifecycleOnRead:true});
     }
 
     /** Preserve the physical namespace while refusing provisioning and writes. */
@@ -203,7 +204,8 @@ export class ProtocolAbiFrontierStore {
     private async read(kind:ProtocolAbiFrontierRecordKind,id:string,signal?:AbortSignal):Promise<any> {
         signal?.throwIfAborted();
         if(!validId(kind,id))throw new ProtocolAbiFrontierReadError('invalid',kind,id,'Invalid ABI frontier record ID');
-        await this.initialize(false,signal);
+        // The bundle read freshly validates the same records index, including frontier retention rules.
+        // Keep the response owned inside that operation; do not cache or accept validation from a caller.
         let raw:unknown;
         try {raw=await this.bundles.read(id,signal);}catch(error) {
             if(error instanceof ImmutableProtocolBundleReadError)throw new ProtocolAbiFrontierReadError(error.code,kind,id,error.message);
