@@ -289,7 +289,7 @@ test('SDK product-header rejection destroys and joins an acquired live stream wi
 });
 
 test('bounded hint decoding retains the configured SDK Serializer and its prototype protection', async () => {
-    const f = await hintFixture(), {client, deserializedBytes} = pinnedHintClient(f);
+    const f = await hintFixture(), {client, deserializedBytes} = pinnedHintClient(f, {disablePrototypePoisoningProtection: false});
     f.memory.faults.mgetStream = reply => {
         reply.body.destroy();
         const raw = `{"docs":[{"_index":"${f.store.index}","_id":"hint:present","found":false,"__proto__":{"polluted":true}}]}`;
