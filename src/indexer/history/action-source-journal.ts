@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import type {Client} from '@elastic/elasticsearch';
-import {ImmutableProtocolBundleReadError, ImmutableProtocolBundleStore} from '../protocol/immutable-bundle-store.js';
+import {ImmutableProtocolBundleReadError, ImmutableProtocolBundleStore,
+    protocolBundleMembershipHintBounds} from '../protocol/immutable-bundle-store.js';
 import {
     actionHistoryFragmentId, actionHistoryImmutableJson, actionHistoryManifestBounds, actionHistoryManifestId,
     actionHistoryPlanId, ActionHistoryManifestError, assembleActionHistoryManifest, createActionHistoryFragment,
@@ -195,6 +196,15 @@ export class ActionHistorySourceJournal {
 
     private async sealPlan(planId: string, signal?: AbortSignal): Promise<{id: string; manifest: ActionHistoryBlockManifest}> {
         const {plan} = await this.loadPlan(planId, signal);
+        // A negative realtime hint defers prefix reads (and corruption observation) without granting authority.
+        // Validate every returned item before accepting absence. Presence still needs the complete original path.
+        for (let offset = 0; offset < plan.transactions.length; offset += protocolBundleMembershipHintBounds.maximumItems) {
+            const ids = plan.transactions.slice(offset, offset + protocolBundleMembershipHintBounds.maximumItems)
+                .map(transaction => linkId(planId, transaction.transactionId));
+            const missing = await this.bundles.missingManifestHint(ids, signal);
+            if (missing !== null) throw new ActionHistorySourceJournalReadError('incomplete', 'fragment-link', missing,
+                'Action source journal transaction membership is not yet present');
+        }
         const fragments: ActionHistoryTransactionFragment[] = [];
         let effects = 0, bytes = Buffer.byteLength(actionHistoryImmutableJson({schemaVersion: 1, planId, fragments: []}));
         // Incomplete attempts only read: defer opportunistic repairs and their possible write errors

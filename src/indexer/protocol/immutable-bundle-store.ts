@@ -1,7 +1,11 @@
 import {createHash} from 'node:crypto';
+import {Readable} from 'node:stream';
+import {finished} from 'node:stream/promises';
+import {unzipSync} from 'node:zlib';
 import type {Client} from '@elastic/elasticsearch';
+import {Transport, type GetConnectionOptions, type TransportOptions} from '@elastic/transport';
 import {boundedCanonicalJson} from '../helpers/bounded-json.js';
-import {currentProofConsumerScope, type ProofConsumerScope} from './proof-consumer-scope.js';
+import {currentProofConsumerScope, proofConsumerSignal, trackProofConsumerOperation, type ProofConsumerScope} from './proof-consumer-scope.js';
 interface StoredDocument {
     kind: 'chunk' | 'manifest';
     bundle_id: string;
@@ -22,6 +26,97 @@ export function protocolImmutableJson(input: unknown, maximumBytes = 128 * 1024 
     return boundedCanonicalJson(input, {maximumBytes, numberPolicy: 'safe-integer', errorPrefix: 'ABI observation'});
 }
 const canonical = protocolImmutableJson;
+
+/** Per-request bounds only; callers may scan multiple batches within their existing record budget. */
+export const protocolBundleMembershipHintBounds = Object.freeze({maximumItems: 256,
+    maximumRequestBytes: 64 * 1024, maximumResponseBytes: 1024 * 1024});
+
+/** The pinned transport inflates compressed responses before its JSON serializer without an output cap. */
+async function membershipHintResponse(reply: any, deserialize: (text: string) => unknown, signal?: AbortSignal): Promise<unknown> {
+    const body = reply?.body;
+    if (!(body instanceof Readable)) throw new Error('Invalid immutable bundle membership hint stream');
+    const settled = finished(body, {cleanup: true}); void settled.catch(() => {});
+    const abort = () => body.destroy(signal?.reason instanceof Error ? signal.reason : new Error('Membership hint aborted'));
+    let completed = false;
+    signal?.addEventListener('abort', abort, {once: true});
+    try {
+        signal?.throwIfAborted();
+        if (reply.statusCode !== 200) throw new Error('Immutable bundle membership hint HTTP failure', {cause: {statusCode: reply.statusCode}});
+        const type = reply.headers?.['content-type'], encoding = reply.headers?.['content-encoding'] ?? '';
+        if (typeof type !== 'string' || type.length > 256 || !/^application\/(?:json|vnd\.elasticsearch\+json)(?:\s*;|$)/i.test(type)
+            || typeof encoding !== 'string' || encoding.length > 32 || !['', 'identity', 'gzip', 'deflate'].includes(encoding.toLowerCase()))
+            throw new Error('Invalid immutable bundle membership hint content headers');
+        const chunks: Buffer[] = []; let bytes = 0;
+        for await (const chunk of body) {
+            signal?.throwIfAborted();
+            if (!(chunk instanceof Uint8Array)) throw new Error('Invalid immutable bundle membership hint byte chunk');
+            bytes += chunk.byteLength;
+            if (bytes > protocolBundleMembershipHintBounds.maximumResponseBytes) throw new Error('Immutable bundle membership hint wire byte bound exceeded');
+            chunks.push(Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength));
+        }
+        signal?.throwIfAborted();
+        const wire = Buffer.concat(chunks, bytes);
+        const decoded = ['gzip', 'deflate'].includes(encoding.toLowerCase())
+            ? unzipSync(wire, {maxOutputLength: protocolBundleMembershipHintBounds.maximumResponseBytes}) : wire;
+        if (decoded.length > protocolBundleMembershipHintBounds.maximumResponseBytes) throw new Error('Immutable bundle membership hint decoded byte bound exceeded');
+        const result = deserialize(decoded.toString('utf8')); completed = true;
+        return result;
+    } finally {
+        signal?.removeEventListener('abort', abort);
+        if (!body.destroyed) body.destroy();
+        let failure: unknown;
+        try {await settled;} catch (error) {failure = error;}
+        if (completed) {signal?.throwIfAborted(); if (failure) throw failure;}
+    }
+}
+
+/** Capture before the SDK product check can reject and hide an acquired live body. */
+async function ownedMembershipHint(client: Client, index: string, ids: string[], signal?: AbortSignal): Promise<unknown> {
+    const acquired = new Map<Readable, Promise<void>>(), originals = new WeakMap<object, object>();
+    const ParentTransport = client.transport.constructor as typeof Transport;
+    class HintTransport extends ParentTransport {
+        constructor(options: TransportOptions) {
+            const pool = options.connectionPool;
+            const localPool = new Proxy(pool, {get(target, key) {
+                const value = Reflect.get(target, key, target);
+                if (key === 'markAlive' || key === 'markDead') return (connection: object) =>
+                    value.call(target, originals.get(connection) ?? connection);
+                return typeof value === 'function' ? value.bind(target) : value;
+            }});
+            // The parent remains the pool's configured maintenance owner; do not start duplicate sniff work.
+            super({...options, connectionPool: localPool, sniffOnStart: false, sniffInterval: false, sniffOnConnectionFault: false});
+        }
+        getConnection(options: GetConnectionOptions) {
+            const connection = super.getConnection(options); if (connection === null) return null;
+            const facade = new Proxy(connection, {get(target, key) {
+                if (key === 'request') return async (...args: Parameters<typeof connection.request>) => {
+                    const reply = await Reflect.apply(connection.request, connection, args);
+                    if (reply.body instanceof Readable && !acquired.has(reply.body)) {
+                        const settled = finished(reply.body, {cleanup: true}); void settled.catch(() => {});
+                        acquired.set(reply.body, settled);
+                    }
+                    return reply;
+                };
+                const value = Reflect.get(target, key, target);
+                return typeof value === 'function' ? value.bind(target) : value;
+            }});
+            originals.set(facade, connection); return facade;
+        }
+    }
+    // A child shares the original pool/auth/TLS configuration; never close that shared pool here.
+    const child = client.child({Transport: HintTransport});
+    let completed = false;
+    try {
+        const reply = await child.mget({index, ids, realtime: true, _source: false},
+            {signal, asStream: true, meta: true, maxResponseSize: protocolBundleMembershipHintBounds.maximumResponseBytes,
+                maxCompressedResponseSize: protocolBundleMembershipHintBounds.maximumResponseBytes});
+        const result = await membershipHintResponse(reply, text => child.serializer.deserialize(text), signal); completed = true; return result;
+    } finally {
+        for (const body of acquired.keys()) if (!body.destroyed) body.destroy();
+        await Promise.allSettled(acquired.values());
+        if (completed) signal?.throwIfAborted();
+    }
+}
 
 async function checkedIo<T>(signal: AbortSignal | undefined, operation: () => Promise<T>): Promise<T> {
     signal?.throwIfAborted();
@@ -206,6 +301,39 @@ export class ImmutableProtocolBundleStore {
         await this.createImmutable(id, manifest, signal);
         const result=Object.freeze({id,digest}) as FreshBundlePrepare;
         scope?.assertActive();freshPrepares.set(result,{store:this,id,digest,scope});return result;
+    }
+
+    /** Realtime existence hint only: presence grants no integrity, durability or canonical authority. */
+    async missingManifestHint(input: readonly string[], signal?: AbortSignal): Promise<string | null> {
+        signal?.throwIfAborted();
+        const scope = currentProofConsumerScope(); scope?.assertActive();
+        signal = proofConsumerSignal(signal);
+        if (!Array.isArray(input) || input.length < 1 || input.length > protocolBundleMembershipHintBounds.maximumItems)
+            throw new Error('Immutable bundle membership hint exceeds its item bound');
+        const ids = [...input];
+        if (ids.some(id => typeof id !== 'string' || !/^[a-zA-Z0-9_.:-]{1,256}$/.test(id)) || new Set(ids).size !== ids.length)
+            throw new Error('Invalid immutable bundle membership hint IDs');
+        canonical({ids}, protocolBundleMembershipHintBounds.maximumRequestBytes);
+        await this.initialize(signal); scope?.assertActive();
+        const response: any = await trackProofConsumerOperation(() => ownedMembershipHint(this.client, this.index, ids, signal), scope);
+        scope?.assertActive();
+        if (!response || Object.keys(response).length !== 1 || !Array.isArray(response.docs) || response.docs.length !== ids.length)
+            throw new Error('Incomplete immutable bundle membership hint response');
+        canonical(response, protocolBundleMembershipHintBounds.maximumResponseBytes);
+        let missing: string | null = null;
+        for (let index = 0; index < ids.length; index++) {
+            const doc = response.docs[index];
+            if (doc && Object.hasOwn(doc, 'error'))
+                throw new Error('Failed immutable bundle membership hint item', {cause: doc.error});
+            if (!doc || doc._index !== this.index || doc._id !== ids[index] || typeof doc.found !== 'boolean'
+                || Object.keys(doc).some(key => !['_index', '_id', 'found', '_version', '_seq_no', '_primary_term'].includes(key))
+                || ['_version', '_seq_no', '_primary_term'].some(key => Object.hasOwn(doc, key)
+                    && (!Number.isSafeInteger(doc[key]) || doc[key] < (key === '_seq_no' ? 0 : 1))))
+                throw new Error('Invalid or failed immutable bundle membership hint item');
+            if (!doc.found) missing ??= ids[index];
+        }
+        signal?.throwIfAborted(); scope?.assertActive();
+        return missing;
     }
 
     async read(id: string, signal?:AbortSignal): Promise<unknown> {

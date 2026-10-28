@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {randomUUID} from 'node:crypto';
 import {currentProofConsumerScope} from '../../build/indexer/protocol/proof-consumer-scope.js';
+import {withControlledHintChild} from './protocol-frontier-memory.mjs';
 
 export function fixtureWorkerTransport(endpoint = process, observe) {
     const pending = new Map();
@@ -37,11 +38,12 @@ export function fixtureWorkerTransport(endpoint = process, observe) {
         });
     }
     const client = {}, indices = {};
-    for (const method of ['create', 'index', 'get', 'search'])
+    for (const method of ['create', 'index', 'get', 'search', 'mget'])
         client[method] = (body, options) => request('es', {method, body}, options);
     for (const method of ['create', 'get', 'getMapping', 'getSettings', 'exists'])
         indices[method] = (body, options) => request('es', {method: 'indices.' + method, body}, options);
     client.indices = indices;
+    withControlledHintChild(client);
     class Consumer extends EventEmitter {
         acked = []; streamed = [];
         ack(message) {
@@ -81,7 +83,7 @@ export async function dispatchFixtureService(worker, message, memory, publish, b
                 assert(['create', 'get', 'getMapping', 'getSettings', 'exists'].includes(name));
                 value = await memory.client.indices[name](body);
             } else {
-                assert(['create', 'index', 'get', 'search'].includes(method));
+                assert(['create', 'index', 'get', 'search', 'mget'].includes(method));
                 assert.equal(typeof memory.client[method], 'function', 'Unexpected ES request family');
                 value = await memory.client[method](body);
             }
