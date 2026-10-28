@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "kind": "synthetic-stateful-mongodb-qualification",
+  "assetKey": "asset\u0000.$",
+  "collectionKey": "one",
+  "temporaryKey": "put-then-delete",
+  "asset": {
+    "id": "9007199254740993",
+    "vector": ["0", "18446744073709551615"],
+    "owner": "alice",
+    "nil": null,
+    "fraction": 0.1,
+    "a.b": "a\u0000b",
+    "$op": "literal\\u0000",
+    "__proto__": {"inert": true},
+    "mutable": {"old": true}
+  },
+  "collection": {"name": "A", "missingIsNotNull": null}
+}
