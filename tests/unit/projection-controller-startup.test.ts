@@ -2,7 +2,9 @@ import {expect, test} from 'bun:test';
 import {fileURLToPath} from 'node:url';
 
 for (const stage of ['connect', 'initialize', 'initialize-retained', 'initialize-error', 'initialize-foreign', 'initialize-mutating',
-    'frame-read', 'frame-register', 'frame-reply', 'frame-control', 'diagnostic-failure', 'bounded'])
+    'frame-read', 'frame-recover', 'frame-ordinary', 'frame-foreign', 'frame-copied',
+    'frame-stop', 'frame-retire', 'frame-lost-end', 'frame-stale-end', 'frame-retire-after-end', 'frame-drain-timeout',
+    'frame-register', 'frame-reply', 'frame-control', 'diagnostic-failure', 'bounded'])
 test(`native original projection controller startup: ${stage}`, async () => {
     const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node',
         fileURLToPath(new URL('./projection-controller-startup.mjs', import.meta.url)), stage],
@@ -12,6 +14,6 @@ test(`native original projection controller startup: ${stage}`, async () => {
     const result = JSON.parse(stdout.trim().split('\n').at(-1)!);
     expect(result).toMatchObject({passed: true, stage,
         originalControllerAndSource: true, noPostFenceEffects: true, fullWorkerQualification: false});
-    if (stage === 'frame-register' || stage === 'frame-reply') expect(result).toMatchObject({projectionExit: 1,
+    if (stage === 'frame-register' || stage === 'frame-reply') expect(result).toMatchObject({projectionExit: 0, fencedFrameRecovered: true,
         frameOperationEntered: false, parentActiveAtFence: stage === 'frame-register' ? 0 : 1, authenticFrameEndObserved: true});
 }, 20000);
