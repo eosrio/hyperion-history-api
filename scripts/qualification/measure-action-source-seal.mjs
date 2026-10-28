@@ -121,7 +121,6 @@ function instrument(memory, store) {
         [memory.client, 'get', 'get'], [memory.client, 'create', 'create'], [memory.client, 'index', 'index'],
         ...(typeof memory.client.mget === 'function' ? [[memory.client, 'mget', 'mget']] : [])]) {
         wrap(owner, method, async function (original, args) {
-            const record = active;
             if (active) {
                 increment(active.transport, label); increment(active.transportByPhase[phase] ??= {}, label);
                 if (label === 'mget') {
@@ -130,7 +129,6 @@ function instrument(memory, store) {
                 }
             }
             const result = await Reflect.apply(original, this, args);
-            if (record && label === 'mget') increment(record.methodCalls, 'hintResponseJsonBytes', Buffer.byteLength(JSON.stringify(result)));
             return result;
         });
     }

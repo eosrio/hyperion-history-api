@@ -5,8 +5,10 @@ import {createHash} from 'node:crypto';
 import {resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
-import {Client} from '@elastic/elasticsearch';
+import {Client, Serializer, errors} from '@elastic/elasticsearch';
 import {BaseConnection} from '@elastic/transport';
+import {Readable} from 'node:stream';
+import {gzipSync, deflateSync} from 'node:zlib';
 
 const root = process.env.HYPERION_SEAL_BUILD_ROOT ?? fileURLToPath(new URL('../..', import.meta.url));
 const [{ActionSourceAdmissionStore}, {ProofConsumerScope}, {ImmutableProtocolBundleStore}] = await Promise.all([
@@ -211,19 +213,32 @@ test('hint response byte bound rejects oversized replies without a false negativ
     await assert.rejects(f.store.missingManifestHint(['hint:present']), /byte/i);
 });
 
-test('the pinned Elasticsearch client sends a realtime source-free bounded mget with cancellation', async () => {
-    const f = await hintFixture(), controller = new AbortController(), calls = [];
+function pinnedHintClient(f, options = {}) {
+    const calls = [], deserializedBytes = [], closed = [];
+    class ObservedSerializer extends Serializer {
+        deserialize(input) {deserializedBytes.push(Buffer.byteLength(input)); return super.deserialize(input);}
+    }
     class Connection extends BaseConnection {
-        async close() {}
+        async close() {closed.push(this);}
         async request(params, options) {
-            calls.push({params, signal: options.signal, maxResponseSize: options.maxResponseSize});
+            calls.push({params, connection: this, headers: {...this.headers, ...params.headers}, signal: options.signal, maxResponseSize: options.maxResponseSize,
+                maxCompressedResponseSize: options.maxCompressedResponseSize, asStream: options.asStream});
             const [index, route] = params.path.slice(1).split('/').map(decodeURIComponent);
-            const body = route === '_mget' ? await f.memory.client.mget({index, ...JSON.parse(params.body)})
-                : {[index]: {mappings: f.memory.mappings.get(index), settings: f.memory.settings.get(index)}};
+            if (route === '_mget') {
+                const reply = await f.memory.client.mget({index, ...JSON.parse(params.body)}, {asStream: options.asStream});
+                return reply;
+            }
+            const body = {[index]: {mappings: f.memory.mappings.get(index), settings: f.memory.settings.get(index)}};
             return {statusCode: 200, headers: {'content-type': 'application/json', 'x-elastic-product': 'Elasticsearch'}, body: JSON.stringify(body)};
         }
     }
-    const client = new Client({node: 'http://controlled.invalid:9200', Connection, maxRetries: 0});
+    const client = new Client({node: 'http://controlled.invalid:9200', Connection, Serializer: ObservedSerializer, maxRetries: 0, ...options});
+    return {client, calls, deserializedBytes, closed};
+}
+
+test('the pinned Elasticsearch client sends a realtime source-free bounded mget with cancellation', async () => {
+    const f = await hintFixture(), controller = new AbortController();
+    const {client, calls, deserializedBytes} = pinnedHintClient(f);
     try {
         const store = new ImmutableProtocolBundleStore(client, 'fixture', 1, 'hint', 'hint-v1', undefined, {readOnly: true});
         assert.equal(await store.missingManifestHint(['hint:present'], controller.signal), null);
@@ -231,7 +246,163 @@ test('the pinned Elasticsearch client sends a realtime source-free bounded mget 
         assert.equal(call.params.method, 'POST'); assert.equal(query.get('realtime'), 'true'); assert.equal(query.get('_source'), 'false');
         assert.deepEqual(JSON.parse(call.params.body), {ids: ['hint:present']});
         assert.equal(call.signal, controller.signal); assert.equal(call.maxResponseSize, 1024 * 1024);
+        assert.equal(call.maxCompressedResponseSize, 1024 * 1024); assert.equal(call.asStream, true);
+        for (const encoding of ['gzip', 'deflate']) {
+            f.memory.faults.mgetStream = reply => {
+                reply.body.destroy();
+                const bytes = Buffer.from(JSON.stringify({docs: [{error: {reason: 'x'.repeat(2 * 1024 * 1024)}}]}));
+                const compressed = encoding === 'gzip' ? gzipSync(bytes) : deflateSync(bytes);
+                assert.ok(compressed.length < 1024 * 1024);
+                return {...reply, headers: {...reply.headers, 'content-encoding': encoding}, body: Readable.from([compressed])};
+            };
+            await assert.rejects(store.missingManifestHint(['hint:present']), error => error.code === 'ERR_BUFFER_TOO_LARGE');
+        }
+        assert.ok(deserializedBytes.every(bytes => bytes <= 1024 * 1024), 'oversized hint must not reach the pinned Serializer');
     } finally {await client.close();}
+});
+
+test('SDK product-header rejection destroys and joins an acquired live stream without changing the parent client', async () => {
+    const f = await hintFixture(), scope = new ProofConsumerScope('product-rejected-hint');
+    const {client, closed} = pinnedHintClient(f, {auth: {username: 'fixture', password: 'fixture'}});
+    const pool = client.connectionPool, transport = client.transport, connection = pool.connections[0], request = connection.request;
+    const markAlive = pool.markAlive, markDead = pool.markDead;
+    let destroying, release;
+    const destroyed = new Promise(resolve => {destroying = resolve;});
+    const body = new Readable({read() {}, destroy(error, callback) {release = () => callback(error); destroying();}});
+    f.memory.faults.mgetStream = reply => {
+        reply.body.destroy(); const headers = {...reply.headers}; delete headers['x-elastic-product'];
+        return {...reply, headers, body};
+    };
+    try {
+        const store = new ImmutableProtocolBundleStore(client, 'fixture', 1, 'hint', 'hint-v1', undefined, {readOnly: true});
+        let returned = false;
+        const work = scope.run(() => store.missingManifestHint(['hint:present']));
+        void work.finally(() => {returned = true;}).catch(() => {});
+        await destroyed; await Promise.resolve(); assert.equal(returned, false);
+        assert.ok(scope.snapshot().pendingOperations > 0); release();
+        await assert.rejects(work, error => error instanceof errors.ProductNotSupportedError);
+        await scope.closeAndDrain(); assert.equal(body.closed, true);
+        assert.equal(client.connectionPool, pool); assert.equal(client.transport, transport); assert.equal(connection.request, request);
+        assert.equal(pool.markAlive, markAlive); assert.equal(pool.markDead, markDead); assert.equal(closed.length, 0);
+    } finally {await client.close();}
+    assert.equal(closed.length, 1, 'only explicit parent close may close the shared pool');
+});
+
+test('hint retries retain original pooled connection identity and parent authentication', async () => {
+    const f = await hintFixture();
+    const {client, calls} = pinnedHintClient(f, {maxRetries: 1, resurrectStrategy: 'optimistic',
+        auth: {username: 'fixture', password: 'fixture'}, retryBackoff: () => 0});
+    const pool = client.connectionPool, connection = pool.connections[0], dead = [], alive = [];
+    const markDead = pool.markDead, markAlive = pool.markAlive, request = connection.request;
+    pool.markDead = function (value) {dead.push(value); return markDead.call(this, value);};
+    pool.markAlive = function (value) {alive.push(value); return markAlive.call(this, value);};
+    let fail = true;
+    f.memory.faults.beforeMget = () => {if (fail) {fail = false; throw new errors.ConnectionError('controlled hint connection failure');}};
+    try {
+        const store = new ImmutableProtocolBundleStore(client, 'fixture', 1, 'hint', 'hint-v1', undefined, {readOnly: true});
+        assert.equal(await store.missingManifestHint(['hint:present']), null);
+        await client.indices.get({index: f.store.index});
+        assert.equal(calls.filter(x => x.params.path.endsWith('/_mget')).length, 2);
+        assert.ok(dead.length > 0); assert.ok(alive.length > 0);
+        assert.ok([...dead, ...alive].every(value => value === connection));
+        assert.ok(calls.every(value => value.connection === connection));
+        assert.ok(calls.every(value => value.headers.authorization === 'Basic ' + Buffer.from('fixture:fixture').toString('base64')));
+        assert.equal(pool.connections[0], connection); assert.equal(connection.request, request);
+        assert.equal(connection.status, BaseConnection.statuses.ALIVE);
+    } finally {pool.markDead = markDead; pool.markAlive = markAlive; await client.close();}
+});
+
+test('a retried SDK acquisition keeps every acquired body owned until all streams settle', async () => {
+    const f = await hintFixture(), scope = new ProofConsumerScope('retried-hint-bodies');
+    const {client} = pinnedHintClient(f, {maxRetries: 1, resurrectStrategy: 'optimistic', retryBackoff: () => 0});
+    let destroying, release, replies = 0, rejectFirst = true;
+    const destroyed = new Promise(resolve => {destroying = resolve;});
+    const first = new Readable({read() {}, destroy(error, callback) {release = () => callback(error); destroying();}});
+    f.memory.faults.mgetStream = reply => {if (++replies !== 1) return reply; reply.body.destroy(); return {...reply, body: first};};
+    const rejectResponse = (error, result) => {
+        if (!error && rejectFirst && result.meta.request.params.path.endsWith('/_mget')) {
+            rejectFirst = false; throw new errors.ConnectionError('controlled retry after stream acquisition');
+        }
+    };
+    client.diagnostic.on('response', rejectResponse);
+    try {
+        const store = new ImmutableProtocolBundleStore(client, 'fixture', 1, 'hint', 'hint-v1', undefined, {readOnly: true});
+        let returned = false;
+        const work = scope.run(() => store.missingManifestHint(['hint:present']));
+        void work.finally(() => {returned = true;}).catch(() => {});
+        await destroyed; await Promise.resolve(); assert.equal(returned, false);
+        assert.equal(replies, 2); assert.ok(scope.snapshot().pendingOperations > 0);
+        release(); assert.equal(await work, null); await scope.closeAndDrain();
+        assert.equal(first.closed, true);
+    } finally {client.diagnostic.off('response', rejectResponse); await client.close();}
+});
+
+for (const encoding of ['gzip', 'deflate']) test(`${encoding} hints enforce an inflated byte bound before parsing oversized JSON`, async () => {
+    const f = await hintFixture();
+    f.memory.faults.mgetStream = reply => {
+        const raw = Buffer.from(JSON.stringify({docs: [{_index: f.store.index, _id: 'hint:present',
+            error: {reason: 'x'.repeat(2 * 1024 * 1024)}}]}));
+        const wire = encoding === 'gzip' ? gzipSync(raw) : deflateSync(raw);
+        assert.ok(wire.length < 1024 * 1024); assert.ok(raw.length > 2 * 1024 * 1024);
+        reply.body.destroy();
+        return {...reply, headers: {...reply.headers, 'content-encoding': encoding}, body: Readable.from([wire])};
+    };
+    await assert.rejects(f.store.missingManifestHint(['hint:present']), error => error.code === 'ERR_BUFFER_TOO_LARGE');
+});
+
+for (const encoding of ['gzip', 'deflate']) test(`valid ${encoding} hints still require the original full integrity path`, async () => {
+    const f = await fixture(true);
+    f.memory.faults.mgetStream = async reply => {
+        const parts = []; for await (const part of reply.body) parts.push(part);
+        const raw = Buffer.concat(parts), wire = encoding === 'gzip' ? gzipSync(raw) : deflateSync(raw);
+        return {...reply, headers: {...reply.headers, 'content-encoding': encoding}, body: Readable.from([wire])};
+    };
+    assert.equal(await f.store.trySeal(f.admission), true);
+    assert.deepEqual((await f.store.journal.readManifest(f.admission.planId)).manifest.fragments.map(x => x.effects.length), [0, 1]);
+});
+
+for (const fault of ['status', 'encoding', 'type']) test(`invalid hint ${fault} closes its acquired body before rejecting`, async () => {
+    const f = await hintFixture(); let body;
+    f.memory.faults.mgetStream = reply => {
+        body = reply.body;
+        if (fault === 'status') reply.statusCode = 503;
+        if (fault === 'encoding') reply.headers['content-encoding'] = 'unsupported';
+        if (fault === 'type') reply.headers['content-type'] = 'application/octet-stream';
+        return reply;
+    };
+    await assert.rejects(f.store.missingManifestHint(['hint:present']), /HTTP failure|content headers/);
+    assert.equal(body.closed, true);
+});
+
+test('owner cancellation after headers waits for the held body destruction callback', async () => {
+    const f = await fixture(), scope = new ProofConsumerScope('held-hint-body');
+    let reading, destroying, release;
+    const read = new Promise(resolve => {reading = resolve;}), destroyed = new Promise(resolve => {destroying = resolve;});
+    const body = new Readable({read() {reading();}, destroy(error, callback) {release = () => callback(error); destroying();}});
+    f.memory.faults.mgetStream = reply => {reply.body.destroy(); return {...reply, body};};
+    const work = scope.run(() => f.store.trySeal(f.admission));
+    await read; scope.fence(); await destroyed;
+    let drained = false; const drain = scope.closeAndDrain().then(() => {drained = true;});
+    await Promise.resolve(); assert.equal(drained, false); assert.ok(scope.snapshot().pendingOperations > 0);
+    release(); await assert.rejects(work, /worker attempt/i); await drain;
+    assert.equal(drained, true); assert.equal(body.closed, true);
+    assert.deepEqual(ids(f, 'h45actionseal1:'), []);
+});
+
+test('a wire limit failure waits for actual stream destruction before leaving its owner', async () => {
+    const f = await hintFixture(), scope = new ProofConsumerScope('oversized-hint-body');
+    let destroying, release;
+    const destroyed = new Promise(resolve => {destroying = resolve;});
+    const body = new Readable({read() {this.push(Buffer.alloc(1024 * 1024 + 1)); this.push(null);},
+        destroy(error, callback) {release = () => callback(error); destroying();}});
+    f.memory.faults.mgetStream = reply => {reply.body.destroy(); return {...reply, body};};
+    let returned = false;
+    const work = scope.run(() => f.store.missingManifestHint(['hint:present']));
+    void work.finally(() => {returned = true;}).catch(() => {});
+    await destroyed; await Promise.resolve(); assert.equal(returned, false);
+    assert.ok(scope.snapshot().pendingOperations > 0); release();
+    await assert.rejects(work, /wire byte bound/); await scope.closeAndDrain();
+    assert.equal(body.closed, true);
 });
 
 for (const fault of ['partial', 'unknown']) test(`incomplete admission defers ${fault} prefix repair until complete membership`, async () => {

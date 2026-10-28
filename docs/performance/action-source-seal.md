@@ -15,8 +15,20 @@ index and ordered IDs; malformed responses, item errors, transport failures and
 cancellation throw, including when another item is genuinely missing. No ordinary
 search, forced refresh, cached settings or durable-format change is involved.
 
-A hint request contains at most 256 IDs and 64 KiB of canonical request JSON; response
-bytes are bounded to 1 MiB both at the pinned transport and parsed-response boundary.
+A hint request contains at most 256 IDs and 64 KiB of canonical request JSON. The
+pinned client returns a per-request stream: collected wire bytes and inflated
+gzip/deflate output are each capped at 1 MiB before JSON parsing, followed by the
+logical JSON bound. `maxResponseSize` alone does not cap the pinned transport's
+inflated response, so this path owns its bounded collection/inflate. It does not
+change a shared client or global transport. Abort, invalid headers/status, limits
+and parse failures destroy the acquired body and await its actual settlement;
+the hint stays owned until that drain completes. No new timer or retry loop is added.
+The request-local child borrows the configured parent pool/authentication/TLS.
+Its connection facade registers stream settlement before the SDK product-header
+check can reject and hide an acquired body; that SDK check remains enabled.
+Pool health operations receive the original connection identity. Every acquired
+retry body is destroyed/joined on exit, and the child never closes the shared pool.
+The parent remains responsible for its configured pool maintenance.
 The journal scans multiple batches within its existing 100,000-transaction/128 MiB
 plan limits. These per-request bounds do not lower the accepted plan size. The
 hint is not a snapshot and proves no integrity, durability or canonical authority.
@@ -108,7 +120,7 @@ hint does not optimize already-complete work.
 
 Compiled transactions remain `N²` across incomplete attempts, `N` in the complete
 attempt, and another `N²` during preparation. Aggregate hinted IDs are `N(N+1)`.
-The harness records logical JSON request/response bytes for hints separately;
+The harness records logical JSON request bytes for hints separately;
 these are not captured wire bytes or an all-traffic census. Linear request count
 over one bounded hint batch is not a linear byte/CPU bound, nor an extrapolation
 to larger multi-batch plans. Pure compile memoization and broader batching remain
