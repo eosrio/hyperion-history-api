@@ -342,6 +342,12 @@ export class WorkerAttemptSupervisor {
                 epoch: this.epoch, incarnation: owner.incarnation}, () => {});} catch {}
         }
     }
+    /** Direct private lifecycle check for the master request probe; serialized snapshots grant nothing. */
+    ownsActiveWorker(worker: PhysicalAttemptWorker, role: WorkerAttemptRole): boolean {
+        const owner = this.owners.get(worker);
+        return !this.stopped && owner?.state === 'active' && owner.role === role && !!owner.clientId
+            && owner.fencedAttempts.size === 0 && worker.isConnected();
+    }
     snapshot() {return Object.freeze({epoch: this.epoch, active: this.active, metadataBytes: this.metadataBytes, overflow: this.overflow,
         owners: [...this.owners.values()].map(owner => ({incarnation: owner.incarnation, role: owner.role, state: owner.state,
             attempts: [...owner.entries.values()].map(entry => ({attemptId: entry.id, descriptor: {...entry.descriptor}, binding: {...entry.binding},

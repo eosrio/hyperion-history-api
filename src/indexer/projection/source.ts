@@ -1,6 +1,9 @@
 import {createHash} from 'node:crypto';
 import type {Client} from '@elastic/elasticsearch';
 import type {ProtocolProvider} from '@eosrio/hyperion-sdk/protocol';
+import type {StatefulOwnerDeclarationV2} from '@eosrio/hyperion-sdk/projection-stateful-owner-v2';
+import type {CapturedStatefulSourceV2} from '@eosrio/hyperion-sdk/projection-stateful-source-v2';
+import type {StatefulSelector} from '@eosrio/hyperion-sdk/projection-stateful';
 import {ProjectionContractError, type ProjectionBlock, type ProjectionCheckpoint, type ProjectionDefinition} from '@eosrio/hyperion-sdk/projection';
 import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
 import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, type ProtocolAbiProofView} from '../protocol/abi-proof.js';
@@ -11,6 +14,10 @@ import {protocolDeployment} from '../protocol/deployments.js';
 import {verifyNativeGenesisRecord} from '../protocol/native-genesis.js';
 import type {ProjectionFrame, ProjectionTableChange} from './runtime.js';
 import {currentProofConsumerScope, trackProofConsumerOperation} from '../protocol/proof-consumer-scope.js';
+import {ProtocolNativeActionReader} from '../protocol/native-authorization.js';
+import {ProtocolNativeObservationStore} from '../protocol/native-observation-store.js';
+import {decodeStatefulSourceV2} from './stateful-source.js';
+import {statefulAbiEpoch} from './stateful-abi-epoch.js';
 
 const json = protocolImmutableJson;
 const digest = (value: Uint8Array | string) => createHash('sha256').update(value).digest('hex');
@@ -41,6 +48,11 @@ export interface PortableProjectionOriginalBlock {
     readonly selection: ProtocolSourceSelection;
     readonly context: ProtocolSourceContext;
     readonly observation: ProtocolAbiObservationRecord;
+    readonly evidence: PortableProjectionSourceEvidence;
+}
+export interface PortableStatefulFrameV2 {
+    readonly source: CapturedStatefulSourceV2;
+    readonly proof: ProtocolAbiProofView;
     readonly evidence: PortableProjectionSourceEvidence;
 }
 /** A known canonical target can be durably fenced even when its retained input cannot be used. */
@@ -84,6 +96,26 @@ export class PortableProjectionSource {
         if (!Number.isSafeInteger(checkpoint.blockNum) || checkpoint.blockNum < 1) unavailable('Checkpoint zero grants no source coverage');
         await this.control();
         return this.reader.open({chainId: this.options.chainId, ...checkpoint});
+    }
+    async head(): Promise<ProjectionCheckpoint> {
+        const control = await this.control();
+        const proof = await this.open({blockNum: control.head.blockNum, blockId: control.head.blockId});
+        await this.revalidate(proof);
+        return Object.freeze({blockNum: proof.source.blockNum, blockId: proof.source.blockId});
+    }
+    /** Resolve one immutable template version from an actual canonical view, never from operator ABI pins. */
+    async statefulSelectors(templates: readonly Omit<StatefulSelector, 'abiDeployment' | 'abiSha256'>[]): Promise<{
+        selectors: readonly StatefulSelector[]; proof: ProtocolAbiProofView}> {
+        const selected = JSON.parse(json(templates)) as typeof templates;
+        const proof = await this.open(await this.head()), epochs = new Map<string, ReturnType<typeof statefulAbiEpoch>>();
+        const selectors: StatefulSelector[] = [];
+        for (const template of selected) {
+            let epoch = epochs.get(template.contract);
+            if (!epoch) {epoch = statefulAbiEpoch(await this.reader.finalState(proof, template.contract)); epochs.set(template.contract, epoch);}
+            selectors.push(Object.freeze({...template, abiDeployment: epoch.id, abiSha256: epoch.abiSha256}));
+        }
+        await this.revalidate(proof);
+        return Object.freeze({selectors: Object.freeze(selectors), proof});
     }
     async revalidate(proof: ProtocolAbiProofView): Promise<void> {
         this.reader.assertConsumerScope(proof);
@@ -194,6 +226,43 @@ export class PortableProjectionSource {
         const original = await this.originalCapture(commit, proof);
         await this.revalidate(proof);
         return Object.freeze({...original, target});
+    }
+    /** Complete original action/table input under the version2 owner, independent of history filters. */
+    async statefulBlock(blockNum: number, declaration: StatefulOwnerDeclarationV2,
+        admitRawTarget: (target: PortableProjectionRawTarget) => Promise<void>): Promise<PortableStatefulFrameV2> {
+        const packet = await this.originalBlock(blockNum, admitRawTarget);
+        if (blockNum === 1) verifyNativeGenesisRecord(packet.observation, this.options.provider.verifyNativeGenesis?.bind(this.options.provider));
+        let native: ProtocolNativeActionReader | undefined;
+        let nativeView: Awaited<ReturnType<ProtocolNativeActionReader['open']>> | undefined;
+        const authorize = this.options.provider.nativeActions ? async (input: Parameters<ProtocolNativeActionReader['authorize']>[1]) => {
+            if (!native) native = new ProtocolNativeActionReader({chainId: this.options.chainId, profile: this.options.profile,
+                provider: this.options.provider, proofReader: this.reader,
+                store: new ProtocolNativeObservationStore(this.options.client, this.options.chain, this.options.replicas ?? 0,
+                    undefined, {readOnly: true})});
+            nativeView ??= await native.open(packet.proof.source, packet.proof.selectionId);
+            const decision = await native.authorize(nativeView, input);
+            if (decision.kind !== 'contract') unavailable('Selected stateful action is not a qualified contract action');
+        } : undefined;
+        const source = await decodeStatefulSourceV2(declaration, packet, this.options.provider, this.reader, authorize);
+        if (native && nativeView) await native.revalidate(nativeView);
+        await this.revalidate(packet.proof);
+        return Object.freeze({source, proof: packet.proof, evidence: packet.evidence});
+    }
+    /** The completed view's applicable epochs and current ancestry govern version2 serving. */
+    async assertStatefulView(proof: ProtocolAbiProofView, declaration: StatefulOwnerDeclarationV2): Promise<void> {
+        this.reader.assertConsumerScope(proof);
+        if (declaration.projection.definition.binding.chainId !== this.options.chainId) unavailable('Stateful view chain differs');
+        const groups = new Map<string, typeof declaration.projection.definition.selectors[number][]>();
+        for (const selector of declaration.projection.definition.selectors) {
+            const key = json([selector.kind, selector.contract, selector.name]);
+            groups.set(key, [...groups.get(key) ?? [], selector]);
+        }
+        for (const selectors of groups.values()) {
+            const epoch = statefulAbiEpoch(await this.reader.finalState(proof, selectors[0].contract));
+            if (!selectors.some(selector => selector.abiDeployment === epoch.id && selector.abiSha256 === epoch.abiSha256))
+                unavailable('Completed stateful view lacks its applicable selector ABI epoch');
+        }
+        await this.revalidate(proof);
     }
     /** Bounded certified ancestry; missing old input never becomes an empty frame. */
     async frame(blockNum: number, definition: ProjectionDefinition,

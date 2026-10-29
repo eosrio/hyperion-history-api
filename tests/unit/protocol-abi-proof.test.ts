@@ -6,6 +6,7 @@ import {ProtocolAbiFrontierStore} from '../../src/indexer/protocol/abi-frontier-
 import {ProtocolAbiObservationStore,protocolAbiCaptureDigest,type ProtocolAbiObservationRecord} from '../../src/indexer/protocol/abi-observation-store.js';
 import {ProtocolSourceBindingStore,type ProtocolSourceProfile} from '../../src/indexer/protocol/source-bindings.js';
 import {ProtocolAbiProofReader,ProtocolAbiProofUnavailableError,protocolAbiCertificateForControl,type ProtocolAbiProofSource} from '../../src/indexer/protocol/abi-proof.js';
+import {statefulAbiEpoch} from '../../src/indexer/projection/stateful-abi-epoch.js';
 import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
 
 const chainId='1'.repeat(64),transactionId='a'.repeat(64),chain='proof-fixture';
@@ -38,6 +39,26 @@ function publicationFacts(nextAbi='bb'){
 async function seed(f:Awaited<ReturnType<typeof fixture>>,abiHex='aa',present=true){
     const initial=facts();initial.finalStates=[{account:'alpha',present,abiHex,deltaOrdinal:0}];return f.append(1,initial);
 }
+
+it('constructed repeated same-block setabi retains exact reader-issued epochs beyond uint53', async () => {
+    const f = await fixture(); await seed(f);
+    const next = facts();
+    next.actionInputs = [action(1, '9007199254740993', 'sysio', 'setabi', 'fe'),
+        action(2, '9007199254740994'), action(3, '9007199254740995', 'sysio', 'setabi', 'fd'),
+        action(4, '9007199254740996')];
+    next.deployments = [1, 3].map((actionOrdinal, index) => ({account: 'alpha', abiHex: 'bb',
+        action: {transactionId, actionOrdinal}, globalSequence: index === 0 ? '9007199254740993' : '9007199254740995',
+        effect: 'native-before-receipt' as const}));
+    next.finalStates = [{account: 'alpha', present: true, abiHex: 'bb', deltaOrdinal: 0}];
+    const selected = await f.append(2, next), reader = f.reader(), view = await reader.open(f.source(2), selected.selectionId);
+    const first = (await reader.action(view, next.actionInputs[1])).state;
+    const second = (await reader.action(view, next.actionInputs[3])).state;
+    expect(first.source).toMatchObject({phase: 'native-effect', action: {actionOrdinal: 1, globalSequence: '9007199254740993'}});
+    expect(second.source).toMatchObject({phase: 'native-effect', action: {actionOrdinal: 3, globalSequence: '9007199254740995'}});
+    expect(statefulAbiEpoch(first).abiSha256).toBe(statefulAbiEpoch(second).abiSha256);
+    expect(statefulAbiEpoch(first).id).not.toBe(statefulAbiEpoch(second).id);
+    await reader.revalidate(view);
+});
 
 /** Independent opaque ABI facts exercise proof selection; they do not qualify a Wire value codec. */
 async function fixture(){

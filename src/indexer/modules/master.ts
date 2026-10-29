@@ -50,6 +50,8 @@ import {ProtocolAbiObservationStore} from '../protocol/abi-observation-store.js'
 import {isProtocolAbiCoordinatorRequest, type ProtocolAbiCoordinatorReply} from '../protocol/abi-coordinator-rpc.js';
 import {ensureProtocolActionMapping} from '../protocol/action-proof-mapping.js';
 import {resolvePortableStateConfiguration} from '../projection/config.js';
+import {resolveStatefulOwnerConfigurationV2} from '../projection/stateful-config.js';
+import {StatefulWorkerProbeBroker} from '../projection/stateful-control.js';
 import {WorkerAttemptSupervisor, type WorkerAttemptRole} from '../protocol/worker-attempt-supervisor.js';
 import {ActionAttemptAdjudicator, type CurrentAttemptCanonicalBlock} from '../history/action-attempt-adjudicator.js';
 import {ActionSourceAdmissionStore} from '../history/action-source-admission.js';
@@ -63,6 +65,16 @@ import { IPermission } from '../../interfaces/table-permissions.js';
 interface ActionLibAnchor {readonly worker: Worker; readonly blockNum: number; readonly blockId: string}
 
 export class HyperionMaster {
+    private statefulProbes?: StatefulWorkerProbeBroker<Worker>;
+    async probeStatefulOwner(target: string, signal: AbortSignal): Promise<boolean> {
+        const configuration = resolveStatefulOwnerConfigurationV2(this.conf.features.stateful_owner_v2, this.conf.features.portable_state);
+        if (!configuration) return false;
+        const isCurrent = (worker: Worker) => this.workerMap.some(definition => definition.wref === worker && definition.worker_role === 'projection')
+            && this.workerAttemptSupervisor?.ownsActiveWorker(worker, 'projection') === true;
+        this.statefulProbes ??= new StatefulWorkerProbeBroker(configuration.api.maximumPendingProbes, configuration.api.timeoutMs, isCurrent);
+        const workers = this.workerMap.filter(definition => definition.worker_role === 'projection' && definition.wref && isCurrent(definition.wref));
+        return workers.length === 1 ? this.statefulProbes.probe(workers[0].wref!, target, signal) : false;
+    }
     // Own physical Worker objects independently of the replaceable logical workerMap entries.
     private workerAttemptSupervisor?: WorkerAttemptSupervisor;
     private actionAttemptAdjudicator?: ActionAttemptAdjudicator;
@@ -435,6 +447,7 @@ export class HyperionMaster {
                 if (this.workerMap.some(definition => definition.wref === worker && definition.worker_role === 'projection'))
                     debugLog('Portable state projection progress:', msg.data);
             },
+            stateful_owner_probe_reply: (worker: Worker, msg: WorkerMessage) => {this.statefulProbes?.accept(worker, msg.data);},
             skipped_block: (_worker: Worker, msg: WorkerMessage) => {
                 if (msg.block_num) {
                     this.indexerMonitor.consumedBlocks++;
@@ -1427,7 +1440,8 @@ export class HyperionMaster {
         await this.setupDSPool();
         const portable = resolvePortableStateConfiguration(this.conf.features.portable_state,
             this.manager.conn.chains[this.chain].chain_id);
-        if (portable) this.addWorker({worker_role: 'projection'});
+        const stateful = resolveStatefulOwnerConfigurationV2(this.conf.features.stateful_owner_v2, portable);
+        if (portable || stateful) this.addWorker({worker_role: 'projection'});
     }
 
     launchWorkers() {
@@ -1439,6 +1453,10 @@ export class HyperionMaster {
                 worker.id = wrk.worker_id;
                 if (wrk.worker_role && ['deserializer', 'ds_pool_worker', 'projection'].includes(wrk.worker_role))
                     this.attemptSupervisor.attach(worker, wrk.worker_role as WorkerAttemptRole);
+                if (wrk.worker_role === 'projection') {
+                    worker.once('exit', () => this.statefulProbes?.retired(worker));
+                    worker.once('disconnect', () => this.statefulProbes?.retired(worker));
+                }
                 worker.on('message', (msg) => {
                     // The supervisor owns this event, including retired physical owners.
                     if (msg?.event === 'worker_attempt_request') return;

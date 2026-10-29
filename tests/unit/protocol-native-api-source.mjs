@@ -5,20 +5,8 @@ import {tmpdir} from 'node:os';
 import {basename, dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
-import {validateProtocolNativeActions} from '@eosrio/hyperion-sdk/protocol';
-import {createWireNativeActions, resolveCodecProfile} from '@eosrio/hyperion-wire-plugin';
-import {loadChainProtocol} from '../../build/indexer/protocol/selection.js';
-import {ProtocolAbiCoordinator} from '../../build/indexer/protocol/abi-coordinator.js';
-import {ProtocolAbiProofReader} from '../../build/indexer/protocol/abi-proof.js';
-import {ProtocolAbiFrontierStore} from '../../build/indexer/protocol/abi-frontier-store.js';
-import {ProtocolAbiObservationStore, protocolAbiCaptureDigest} from '../../build/indexer/protocol/abi-observation-store.js';
-import {ProtocolSourceBindingStore} from '../../build/indexer/protocol/source-bindings.js';
-import {ProtocolNativeObservationStore} from '../../build/indexer/protocol/native-observation-store.js';
-import {ProtocolNativeActionReader} from '../../build/indexer/protocol/native-authorization.js';
-import {protocolNativeInputInventory, snapshotProtocolNativeDecisions} from '../../build/indexer/protocol/native-observation-facts.js';
-import {deriveProtocolActionOccurrences} from '../../build/indexer/history/action-source-inventory.js';
-import {protocolBytes} from '../../build/indexer/protocol/contract-cache.js';
-import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
+import {admitNativeApiSourceOptions, STATEFUL_ENGINEERING_API_SOURCE_PROFILE} from './stateful-engineering-source-admission.mjs';
+export {STATEFUL_ENGINEERING_API_SOURCE_PROFILE};
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const repo = fileURLToPath(new URL('../../', import.meta.url));
@@ -29,7 +17,24 @@ const originals = join(wireRoot, 'fixtures/codec/native-onblock-6508-20261022');
 /** Original Wire source plus actual coordinator/proof/journals. Only ES transport is in memory.
  * The native capability is an explicitly engineered selection after the unchanged installed loader.
  */
-export async function nativeApiWireSource({nativeMarker = true} = {}) {
+export async function nativeApiWireSource(options = {}) {
+    // Inert exact-source admission precedes provider import and temporary capture extraction.
+    const admission = admitNativeApiSourceOptions(options), {nativeMarker} = admission;
+    const {validateProtocolNativeActions} = await import('@eosrio/hyperion-sdk/protocol');
+    const {loadChainProtocol} = await import('../../build/indexer/protocol/selection.js');
+    const {ProtocolAbiCoordinator} = await import('../../build/indexer/protocol/abi-coordinator.js');
+    const {ProtocolAbiProofReader} = await import('../../build/indexer/protocol/abi-proof.js');
+    const {ProtocolAbiFrontierStore} = await import('../../build/indexer/protocol/abi-frontier-store.js');
+    const {ProtocolAbiObservationStore, protocolAbiCaptureDigest} = await import('../../build/indexer/protocol/abi-observation-store.js');
+    const {ProtocolSourceBindingStore} = await import('../../build/indexer/protocol/source-bindings.js');
+    const {ProtocolNativeObservationStore} = await import('../../build/indexer/protocol/native-observation-store.js');
+    const {ProtocolNativeActionReader} = await import('../../build/indexer/protocol/native-authorization.js');
+    const {protocolNativeInputInventory, snapshotProtocolNativeDecisions} = await import('../../build/indexer/protocol/native-observation-facts.js');
+    const {deriveProtocolActionOccurrences} = await import('../../build/indexer/history/action-source-inventory.js');
+    const {protocolBytes} = await import('../../build/indexer/protocol/contract-cache.js');
+    const {frontierMemoryClient} = await import('./protocol-frontier-memory.mjs');
+
+    const {createWireNativeActions, resolveCodecProfile} = await import('@eosrio/hyperion-wire-plugin');
     assert.equal(hash(readFileSync(join(archive, 'source-1-1480-20261020.tar.gz'))), '42d092f3ecf6f428ecdba4825580377acdd27f2818ce445d4f197719e6ab72b7');
     const manifest = JSON.parse(readFileSync(join(originals, 'manifest.json')));
     for (const row of manifest.members) {
@@ -48,7 +53,7 @@ export async function nativeApiWireSource({nativeMarker = true} = {}) {
     assert.equal(receipt.chainId, chainId); assert.equal(receipt.complete, true);
     const installed = await loadChainProtocol({provider: 'extension', package: '@eosrio/hyperion-wire-plugin', profileId: manifest.profileId});
     assert.equal(installed.provider.nativeActions, undefined);
-    assert(installed.components.every(component => component.sourceRevision === '7167659e9c043cb3351074fcacb40200cc57f3a3'));
+    assert(installed.components.every(component => component.sourceRevision === admission.wireRevision));
     const capability = validateProtocolNativeActions(createWireNativeActions(resolveCodecProfile(manifest.profileId)), {interfaceVersion: 1});
     assert.equal(capability.valid, true);
     const provider = {...installed.provider, nativeActions: capability.nativeActions}, selected = {...installed, provider};
@@ -113,7 +118,7 @@ export async function nativeApiWireSource({nativeMarker = true} = {}) {
             act_digest: occurrence.actDigest, act: {account: input.account, name: input.name, authorization: structuredClone(occurrence.authorization), data: value},
             receipts: [structuredClone(occurrence.receipt)], protocol: metadata};
     }
-    return {chainId, chain, selected, installed, provider, profile, memory, client, frontier, nativeStore, coordinator,
+    return {chainId, chain, selected, installed, provider, profile, memory, client, frontier, nativeStore, coordinator, admission,
         expected, retained, appendUntil, action, async dispose() {
             session.close?.(); assert.equal(installed.provider.nativeActions, undefined);
             const target = resolve(directory); assert.equal(dirname(target), resolve(tmpdir())); assert(basename(target).startsWith('hapi-native-api-original-'));

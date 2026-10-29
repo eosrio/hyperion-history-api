@@ -1,4 +1,4 @@
-import {controlledAttemptLifecycle} from './worker-attempt-fixture.mjs';
+
 /** Original Wire prefix through actual emitted workers/admission with controlled transports.
  * Engineering native capability only; no installed activation, consensus or live-service qualification. */
 import assert from 'node:assert/strict';
@@ -8,12 +8,16 @@ import {tmpdir} from 'node:os';
 import {basename, dirname, join, resolve} from 'node:path';
 import {EventEmitter} from 'node:events';
 import {createHash} from 'node:crypto';
-import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
-import {proofReadBridge} from './protocol-proof-read-bridge.mjs';
 
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {createWireNativeActions, resolveCodecProfile} from '@eosrio/hyperion-wire-plugin';
+import {admitNativeSourceEnvironment} from './stateful-engineering-source-admission.mjs';
+const nativeSourceAdmission = admitNativeSourceEnvironment();
+const {controlledAttemptLifecycle} = await import('./worker-attempt-fixture.mjs');
+const {frontierMemoryClient} = await import('./protocol-frontier-memory.mjs');
+const {proofReadBridge} = await import('./protocol-proof-read-bridge.mjs');
+const {createWireNativeActions, resolveCodecProfile} = await import('@eosrio/hyperion-wire-plugin');
+
 let nativeAddonResolutions = 0;
 const hooks = registerHooks({resolve(specifier, context, next) {
     if (specifier.includes('node-abieos')) {nativeAddonResolutions++; throw new Error('Wire admission resolved the Antelope native addon');}
@@ -110,7 +114,7 @@ try {
         import('../../build/indexer/history/action-producer-epoch.js')]);
     const installed = await loadChainProtocol(config.settings.protocol);
     assert.equal(installed.provider.nativeActions, undefined);
-    assert(installed.components.every(component => component.sourceRevision === '7167659e9c043cb3351074fcacb40200cc57f3a3'));
+    assert(installed.components.every(component => component.sourceRevision === nativeSourceAdmission.wireRevision));
     const descriptor = JSON.parse(readFileSync(join(wireRoot, 'dist/protocol-provider.json')));
     for (const id of ['wire-sysio-6508c9e8-engineering-v1', 'wire-sysio-7dede884-engineering-v1']) {
         const profile = descriptor.profiles.find(profile => profile.id === id); assert(profile);

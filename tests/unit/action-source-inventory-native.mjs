@@ -6,17 +6,19 @@ import {mkdtempSync, readFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {loadChainProtocol} from '../../build/indexer/protocol/selection.js';
-import {deriveActionSourceInventory, deriveProtocolActionInputs, validateActionSourceTransactionOutput,
-    ActionSourceInventoryError} from '../../build/indexer/history/action-source-inventory.js';
-import {normalizeActionSequences} from '../../build/indexer/helpers/action-sequences.js';
-import {groupActionTraces} from '../../build/indexer/helpers/action-dedup.js';
+import {admitNativeSourceEnvironment} from './stateful-engineering-source-admission.mjs';
+const nativeSourceAdmission = admitNativeSourceEnvironment();
+const {loadChainProtocol} = await import('../../build/indexer/protocol/selection.js');
+const {deriveActionSourceInventory, deriveProtocolActionInputs, validateActionSourceTransactionOutput,
+    ActionSourceInventoryError} = await import('../../build/indexer/history/action-source-inventory.js');
+const {normalizeActionSequences} = await import('../../build/indexer/helpers/action-sequences.js');
+const {groupActionTraces} = await import('../../build/indexer/helpers/action-dedup.js');
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const profileId = 'wire-sysio-6508c9e8-native-engineering-v1';
 const legacyProfiles = ['wire-sysio-6508c9e8-engineering-v1', 'wire-sysio-7dede884-engineering-v1'];
-const wireRevision = '7167659e9c043cb3351074fcacb40200cc57f3a3';
-const sdkRevision = '339b5c93d1338968c18ed14254961439dcab16a0';
+const wireRevision = nativeSourceAdmission.wireRevision;
+const sdkRevision = nativeSourceAdmission.sdkRevision;
 const archiveSha256 = '42d092f3ecf6f428ecdba4825580377acdd27f2818ce445d4f197719e6ab72b7';
 const chainId = '9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d';
 const repo = fileURLToPath(new URL('../../', import.meta.url));

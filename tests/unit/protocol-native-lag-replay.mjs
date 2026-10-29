@@ -8,10 +8,13 @@ import {basename, dirname, join, resolve, isAbsolute} from 'node:path';
 import {Session} from 'node:inspector';
 import {EventEmitter} from 'node:events';
 import {createHash} from 'node:crypto';
-import {proofMeasurementTransport} from './protocol-native-lag-transport.mjs';
 
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
+import {admitNativeSourceEnvironment} from './stateful-engineering-source-admission.mjs';
+const nativeSourceAdmission = admitNativeSourceEnvironment();
+const {proofMeasurementTransport} = await import('./protocol-native-lag-transport.mjs');
+
 let nativeAddonResolutions = 0;
 const hooks = registerHooks({resolve(specifier, context, next) {
     if (specifier.includes('node-abieos')) {nativeAddonResolutions++; throw new Error('Wire admission resolved the Antelope native addon');}
@@ -145,7 +148,7 @@ try {
         import('../../build/indexer/history/action-producer-epoch.js')]);
     const installed = await loadChainProtocol(config.settings.protocol);
     assert.equal(installed.provider.nativeActions.interfaceVersion, 1);
-    assert(installed.components.every(component => component.sourceRevision === '7167659e9c043cb3351074fcacb40200cc57f3a3'));
+    assert(installed.components.every(component => component.sourceRevision === nativeSourceAdmission.wireRevision));
     const descriptor = JSON.parse(readFileSync(join(wireRoot, 'dist/protocol-provider.json')));
     for (const id of ['wire-sysio-6508c9e8-engineering-v1', 'wire-sysio-7dede884-engineering-v1']) {
         const profile = descriptor.profiles.find(profile => profile.id === id); assert(profile);
@@ -351,9 +354,9 @@ try {
     assert.equal(config.settings.protocol_abi_coordination, undefined, 'the actual default 256 ancestry remains in force');
     const lock = JSON.parse(readFileSync(join(repo, 'package-lock.json')));
     assert.equal(lock.packages['node_modules/@eosrio/hyperion-wire-plugin'].resolved,
-        'git+ssh://git@github.com/eosrio/hyperion-wire-plugin.git#7167659e9c043cb3351074fcacb40200cc57f3a3');
+        `git+ssh://git@github.com/eosrio/hyperion-wire-plugin.git#${nativeSourceAdmission.wireRevision}`);
     assert.equal(lock.packages['node_modules/@eosrio/hyperion-sdk'].resolved,
-        'git+ssh://git@github.com/eosrio/hyperion-sdk.git#339b5c93d1338968c18ed14254961439dcab16a0');
+        `git+ssh://git@github.com/eosrio/hyperion-sdk.git#${nativeSourceAdmission.sdkRevision}`);
     const began = process.hrtime.bigint();
     const stageTimings = {setup: {elapsedMs: Number(began - setupBegan) / 1e6, cpu: process.cpuUsage(setupCpu)}, sourcePreparation: []};
     let pending, control, rewindSelection, lastMeasuredNativeView, lastMeasuredNativeGrant;

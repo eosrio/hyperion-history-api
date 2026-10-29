@@ -4,9 +4,11 @@ import { HyperionWorkerDef } from "../../interfaces/hyperionWorkerDef.js";
 import { hLog } from "../helpers/common_functions.js";
 import { HyperionMaster } from "./master.js";
 import { IndexerPauseCoordinator, PauseTarget } from "../helpers/indexer-pause-coordinator.js";
+import {validStatefulProbeId, validStatefulProbeTarget} from '../projection/stateful-control.js';
 
 export interface WebSocketData {
     socketId: string;
+    statefulProbes?: AbortController;
 }
 
 export class LocalHyperionController {
@@ -206,6 +208,7 @@ export class LocalHyperionController {
                 const socketId = randomUUID();
                 // Assign a unique socket ID to the WebSocket connection
                 ws.getUserData().socketId = socketId;
+                ws.getUserData().statefulProbes = new AbortController();
                 this.sockets.set(socketId, ws);
             },
             message: (ws: WebSocket<WebSocketData>, msg: ArrayBuffer) => {
@@ -221,6 +224,15 @@ export class LocalHyperionController {
                             // parse messages as json
                             const message = JSON.parse(rawMessage);
                             switch (message.event) {
+                                case 'stateful_owner_probe': {
+                                    if (!validStatefulProbeId(message.requestId) || !validStatefulProbeTarget(message.target)) break;
+                                    const socketId = ws.getUserData().socketId, signal = ws.getUserData().statefulProbes!.signal;
+                                    this.master.probeStatefulOwner(message.target, signal).catch(() => false).then(current => {
+                                        if (this.sockets.get(socketId) === ws && !signal.aborted)
+                                            ws.send(JSON.stringify({event: 'stateful_owner_probe_reply', requestId: message.requestId, target: message.target, current}));
+                                    });
+                                    break;
+                                }
                                 case `fill_missing_blocks`: {
                                     this.master.fillMissingBlocks(message.data, ws).catch(console.log);
                                     break;
@@ -399,6 +411,7 @@ export class LocalHyperionController {
                 }
             },
             close: (ws: WebSocket<WebSocketData>) => {
+                ws.getUserData().statefulProbes?.abort();
                 // Handle WebSocket disconnection
                 const socketId = ws.getUserData().socketId;
                 if (socketId) {

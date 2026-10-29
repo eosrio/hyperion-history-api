@@ -135,6 +135,10 @@ export function auditWireTransportMembership(files: ReadonlyMap<string, Buffer>,
 
 export interface AuditWireReplayOptions {packageRoot?: string; outputDirectory?: string; python?: string;}
 export async function auditWireReplayFixture(options: AuditWireReplayOptions = {}): Promise<AuditedWireReplayFixture> {
+    // The absent/empty option retains the original716 qualification; CI explicitly selects a sealed source set.
+    const admission = process.env.HYPERION_NATIVE_SOURCE_PROFILE
+        ? (await import('../../tests/unit/stateful-engineering-source-admission.mjs')).admitNativeSourceEnvironment() : undefined;
+    const packageRevision = admission?.wireRevision ?? wireReplayPins.packageRevision;
     const descriptor = fileURLToPath(import.meta.resolve('@eosrio/hyperion-wire-plugin/protocol-provider.json'));
     const packageRoot = await realpath(resolve(dirname(descriptor), '..'));
     if (options.packageRoot !== undefined) assert.equal(await realpath(options.packageRoot), packageRoot, 'fixture must use the installed selected package');
@@ -143,7 +147,7 @@ export async function auditWireReplayFixture(options: AuditWireReplayOptions = {
     const provider = selection.provider as ProtocolProvider;
     assert.ok(provider.observeBlockAbi, 'selected engineering profile must observe source-bound ABI deployments');
     assert.equal(selection.components?.length, 2);
-    for (const component of selection.components!) assert.equal(component.sourceRevision, wireReplayPins.packageRevision);
+    for (const component of selection.components!) assert.equal(component.sourceRevision, packageRevision);
     const fixtureRoot = join(packageRoot, 'fixtures/codec/application-capture-20261020');
     for (const [file, expected] of [['audit.py', wireReplayPins.auditSha256], ['prepare.py', wireReplayPins.prepareSha256], ['manifest.json', wireReplayPins.registrySha256]])
         assert.equal(hash(await readRegular(fixtureRoot, file!)), expected, `installed fixture helper integrity: ${file}`);
@@ -219,7 +223,7 @@ export async function auditWireReplayFixture(options: AuditWireReplayOptions = {
                 deltaRows, deltaFraming: bundle.deltaFraming, abiObservations: observations}); previous = entry.blockId;
         }
         assert.equal(rows, 627); assert.equal(actionInputs, 160); assert.equal(deployments, 8);
-        const lineage = freeze({kind: 'audited-installed-wire-application-capture', packageRevision: wireReplayPins.packageRevision,
+        const lineage = freeze({kind: 'audited-installed-wire-application-capture', packageRevision,
             components: clone(selection.components!),
             sourceArchiveSha256: wireReplayPins.archiveSha256, exportManifestSha256: wireReplayPins.exportSha256,
             supplementArchiveSha256: wireReplayPins.supplementSha256, manifestSha256: hash(read(capturePrefix + 'manifest.json')),
@@ -230,7 +234,7 @@ export async function auditWireReplayFixture(options: AuditWireReplayOptions = {
                 'Original status head123/LIB121 is retained; startup RPC block2 is separate derived fixture control metadata.']});
         const data: Snapshot = {files, records, manifest: freeze(clone(manifest)), audit: freeze(clone(audit)), schema: freeze(clone(schema)),
             status: freeze(clone(status)), lineage, checks, decodeRequest: value => codec.decodeRequest(value), packageRoot};
-        const fixture: AuditedWireReplayFixture = Object.freeze({packageRoot, packageRevision: wireReplayPins.packageRevision,
+        const fixture: AuditedWireReplayFixture = Object.freeze({packageRoot, packageRevision,
             profileId: wireReplayPins.profileId, chainId: wireReplayPins.chainId, replayStart: 2 as const, replayEnd: 120 as const,
             manifest: data.manifest, audit: data.audit, independentChecks: checks, schema: data.schema, originalStatus: data.status, lineage,
             get records() {return Object.freeze(records.map(record => ({...clone({...record, frame: undefined}), frame: Buffer.from(record.frame)})));},

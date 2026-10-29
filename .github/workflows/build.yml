@@ -13,6 +13,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-18d235e-engineering
     strategy:
       matrix:
         node-version: [24.x, 26.x]
@@ -34,6 +36,11 @@ jobs:
           test "$(bun -p process.versions.typescript)" = "$(node -p 'require("./package.json").dependencies.typescript')"
       - run: npm run typecheck
       - run: npm run build
+      - name: Check mixed stateful source and final publication on Node ${{ matrix.node-version }}
+        run: |
+          node tests/unit/portable-state-owner-v2.mjs
+          node tests/unit/stateful-host-native.mjs
+          node tests/unit/stateful-engineering-source-admission-native.mjs
       - name: Check Fastify request admission and state route compatibility on Node ${{ matrix.node-version }}
         run: node --test --test-timeout=15000 tests/native/fastify-compatibility.test.mjs
       - name: Check stream request lifecycle on Node ${{ matrix.node-version }}
@@ -129,6 +136,26 @@ jobs:
         working-directory: docs/performance/evidence/native-proof-reads-20261022
         run: python3 verify.py
       - run: npm test
+      - name: Check the separate normal-installed default716 source assembly
+        shell: bash
+        run: |
+          default_source="$RUNNER_TEMP/hyperion-default716"
+          git worktree add --detach "$default_source" HEAD
+          cd "$default_source"
+          node --input-type=module <<'NODE'
+          import {readFileSync, writeFileSync} from 'node:fs';
+          const pkg = JSON.parse(readFileSync('package.json'));
+          pkg.dependencies['@eosrio/hyperion-wire-plugin'] = 'git+https://github.com/eosrio/hyperion-wire-plugin.git#7167659e9c043cb3351074fcacb40200cc57f3a3';
+          writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          NODE
+          npm install --package-lock-only --ignore-scripts --allow-git=all
+          npm ci --allow-git=all
+          test "$(git diff --name-only)" = $'package-lock.json\npackage.json'
+          unset HYPERION_NATIVE_SOURCE_PROFILE
+          node tests/unit/protocol-native-installed.mjs
+          node tests/unit/action-source-inventory-native.mjs
+          node tests/unit/protocol-native-consumer-worker.mjs
+          bun test tests/unit/protocol-selection.test.ts --test-name-pattern 'installed legacy Wire profiles'
       - name: Check ABI/native journals, source bindings and canonical frontier against disposable Elasticsearch 9.5.5
         if: matrix.node-version == '24.x'
         run: node scripts/qualification/check-protocol-abi-store.mjs protocol-journals.json
@@ -203,6 +230,8 @@ jobs:
 
   action-source-journal:
     runs-on: ubuntu-24.04
+    env:
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-18d235e-engineering
     timeout-minutes: 15
     strategy:
       fail-fast: false

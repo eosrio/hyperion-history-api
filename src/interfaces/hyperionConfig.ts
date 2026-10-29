@@ -2,6 +2,7 @@ import { z } from "zod/v4";
 
 import {AlertManagerOptions} from "../indexer/modules/alertsManager.js";
 import {resolvePortableStateConfiguration, type PortableStateConfiguration} from '../indexer/projection/config.js';
+import {resolveStatefulOwnerConfigurationV2, type StatefulOwnerConfigurationV2} from '../indexer/projection/stateful-config.js';
 
 /**
  * Contract usage statistics structure
@@ -282,6 +283,7 @@ export interface HyperionConfig {
     };
     features: {
         portable_state?: PortableStateConfiguration;
+        stateful_owner_v2?: StatefulOwnerConfigurationV2;
         streaming: {
             enable: boolean,
             traces: boolean,
@@ -561,6 +563,9 @@ const ContractStateSchema = z.object({
 });
 
 const FeaturesSchema = z.object({
+    stateful_owner_v2: z.custom<StatefulOwnerConfigurationV2>(value => {
+        try {return resolveStatefulOwnerConfigurationV2(value) !== undefined;} catch {return false;}
+    }, 'Invalid stateful owner version2 configuration').optional(),
     portable_state: z.custom<PortableStateConfiguration>(value => {
         try {return resolvePortableStateConfiguration(value, '0'.repeat(64)) !== undefined;} catch {return false;}
     }, 'Invalid portable state backend or projection definitions').optional(),

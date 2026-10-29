@@ -1,4 +1,4 @@
-import {controlledAttemptLifecycle} from './worker-attempt-fixture.mjs';
+
 /** Original Wire frames through emitted reader/MainDS/DS/admission and the normal installed native provider.
  * Public admission remains disabled. This fixture explicitly enables its existing engineering seam;
  * broker confirms, cache and ES transports are controlled. No live-service or consensus qualification. */
@@ -10,11 +10,15 @@ import {tmpdir} from 'node:os';
 import {basename, dirname, join, resolve} from 'node:path';
 import {EventEmitter} from 'node:events';
 import {createHash, randomUUID} from 'node:crypto';
-import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
-import {currentProofConsumerScope} from '../../build/indexer/protocol/proof-consumer-scope.js';
 
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
+import {admitNativeSourceEnvironment} from './stateful-engineering-source-admission.mjs';
+const nativeSourceAdmission = admitNativeSourceEnvironment();
+const {controlledAttemptLifecycle} = await import('./worker-attempt-fixture.mjs');
+const {frontierMemoryClient} = await import('./protocol-frontier-memory.mjs');
+const {currentProofConsumerScope} = await import('../../build/indexer/protocol/proof-consumer-scope.js');
+
 let nativeAddonResolutions = 0;
 const hooks = registerHooks({resolve(specifier, context, next) {
     if (specifier.includes('node-abieos')) {nativeAddonResolutions++; throw new Error('Wire admission resolved the Antelope native addon');}
@@ -213,7 +217,7 @@ try {
     }
     const installed = await loadChainProtocol(config.settings.protocol);
     assert.ok(installed.provider.nativeActions, 'select the installed native provider normally');
-    assert(installed.components.every(component => component.sourceRevision === '7167659e9c043cb3351074fcacb40200cc57f3a3'));
+    assert(installed.components.every(component => component.sourceRevision === nativeSourceAdmission.wireRevision));
     const selected = installed;
     const wire = await import('@eosrio/hyperion-wire-plugin');
     const codec = wire.createWireValueCodec(fixture.handshake, wire.resolveCodecProfile(profileId));

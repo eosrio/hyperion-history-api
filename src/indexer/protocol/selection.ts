@@ -3,7 +3,8 @@ import {readFile, realpath} from 'node:fs/promises';
 import {dirname, isAbsolute, relative, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {validateProtocolSelection, validateProtocolNativeActions, type ProtocolComponent,
-    type ProtocolNativeActionRequirement, type ProtocolNativeActions, type ProtocolProvider} from '@eosrio/hyperion-sdk/protocol';
+    type ProtocolNativeActionRequirement, type ProtocolNativeActions, type ProtocolProvider,
+    type ProtocolStatefulTablesV2} from '@eosrio/hyperion-sdk/protocol';
 import {createContractDecoder, type ContractDecoder} from './contract-cache.js';
 import {installedRuntimeArtifacts} from '../helpers/runtime-artifacts.js';
 
@@ -28,6 +29,27 @@ function nativeCapability(provider: ProtocolProvider): unknown {
     return undefined;
 }
 
+/** Optional declaration only; a stateful-v2 consumer must still require this exact version. */
+function statefulTablesSnapshot(provider: ProtocolProvider): ProtocolStatefulTablesV2 | undefined {
+    const member = (input: object, name: string): unknown => {
+        for (let owner: object | null = input; owner; owner = Object.getPrototypeOf(owner)) {
+            const property = Object.getOwnPropertyDescriptor(owner, name);
+            if (!property) continue;
+            if (!Object.hasOwn(property, 'value')) throw new Error('Stateful tables require data properties');
+            return property.value;
+        }
+        return undefined;
+    };
+    const capability = member(provider, 'statefulTables');
+    if (capability === undefined) return undefined;
+    if (!capability || typeof capability !== 'object' || member(capability, 'interfaceVersion') !== 2)
+        throw new Error('Unsupported stateful tables interface');
+    const normalizeDelta = member(capability, 'normalizeDelta');
+    if (typeof normalizeDelta !== 'function') throw new Error('Stateful tables require a normalizer');
+    return Object.freeze({interfaceVersion: 2, normalizeDelta: (input, context) =>
+        applyMethod(normalizeDelta, capability, [input, context])});
+}
+
 /** Seal declared capability or absence, retaining original method receivers and contract codec. */
 function providerSnapshot(provider: ProtocolProvider, requirement?: ProtocolNativeActionRequirement): ProtocolProvider {
     const capability = nativeCapability(provider);
@@ -39,10 +61,11 @@ function providerSnapshot(provider: ProtocolProvider, requirement?: ProtocolNati
     } else if (capability !== undefined) throw new Error('Native actions are not supported by the selected profile');
     const createShipSession = provider.createShipSession, normalizeDelta = provider.normalizeDelta;
     const observeBlockAbi = provider.observeBlockAbi, verifyNativeGenesis = provider.verifyNativeGenesis;
+    const statefulTables = statefulTablesSnapshot(provider);
     const snapshot: ProtocolProvider = {profileId: provider.profileId, contractCodec: provider.contractCodec,
         createShipSession: handshake => applyMethod(createShipSession, provider, [handshake]),
         normalizeDelta: (input, context) => applyMethod(normalizeDelta, provider, [input, context]),
-        ...(nativeActions ? {nativeActions} : {})};
+        ...(nativeActions ? {nativeActions} : {}), ...(statefulTables ? {statefulTables} : {})};
     if (observeBlockAbi) snapshot.observeBlockAbi = (input, source) => applyMethod(observeBlockAbi, provider, [input, source]);
     if (verifyNativeGenesis) snapshot.verifyNativeGenesis = (input, source) => applyMethod(verifyNativeGenesis, provider, [input, source]);
     return Object.freeze(snapshot);

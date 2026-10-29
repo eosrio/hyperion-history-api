@@ -93,7 +93,7 @@ if (cluster.isWorker) {
         protocolId: 'controlled-startup-protocol', protocolComponents: [{id: 'owned-startup-fixture', runtime: 'node',
             version: '0.0.0-dev.1', sourceRevision: 'c'.repeat(40), sha256: 'd'.repeat(64)}], protocolReady: Promise.resolve(),
         protocol: {profileId: 'controlled-startup-v1', verifyNativeGenesis() {}}, client: {},
-        manager: {conn: {mongodb: {}}, mongodbClient: client}, stopped: false, profiler: {stopReporting() {}}});
+        manager: {conn: {mongodb: {}}, mongodbClient: client}, stopped: false, statefulControllers: new Map(), probes: new Set(), profiler: {stopReporting() {}}});
     const attempts = new WorkerAttemptClient({mode: 'managed', role: 'projection', transport: process,
         timeoutMs: 500, drainTimeoutMs: 1000, retries: 0});
     const capture = attempts.capture.bind(attempts), run = attempts.run.bind(attempts);
