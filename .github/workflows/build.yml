@@ -102,6 +102,8 @@ jobs:
         run: node --test tests/native/portable-worker-proof-metrics.test.mjs tests/native/portable-native-stage-timing.test.mjs tests/native/protocol-index-metadata.test.mjs
       - name: Check complete source sealing with native Node
         run: node --test tests/unit/action-source-seal-native.mjs
+      - name: Check bounded full-source read stages on Node ${{ matrix.node-version }}
+        run: node --test tests/native/protocol-staged-bundle-read.test.mjs
       - name: Verify Elasticsearch review follow-up evidence checksums
         working-directory: docs/performance/evidence/es955-failure-review-20261019
         run: sha256sum -c SHA256SUMS

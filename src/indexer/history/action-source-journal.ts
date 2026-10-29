@@ -1,5 +1,6 @@
 import {createHash} from 'node:crypto';
 import type {Client} from '@elastic/elasticsearch';
+import {currentProofConsumerScope} from '../protocol/proof-consumer-scope.js';
 import {ImmutableProtocolBundleReadError, ImmutableProtocolBundleStore,
     protocolBundleMembershipHintBounds} from '../protocol/immutable-bundle-store.js';
 import {
@@ -37,10 +38,12 @@ export class ActionHistorySourceJournal {
     readonly index: string;
     private readonly bundles: ImmutableProtocolBundleStore;
     private readonly readOnly: boolean;
+    private readonly stagedReads: boolean;
     private operations = 0;
 
-    constructor(client: Client, private readonly chain: string, replicas = 0, options: {readOnly?: boolean} = {}) {
+    constructor(client: Client, private readonly chain: string, replicas = 0, options: {readOnly?: boolean; stagedReads?: boolean} = {}) {
         this.readOnly = options.readOnly === true;
+        this.stagedReads = options.stagedReads === true;
         this.bundles = new ImmutableProtocolBundleStore(client, chain, replicas, 'action-source-journal',
             'history-source-journal-v1', undefined, {readOnly: this.readOnly});
         this.index = this.bundles.index;
@@ -53,12 +56,13 @@ export class ActionHistorySourceJournal {
 
     private async boundedOperation<T>(signal: AbortSignal | undefined, work: () => Promise<T>): Promise<T> {
         signal?.throwIfAborted();
+        const scope = this.stagedReads ? currentProofConsumerScope() : undefined;
         // Refuse excess work rather than retaining an unbounded queue of caller batches.
         if (this.operations >= 4) throw new Error('Action source journal concurrent operation budget exhausted');
         this.operations++;
         try {
             const result = await work();
-            signal?.throwIfAborted();
+            signal?.throwIfAborted(); scope?.assertActive();
             return result;
         } finally {this.operations--;}
     }
@@ -168,24 +172,52 @@ export class ActionHistorySourceJournal {
         });
     }
 
-    private async readFragment(planId: string, transactionId: string, plan: ActionHistoryBlockPlan,
-                               signal?: AbortSignal): Promise<{id: string; fragment: ActionHistoryTransactionFragment; link: FragmentLink}> {
-        const stableId = linkId(planId, transactionId);
-        const input: any = await this.read('fragment-link', stableId, signal);
-        const link: FragmentLink = this.validate('fragment-link', stableId, () => {
+    private validateLink(input: any, stableId: string, planId: string, transactionId: string): FragmentLink {
+        return this.validate('fragment-link', stableId, () => {
             if (!keys(input, ['schemaVersion', 'planId', 'transactionId', 'fragmentId']) || input.schemaVersion !== 1 ||
                 input.planId !== planId || input.transactionId !== transactionId || typeof input.fragmentId !== 'string' ||
                 !fragmentSyntax.test(input.fragmentId)) invalid('Invalid action source journal transaction link');
             return input;
         });
-        const value = await this.referenced(() => this.read('fragment', link.fragmentId, signal));
-        const fragment = this.validate('fragment', link.fragmentId, () => {
+    }
+
+    private validateFragment(value: unknown, fragmentId: string, transactionId: string, plan: ActionHistoryBlockPlan): ActionHistoryTransactionFragment {
+        return this.validate('fragment', fragmentId, () => {
             const fragment = validateActionHistoryFragment(value, plan);
-            if (fragment.transactionId !== transactionId || actionHistoryFragmentId(fragment, plan) !== link.fragmentId) {
+            if (fragment.transactionId !== transactionId || actionHistoryFragmentId(fragment, plan) !== fragmentId) {
                 invalid('Action source journal fragment identity mismatch');
             }
             return fragment;
         });
+    }
+
+    private async readRecords(kind: RecordKind, ids: readonly string[], maximumBytes: number, signal?: AbortSignal): Promise<unknown[]> {
+        try {return await this.bundles.readMany(ids, maximumBytes, signal);} catch (error) {
+            signal?.throwIfAborted();
+            if (error instanceof ImmutableProtocolBundleReadError)
+                throw new ActionHistorySourceJournalReadError(error.code, kind, error.recordId, error.message);
+            throw error;
+        }
+    }
+
+    private async readFragments(planId: string, transactions: readonly {readonly transactionId: string}[],
+                                plan: ActionHistoryBlockPlan, maximumBytes: number, signal?: AbortSignal) {
+        const stableIds = transactions.map(transaction => linkId(planId, transaction.transactionId));
+        // Closed link records are <1 KiB each; this bounded dependency scratch is separate from block payload custody.
+        const inputs = await this.readRecords('fragment-link', stableIds, stableIds.length * 1024, signal);
+        const links = inputs.map((input, index) => this.validateLink(input, stableIds[index]!, planId, transactions[index]!.transactionId));
+        const values = await this.referenced(() => this.readRecords('fragment', links.map(link => link.fragmentId), maximumBytes, signal));
+        return links.map((link, index) => ({id: link.fragmentId, link,
+            fragment: this.validateFragment(values[index], link.fragmentId, transactions[index]!.transactionId, plan)}));
+    }
+
+    private async readFragment(planId: string, transactionId: string, plan: ActionHistoryBlockPlan,
+                               signal?: AbortSignal): Promise<{id: string; fragment: ActionHistoryTransactionFragment; link: FragmentLink}> {
+        const stableId = linkId(planId, transactionId);
+        const input: any = await this.read('fragment-link', stableId, signal);
+        const link = this.validateLink(input, stableId, planId, transactionId);
+        const value = await this.referenced(() => this.read('fragment', link.fragmentId, signal));
+        const fragment = this.validateFragment(value, link.fragmentId, transactionId, plan);
         return {id: link.fragmentId, fragment, link};
     }
 
@@ -209,15 +241,21 @@ export class ActionHistorySourceJournal {
         let effects = 0, bytes = Buffer.byteLength(actionHistoryImmutableJson({schemaVersion: 1, planId, fragments: []}));
         // Incomplete attempts only read: defer opportunistic repairs and their possible write errors
         // until the entire bounded membership is present. No seal or durable authority is granted.
-        // Sequential I/O bounds concurrency independently of transaction count; no persistent cache.
-        for (const transaction of plan.transactions) {
-            const value = await this.referenced(() => this.readFragment(planId, transaction.transactionId, plan, signal));
-            effects += value.fragment.effects.length;
-            bytes += Buffer.byteLength(actionHistoryImmutableJson(value.fragment)) + (fragments.length > 0 ? 1 : 0);
-            if (effects > actionHistoryManifestBounds.maximumEffects || bytes > actionHistoryManifestBounds.maximumBytes) {
-                invalid('Action source journal block exceeds bounded manifest membership');
+        // The default path stays sequential. Opted-in stages share document acquisition, never whole-record reads.
+        for (let offset = 0; offset < plan.transactions.length; offset += this.stagedReads ? 4 : 1) {
+            const transactions = plan.transactions.slice(offset, offset + (this.stagedReads ? 4 : 1));
+            const remaining = actionHistoryManifestBounds.maximumBytes - bytes - Math.max(0, transactions.length - (fragments.length ? 0 : 1));
+            if (this.stagedReads && remaining < 1) invalid('Action source journal block exceeds bounded manifest membership');
+            const values = this.stagedReads
+                ? await this.referenced(() => this.readFragments(planId, transactions, plan, remaining, signal))
+                : [await this.referenced(() => this.readFragment(planId, transactions[0]!.transactionId, plan, signal))];
+            for (const value of values) {
+                effects += value.fragment.effects.length;
+                bytes += Buffer.byteLength(actionHistoryImmutableJson(value.fragment)) + (fragments.length > 0 ? 1 : 0);
+                if (effects > actionHistoryManifestBounds.maximumEffects || bytes > actionHistoryManifestBounds.maximumBytes)
+                    invalid('Action source journal block exceeds bounded manifest membership');
+                fragments.push(value.fragment);
             }
-            fragments.push(value.fragment);
         }
         const manifest = assembleActionHistoryManifest(plan, fragments), id = actionHistoryManifestId(manifest, plan);
         // The complete candidate still needs fresh receipts for every reference, in publication order.
@@ -256,12 +294,17 @@ export class ActionHistorySourceJournal {
             if (actionHistoryManifestId(manifest, plan) !== seal.manifestId) invalid('Action source journal manifest identity mismatch');
             return manifest;
         });
-        for (const expected of manifest.fragments) {
-            const value = await this.referenced(() => this.readFragment(planId, expected.transactionId, plan, signal));
-            if (value.id !== actionHistoryFragmentId(expected, plan)) {
-                throw new ActionHistorySourceJournalReadError('invalid', 'fragment-link', linkId(planId, expected.transactionId),
+        for (let offset = 0; offset < manifest.fragments.length; offset += this.stagedReads ? 4 : 1) {
+            const expected = manifest.fragments.slice(offset, offset + (this.stagedReads ? 4 : 1));
+            const maximumBytes = this.stagedReads
+                ? expected.reduce((total, fragment) => total + Buffer.byteLength(actionHistoryImmutableJson(fragment)), 0) : 1;
+            const transactions = expected;
+            const values = this.stagedReads
+                ? await this.referenced(() => this.readFragments(planId, transactions, plan, maximumBytes, signal))
+                : [await this.referenced(() => this.readFragment(planId, expected[0]!.transactionId, plan, signal))];
+            for (const [index, value] of values.entries()) if (value.id !== actionHistoryFragmentId(expected[index]!, plan))
+                throw new ActionHistorySourceJournalReadError('invalid', 'fragment-link', linkId(planId, expected[index]!.transactionId),
                     'Action source journal manifest and fragment link disagree');
-            }
         }
         signal?.throwIfAborted();
         return {id: seal.manifestId, manifest};

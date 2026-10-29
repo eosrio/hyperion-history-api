@@ -10,7 +10,8 @@ export function withControlledHintChild(client) {
             async request(params, transportOptions) {
                 const parts = params.path.slice(1).split('/').map(decodeURIComponent);
                 if (params.method !== 'POST' || parts[1] !== '_mget') throw new Error('Unexpected controlled child request');
-                const reply = await client.mget({index: parts[0], ...JSON.parse(params.body)}, transportOptions);
+                const query = new URLSearchParams(params.querystring);
+                const reply = await client.mget({index: parts[0], ...JSON.parse(params.body), _source: query.get('_source') === 'true'}, transportOptions);
                 return reply?.body instanceof Readable ? reply : {statusCode: 200,
                     headers: {'content-type': 'application/json', 'x-elastic-product': 'Elasticsearch'},
                     body: Readable.from([Buffer.from(JSON.stringify(reply))])};
@@ -79,7 +80,8 @@ export function frontierMemoryClient(replicas=0) {
             if(!mappings.has(request.index))throw missingIndex(request.index);
             const docs=request.ids.map(id=>{
                 const stored=documents.get(key(request.index,id));
-                return stored?{_index:request.index,_id:id,found:true,_seq_no:stored.seq,_primary_term:stored.primaryTerm}
+                return stored?{_index:request.index,_id:id,found:true,_seq_no:stored.seq,_primary_term:stored.primaryTerm,
+                    ...(request._source === true ? {_source:structuredClone(stored.document)} : {})}
                     :{_index:request.index,_id:id,found:false};
             });
             const result=await (faults.mget?.({docs},request,options)??{docs});
