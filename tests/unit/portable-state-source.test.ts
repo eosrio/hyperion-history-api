@@ -1,12 +1,20 @@
 import {expect, test} from 'bun:test';
 import {readFileSync} from 'node:fs';
-import {createHash} from 'node:crypto';
 import {loadChainProtocol} from '../../src/indexer/protocol/selection.js';
-import {ProtocolAbiCoordinator} from '../../src/indexer/protocol/abi-coordinator.js';
+import {ProtocolAbiProofReader} from '../../src/indexer/protocol/abi-proof.js';
 import {ProtocolAbiFrontierStore} from '../../src/indexer/protocol/abi-frontier-store.js';
-import {ProtocolAbiObservationStore} from '../../src/indexer/protocol/abi-observation-store.js';
-import {ProtocolSourceBindingStore} from '../../src/indexer/protocol/source-bindings.js';
 import {PortableProjectionSource} from '../../src/indexer/projection/source.js';
+import {captureStatefulDeclaration} from '@eosrio/hyperion-sdk/projection-stateful';
+import {captureStatefulOwnerDeclarationV2, negotiateStatefulOwnerV2, STATEFUL_OWNER_FAMILY_V2,
+    STATEFUL_OWNER_HOST_CAPABILITIES_V2} from '@eosrio/hyperion-sdk/projection-stateful-owner-v2';
+import {statefulAbiEpoch} from '../../src/indexer/projection/stateful-abi-epoch.js';
+import {StatefulProjectionControllerV2} from '../../src/indexer/projection/stateful-controller.js';
+import {createStatefulCandidateCustodyV2} from '../../src/indexer/projection/stateful-custody.js';
+import {composeStatefulOwnerReadV2} from '@eosrio/hyperion-sdk/projection-stateful-owner-v2';
+// @ts-ignore Native commands use the existing storage transport fixture, not a physical service.
+import {configured as configuredOwner, v1 as backendStateful} from '../../packages/backend-mongodb/tests/stateful-owner-v2-fixture.mjs';
+// @ts-ignore Shared native adapter declaration fixture; no physical database is opened.
+import {definition as statefulDefinition, limits as statefulLimits} from '../../packages/backend-mongodb/tests/stateful-fixture.mjs';
 import type {ProjectionAdapter, ProjectionDefinition} from '@eosrio/hyperion-sdk/projection';
 import {resolvePortableStateConfiguration} from '../../src/indexer/projection/config.js';
 import {createPortableStateReadGate} from '../../src/indexer/projection/production.js';
@@ -16,99 +24,11 @@ import {admissionReason, projectionFailureApi, projectionFailureFixture} from '.
 // @ts-ignore This shared transport fixture is deliberately not a database or production authority.
 import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
 
-const hash = (bytes: Uint8Array | string) => createHash('sha256').update(bytes).digest('hex');
-const read = (name: string) => readFileSync(new URL('./fixtures/wire-native-genesis/' + name, import.meta.url));
-const original = read('ship-preflight-20261020.json'), forward = read('receipt-forward-2-4-20261020.json');
-expect(hash(original)).toBe('b8edf652dd0ad265917bf0111ca48789ec7a3f1976f2113783202cc3dd38acb4');
-expect(hash(forward)).toBe('38d75b7a1ba28e3abd77512854f963e7723631d6837df73bd7aeff656cc8a450');
-const capture = JSON.parse(original.toString()), follow = JSON.parse(forward.toString());
-const schemaJson = Buffer.from(capture.schema.base64, 'base64').toString('utf8');
-const frames = [capture.messages.find((entry: any) => entry.kind === 'block1'),
-    ...follow.messages.filter((entry: any) => entry.kind === 'block')].map((entry: any) => {
-    const frame = Buffer.from(entry.response.base64, 'base64'); expect(hash(frame)).toBe(entry.response.sha256); return frame;
-});
+import {prepared, preparedStatefulInputs, hash, read, original, forward, capture, follow, schemaJson, frames} from './portable-state-source-fixture.mjs';
+
 const definition: ProjectionDefinition = {schemaVersion: 1, id: 'future-items', mappingRevision: 'a'.repeat(64),
     source: {contract: 'items', table: 'items', abiDeployment: 'future-deployment', abiSha256: 'b'.repeat(64)},
     fields: [{name: 'owner', path: ['owner'], type: 'string'}], initialization: {kind: 'genesis'}};
-
-/** Actual retained bytes and production source/coordinator methods; broker/ES transport is a component fixture. */
-async function prepared(constructedEpochs: Record<number, {abiHex: string; present?: boolean; publish?: boolean}> = {}, initialThrough = 4) {
-    const selected = await loadChainProtocol({provider: 'extension', package: '@eosrio/hyperion-wire-plugin', profileId: capture.profileId});
-    const profile = {id: selected.id, profileId: selected.provider.profileId, components: selected.components!};
-    const memory = frontierMemoryClient(), chain = 'portable-source-fixture';
-    const store = new ProtocolAbiFrontierStore(memory.client, chain), bindings = new ProtocolSourceBindingStore(memory.client, chain);
-    const observations = new ProtocolAbiObservationStore(memory.client, chain);
-    const coordinator = new ProtocolAbiCoordinator({chainId: capture.chainId, profile, ownerId: 'fixture-owner', store, bindings, observations,
-        verifyNativeGenesis: selected.provider.verifyNativeGenesis?.bind(selected.provider)});
-    await coordinator.start();
-    const contextId = (await bindings.prepareContext({schemaVersion: 1, chainId: capture.chainId, protocol: profile, schemaJson})).id;
-    const {generation} = await coordinator.openSource(contextId, 'fixture-source');
-    const schema = JSON.parse(schemaJson);
-    const positions: any[] = [], observed: string[] = [];
-    async function advance(through: number) {
-        const session = selected.provider.createShipSession(JSON.parse(schemaJson));
-        try {
-            const nativeDeltas: any = session.decodeDeltas(Buffer.from((session.decodeResult(frames[0]) as any)[1].deltas, 'hex'));
-            const nativeAbiHex = (session.decodeRow('account', Buffer.from(nativeDeltas[0][1].rows[0].data, 'hex')) as any)[1].abi;
-            const nativeAbi = selected.provider.contractCodec.decodeAbi(Buffer.from(nativeAbiHex, 'hex'));
-            for (const frame of frames.slice(positions.length, through)) {
-                const decoded: any = session.decodeResult(frame), result: any = decoded[1];
-                const source = {chainId: capture.chainId, blockNum: Number(result.this_block.block_num), blockId: result.this_block.block_id,
-                    previousBlockId: result.prev_block?.block_id ?? null};
-                const epoch = constructedEpochs[source.blockNum];
-                if (epoch) {
-                    // Explicit constructed journal cases. Raw account/action sections are encoded with the production
-                    // codec and facts are extracted by the actual observer; these are not additional captured blocks.
-                    const account = ['account_v0', {name: 'target', creation_date: '2025-01-01T00:00:00.000', abi: epoch.abiHex}];
-                    const raw = selected.provider.contractCodec.encodeValue(schema, 'account', account);
-                    result.deltas = Buffer.from(selected.provider.contractCodec.encodeValue(schema, 'table_delta[]',
-                        [['table_delta_v0', {name: 'account', rows: [{present: epoch.present === false ? 0 : 1, data: Buffer.from(raw).toString('hex')}]}]])).toString('hex');
-                    if (epoch.publish) {
-                        const traces: any = session.decodeTraces(Buffer.from(result.traces, 'hex'));
-                        const action = traces[0][1].action_traces[0][1];
-                        action.act.name = 'setabi'; action.act.data = Buffer.from(selected.provider.contractCodec.encodeValue(nativeAbi,
-                            'setabi', {account: 'target', abi: epoch.abiHex})).toString('hex');
-                        result.traces = Buffer.from(selected.provider.contractCodec.encodeValue(schema, 'transaction_trace[]', traces)).toString('hex');
-                    }
-                }
-                const sourceFrame = epoch ? selected.provider.contractCodec.encodeValue(schema, 'result', decoded) : frame;
-                const sections = {kind: 'unattested-ship-result-sections-v1' as const, schemaJson,
-                    blockHex: result.block, tracesHex: result.traces, deltasHex: result.deltas};
-                const {protocolAbiCaptureDigest} = await import('../../src/indexer/protocol/abi-observation-store.js');
-                const captureSha256 = protocolAbiCaptureDigest(source, sections);
-                const selectionId = (await bindings.prepareSelection({schemaVersion: 1, contextId, readerSessionId: 'fixture-source',
-                    readerRole: 'live', assignmentId: null, source, frameSha256: hash(sourceFrame), captureSha256,
-                    head: {blockNum: Number(result.head.block_num), blockId: result.head.block_id},
-                    irreversible: {blockNum: Number(result.last_irreversible.block_num), blockId: result.last_irreversible.block_id}})).id;
-                let observation: any;
-                if (source.blockNum === 1) observation = {status: 'native-genesis', facts: selected.provider.verifyNativeGenesis!({schemaJson,
-                    block: Buffer.from(result.block, 'hex'), traces: null, deltas: Buffer.from(result.deltas, 'hex')}, source)};
-                else {
-                    const deltas: any = session.decodeDeltas(Buffer.from(result.deltas, 'hex')), rows: any[] = [];
-                    let ordinal = 0;
-                    for (const [, delta] of deltas) for (const row of delta.rows) {
-                        if (delta.name === 'account') {
-                            const raw = Buffer.from(row.data, 'hex');
-                            rows.push({ordinal, present: row.present === 1, raw, value: session.decodeRow('account', raw)});
-                        }
-                        ordinal++;
-                    }
-                    observation = {status: 'observed', facts: selected.provider.observeBlockAbi!({
-                        traces: session.decodeTraces(Buffer.from(result.traces, 'hex')), accountRows: rows}, source)};
-                }
-                const receipt = await observations.prepare({schemaVersion: 1, protocol: profile,
-                    source: {...source, inputSha256: captureSha256}, capture: sections, observation});
-                await bindings.prepareObservationLink({schemaVersion: 1, selectionId, observationId: receipt.id, observationDigest: receipt.digest});
-                await coordinator.admit(selectionId, generation); await coordinator.drain();
-                positions.push(source); observed.push(receipt.id);
-            }
-        } finally {session.close?.();}
-    }
-    await advance(initialThrough);
-    const options = {client: memory.client, chain, chainId: capture.chainId, profile, provider: selected.provider};
-    memory.calls.length = 0;
-    return {memory, options, coordinator, positions, observed, advance, source: new PortableProjectionSource(options)};
-}
 
 const observations = JSON.parse(readFileSync(new URL('../../node_modules/@eosrio/hyperion-wire-plugin/fixtures/abi-observations/vectors.json', import.meta.url), 'utf8'));
 const sample = observations.vectors.find((entry: any) => entry.profileId === capture.profileId && entry.expected?.deployments.length > 1);
@@ -149,6 +69,101 @@ test('original-block seam retains complete unfiltered captured sections and actu
             blockHex: result.block, tracesHex: result.traces, deltasHex: result.deltas});
     } finally {session.close?.();}
     expect(p.memory.calls.some((call: any) => ['createIndex', 'create', 'index'].includes(call.method))).toBe(false);
+});
+
+test('stateful-v2 source consumes retained native genesis and full original vectors with the sealed Wire table port', async () => {
+    const p = await prepared();
+    expect(p.options.provider.statefulTables?.interfaceVersion).toBe(2);
+    const definition = statefulDefinition();
+    definition.binding.chainId = capture.chainId;
+    definition.selectors = [{id: 'future-items', kind: 'table', contract: 'items', name: 'items',
+        abiDeployment: 'future-deployment', abiSha256: 'b'.repeat(64)}];
+    const d = await captureStatefulOwnerDeclarationV2(await captureStatefulDeclaration(definition, statefulLimits()), 2);
+    const admitted: number[] = [];
+    for (let height = 1; height <= 4; height++) {
+        const selected = await p.source.statefulBlock(height, d, async target => {admitted.push(target.block.blockNum);});
+        expect(selected.source.source.block).toMatchObject({blockNum: height, blockId: p.positions[height - 1].blockId});
+        expect(selected.source.source.block.timeMs).toMatch(/^[0-9]+$/);
+        expect(selected.source.source.inputs).toEqual([]);
+        expect(selected.evidence.observationId).toBe(p.observed[height - 1]);
+        await p.source.revalidate(selected.proof);
+    }
+    expect(admitted).toEqual([1, 2, 3, 4]);
+    expect(p.memory.calls.some((call: any) => ['createIndex', 'create', 'index'].includes(call.method))).toBe(false);
+});
+
+test('constructed selected action and block-end KV rows retain real epoch, coordinates, bytes and absent scope', async () => {
+    const {p, value, rawValue} = await preparedStatefulInputs();
+    const reader = new ProtocolAbiProofReader({chainId: capture.chainId, profile: p.options.profile,
+        store: new ProtocolAbiFrontierStore(p.options.client, p.options.chain, 0, {readOnly: true})});
+    const proof = await reader.open(p.positions[2]), epoch = statefulAbiEpoch(await reader.finalState(proof, 'target'));
+    const definition = statefulDefinition(); definition.binding.chainId = capture.chainId;
+    definition.selectors = [{id: 'update', kind: 'action', contract: 'target', name: 'update', abiDeployment: epoch.id, abiSha256: epoch.abiSha256},
+        {id: 'records', kind: 'table', contract: 'target', name: 'records', abiDeployment: epoch.id, abiSha256: epoch.abiSha256}];
+    const d = await captureStatefulOwnerDeclarationV2(await captureStatefulDeclaration(definition, statefulLimits()), 2);
+    const result = await p.source.statefulBlock(3, d, async () => {}), inputs = result.source.source.inputs;
+    expect(inputs.map(value => value.kind)).toEqual(['action', 'table', 'table', 'table']);
+    expect(inputs[0]).toMatchObject({data: value, rawHex: rawValue, receiptOrdinal: 0, actionOrdinal: 1, abiDeployment: epoch.id});
+    expect(inputs[1]).toMatchObject({identity: {kind: 'kv-primary', tableId: 0, keyHex: '000001'}, payer: 'payer', data: value,
+        deltaOrdinal: 0, rowOrdinal: 0, present: true});
+    expect(inputs[2]).toMatchObject({identity: {kind: 'kv-primary', tableId: 0, keyHex: '000001'}, data: null,
+        deltaOrdinal: 0, rowOrdinal: 1, present: false});
+    expect(inputs[3]).toMatchObject({identity: {kind: 'kv-secondary', tableId: 65535, secondaryKeyHex: '0000', primaryKeyHex: '000001'},
+        payer: 'otherpayer', data: null, deltaOrdinal: 1, rowOrdinal: 0});
+    for (const input of inputs.filter(value => value.kind === 'table')) expect(Object.hasOwn(input.identity, 'scope')).toBe(false);
+    expect((await p.source.statefulBlock(3, d, async () => {})).source.digest).toBe(result.source.digest);
+    await p.source.assertStatefulView(result.proof, d);
+    await expect(p.source.statefulBlock(3, await captureStatefulOwnerDeclarationV2(await captureStatefulDeclaration({...definition,
+        selectors: definition.selectors.map((value: any) => ({...value, abiDeployment: 'earlier-epoch'}))}, statefulLimits()), 2), async () => {})).rejects.toThrow('epoch');
+});
+
+test('actual source/owner loop repairs apply-before-retire with immutable custody and a fresh owner without reducer rerun', async () => {
+    const p = await prepared({2: {abiHex: abiA}}), reader = new ProtocolAbiProofReader({chainId: capture.chainId,
+        profile: p.options.profile, store: new ProtocolAbiFrontierStore(p.options.client, p.options.chain, 0, {readOnly: true})});
+    const proof = await reader.open(p.positions[3]), epoch = statefulAbiEpoch(await reader.finalState(proof, 'target'));
+    const definition = statefulDefinition(); definition.binding.chainId = capture.chainId;
+    definition.selectors = [{id: 'target-table', kind: 'table', contract: 'target', name: 'table',
+        abiDeployment: epoch.id, abiSha256: epoch.abiSha256}];
+    const projection = await captureStatefulDeclaration(definition, statefulLimits());
+    const native = await configuredOwner(undefined, {projection: await backendStateful.captureStatefulDeclaration(definition, statefulLimits())});
+    // Host and backend deliberately have independent installed SDK module identities.
+    const declaration = await negotiateStatefulOwnerV2(projection, {family: STATEFUL_OWNER_FAMILY_V2,
+        interfaceVersion: 2, sourceInputVersions: [2], supported: STATEFUL_OWNER_HOST_CAPABILITIES_V2, limits: projection.limits}, native.adapter.capabilities);
+    const custody = createStatefulCandidateCustodyV2(p.options.client, p.options.chain, 0, declaration);
+    let reductions = 0, refuseRetire = false;
+    const adapter = new Proxy(native.adapter, {get(target, key) {
+        if (key === 'retireRaw') return async (...args: any[]) => {
+            if (refuseRetire) {refuseRetire = false; throw new Error('constructed interruption after committed domain write');}
+            return target.retireRaw(...args);
+        };
+        const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value;
+    }});
+    const options = {declaration, adapter, source: p.source, custody, assertActive() {}, requireAttemptScope: false,
+        run: async (_metadata: unknown, operation: () => Promise<boolean>) => operation(), maximumFramesPerDrain: 1,
+        reduce: async (port: any) => {reductions++; port.put('collection', 'last', {height: port.source.block.blockNum});}};
+    const first = new StatefulProjectionControllerV2({...options, identity: {id: 'component-owner', generation: 'one'}});
+    await first.drain(); await first.drain();
+    const before = await native.adapter.recovery(); expect(before.view.checkpoint.blockNum).toBe(2);
+    await first.attest({declarationDigest: declaration.digest, owner: before.owner, view: before.view});
+    refuseRetire = true; await first.drain();
+    const interrupted = await native.adapter.recovery();
+    expect(interrupted.view.checkpoint.blockNum).toBe(3); expect(interrupted.raw).not.toBeNull(); expect(interrupted.gap).not.toBeNull();
+    expect(reductions).toBe(3);
+    await expect(first.attest({declarationDigest: declaration.digest, owner: interrupted.owner, view: interrupted.view})).rejects.toThrow();
+    await first.stop();
+    const second = new StatefulProjectionControllerV2({...options, identity: {id: 'component-owner', generation: 'two'}});
+    await expect(second.attest({declarationDigest: declaration.digest, owner: interrupted.owner, view: interrupted.view})).rejects.toThrow();
+    await second.drain(); const recovered = await native.adapter.recovery();
+    expect(recovered.view.checkpoint.blockNum).toBe(3); expect(recovered.raw).toBeNull(); expect(recovered.gap).toBeNull();
+    expect(recovered.owner.identity.generation).toBe('two'); expect(reductions).toBe(3);
+    const expected = {declarationDigest: declaration.digest, owner: recovered.owner, view: recovered.view};
+    await second.attest(expected);
+    const response = await composeStatefulOwnerReadV2(declaration, native.adapter, recovered.owner.identity, recovered.view,
+        async port => ({row: (await port.get('collection', 'last'))}), () => {});
+    expect(response.value.row).toEqual({status: 'present', value: {height: 3}});
+    await second.drain(); expect((await native.adapter.recovery()).view.checkpoint.blockNum).toBe(4); expect(reductions).toBe(4);
+    await expect(second.attest(expected)).rejects.toThrow();
+    await second.stop();
 });
 
 test('raw target is admitted before a missing retained selection fails without placeholder capture hashes', async () => {
