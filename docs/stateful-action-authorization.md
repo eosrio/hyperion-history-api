@@ -27,3 +27,17 @@ projection requirement fields. Compatibility with the genuine old f450 Atomic pa
 is tested separately using its hash-bound installed artifact; an arbitrary stub is insufficient.
 No v1 capture, owner/storage namespace, recovery budget or serving grant changes in this slice.
 A compatible new plugin declaration/generation and qualified replay remain activation gates.
+
+## Exact engineering dependency profiles
+
+The SDK41 consumer candidate uses `stateful-owner-v2-dd85ee5-18d235e-engineering` in
+current native CI. The legacy Wire716 CI graph explicitly selects
+`stateful-owner-v2-dd85ee5-7167659-engineering`. These names bind root and native receiving
+SDK dd85, the exact Git-LF native package metadata and both emitted inventories; Wire's
+own SDK stays58d for18d or339 for716. They grant no default distribution or launch authority.
+The original `stateful-owner-v2-18d235e-engineering` and default716 profiles retain their
+original58d root/native predicates and refuse the new SDK package. Their original control
+source is preserved; no name is remapped and no generic allowed-hash fallback is added.
+The preceding dc041 packet and360-second full-suite collector refusal remain historical,
+with its same original Bun process observed separately. No second full suite is launched
+for this profile correction; exact successor CI and focused native controls are separate gates.
