@@ -1,0 +1,91 @@
+{
+  "indexer": {
+    "enabled": true,
+    "start_on": 1,
+    "stop_on": 0,
+    "rewrite": false,
+    "purge_queues": false,
+    "live_reader": true,
+    "live_only_mode": false,
+    "fetch_block": true,
+    "fetch_traces": true,
+    "fetch_deltas": true,
+    "process_deltas": true,
+    "disable_reading": false,
+    "disable_indexing": false
+  },
+  "settings": {
+    "chain": "wire-managed-v2-private",
+    "parser": "3.2",
+    "eosio_alias": "sysio",
+    "system_contract": "sysio",
+    "index_version": "v1",
+    "es_replicas": 1,
+    "protocol": {
+      "provider": "extension",
+      "package": "@eosrio/hyperion-wire-plugin",
+      "profileId": "wire-sysio-6508c9e8-native-engineering-v1"
+    }
+  },
+  "features": {
+    "stateful_owner_v2": {
+      "interfaceVersion": 2,
+      "sourceInputVersion": 2,
+      "backend": {
+        "kind": "mongodb",
+        "id": "wire-managed-v2-private",
+        "database": "h45_wire_managed_v2_private"
+      },
+      "recovery": {
+        "bytes": 67108864,
+        "blocks": 256,
+        "maxBlockBytes": 8388608,
+        "receipts": 256
+      },
+      "api": {
+        "timeoutMs": 5000,
+        "maximumPendingProbes": 32
+      },
+      "generation": "wire-managed-v2-new-case-required"
+    }
+  },
+  "plugins": {
+    "wire-managed-state": {
+      "enabled": true,
+      "qualificationOnly": true,
+      "limits": {
+        "value": {
+          "depth": 32,
+          "nodes": 10000,
+          "fields": 64,
+          "arrayElements": 512,
+          "stringBytes": 65536,
+          "recordBytes": 262144,
+          "integerFields": 8,
+          "pathSegments": 16
+        },
+        "envelope": {
+          "depth": 48,
+          "nodes": 100000,
+          "fields": 64,
+          "arrayElements": 2048,
+          "stringBytes": 2097152,
+          "recordBytes": 4194304,
+          "integerFields": 8,
+          "pathSegments": 16
+        },
+        "selectors": 8,
+        "recordKinds": 8,
+        "inputOccurrences": 512,
+        "inputBytes": 1048576,
+        "keyBytes": 1024,
+        "readKeys": 32,
+        "readAttempts": 128,
+        "mutations": 512,
+        "candidateBytes": 4194304,
+        "responseRecords": 32,
+        "responseBytes": 4194304
+      }
+    }
+  }
+}
