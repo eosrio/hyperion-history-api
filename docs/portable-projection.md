@@ -167,3 +167,26 @@ portable runtime, MongoDB adapter and real HTTP API, including controlled write
 failure and projection isolation checks. Its source fixture and instructions do
 not establish a successful run; record exact runtime results separately from
 fork, crash, Bun and broader release qualification.
+
+## Original mixed-input source boundary
+
+For the mixed action/table owner tracked in [#366](https://github.com/eosrio/hyperion-history-api/issues/366)
+and [#382](https://github.com/eosrio/hyperion-history-api/issues/382), the internal
+`PortableProjectionSource.originalBlock` method first resolves an actual canonical
+target and admits its certified commit, selection and observation references. That
+callback completes before any retained selection/capture body is loaded. A missing
+capture therefore leaves an exact original reference for recovery without invented
+decoded data, timestamps or capture hashes. A callback failure or unknown outcome
+stops further source reads. The original worker attempt owns the actual callback
+promise: fencing prevents a new callback and physical drain waits for an already
+started callback to settle.
+
+After admission, the existing source graph verifies the retained selection,
+observation, capture hashes and configured protocol profile, then revalidates the
+issued canonical proof. The returned internal packet retains complete original
+sections before contract/history filtering. It supplies neither decoded plugin
+inputs nor a serving grant. Existing scalar frames keep their definition checks
+and decoding path. Durable raw-target storage, complete mixed selector decoding,
+the production mixed owner, scope-less Wire KV input negotiation and domain HTTP
+readiness remain required integration work; these source controls do not establish
+any of those acceptance results.

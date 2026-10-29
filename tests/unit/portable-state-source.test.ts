@@ -132,6 +132,57 @@ test('real6508 original native1 and contiguous2..4 materialize complete empty fr
     expect(p.memory.calls.some((call: any) => ['createIndex', 'create', 'index'].includes(call.method))).toBe(false);
 });
 
+test('original-block seam retains complete unfiltered captured sections and actual certified references', async () => {
+    const p = await prepared(), admitted: any[] = [];
+    const packet = await p.source.originalBlock(2, async target => {admitted.push(target);});
+    expect(admitted).toHaveLength(1);
+    expect(admitted[0]).toEqual({block: {blockNum: 2, blockId: p.positions[1].blockId,
+        previousBlockId: p.positions[0].blockId}, reference: {commitId: packet.proof.commitId,
+        selectionId: packet.proof.selectionId, observationId: p.observed[1], observationDigest: packet.evidence.observationDigest}});
+    expect(Object.isFrozen(admitted[0].reference)).toBe(true);
+    expect(Object.keys(admitted[0].reference).sort()).toEqual(['commitId', 'observationDigest', 'observationId', 'selectionId']);
+    expect(packet.evidence.frameSha256).toBe(hash(frames[1]));
+    const session = p.options.provider.createShipSession(JSON.parse(schemaJson));
+    try {
+        const result: any = (session.decodeResult(frames[1]) as any)[1];
+        expect(packet.observation.capture).toEqual({kind: 'unattested-ship-result-sections-v1', schemaJson,
+            blockHex: result.block, tracesHex: result.traces, deltasHex: result.deltas});
+    } finally {session.close?.();}
+    expect(p.memory.calls.some((call: any) => ['createIndex', 'create', 'index'].includes(call.method))).toBe(false);
+});
+
+test('raw target is admitted before a missing retained selection fails without placeholder capture hashes', async () => {
+    const p = await prepared(), admitted: any[] = [];
+    await expect(p.source.originalBlock(2, async target => {
+        admitted.push(target);
+        for (const [key, entry] of p.memory.documents)
+            if ((entry as any).document.bundle_id === target.reference.selectionId) p.memory.documents.delete(key);
+    })).rejects.toThrow();
+    expect(admitted).toHaveLength(1);
+    expect(admitted[0].block.blockNum).toBe(2);
+    expect(admitted[0].reference.observationId).toBe(p.observed[1]);
+    expect(Object.hasOwn(admitted[0].reference, 'captureSha256')).toBe(false);
+    expect(Object.hasOwn(admitted[0].reference, 'frameSha256')).toBe(false);
+    expect(p.memory.calls.some((call: any) => ['createIndex', 'create', 'index'].includes(call.method))).toBe(false);
+});
+
+test('unknown raw admission outcome prevents capture reads and preserves the original failure', async () => {
+    const p = await prepared(), unknown = new Error('raw admission acknowledgement unknown');
+    let atAdmission = -1;
+    await expect(p.source.originalBlock(2, async () => {
+        atAdmission = p.memory.calls.length; throw unknown;
+    })).rejects.toBe(unknown);
+    expect(atAdmission).toBeGreaterThan(0);
+    expect(p.memory.calls.length).toBe(atAdmission);
+});
+
+test('raw original-block packet cannot return after its source owner is revoked during admission', async () => {
+    const p = await prepared();
+    await expect(p.source.originalBlock(2, async () => {
+        await p.coordinator.revokeSource('fixture-source');
+    })).rejects.toMatchObject({code: 'projection_source_unavailable'});
+});
+
 test('missing retained original input cannot certify an empty block and carries its actual incomplete target', async () => {
     const p = await prepared();
     for (const [key, entry] of p.memory.documents) if ((entry as any).document.bundle_id === p.observed[1]) p.memory.documents.delete(key);
