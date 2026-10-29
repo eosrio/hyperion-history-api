@@ -34,6 +34,10 @@ jobs:
           test "$(bun -p process.versions.typescript)" = "$(node -p 'require("./package.json").dependencies.typescript')"
       - run: npm run typecheck
       - run: npm run build
+      - name: Check mixed stateful source and final publication on Node ${{ matrix.node-version }}
+        run: |
+          node tests/unit/portable-state-owner-v2.mjs
+          node tests/unit/stateful-host-native.mjs
       - name: Check stream request lifecycle on Node ${{ matrix.node-version }}
         run: node --test tests/native/stream-request-lifecycle.test.mjs tests/native/stream-history-delivery.test.mjs
       - name: Check history/live stream filters and selectors on Node ${{ matrix.node-version }}

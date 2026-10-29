@@ -37,6 +37,23 @@ it('authenticates the exact physical owner and ends only after its held root fin
     expect(supervisor.snapshot().active).toBe(0); first.client.dispose(); replacement.client.dispose();
 });
 
+it('master request ownership rejects unregistered, wrong-role, fenced and retired physical workers', async () => {
+    const supervisor = new WorkerAttemptSupervisor(), owner = connection(supervisor);
+    expect(supervisor.ownsActiveWorker(owner.physical, 'deserializer')).toBe(false);
+    let announce!: () => void, release!: () => void;
+    const entered = new Promise<void>(resolve => {announce = resolve;}), held = new Promise<void>(resolve => {release = resolve;});
+    const work = owner.client.run(owner.client.capture(descriptor()), async () => {announce(); await held;});
+    await entered;
+    expect(supervisor.ownsActiveWorker(owner.physical, 'deserializer')).toBe(true);
+    expect(supervisor.ownsActiveWorker(owner.physical, 'projection')).toBe(false);
+    expect(supervisor.ownsActiveWorker({...owner.physical}, 'deserializer')).toBe(false);
+    supervisor.fenceActive(); expect(supervisor.ownsActiveWorker(owner.physical, 'deserializer')).toBe(false);
+    release(); await work;
+    expect(supervisor.ownsActiveWorker(owner.physical, 'deserializer')).toBe(true);
+    supervisor.retire(owner.physical); expect(supervisor.ownsActiveWorker(owner.physical, 'deserializer')).toBe(false);
+    supervisor.observeExit(owner.physical); owner.client.dispose();
+});
+
 it('keeps controlled local scopes explicitly without a master accepted end', async () => {
     const client = createControlledLocalAttemptClient('deserializer'), handle = client.capture(descriptor());
     await client.run(handle, () => 7);

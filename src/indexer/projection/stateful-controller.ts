@@ -22,6 +22,8 @@ export interface StatefulOwnerExpectation {
     readonly owner: NonNullable<StatefulOwnerRecoveryV2['owner']>;
     readonly view: StatefulView;
 }
+export const statefulOwnerExpectationDigest = (expected: StatefulOwnerExpectation): string => hash([
+    'hyperion-stateful-owner-request-v2', expected.declarationDigest, expected.owner, expected.view]);
 interface OwnerOptions {
     readonly declaration: StatefulOwnerDeclarationV2;
     readonly adapter: StatefulOwnerAdapterV2;
@@ -46,6 +48,7 @@ export class StatefulProjectionControllerV2 {
     private reconciled = false;
     private failed = false;
     private admitting = false;
+    private observedTarget?: string;
     constructor(private readonly options: OwnerOptions) {
         requireOwner(Number.isSafeInteger(options.maximumFramesPerDrain) && options.maximumFramesPerDrain > 0,
             'Stateful drain quantum is invalid');
@@ -56,7 +59,10 @@ export class StatefulProjectionControllerV2 {
         currentProofConsumerScope(this.options.requireAttemptScope)?.assertActive();
     };
     private async recovery(): Promise<StatefulOwnerRecoveryV2 | null> {
-        this.guard(); const value = await this.options.adapter.recovery(); this.guard(); return value;
+        this.guard(); const value = await this.options.adapter.recovery(); this.guard();
+        this.observedTarget = value?.owner && same(value.owner.identity, this.options.identity) ? statefulOwnerExpectationDigest({
+            declarationDigest: this.options.declaration.digest, owner: value.owner, view: value.view}) : undefined;
+        return value;
     }
     private async claim(recovery: StatefulOwnerRecoveryV2 | null): Promise<StatefulOwnerRecoveryV2> {
         this.guard();
@@ -118,6 +124,7 @@ export class StatefulProjectionControllerV2 {
         await this.options.adapter.admitRaw(this.lease!, captured); this.guard(); this.admitting = false; return captured;
     }
     private async step(): Promise<boolean> {
+        const scope = currentProofConsumerScope(this.options.requireAttemptScope);
         let admitted: CapturedRawStatefulTargetV2 | undefined;
         let decodedDigest: string | undefined;
         try {
@@ -144,20 +151,25 @@ export class StatefulProjectionControllerV2 {
                 'Applied source lacks its exact original candidate receipt');
             await this.options.adapter.retireRaw(this.lease!, admitted.digest, selected.source.digest, receipt.candidateDigest);
             await this.options.source.revalidate(selected.proof); this.guard();
+            await this.recovery();
             this.reconciled = true; this.failed = false; return true;
         } catch (error) {
             this.failed = true; this.reconciled = false;
+            const assertFailureActive = () => {if (scope?.signal.aborted) throw error; this.guard();};
+            assertFailureActive();
             // Unknown admission keeps this live gate closed. Cold takeover must inspect the durable slot.
             try {
-                this.guard(); const recovery = await this.recovery();
+                assertFailureActive(); const recovery = await this.recovery(); assertFailureActive();
                 if (admitted && recovery?.raw?.target.digest === admitted.digest && recovery.gap === null) {
                     const reason = (error instanceof Error ? error.message : String(error)).toWellFormed();
                     const bounded = reason.length && Buffer.byteLength(reason) <= this.options.declaration.projection.limits.keyBytes ? reason : 'failed';
                     if (decodedDigest && recovery.raw.sourceDigest === decodedDigest)
                         await this.options.adapter.markSourceFailure(this.lease!, admitted.digest, decodedDigest, bounded);
                     else await this.options.adapter.markRawFailure(this.lease!, admitted.digest, bounded);
+                    assertFailureActive();
                 }
-            } catch {} // Failed/unknown failure admission never reopens this controller's gate.
+            } catch {assertFailureActive();} // Unknown marking keeps the gate closed; an original fence still propagates.
+            assertFailureActive();
             try {this.options.onError?.(error);} catch {}
             return false;
         }
@@ -189,6 +201,16 @@ export class StatefulProjectionControllerV2 {
         requireOwner(this.reconciled && !this.failed && !this.admitting && settled?.owner && same(settled.owner, expected.owner)
             && same(settled.view, expected.view) && settled.gap === null
             && (!settled.rollback || settled.rollback.status === 'complete'), 'Owner/view changed during request probe');
+    }
+    async attestDigest(digest: string): Promise<boolean> {
+        // Dispatch hint only; a match still performs fresh native/source/lifetime checks below.
+        if (!/^[0-9a-f]{64}$/.test(digest) || this.observedTarget !== digest) return false;
+        this.guard();
+        const recovery = await this.recovery();
+        if (!recovery?.owner) return false;
+        const expected = {declarationDigest: this.options.declaration.digest, owner: recovery.owner, view: recovery.view};
+        if (statefulOwnerExpectationDigest(expected) !== digest) return false;
+        await this.attest(expected); return true;
     }
     async stop(): Promise<void> {this.stopped = true; this.reconciled = false; await this.current;}
 }

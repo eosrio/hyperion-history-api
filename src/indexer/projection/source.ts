@@ -3,6 +3,7 @@ import type {Client} from '@elastic/elasticsearch';
 import type {ProtocolProvider} from '@eosrio/hyperion-sdk/protocol';
 import type {StatefulOwnerDeclarationV2} from '@eosrio/hyperion-sdk/projection-stateful-owner-v2';
 import type {CapturedStatefulSourceV2} from '@eosrio/hyperion-sdk/projection-stateful-source-v2';
+import type {StatefulSelector} from '@eosrio/hyperion-sdk/projection-stateful';
 import {ProjectionContractError, type ProjectionBlock, type ProjectionCheckpoint, type ProjectionDefinition} from '@eosrio/hyperion-sdk/projection';
 import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
 import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, type ProtocolAbiProofView} from '../protocol/abi-proof.js';
@@ -101,6 +102,20 @@ export class PortableProjectionSource {
         const proof = await this.open({blockNum: control.head.blockNum, blockId: control.head.blockId});
         await this.revalidate(proof);
         return Object.freeze({blockNum: proof.source.blockNum, blockId: proof.source.blockId});
+    }
+    /** Resolve one immutable template version from an actual canonical view, never from operator ABI pins. */
+    async statefulSelectors(templates: readonly Omit<StatefulSelector, 'abiDeployment' | 'abiSha256'>[]): Promise<{
+        selectors: readonly StatefulSelector[]; proof: ProtocolAbiProofView}> {
+        const selected = JSON.parse(json(templates)) as typeof templates;
+        const proof = await this.open(await this.head()), epochs = new Map<string, ReturnType<typeof statefulAbiEpoch>>();
+        const selectors: StatefulSelector[] = [];
+        for (const template of selected) {
+            let epoch = epochs.get(template.contract);
+            if (!epoch) {epoch = statefulAbiEpoch(await this.reader.finalState(proof, template.contract)); epochs.set(template.contract, epoch);}
+            selectors.push(Object.freeze({...template, abiDeployment: epoch.id, abiSha256: epoch.abiSha256}));
+        }
+        await this.revalidate(proof);
+        return Object.freeze({selectors: Object.freeze(selectors), proof});
     }
     async revalidate(proof: ProtocolAbiProofView): Promise<void> {
         this.reader.assertConsumerScope(proof);
