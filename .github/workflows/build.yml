@@ -34,6 +34,8 @@ jobs:
           test "$(bun -p process.versions.typescript)" = "$(node -p 'require("./package.json").dependencies.typescript')"
       - run: npm run typecheck
       - run: npm run build
+      - name: Check Fastify request admission and state route compatibility on Node ${{ matrix.node-version }}
+        run: node --test --test-timeout=15000 tests/native/fastify-compatibility.test.mjs
       - name: Check stream request lifecycle on Node ${{ matrix.node-version }}
         run: node --test tests/native/stream-request-lifecycle.test.mjs tests/native/stream-history-delivery.test.mjs
       - name: Check history/live stream filters and selectors on Node ${{ matrix.node-version }}
