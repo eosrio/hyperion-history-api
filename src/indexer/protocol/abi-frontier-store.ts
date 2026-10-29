@@ -1,6 +1,9 @@
 import {createHash} from 'node:crypto';
 import type {Client} from '@elastic/elasticsearch';
 import {ImmutableProtocolBundleStore,ImmutableProtocolBundleReadError,protocolImmutableJson} from './immutable-bundle-store.js';
+import {historicalAddressId, historicalAddressIdentity, ProtocolAbiHistoricalAddressReadError,
+    type ProtocolAbiHistoricalAddress, type ProtocolAbiHistoricalAddressIdentity} from './abi-history.js';
+import type {ProtocolAbiHeadCertificate} from './abi-proof.js';
 
 export interface ProtocolAbiFrontierToken {seqNo:number;primaryTerm:number}
 export interface ProtocolAbiFrontierControl extends ProtocolAbiFrontierToken {value:unknown}
@@ -225,6 +228,63 @@ export class ProtocolAbiFrontierStore {
     certificateId(value:unknown):string {return this.id(this.envelope('certificate',value));}
     async prepareCertificate(value:unknown):Promise<{id:string;digest:string}> {return this.prepare('certificate',value);}
     async readCertificate(id:string,signal?:AbortSignal):Promise<unknown> {return this.read('certificate',id,signal);}
+    /** Additive address index in the existing immutable store; the referenced certificate remains authority. */
+    async prepareHistoricalCertificateAddress(certificate:ProtocolAbiHeadCertificate):Promise<{id:string;digest:string}> {
+        if(this.options.readOnly)throw new Error('Read-only ABI frontier cannot prepare historical addresses');
+        const copied=bounded(certificate,limits.certificate).value as ProtocolAbiHeadCertificate;
+        const identity=historicalAddressIdentity(copied),id=historicalAddressId(identity),certificateId=this.certificateId(copied);
+        if(protocolImmutableJson(await this.readCertificate(certificateId))!==protocolImmutableJson(copied))
+            throw new Error('Historical address requires an exact settled certificate');
+        const address:ProtocolAbiHistoricalAddress={schemaVersion:1,kind:'historical-abi-certificate-address',identity,certificateId};
+        await this.initialize(false);
+        const prepared=await this.bundles.prepare(id,{schemaVersion:1,chain:this.chain,kind:'historical-certificate-address',value:address});
+        if(protocolImmutableJson(await this.readHistoricalCertificateAddress(identity))!==protocolImmutableJson(address))
+            throw new Error('Historical certificate address readback differs');
+        return prepared;
+    }
+    async readHistoricalCertificateAddress(identity:ProtocolAbiHistoricalAddressIdentity,signal?:AbortSignal):Promise<ProtocolAbiHistoricalAddress> {
+        const expected=JSON.parse(protocolImmutableJson(identity,64*1024)),id=historicalAddressId(expected);
+        let raw:unknown;
+        try {raw=await this.bundles.read(id,signal);} catch(error) {
+            if(error instanceof ImmutableProtocolBundleReadError)throw new ProtocolAbiHistoricalAddressReadError(error.code,id,error.message);
+            throw error;
+        }
+        try {
+            const record=bounded(raw,{bytes:64*1024,nodes:2048}).value,address=record.value;
+            if(!recordKeys(record,['schemaVersion','chain','kind','value'])||record.schemaVersion!==1||record.chain!==this.chain
+                ||record.kind!=='historical-certificate-address'||!recordKeys(address,['schemaVersion','kind','identity','certificateId'])
+                ||address.schemaVersion!==1||address.kind!=='historical-abi-certificate-address'
+                ||protocolImmutableJson(address.identity)!==protocolImmutableJson(expected)||!validId('certificate',address.certificateId))
+                throw new Error('Historical certificate address differs');
+            return address;
+        } catch {throw new ProtocolAbiHistoricalAddressReadError('invalid',id,'Stored historical certificate address identity differs');}
+    }
+    /** The existing immutable map machinery stores addresses in a distinct control-selected root. */
+    async prepareHistoricalAddressRoot(previousRootId:string|null,addresses:readonly ProtocolAbiHistoricalAddress[]):Promise<string> {
+        const updates:ProtocolAbiAccountUpdate[]=[];
+        for(const address of addresses) {
+            const key=historicalAddressId(address.identity);
+            if(protocolImmutableJson(await this.readHistoricalCertificateAddress(address.identity))!==protocolImmutableJson(address))
+                throw new Error('Historical map address differs from its exact locator');
+            const state={account:key,kind:'historical-certificate-address-entry',address};
+            const prior=await this.readAccount(previousRootId,key);
+            if(prior!==null&&protocolImmutableJson(prior)!==protocolImmutableJson(state))throw new Error('Historical address map cannot replace an existing height');
+            updates.push({account:key,state});
+        }
+        const root=await this.prepareState(previousRootId,updates);
+        if(!root)throw new Error('Historical address map cannot be empty');
+        return root;
+    }
+    async readHistoricalAddressRoot(rootId:string,identity:ProtocolAbiHistoricalAddressIdentity,signal?:AbortSignal):Promise<ProtocolAbiHistoricalAddress> {
+        const key=historicalAddressId(identity),state:any=await this.readAccount(rootId,key,signal);
+        if(!state||!recordKeys(state,['account','kind','address'])||state.account!==key||state.kind!=='historical-certificate-address-entry'
+            ||protocolImmutableJson(state.address?.identity)!==protocolImmutableJson(identity))
+            throw new ProtocolAbiHistoricalAddressReadError('missing',key,'Historical address is not in the activated root');
+        const address=await this.readHistoricalCertificateAddress(identity,signal);
+        if(protocolImmutableJson(address)!==protocolImmutableJson(state.address))
+            throw new ProtocolAbiHistoricalAddressReadError('invalid',key,'Historical locator differs from activated root membership');
+        return address;
+    }
     async prepareAccountState(state:unknown):Promise<{id:string;digest:string}> {
         const copy=bounded(state,limits['account-state']).value;
         if(!copy||typeof copy!=='object'||Array.isArray(copy)||!Object.hasOwn(copy,'account')||!validAccount(copy.account))throw new Error('Invalid ABI account state identity');

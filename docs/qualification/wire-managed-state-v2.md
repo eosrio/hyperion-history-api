@@ -68,11 +68,73 @@ restart, rollback/fork or current-Hyperion-3 acceptance.
 A source-preloaded-to-1480/fresh-owner-zero attempt was refused by the unchanged 256-block
 canonical ancestry bound. The positive interleaved test keeps source/owner distance within that
 bound. It must not be represented as cold historical catch-up. A source-authorized historical
-proof path remains necessary before a fullsync operator may safely let the source run far ahead
-of a new state owner. Do not increase the bound or synthesize a bootstrap snapshot to hide it.
+proof path is implemented by the separately opt-in historical source port described below.
+Do not increase the bound or synthesize a bootstrap snapshot to hide it.
 
 One immutable declaration currently resolves its startup ABI epoch. A historical redeployment
 catalogue/cutover under #389 remains a separate gate if the actual selected range contains more
 applicable epochs. The plugin never pins a guessed first/final ABI or invents a deployment.
 Current Wire testnet source coverage, ABI changes after the retained range, initial LIB catch-up,
 physical durability and live continuation remain unverified until the reviewed operator runs.
+
+## Opt-in historical source port (#389)
+
+Leave `settings.protocol_abi_coordination.historical_certificates` absent to preserve the
+existing default path. To qualify cold catch-up, explicitly supply all work limits:
+
+```json
+{
+  "interface_version": 1,
+  "max_commits_per_drain": 16,
+  "max_commit_bytes_per_drain": 8388608,
+  "max_ms_per_drain": 250
+}
+```
+
+These are prospective qualification limits, not a measured throughput recommendation. The
+commit-byte limit counts decoded canonical commit JSON examined in one background drain; the
+small address queue is independently bounded by the same count/byte limits. Immutable-store
+chunk, record, root and bucket limits, transport deadlines and request proof budgets still apply.
+This setting is not a cap on aggregate network traffic. The work deadline is checked between
+awaited operations; it does not extend an in-flight storage request or replace its timeout.
+Queued live admissions interrupt the background walk between bounded store calls. An in-progress
+store call retains its existing bounds; this path does not retry or cancel that physical call. Ordinary source
+commits and history publication keep priority, and a historical failure leaves old sources
+unavailable while recent source processing can continue.
+
+The coordinator walks exact immutable commit IDs backward from its current adopted canonical
+head. It verifies each complete parent/block link and genesis coverage, then prepares and reads
+back certificates under the current owner/generation/profile. An exact-height locator is only
+an address. The existing control CAS atomically selects a separate immutable address-map root, its
+activation-certificate ID and the original verified anchor, followed by a settled root certificate; primary visibility, an orphan prepared locator or an unselected
+root certificate cannot grant historical access. Reads use exact GETs through that selected
+root and freshly revalidate current source authority after asynchronous operations. No search,
+new progress journal, wider 256-link recovery window or bootstrap state is introduced. A normal
+forward head retains that exact settled activation without re-sealing; current owner, generation,
+selected root and anchor still undergo fresh checks. The activation certificate alone grants no
+membership or current authority.
+
+Owner replacement, reader-generation change or fork recovery clears activation and discards
+the process-local walk. A replacement re-certifies from its currently adopted head; it cannot
+adopt the old owner's or generation's historical certificates. Unknown acknowledgments remain
+unavailable until the existing exact preparation/control repair path settles. Missing, corrupt
+or no-longer-retained inputs remain explicit unavailable results. Newly issued historical proofs
+still recheck owner/generation/root membership and final publication authority.
+
+`node --test tests/unit/protocol-abi-history-native.mjs` covers those refusals, interrupted work
+and recovery, and a fresh actual managed owner from checkpoint zero over original retained
+blocks 1..258 after the source has reached258. It uses the unchanged default256 ancestry bound
+and real absent genesis traces. This is controlled component evidence, not physical MongoDB/ES,
+Hyperion-3 fullsync, whole retained-range cold catch-up, ABI redeployment/cutover or live acceptance.
+The original commit and settled-head certificate formats are unchanged; the opt-in adds locator
+records, a distinct immutable map root and an optional field on existing coordinator control.
+
+The current address root inherits the existing map's256 hash buckets, each limited to20,000
+entries and4MiB. That is an upper cardinality bound of5,120,000 addresses per active generation;
+bucket skew and the existing byte/node limits may refuse sooner. This is not a global disk
+retention quota. Immutable records from earlier roots/generations can accumulate, and no new
+retention/garbage-collection policy is introduced here. A bounded drain batch publishes at most
+one new selected address root. At the observed1.73million-plus Wire head, bucket rewrites,
+certificate storage and re-walking after every authority rotation may dominate fullsync cost.
+That is an unmeasured risk: scaled transport/storage cost, retention capacity and current-testnet
+acceptance remain open. The0→258 fixture does not establish production readiness.

@@ -26,6 +26,7 @@ const unavailable = (message: string): never => {throw new ProtocolAbiProofUnava
 export interface PortableProjectionSourceOptions {
     client: Client; chain: string; chainId: string; profile: ProtocolSourceProfile; provider: ProtocolProvider;
     maxAncestryBlocks?: number; replicas?: number; requireAttemptScope?: boolean;
+    historicalCertificates?: boolean;
 }
 export interface PortableProjectionSourceEvidence {
     readonly certificateId: string; readonly commitId: string; readonly selectionId: string;
@@ -78,7 +79,8 @@ export class PortableProjectionSource {
         this.bindings = new ProtocolSourceBindingStore(options.client, options.chain, options.replicas ?? 0, {readOnly: true});
         this.observations = new ProtocolAbiObservationStore(options.client, options.chain, options.replicas ?? 0, undefined, {readOnly: true});
         this.reader = new ProtocolAbiProofReader({chainId: options.chainId, profile: this.options.profile,
-            store: this.store, maxAncestryBlocks: this.maximumAncestry, requireAttemptScope: options.requireAttemptScope});
+            store: this.store, maxAncestryBlocks: this.maximumAncestry, requireAttemptScope: options.requireAttemptScope,
+            historicalCertificates: options.historicalCertificates});
     }
     private async retained<T>(operation: () => Promise<T>): Promise<T> {
         const scope = currentProofConsumerScope(this.options.requireAttemptScope);
@@ -163,6 +165,16 @@ export class PortableProjectionSource {
         if (!Number.isSafeInteger(blockNum) || blockNum < 1) unavailable('Invalid source height');
         const control = await this.control();
         if (blockNum > control.head.blockNum) unavailable('Next projection source has not committed');
+        if (control.head.blockNum - blockNum > this.maximumAncestry && this.options.historicalCertificates === true) {
+            const proof = await this.reader.openHistorical(blockNum);
+            const commit: any = await this.retained(() => this.store.readCommit(proof.commitId));
+            await this.revalidate(proof);
+            if (proof.source.blockNum !== blockNum || commit.selectionId !== proof.selectionId)
+                unavailable('Historical projection source authority changed');
+            await admitCanonicalTarget?.(Object.freeze({blockNum, blockId: proof.source.blockId,
+                previousBlockId: proof.source.previousBlockId ?? zero}));
+            return {commit, proof};
+        }
         if (control.head.blockNum - blockNum > this.maximumAncestry) {
             const head = await this.open({blockNum: control.head.blockNum, blockId: control.head.blockId});
             const target = Object.freeze({blockNum: head.source.blockNum, blockId: head.source.blockId,

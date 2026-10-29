@@ -42,7 +42,8 @@ export async function prepared(constructedEpochs = {}, initialThrough = 4, const
     store,
     bindings,
     observations,
-    verifyNativeGenesis: selected.provider.verifyNativeGenesis?.bind(selected.provider)
+    verifyNativeGenesis: selected.provider.verifyNativeGenesis?.bind(selected.provider),
+    historicalCertificates: retained?.historicalCertificates
   });
   await coordinator.start();
   const contextId = (await bindings.prepareContext({ schemaVersion: 1, chainId: inputCapture.chainId, protocol: profile, schemaJson: inputSchema })).id;
@@ -141,9 +142,11 @@ export async function prepared(constructedEpochs = {}, initialThrough = 4, const
     }
   }
   await advance(initialThrough);
-  const options = { client: memory.client, chain, chainId: inputCapture.chainId, profile, provider: selected.provider };
+  const options = { client: memory.client, chain, chainId: inputCapture.chainId, profile, provider: selected.provider,
+    maxAncestryBlocks: retained?.maxAncestryBlocks, historicalCertificates: retained?.historicalCertificates !== undefined };
   memory.calls.length = 0;
-  return { memory, options, coordinator, positions, observed, advance, source: new PortableProjectionSource(options) };
+  return { memory, options, coordinator, store, bindings, observations, contextId, positions, observed, advance,
+    source: new PortableProjectionSource(options) };
 }
 
 export { hash, read, original, forward, capture, follow, schemaJson, frames };
