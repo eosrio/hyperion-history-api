@@ -25,7 +25,7 @@ export function createPortableHistoryDiagnostics(directory: string, errors: stri
         if (evidence.failedCaptures === 1) errors.push('Native history diagnostic capture incomplete: ' + detail);
     };
     return {evidence,
-        async observe<T>(kind: 'action-search' | 'action-refresh', context: unknown, work: () => Promise<T>): Promise<T> {
+        async observe<T>(kind: 'action-search' | 'action-refresh' | 'action-replica-health', context: unknown, work: () => Promise<T>): Promise<T> {
             const attempt = ++evidence.attempts;
             // Detach the request and phase before invoking client code, which may mutate its arguments.
             let contextJson: string | undefined;
@@ -34,7 +34,7 @@ export function createPortableHistoryDiagnostics(directory: string, errors: stri
             try {response = await work();} catch (error) {rejected = true; operationError = error;}
             const completed = portableHistoryClock();
             if (contextJson !== undefined) try {
-                assert.ok(['action-search', 'action-refresh'].includes(kind), 'unknown history diagnostic operation');
+                assert.ok(['action-search', 'action-refresh', 'action-replica-health'].includes(kind), 'unknown history diagnostic operation');
                 assert.ok(attempt <= evidence.limits.maximumRecords, 'history diagnostic record budget exceeded');
                 const bytes = Buffer.from(JSON.stringify({schemaVersion: 1, attempt, kind, clock: portableHistoryClockDomain,
                     started, completed, context: JSON.parse(contextJson), outcome: rejected ? 'rejected' : 'returned',

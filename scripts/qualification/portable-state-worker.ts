@@ -19,6 +19,7 @@ import {validateFixture, assertNodeOwnership} from './es955-replicas.ts';
 import {assertOwnedBinding, assertSuccessfulWorkerShutdown} from './es955-workers.ts';
 import {startBulkLedger, summarizeBulkLedger} from './replay-bulk-ledger.ts';
 import {createPortableHistoryDiagnostics, portableHistoryClock} from './portable-state-history-diagnostics.ts';
+import {refreshPortableActionCopies} from './portable-action-refresh.ts';
 import {createPortableCursorWaitClocks, type PortableCursorWaitTarget} from './portable-cursor-wait-clocks.ts';
 import {auditWorkerRejectionDiagnostics} from './worker-rejection-diagnostics.mjs';
 import {OwnedMongoFixture, MONGODB_VERSION, waitForMongo} from './projection-fixture.mjs';
@@ -497,11 +498,12 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
     const readOptions = (maximum: number, budget?: PortableNativePhaseBudget) => budget ? {requestTimeout: readTimeout(maximum, budget)} : {};
     let lastQueues: {observed: ReturnType<typeof portableHistoryClock>; rows: any[]} | undefined;
     const refreshActions = async (through: number, phase: string, budget?: PortableNativePhaseBudget) => {
-        const request = {index: chain + '-action-*'}, refresh = () => es.indices.refresh(request,
-            budget ? {requestTimeout: Math.min(10000, portableNativeHistoryRemaining(budget))} : {});
-        return historyDiagnostics ? historyDiagnostics.observe('action-refresh', {request, through, phase,
-            phaseBudget: budget && {clock: 'performance.now', deadline: budget.deadline},
-            source: source.records[through - 1], replay: replay?.metrics(), queues: lastQueues, recovery: report.lastRecovery}, refresh) : refresh();
+        return refreshPortableActionCopies({client: es, index: chain + '-action-*',
+            timeout: maximum => readTimeout(maximum, budget),
+            wait: work => wait(`physical action replicas for ${through}`, work, 60000, budget),
+            observe: (kind, request, work) => historyDiagnostics ? historyDiagnostics.observe(kind, {request, through, phase,
+                phaseBudget: budget && {clock: 'performance.now', deadline: budget.deadline},
+                source: source.records[through - 1], replay: replay?.metrics(), queues: lastQueues, recovery: report.lastRecovery}, work) : work()});
     };
     const wait = async (name: string, condition: () => Promise<void>, milliseconds = 60000, inherited?: PortableNativePhaseBudget,
                         cursorTarget?: PortableCursorWaitTarget) => {
