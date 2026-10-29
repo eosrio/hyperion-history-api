@@ -162,7 +162,7 @@ if (cluster.isWorker && process.env.worker_role === 'continuous_reader') {
         protocolId: 'controlled-startup-protocol', protocolComponents: [{id: 'controlled-protocol', runtime: 'node',
             version: '0.0.0-dev.1', sourceRevision: 'c'.repeat(40), sha256: 'd'.repeat(64)}], protocolReady: Promise.resolve(),
         protocol: {profileId: 'controlled-startup-v1', verifyNativeGenesis() {}}, client: elastic,
-        manager: {conn: {mongodb: {}}, mongodbClient: mongo}, stopped: false, profiler: {stopReporting() {}}});
+        manager: {conn: {mongodb: {}}, mongodbClient: mongo}, stopped: false, statefulControllers: new Map(), probes: new Set(), profiler: {stopReporting() {}}});
     const attempts = new WorkerAttemptClient({mode: 'managed', role: 'projection', transport: process,
         timeoutMs: 500, drainTimeoutMs: 1000, retries: 0});
     if (preEntry) {
