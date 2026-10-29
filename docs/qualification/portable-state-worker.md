@@ -799,3 +799,20 @@ controls reject both already-expired and late-ready observations, keep an outsta
 and preserve its original rejection. Native proof guards always throw: successful proof/authorization
 tails still require real owned-service qualification; these controls do not claim dynamic coverage
 of successful grants or retroactively qualify an earlier run.
+
+
+### Qualification-only projection stage observations
+
+When the native worker qualification uses its existing `--stage-timing` option, the projection
+worker additionally writes bounded `portable_stage` rows into its existing native observer JSONL.
+Rows contain monotonic time, local diagnostic scope ID, projection ID and block number when known; they
+never include source payloads. The diagnostic ID is local, not worker attempt authority. Enter/return/error/cancel rows cover source.frame, the original
+admission callback, adapter marker, proof revalidation, runtime.process and adapter.apply.
+Admission return indicates callback completion; marker return is the actual durable marker call.
+Do not equate a marker with successful mapping or application. Runtime entry to apply entry
+contains mapping plus other work; individual mapping and Mongo transaction sub-stages are not
+exposed by these wrappers. Proof and later calls inherit scope context after frame entry. Observer
+records are restricted to blocks 1200 through 1480 and capped at 20,000 and 4 MiB per projection process; filtered calls are counted separately; dropped rows or reporting failures
+make the qualification process fail, rather than becoming evidence of success. Original return
+promises, errors, cancellation, deadlines, and checks remain authoritative. This instrumentation
+alone cannot establish the cause of an earlier replay.

@@ -50,6 +50,11 @@ const proofMetrics = installProofMetrics({ProofReader: ProtocolAbiProofReader, B
 const stageTimings = process.env.HYPERION_PORTABLE_NATIVE_STAGE_TIMING === '1'
     ? (await import('./portable-native-stage-timing.mjs')).installNativeWorkerStageTimings({enabled: true}) : undefined;
 let backlogCapture;
+const portableStages = process.env.HYPERION_PORTABLE_NATIVE_STAGE_TIMING === '1' && process.env.worker_role === 'projection'
+    ? (await import('./portable-state-stage-observer.mjs')).installPortableStageObserver({
+        Controller: (await import('../../build/indexer/projection/controller.js')).PortableStateController,
+        Runtime: (await import('../../build/indexer/projection/runtime.js')).DeclarativeProjectionRuntime,
+        currentScope: (await import('../../build/indexer/protocol/proof-consumer-scope.js')).currentProofConsumerScope, record}) : undefined;
 const projectionDiagnostics = cluster.isPrimary || process.env.worker_role === 'projection'
     ? installProjectionDiagnostics({WorkerClient: WorkerAttemptClient, Supervisor: WorkerAttemptSupervisor,
         Master: cluster.isPrimary ? (await import('../../build/indexer/modules/master.js')).HyperionMaster : undefined, record})
@@ -72,10 +77,12 @@ process.once('exit', () => {
     // Snapshot excludes this summary row and the following exit row's own writes/syncs.
     record('observer_metrics', {coverage: 'before-this-row', io: observerIo.snapshot(), proofs: proofMetrics.snapshot(),
         projectionDiagnostics: projectionDiagnostics?.snapshot(), rejectionDiagnostics: rejectionDiagnostics.snapshot(),
-        ...(stageTimings ? {stageTimings: stageTimings.snapshot()} : {})});
+        ...(stageTimings ? {stageTimings: stageTimings.snapshot()} : {}),
+        ...(portableStages ? {portableStages: portableStages.snapshot()} : {})});
     record('exit', {bytes}); closeSync(descriptor);
     if (proofMetrics.snapshot().reportFailures || projectionDiagnostics?.snapshot().reportFailures
-        || rejectionDiagnostics.snapshot().reportFailures || stageTimings?.snapshot().reportFailures) process.exitCode = 1;
+        || rejectionDiagnostics.snapshot().reportFailures || stageTimings?.snapshot().reportFailures
+        || portableStages?.snapshot().failures || portableStages?.snapshot().omitted) process.exitCode = 1;
 });
 
 const prepare = ProtocolNativeObservationStore.prototype.prepare;
