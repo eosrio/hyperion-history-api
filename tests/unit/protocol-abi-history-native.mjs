@@ -295,6 +295,46 @@ test('a same-generation control rewind below the activation anchor cannot serve 
     await assert.rejects(r.openHistorical(1),unavailable);
 });
 
+test('live work queued inside the real address-map publication prevents further background store calls', async () => {
+    const p=await setup(), coordinator=await reopen(p,'map-publication-priority-owner');
+    const before=await coordinator.inspect(), tip=await p.store.readCommit(before.head.commitId);
+    const publish=p.store.prepareHistoricalAddressRoot.bind(p.store),read=p.store.readHistoricalCertificateAddress.bind(p.store);
+    let inside=false,injected=false,admission,continued=0;
+    p.store.prepareHistoricalAddressRoot=async (...args)=>{inside=true;try{return await publish(...args);}finally{inside=false;}};
+    p.store.readHistoricalCertificateAddress=async (...args)=>{
+        const value=await read(...args);
+        if(inside&&!injected){injected=true;const calls=p.memory.calls.length;
+            admission=coordinator.admit(tip.selectionId,before.generation);
+            // Save the exact boundary after the first real map locator read has completed.
+            p.memory.faults.beforeRead=()=>{if(inside&&p.memory.calls.length>calls)continued++;};
+            p.memory.faults.beforeWrite=()=>{if(inside&&p.memory.calls.length>calls)continued++;};
+        }
+        return value;
+    };
+    await coordinator.drain();assert.equal(injected,true);assert.equal((await admission).status,'accepted');
+    delete p.memory.faults.beforeRead;delete p.memory.faults.beforeWrite;
+    assert.equal(continued,0,'No further map read/write may begin after queued live input is observed');
+    assert.deepEqual((await coordinator.inspect()).historical,before.historical,'Prepared map artifacts cannot activate after interruption');
+});
+
+test('deadline expiry inside the real address-map publication prevents further background store calls', async () => {
+    const p=await setup(), coordinator=await reopen(p,'map-publication-deadline-owner'),before=await coordinator.inspect();
+    const publish=p.store.prepareHistoricalAddressRoot.bind(p.store),read=p.store.readHistoricalCertificateAddress.bind(p.store);
+    let inside=false,injected=false,continued=0,now=0;const clock=mock.method(performance,'now',()=>now);
+    p.store.prepareHistoricalAddressRoot=async (...args)=>{inside=true;try{return await publish(...args);}finally{inside=false;}};
+    p.store.readHistoricalCertificateAddress=async (...args)=>{
+        const value=await read(...args);
+        if(inside&&!injected){injected=true;now=2000;const calls=p.memory.calls.length;
+            p.memory.faults.beforeRead=()=>{if(inside&&p.memory.calls.length>calls)continued++;};
+            p.memory.faults.beforeWrite=()=>{if(inside&&p.memory.calls.length>calls)continued++;};
+        }
+        return value;
+    };
+    try {await coordinator.drain();}finally{clock.mock.restore();delete p.memory.faults.beforeRead;delete p.memory.faults.beforeWrite;}
+    assert.equal(injected,true);assert.equal(continued,0);
+    assert.deepEqual((await coordinator.inspect()).historical,before.historical);
+});
+
 test('fresh managed owner crosses the unchanged256-block bound using original retained1..258 with absent genesis traces',
     {timeout:120000},async()=>{
     const coldFrames=Array.from({length:258},(_,n)=>read('block-'+String(n+1).padStart(6,'0')+'.bin'));

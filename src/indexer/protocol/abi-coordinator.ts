@@ -429,7 +429,12 @@ export class ProtocolAbiCoordinator {
             await this.assertHistoricalAuthority(control,epoch,current.historical?.addressRootId??null);
             if(performance.now()>=deadline)return;
         }
-        const root=await this.options.store.prepareHistoricalAddressRoot(current.historical?.addressRootId??null,entries.map(([,value])=>value));
+        const checkpoint=async()=>{
+            if(performance.now()>=deadline)throw new HistoricalWorkYield();
+            await this.assertHistoricalAuthority(control,epoch,current.historical?.addressRootId??null);
+            if(performance.now()>=deadline)throw new HistoricalWorkYield();
+        };
+        const root=await this.options.store.prepareHistoricalAddressRoot(current.historical?.addressRootId??null,entries.map(([,value])=>value),checkpoint);
         await this.assertHistoricalAuthority(control,epoch,current.historical?.addressRootId??null);
         if(performance.now()>=deadline)return;
         const observed=await this.owned();this.assertEpoch(epoch);
