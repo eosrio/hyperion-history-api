@@ -458,10 +458,36 @@ test('complete sealing refreshes every reference before publishing manifest then
     assert.ok(calls.every(call => call.request.wait_for_active_shards === 'all' && call.request.pipeline === '_none'));
 });
 
+for (const mode of ['corrupt', 'throw']) test(`full-source mget preserves the original document-read ${mode} fault without treating hints as reads`, async () => {
+    const f = await fixture(true), target = chunk(f, f.lastFragment), injected = new Error('controlled full-source read fault');
+    let observed = 0, targetReads = 0;
+    f.memory.faults.read = (receipt, request) => {
+        observed++;
+        assert.equal(request._source, true, 'Only full-source mget items enter this read control');
+        assert.ok(request.ids.includes(request.id));
+        if (request.id !== target) return receipt;
+        targetReads++;
+        if (mode === 'throw') throw injected;
+        return {...receipt, _source: {...receipt._source, payload: 'AA=='}};
+    };
+    await f.store.journal.bundles.missingManifestHint([f.lastFragment]);
+    assert.equal(observed, 0, 'A source-free membership hint cannot fire a document-read fault');
+    const before = f.memory.calls.length;
+    await assert.rejects(f.store.journal.bundles.readMany([f.lastFragment], 128 * 1024 * 1024),
+        mode === 'throw' ? error => error === injected : /integrity mismatch/);
+    assert.equal(targetReads, 1);
+    assert.equal(f.memory.calls.slice(before).filter(call => call.method === 'get').length, 0);
+    assert.ok(f.memory.calls.slice(before).some(call => call.method === 'mget' && call.request._source === true));
+});
+
 for (const mutation of ['corrupt', 'delete']) test(`fresh prepare handles ${mutation} between complete read and publication`, async () => {
     const f = await fixture(true), last = chunk(f, f.lastFragment), target = chunk(f, f.prefixFragment);
     let readComplete = false, changed = false;
-    f.memory.faults.read = (receipt, request) => {if (request.id === last) readComplete = true; return receipt;};
+    const readMethods = new Set();
+    f.memory.faults.read = (receipt, request) => {
+        if (request.id === last) {readComplete = true; readMethods.add(request.ids ? 'mget' : 'get');}
+        return receipt;
+    };
     f.memory.faults.beforeWrite = () => {
         if (changed) return;
         assert.ok(readComplete, 'A candidate must be complete before fresh sealing writes'); changed = true;
@@ -476,13 +502,18 @@ for (const mutation of ['corrupt', 'delete']) test(`fresh prepare handles ${muta
         assert.deepEqual((await f.store.journal.readManifest(f.admission.planId)).manifest.fragments.map(value => value.effects.length), [0, 1]);
     }
     assert.ok(changed);
+    assert.ok(readMethods.has(f.store.journal.stagedReads ? 'mget' : 'get'), 'Observe the actual admission journal read path');
 });
 
 for (const mode of ['abort', 'owner-fence']) test(`${mode} after complete read prevents writes and releases the journal slot`, async () => {
     const f = await fixture(true), last = chunk(f, f.lastFragment), controller = new AbortController();
     const scope = new ProofConsumerScope('two-pass-owner'), reason = new Error('cancel before fresh prepare');
     let readComplete = false, triggered = false;
-    f.memory.faults.read = (receipt, request) => {if (request.id === last) readComplete = true; return receipt;};
+    const readMethods = new Set();
+    f.memory.faults.read = (receipt, request) => {
+        if (request.id === last) {readComplete = true; readMethods.add(request.ids ? 'mget' : 'get');}
+        return receipt;
+    };
     const original = f.memory.client.indices.get;
     f.memory.client.indices.get = async function (...args) {
         const result = await Reflect.apply(original, this, args);
@@ -494,6 +525,7 @@ for (const mode of ['abort', 'owner-fence']) test(`${mode} after complete read p
         : scope.run(() => f.store.journal.seal(f.admission.planId, scope.signal));
     await assert.rejects(pending, mode === 'abort' ? error => error === reason : /worker attempt/i);
     assert.ok(triggered); assert.equal(writes(f.memory.calls.slice(before)).length, 0);
+    assert.ok(readMethods.has(f.store.journal.stagedReads ? 'mget' : 'get'), 'Observe the actual admission journal read path');
     f.memory.client.indices.get = original; delete f.memory.faults.read;
     await scope.closeAndDrain();
     assert.equal(await f.store.trySeal(f.admission), true);
