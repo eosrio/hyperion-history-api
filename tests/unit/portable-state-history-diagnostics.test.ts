@@ -41,6 +41,17 @@ test('a rejected original operation keeps its identity and server failure body i
     expect(errors).toEqual([]);
 }));
 
+test('replica readiness retains its complete raw health response without changing the diagnostic bounds', async () => fixture(async directory => {
+    const errors: string[] = [], capture = createPortableHistoryDiagnostics(directory, errors);
+    const request = {index: 'owned-action-*', wait_for_status: 'green', timeout: '700ms'};
+    const health = {timed_out: true, status: 'yellow', number_of_data_nodes: 2, unassigned_shards: 4, initializing_shards: 0};
+    expect(await capture.observe('action-replica-health', {request}, async () => health)).toBe(health);
+    const retained = JSON.parse((await readFile(join(directory, capture.evidence.records[0].file))).toString());
+    expect(retained.kind).toBe('action-replica-health'); expect(retained.context.request).toEqual(request);
+    expect(retained.response).toEqual(health); expect(retained.outcome).toBe('returned');
+    expect(capture.evidence.limits).toEqual(portableHistoryDiagnosticLimits); expect(errors).toEqual([]);
+}));
+
 test('capture failures preserve original success and rejection while making missing evidence explicit', async () => fixture(async directory => {
     const errors: string[] = [], capture = createPortableHistoryDiagnostics(join(directory, 'absent'), errors), response = {accepted: true};
     let calls = 0;
