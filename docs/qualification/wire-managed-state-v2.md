@@ -21,12 +21,25 @@ database port, broker or publication protocol is introduced by the plugin. A rev
 must establish exact commands, current source range, initial LIB target, resource limits, service
 ownership and cleanup before executing either entrypoint.
 
-The source base for this slice is integration commit
-`f66205cd85b322d84c86cd2bf7531bed3bd591d9`, with its committed npm lock:
-SDK `58d68c5cea81490bbb1c9a7736d633d465bab3ef`, Wire
-`18d235e34a9b7ab8c3e9f9a322874444d90eed8a`, the merged native owner-v2 adapter and
-Fastify 5.12.7. Run normal `npm ci`, `npm run build` and `bun check -p tsconfig.json`.
-The legacy SDK339/Wire716 performance assembly is separate and is not aliased or adopted.
+The original component packet used integration commit
+`f66205cd85b322d84c86cd2bf7531bed3bd591d9` and SDK
+`58d68c5cea81490bbb1c9a7736d633d465bab3ef`. This source-only composition starts from
+HAPI #400 (`aae6ba6ecb8f6bf0145a8d5799784fe69b164a2f`) and retains its committed
+locks: both caller and independently installed native adapter use SDK
+`dd85ee590dcd1e359509c6c41ee99b541706b1f6`, while Wire
+`18d235e34a9b7ab8c3e9f9a322874444d90eed8a` keeps its own SDK58d graph. Fastify
+remains 5.12.7. The reviewed worker binding-fence fix from #399 and the original managed
+plugin/historical proof components are composed without enabling either optional feature.
+Run separate normal `npm ci --prefix packages/backend-mongodb --allow-git=all` and
+`npm ci --allow-git=all`, `npm run build` and `bun check -p tsconfig.json`.
+
+The two native Wire fixture callers explicitly admit
+`stateful-owner-v2-dd85ee5-18d235e-engineering` before running their cases. CI selects the
+same exact profile. Its separate normal-installed Wire716 recipe selects
+`stateful-owner-v2-dd85ee5-7167659-engineering`, retaining Wire's own SDK339 graph.
+The old SDK58d profiles retain their original predicates and refuse this new caller graph;
+no profile is an alias or a default release compatibility claim. Historical proofs and managed
+projection configuration remain opt-in, and the default ancestry limit remains 256.
 
 ## State and API
 
