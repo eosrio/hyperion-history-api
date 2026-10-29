@@ -112,6 +112,11 @@ worker qualification also remain required; source/inject fixtures do not establi
 the original API's complete parity.
 
 The local source assembly pins reviewed SDK39 and Wire28 to exercise the new
-port. It does not update frozen qualification profiles. Old native fixture
-helpers keep their explicit old component pin; coordinated new source-profile
-admission must be resolved before promoting this assembly into the default build.
+port. It does not update frozen qualification profiles. The retained native API
+source helper preserves its default 716 component pin. Its sealed internal
+`stateful-owner-v2-18d235e-engineering` option verifies the exact reviewed package,
+descriptor, Node/Rust artifacts and members, SDK/native emission sets and lock
+sources before runtime import or capture extraction. Callers cannot provide an
+expected SHA to override that admission. Three native unit callers explicitly use
+this engineering option; neither it nor the separate default716 test assembly
+qualifies a default distribution or testnet launch.
