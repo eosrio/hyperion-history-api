@@ -138,7 +138,10 @@ export class WorkerAttemptClient {
                     challenge: record.challenge, version: record.bindingVersion + 1, binding});
                 if (result.bindingSha256 !== workerAttemptDigest(binding)) throw new Error('Worker binding response mismatch');
             }
-            record.scope.assertActive(); record.binding = binding; record.bindingVersion++;
+            // The parent has already accepted this exact binding. Retain confirmed bookkeeping
+            // even if a source fence won the reply race, so the drained end uses the same digest.
+            // The activity check still prevents returning to effects after cancellation.
+            record.binding = binding; record.bindingVersion++; record.scope.assertActive();
         });
     }
     async bindCurrent(fields: WorkerAttemptBinding): Promise<void> {
