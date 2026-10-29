@@ -120,3 +120,20 @@ sources before runtime import or capture extraction. Callers cannot provide an
 expected SHA to override that admission. Three native unit callers explicitly use
 this engineering option; neither it nor the separate default716 test assembly
 qualifies a default distribution or testnet launch.
+
+## Native source-fixture assembly (#392)
+
+The nine retained native fixture callers use the same sealed admission helper.
+CI explicitly selects `HYPERION_NATIVE_SOURCE_PROFILE=stateful-owner-v2-18d235e-engineering`
+for the exact reviewed Wire18d / host SDK58 / native adapter575 source set. An absent
+or empty variable retains the Wire716 default. Unknown values refuse before runtime
+imports, hook registration or temporary source extraction. Source pins, package bytes,
+all declared Wire artifact members and each resolved SDK module are checked separately;
+caller-provided hashes do not confer authority.
+
+A separate normal-installed checkout tests the unchanged default716 source path. Only
+its Wire package/lock pin differs: host and native adapter remain SDK58, while Wire716's
+own prepared lock and installed SDK339 remain exact. Wire18d instead requires SDK58 in
+all three installed module positions. This is an internal qualification matrix; it does
+not update the older performance assembly, frozen captures, the standard distribution
+or the launch qualification profile.

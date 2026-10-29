@@ -3,10 +3,12 @@ import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {dirname, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {loadChainProtocol} from '../../build/indexer/protocol/selection.js';
+import {admitNativeSourceEnvironment} from './stateful-engineering-source-admission.mjs';
+const nativeSourceAdmission = admitNativeSourceEnvironment();
+const {loadChainProtocol} = await import('../../build/indexer/protocol/selection.js');
 
-const wireRevision = '7167659e9c043cb3351074fcacb40200cc57f3a3';
-const sdkRevision = '339b5c93d1338968c18ed14254961439dcab16a0';
+const wireRevision = nativeSourceAdmission.wireRevision;
+const sdkRevision = nativeSourceAdmission.sdkRevision;
 const profileId = 'wire-sysio-6508c9e8-native-engineering-v1';
 const host = fileURLToPath(new URL('../../', import.meta.url));
 const wire = dirname(dirname(fileURLToPath(import.meta.resolve('@eosrio/hyperion-wire-plugin/protocol-provider.json'))));
@@ -23,7 +25,7 @@ assert.equal(lock.packages['node_modules/@eosrio/hyperion-sdk'].resolved,
     `git+ssh://git@github.com/eosrio/hyperion-sdk.git#${sdkRevision}`);
 const preparedLock = json('dist/protocol-npm-lock.json');
 assert.equal(preparedLock.packages[''].dependencies['@eosrio/hyperion-sdk'],
-    `git+https://github.com/eosrio/hyperion-sdk.git#${sdkRevision}`);
+    `git+https://github.com/eosrio/hyperion-sdk.git#${nativeSourceAdmission.wireSdkRevision}`);
 const receipt = json('dist/protocol-source-receipt.json');
 assert.equal(receipt.sourceRevision, wireRevision);
 for (const member of receipt.outputFiles) assert.equal(hash(read(member.path)), member.sha256, member.path);

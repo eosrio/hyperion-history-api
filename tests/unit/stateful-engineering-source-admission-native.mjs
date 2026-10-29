@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
+import {spawnSync} from 'node:child_process';
 import {copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, readdirSync, rmSync, realpathSync} from 'node:fs';
 import {basename, dirname, join, resolve} from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath, pathToFileURL} from 'node:url';
-import {admitNativeApiSourceOptions, STATEFUL_ENGINEERING_API_SOURCE_PROFILE as profile} from './stateful-engineering-source-admission.mjs';
+import {admitNativeApiSourceOptions, admitNativeSourceEnvironment, STATEFUL_ENGINEERING_API_SOURCE_PROFILE as profile} from './stateful-engineering-source-admission.mjs';
 
 assert.equal(process.versions.bun, undefined); assert.match(process.version, /^v(?:24|26)\./);
 let cases = 0, accessorCalls = 0;
@@ -63,10 +64,32 @@ try {
             await assert.rejects(nativeApiWireSource(options)); assert.deepEqual(readdirSync(empty), []); cases++;
         }
     } finally {for (const [key, value] of Object.entries(previous)) {if (value === undefined) delete process.env[key]; else process.env[key] = value;}}
+    // The production caller fixtures must refuse unknown profiles before imports, hooks or extraction.
+    const savedProfile = process.env.HYPERION_NATIVE_SOURCE_PROFILE;
+    try {
+        process.env.HYPERION_NATIVE_SOURCE_PROFILE = profile;
+        const selected = admitNativeSourceEnvironment();
+        assert.equal(selected.sdkRevision, '58d68c5cea81490bbb1c9a7736d633d465bab3ef');
+        assert.equal(selected.wireSdkRevision, selected.sdkRevision); cases++;
+        process.env.HYPERION_NATIVE_SOURCE_PROFILE = 'unknown';
+        assert.throws(() => admitNativeSourceEnvironment(), /Unknown engineering source profile/); cases++;
+        const before = join(directory, 'caller-before-effects'); mkdirSync(before);
+        for (const name of ['action-attempt-disposition-worker.mjs', 'action-handoff-outcome-worker.mjs',
+            'action-source-inventory-native.mjs', 'protocol-native-authorization-wire.mjs', 'protocol-native-consumer-worker.mjs',
+            'protocol-native-installed.mjs', 'protocol-native-lag-replay.mjs', 'worker-attempt-quiescence-worker.mjs']) {
+            const child = spawnSync(process.execPath, [fileURLToPath(new URL(name, import.meta.url))],
+                {env: {...process.env, TEMP: before, TMP: before, TMPDIR: before}, encoding: 'utf8', timeout: 10000, maxBuffer: 1024 * 1024});
+            assert.equal(child.status, 1, name + ': ' + child.stderr);
+            assert.match(child.stderr, /Unknown engineering source profile/, name);
+            assert.deepEqual(readdirSync(before), [], name + ' ran fixture effects before admission'); cases++;
+        }
+        process.env.HYPERION_NATIVE_SOURCE_PROFILE = '';
+        assert.throws(() => admitNativeSourceEnvironment(), /Wire source revision/); cases++;
+    } finally {if (savedProfile === undefined) delete process.env.HYPERION_NATIVE_SOURCE_PROFILE; else process.env.HYPERION_NATIVE_SOURCE_PROFILE = savedProfile;}
 } finally {
     assert.equal(dirname(directory), parent); assert(basename(directory).startsWith('hapi-engineering # % -'));
     rmSync(directory, {recursive: true, force: true});
 }
 console.log(JSON.stringify({cases, sealedEngineeringOption: true, default716Preserved: true, artifactAndSourceSetChecked: true,
-    unknownRevisionPackageTreeArtifactRefused: true, defaultOverrideRefusedBeforeEffects: true, temporaryCodeOnly: true,
+    unknownRevisionPackageTreeArtifactRefused: true, defaultOverrideRefusedBeforeEffects: true, temporaryCodeOnly: true, callerEnvironmentAdmission: true, callerBeforeEffectsNegatives: 8,
     services: false, defaultDistributionQualified: false, launchQualified: false}));
