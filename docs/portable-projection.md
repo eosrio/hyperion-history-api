@@ -183,9 +183,12 @@ started callback to settle.
 
 After admission, the existing source graph verifies the retained selection,
 observation, capture hashes and configured protocol profile, then revalidates the
-issued canonical proof. The returned internal packet retains complete original
-sections before contract/history filtering. It supplies neither decoded plugin
-inputs nor a serving grant. Existing scalar frames keep their definition checks
+issued canonical proof. The internal packet preserves all retained original section
+fields before contract/history filtering, including explicit absent sections. It
+does not establish decoded completeness: the mixed decoder must refuse missing
+required non-genesis sections and separately verify native genesis; absence must
+never become an empty logical block. It supplies neither decoded plugin inputs
+nor a serving grant. Existing scalar frames keep their definition checks
 and decoding path. Durable raw-target storage, complete mixed selector decoding,
 the production mixed owner, scope-less Wire KV input negotiation and domain HTTP
 readiness remain required integration work; these source controls do not establish
