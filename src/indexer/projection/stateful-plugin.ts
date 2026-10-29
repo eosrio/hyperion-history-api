@@ -10,6 +10,8 @@ export interface StatefulPluginProjectionV2 {
     readonly definition: StatefulProjectionTemplateV2;
     readonly limits: StatefulLimits;
     readonly reduce: (reduction: StatefulReductionV2) => void | Promise<void>;
+    /** Source metadata requirements; the host must negotiate these before creating an owner. */
+    readonly requiredSourceCapabilities?: readonly string[];
 }
 export interface StatefulPluginRegistrationV2 {
     readonly interfaceVersion: 2;
@@ -19,6 +21,8 @@ export interface StatefulPluginRegistrationV2 {
 export interface StatefulPluginHostContextV2 {
     /** Host owns backend, stable instance, actual hook artifacts and mapping/codec revisions. */
     readonly binding: StatefulDefinition['binding'];
+    /** Actual retained-original metadata supplied by this host, never a serving grant. */
+    readonly sourceCapabilities?: readonly string[];
 }
 /** Optional method on the existing loaded Hyperion plugin; it is not another executable loader. */
 export interface StatefulPluginV2 {

@@ -9,6 +9,7 @@ import {protocolImmutableJson} from '../protocol/immutable-bundle-store.js';
 import {ProtocolAbiProofUnavailableError} from '../protocol/abi-proof.js';
 import {currentProofConsumerScope} from '../protocol/proof-consumer-scope.js';
 import type {PortableProjectionRawTarget, PortableProjectionSource} from './source.js';
+import type {StatefulActionMetadataOptionsV2} from '@eosrio/hyperion-sdk/projection-stateful-source-v2';
 
 const json = protocolImmutableJson;
 const hash = (input: unknown) => createHash('sha256').update(json(input)).digest('hex');
@@ -36,6 +37,7 @@ interface OwnerOptions {
     readonly requireAttemptScope: boolean;
     readonly run: (metadata: unknown, operation: () => Promise<boolean>) => Promise<boolean>;
     readonly maximumFramesPerDrain: number;
+    readonly sourceMetadata?: StatefulActionMetadataOptionsV2;
     readonly onError?: (error: unknown) => void;
 }
 
@@ -76,7 +78,7 @@ export class StatefulProjectionControllerV2 {
     private async canonical(point: ProjectionCheckpoint): Promise<boolean> {
         if (point.blockNum === 0) {
             // This is ancestry verification while serving is fenced, never empty-source reduction.
-            const genesis = await this.options.source.statefulBlock(1, this.options.declaration, async () => {});
+            const genesis = await this.options.source.statefulBlock(1, this.options.declaration, async () => {}, this.options.sourceMetadata);
             return same(genesis.source.source.previous, zero);
         }
         try {await this.options.source.open(point); return true;}
@@ -140,7 +142,7 @@ export class StatefulProjectionControllerV2 {
             }
             const selected = await this.options.source.statefulBlock(height, this.options.declaration, async target => {
                 admitted = await this.raw(recovery!, target);
-            });
+            }, this.options.sourceMetadata);
             this.guard(); requireOwner(admitted, 'Original raw target was not durably admitted'); decodedDigest = selected.source.digest;
             await this.options.source.revalidate(selected.proof); this.guard();
             await executeStatefulOwnerBlockV2(this.options.declaration, this.options.adapter, this.lease!, admitted.digest,

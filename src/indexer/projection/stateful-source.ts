@@ -2,7 +2,8 @@ import {createHash} from 'node:crypto';
 import type {ProtocolAbiActionInput, ProtocolAbiDeployment, ProtocolProvider} from '@eosrio/hyperion-sdk/protocol';
 import type {StatefulSelector} from '@eosrio/hyperion-sdk/projection-stateful';
 import type {StatefulOwnerDeclarationV2} from '@eosrio/hyperion-sdk/projection-stateful-owner-v2';
-import {captureStatefulSourceV2, type CapturedStatefulSourceV2, type StatefulInputV2} from '@eosrio/hyperion-sdk/projection-stateful-source-v2';
+import {captureStatefulSourceV2, STATEFUL_ACTION_AUTHORIZATION_CAPABILITY_V1,
+    type CapturedStatefulSourceV2, type StatefulActionMetadataOptionsV2, type StatefulInputV2} from '@eosrio/hyperion-sdk/projection-stateful-source-v2';
 import {deriveProtocolActionOccurrences} from '../history/action-source-inventory.js';
 import {ProtocolAbiProofUnavailableError, type ProtocolAbiProofReader} from '../protocol/abi-proof.js';
 import type {ProtocolAbiAccountState} from '../protocol/abi-reducer.js';
@@ -12,8 +13,17 @@ import {statefulAbiEpoch} from './stateful-abi-epoch.js';
 
 const hash = (input: string | Uint8Array) => createHash('sha256').update(input).digest('hex');
 const json = protocolImmutableJson;
+/** This producer copies the authorization already validated from the complete original trace. */
+export const STATEFUL_SOURCE_CAPABILITIES_V2 = Object.freeze([STATEFUL_ACTION_AUTHORIZATION_CAPABILITY_V1]);
 function requireSource(value: unknown, message: string): asserts value {
     if (!value) throw new ProtocolAbiProofUnavailableError('stateful_source_unavailable', message);
+}
+export function statefulActionMetadataSelection(options: StatefulActionMetadataOptionsV2): StatefulActionMetadataOptionsV2 {
+    const metadata = JSON.parse(json(options));
+    requireSource(metadata !== null && typeof metadata === 'object' && !Array.isArray(metadata)
+        && (Object.keys(metadata).length === 0 || Object.keys(metadata).length === 1
+        && Object.hasOwn(metadata, 'actionMetadataVersion') && metadata.actionMetadataVersion === 1), 'Unsupported stateful action metadata selection');
+    return Object.freeze(metadata);
 }
 function originalTime(value: unknown): string {
     requireSource(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z?$/.test(value), 'Original block time is absent');
@@ -27,7 +37,11 @@ function originalTime(value: unknown): string {
 /** Internal decoder used only after the actual source has admitted and verified its original packet. */
 export async function decodeStatefulSourceV2(declaration: StatefulOwnerDeclarationV2, packet: PortableProjectionOriginalBlock,
     provider: ProtocolProvider, reader: ProtocolAbiProofReader,
-    authorizeContract?: (input: ProtocolAbiActionInput) => Promise<void>): Promise<CapturedStatefulSourceV2> {
+    authorizeContract?: (input: ProtocolAbiActionInput) => Promise<void>,
+    metadataOptions: StatefulActionMetadataOptionsV2 = {}): Promise<CapturedStatefulSourceV2> {
+    // Capture the selected mode before the first await; unknown variants never fall back to legacy.
+    const metadata = statefulActionMetadataSelection(metadataOptions);
+    const actionMetadata = metadata.actionMetadataVersion === 1;
     const d = declaration.projection, {proof, observation, context, target} = packet;
     requireSource(d.definition.binding.chainId === proof.source.chainId, 'Stateful declaration belongs to another chain');
     reader.assertConsumerScope(proof);
@@ -44,7 +58,7 @@ export async function decodeStatefulSourceV2(declaration: StatefulOwnerDeclarati
             // The caller verifies native genesis; this issued reader proves empty application state.
             const frame = await reader.nativeGenesisFrame(proof);
             requireSource(json(frame.block) === json(target.block), 'Native genesis block differs');
-            return captureStatefulSourceV2(declaration, {previous, block, inputs: []});
+            return captureStatefulSourceV2(declaration, {previous, block, inputs: [], ...metadata});
         }
         requireSource(block.previousBlockId !== '0'.repeat(64), 'Non-genesis predecessor is absent');
         // Decode both whole vectors before selection. History filters never enter this path.
@@ -99,9 +113,16 @@ export async function decodeStatefulSourceV2(declaration: StatefulOwnerDeclarati
             const coordinate = coordinates.get(`${original.transactionId}:${original.actionOrdinal}`);
             requireSource(coordinate, 'Original action coordinate is absent');
             const data = provider.contractCodec.decodeValue(abi, type, Buffer.from(original.rawHex, 'hex'));
-            add({...common(selector, original.rawHex, {kind: 'action', ...coordinate, input: original}), kind: 'action',
+            const authorization = occurrence.authorization.map(value => {
+                const {actor, permission} = value;
+                requireSource(typeof actor === 'string' && typeof permission === 'string', 'Validated original authorization is invalid');
+                return {actor, permission};
+            });
+            add({...common(selector, original.rawHex, {kind: 'action', ...coordinate, input: original,
+                ...(actionMetadata ? {authorization} : {})}), kind: 'action',
                 transactionId: original.transactionId, actionOrdinal: original.actionOrdinal, receiver: original.receiver,
-                receiptOrdinal: coordinate.receiptOrdinal, sequence: original.globalSequence, data: data as Record<string, any>});
+                receiptOrdinal: coordinate.receiptOrdinal, sequence: original.globalSequence, data: data as Record<string, any>,
+                ...(actionMetadata ? {authorization} : {})});
         }
         const hasTables = d.definition.selectors.some(value => value.kind === 'table');
         const tables = provider.statefulTables;
@@ -138,6 +159,6 @@ export async function decodeStatefulSourceV2(declaration: StatefulOwnerDeclarati
             }
         }
         await reader.revalidate(proof);
-        return captureStatefulSourceV2(declaration, {previous, block, inputs});
+        return captureStatefulSourceV2(declaration, {previous, block, inputs, ...metadata});
     } finally {session.close?.();}
 }

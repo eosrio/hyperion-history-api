@@ -84,6 +84,7 @@ export default class ProjectionWorker extends HyperionWorker {
                             const configuration = this.statefulConfiguration!;
                             this.statefulControllers.set(id, new StatefulProjectionControllerV2({declaration: entry.declaration, adapter: entry.adapter,
                                 source: this.statefulSource!, identity: this.statefulIdentity, reduce: entry.reduce, requireAttemptScope: true,
+                                sourceMetadata: entry.sourceMetadata,
                                 custody: createStatefulCandidateCustodyV2(this.client, this.chain, this.conf.settings.es_replicas ?? 0, entry.declaration),
                                 assertActive: () => {if (this.stopped) throw new Error('Stateful worker stopped'); this.assertWorkerAttemptActive();},
                                 run: (metadata, operation) => this.runProjectionFrameAttempt(metadata, operation, () => !this.stopped),
