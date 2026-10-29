@@ -1,9 +1,6 @@
 import {createHash} from 'node:crypto';
-import {Readable} from 'node:stream';
-import {finished} from 'node:stream/promises';
-import {unzipSync} from 'node:zlib';
 import type {Client} from '@elastic/elasticsearch';
-import {Transport, type GetConnectionOptions, type TransportOptions} from '@elastic/transport';
+import {ownedBoundedProtocolMget} from './bounded-document-read.js';
 import {boundedCanonicalJson} from '../helpers/bounded-json.js';
 import {currentProofConsumerScope, proofConsumerSignal, trackProofConsumerOperation, type ProofConsumerScope} from './proof-consumer-scope.js';
 interface StoredDocument {
@@ -30,93 +27,6 @@ const canonical = protocolImmutableJson;
 /** Per-request bounds only; callers may scan multiple batches within their existing record budget. */
 export const protocolBundleMembershipHintBounds = Object.freeze({maximumItems: 256,
     maximumRequestBytes: 64 * 1024, maximumResponseBytes: 1024 * 1024});
-
-/** The pinned transport inflates compressed responses before its JSON serializer without an output cap. */
-async function membershipHintResponse(reply: any, deserialize: (text: string) => unknown, signal?: AbortSignal): Promise<unknown> {
-    const body = reply?.body;
-    if (!(body instanceof Readable)) throw new Error('Invalid immutable bundle membership hint stream');
-    const settled = finished(body, {cleanup: true}); void settled.catch(() => {});
-    const abort = () => body.destroy(signal?.reason instanceof Error ? signal.reason : new Error('Membership hint aborted'));
-    let completed = false;
-    signal?.addEventListener('abort', abort, {once: true});
-    try {
-        signal?.throwIfAborted();
-        if (reply.statusCode !== 200) throw new Error('Immutable bundle membership hint HTTP failure', {cause: {statusCode: reply.statusCode}});
-        const type = reply.headers?.['content-type'], encoding = reply.headers?.['content-encoding'] ?? '';
-        if (typeof type !== 'string' || type.length > 256 || !/^application\/(?:json|vnd\.elasticsearch\+json)(?:\s*;|$)/i.test(type)
-            || typeof encoding !== 'string' || encoding.length > 32 || !['', 'identity', 'gzip', 'deflate'].includes(encoding.toLowerCase()))
-            throw new Error('Invalid immutable bundle membership hint content headers');
-        const chunks: Buffer[] = []; let bytes = 0;
-        for await (const chunk of body) {
-            signal?.throwIfAborted();
-            if (!(chunk instanceof Uint8Array)) throw new Error('Invalid immutable bundle membership hint byte chunk');
-            bytes += chunk.byteLength;
-            if (bytes > protocolBundleMembershipHintBounds.maximumResponseBytes) throw new Error('Immutable bundle membership hint wire byte bound exceeded');
-            chunks.push(Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength));
-        }
-        signal?.throwIfAborted();
-        const wire = Buffer.concat(chunks, bytes);
-        const decoded = ['gzip', 'deflate'].includes(encoding.toLowerCase())
-            ? unzipSync(wire, {maxOutputLength: protocolBundleMembershipHintBounds.maximumResponseBytes}) : wire;
-        if (decoded.length > protocolBundleMembershipHintBounds.maximumResponseBytes) throw new Error('Immutable bundle membership hint decoded byte bound exceeded');
-        const result = deserialize(decoded.toString('utf8')); completed = true;
-        return result;
-    } finally {
-        signal?.removeEventListener('abort', abort);
-        if (!body.destroyed) body.destroy();
-        let failure: unknown;
-        try {await settled;} catch (error) {failure = error;}
-        if (completed) {signal?.throwIfAborted(); if (failure) throw failure;}
-    }
-}
-
-/** Capture before the SDK product check can reject and hide an acquired live body. */
-async function ownedMembershipHint(client: Client, index: string, ids: string[], signal?: AbortSignal): Promise<unknown> {
-    const acquired = new Map<Readable, Promise<void>>(), originals = new WeakMap<object, object>();
-    const ParentTransport = client.transport.constructor as typeof Transport;
-    class HintTransport extends ParentTransport {
-        constructor(options: TransportOptions) {
-            const pool = options.connectionPool;
-            const localPool = new Proxy(pool, {get(target, key) {
-                const value = Reflect.get(target, key, target);
-                if (key === 'markAlive' || key === 'markDead') return (connection: object) =>
-                    value.call(target, originals.get(connection) ?? connection);
-                return typeof value === 'function' ? value.bind(target) : value;
-            }});
-            // The parent remains the pool's configured maintenance owner; do not start duplicate sniff work.
-            super({...options, connectionPool: localPool, sniffOnStart: false, sniffInterval: false, sniffOnConnectionFault: false});
-        }
-        getConnection(options: GetConnectionOptions) {
-            const connection = super.getConnection(options); if (connection === null) return null;
-            const facade = new Proxy(connection, {get(target, key) {
-                if (key === 'request') return async (...args: Parameters<typeof connection.request>) => {
-                    const reply = await Reflect.apply(connection.request, connection, args);
-                    if (reply.body instanceof Readable && !acquired.has(reply.body)) {
-                        const settled = finished(reply.body, {cleanup: true}); void settled.catch(() => {});
-                        acquired.set(reply.body, settled);
-                    }
-                    return reply;
-                };
-                const value = Reflect.get(target, key, target);
-                return typeof value === 'function' ? value.bind(target) : value;
-            }});
-            originals.set(facade, connection); return facade;
-        }
-    }
-    // A child shares the original pool/auth/TLS configuration; never close that shared pool here.
-    const child = client.child({Transport: HintTransport});
-    let completed = false;
-    try {
-        const reply = await child.mget({index, ids, realtime: true, _source: false},
-            {signal, asStream: true, meta: true, maxResponseSize: protocolBundleMembershipHintBounds.maximumResponseBytes,
-                maxCompressedResponseSize: protocolBundleMembershipHintBounds.maximumResponseBytes});
-        const result = await membershipHintResponse(reply, text => child.serializer.deserialize(text), signal); completed = true; return result;
-    } finally {
-        for (const body of acquired.keys()) if (!body.destroyed) body.destroy();
-        await Promise.allSettled(acquired.values());
-        if (completed) signal?.throwIfAborted();
-    }
-}
 
 async function checkedIo<T>(signal: AbortSignal | undefined, operation: () => Promise<T>): Promise<T> {
     signal?.throwIfAborted();
@@ -318,7 +228,7 @@ export class ImmutableProtocolBundleStore {
             throw new Error('Invalid immutable bundle membership hint IDs');
         canonical({ids}, protocolBundleMembershipHintBounds.maximumRequestBytes);
         await this.initialize(signal); scope?.assertActive();
-        const response: any = await trackProofConsumerOperation(() => ownedMembershipHint(this.client, this.index, ids, signal), scope);
+        const response: any = await trackProofConsumerOperation(() => ownedBoundedProtocolMget(this.client, this.index, ids, false, protocolBundleMembershipHintBounds.maximumResponseBytes, 'Immutable bundle membership hint', signal), scope);
         scope?.assertActive();
         if (!response || Object.keys(response).length !== 1 || !Array.isArray(response.docs) || response.docs.length !== ids.length)
             throw new Error('Incomplete immutable bundle membership hint response');
@@ -339,6 +249,132 @@ export class ImmutableProtocolBundleStore {
         return missing;
     }
 
+    private validateManifest(id: string, manifest: any): StoredDocument {
+        if (manifest.kind !== 'manifest' || manifest.bundle_id !== id || !hex64.test(manifest.digest)
+            || !Number.isSafeInteger(manifest.byte_length) || manifest.byte_length < 1 || manifest.byte_length > this.bounds.maximumBytes
+            || !Array.isArray(manifest.chunk_ids) || !manifest.chunk_ids.length || manifest.chunk_ids.length > this.bounds.maximumChunks
+            || new Set(manifest.chunk_ids).size !== manifest.chunk_ids.length) throw new ImmutableProtocolBundleReadError('invalid',id,'Invalid ABI observation manifest');
+        return manifest;
+    }
+
+    private decodeChunk(id: string, chunk: any, index: number): Buffer {
+        if (chunk.kind !== 'chunk' || chunk.bundle_id !== id || chunk.chunk_index !== index || typeof chunk.payload !== 'string'
+            || chunk.payload.length > Math.ceil(this.bounds.chunkBytes / 3) * 4
+            || !Number.isSafeInteger(chunk.byte_length) || chunk.byte_length < 1 || chunk.byte_length > this.bounds.chunkBytes) {
+            throw new ImmutableProtocolBundleReadError('invalid',id,'Invalid ABI observation chunk');
+        }
+        const payload = Buffer.from(chunk.payload, 'base64');
+        if (payload.toString('base64') !== chunk.payload || payload.length !== chunk.byte_length || sha256(payload) !== chunk.digest) {
+            throw new ImmutableProtocolBundleReadError('invalid',id,'ABI observation chunk integrity mismatch');
+        }
+        return payload;
+    }
+
+    private decodeRecord(id: string, manifest: StoredDocument, payloads: Buffer[], bytes: number): unknown {
+        const payload = Buffer.concat(payloads);
+        if (bytes !== manifest.byte_length || sha256(payload) !== manifest.digest) throw new ImmutableProtocolBundleReadError('invalid',id,'ABI observation bundle integrity mismatch');
+        try {
+            const record=JSON.parse(payload.toString('utf8'));
+            if(!Buffer.from(canonical(record)).equals(payload))throw new Error('Noncanonical bundle');
+            return record;
+        } catch {throw new ImmutableProtocolBundleReadError('invalid',id,'ABI observation source identity mismatch');}
+    }
+
+    /** Fresh independent reads only. Manifest bytes reserve the whole window before any payload is acquired. */
+    async readMany(input: readonly string[], maximumRetainedBytes: number, signal?: AbortSignal): Promise<unknown[]> {
+        const scope = currentProofConsumerScope(); scope?.assertActive();
+        signal = proofConsumerSignal(signal); signal?.throwIfAborted();
+        if (!Array.isArray(input) || input.length < 1 || input.length > 4 || new Set(input).size !== input.length
+            || input.some(id => typeof id !== 'string' || !/^[a-zA-Z0-9_.:-]{1,256}$/.test(id))
+            || !Number.isSafeInteger(maximumRetainedBytes) || maximumRetainedBytes < 1 || maximumRetainedBytes > 128 * 1024 * 1024)
+            throw new Error('Invalid immutable bundle staged read budget');
+        const ids = [...input];
+        // Preserve one fresh metadata validation per original logical read, never a shared metadata snapshot.
+        for (const id of ids) {await this.initialize(signal, this.options.rejectLifecycleOnRead === true); scope?.assertActive();}
+        const responseBytes = Math.max(1024 * 1024, Math.ceil(this.bounds.chunkBytes / 3) * 4 + 8192);
+        const manifests = new Map<string, StoredDocument>();
+        const manifestItems = ids.map(id => ({id, maximumBytes: 4096 + this.bounds.maximumChunks * (id.length + 82)}));
+        for (const batch of this.readPacks(manifestItems, responseBytes)) {
+            const docs = await this.readDocuments(batch.map(x => x.id), responseBytes, signal);
+            for (const [offset, doc] of docs.entries()) {
+                const id = batch[offset]!.id;
+                if (!doc.found) throw new ImmutableProtocolBundleReadError('missing', id, 'Immutable protocol bundle is missing');
+                manifests.set(id, this.validateManifest(id, doc._source));
+            }
+        }
+        const retainedBytes = [...manifests.values()].reduce((total, manifest) => total + manifest.byte_length, 0);
+        if (retainedBytes > maximumRetainedBytes)
+            throw new ImmutableProtocolBundleReadError('invalid', ids[0]!, 'Immutable bundle staged read exceeds aggregate retained byte budget');
+        const payloads = new Map(ids.map(id => [id, [] as Buffer[]]));
+        const totals = new Map(ids.map(id => [id, 0]));
+        const chunks = ids.flatMap(id => {
+            const manifest = manifests.get(id)!;
+            return manifest.chunk_ids!.map((chunkId, index) => {
+                if (chunkId !== `${id}:${manifest.digest}:${index}`)
+                    throw new ImmutableProtocolBundleReadError('invalid', id, 'Invalid ABI observation chunk identity');
+                return {id: chunkId, bundle: id, index,
+                    maximumBytes: 4096 + Math.ceil(Math.min(this.bounds.chunkBytes, manifest.byte_length) / 3) * 4 + chunkId.length * 3};
+            });
+        });
+        for (const batch of this.readPacks(chunks, responseBytes)) {
+            const docs = await this.readDocuments(batch.map(x => x.id), responseBytes, signal);
+            for (const [offset, doc] of docs.entries()) {
+                const expected = batch[offset]!;
+                if (!doc.found) throw new ImmutableProtocolBundleReadError('incomplete', expected.bundle, 'Immutable protocol bundle has a missing chunk');
+                const payload = this.decodeChunk(expected.bundle, doc._source, expected.index);
+                const total = totals.get(expected.bundle)! + payload.length;
+                // The declared reservation cannot be overrun by a malformed chunk before final assembly.
+                if (total > manifests.get(expected.bundle)!.byte_length)
+                    throw new ImmutableProtocolBundleReadError('invalid', expected.bundle, 'ABI observation read exceeds its reserved bundle bytes');
+                totals.set(expected.bundle, total); payloads.get(expected.bundle)!.push(payload);
+            }
+        }
+        const records: unknown[] = [];
+        for (const id of ids) {
+            signal?.throwIfAborted(); scope?.assertActive();
+            const parts = payloads.get(id)!;
+            records.push(this.decodeRecord(id, manifests.get(id)!, parts, totals.get(id)!));
+            parts.length = 0; // Release raw chunks before retaining the next decoded record.
+        }
+        signal?.throwIfAborted(); scope?.assertActive();
+        return records;
+    }
+
+    private *readPacks<T extends {id: string; maximumBytes: number}>(items: readonly T[], responseBytes: number): Generator<T[]> {
+        let batch: T[] = [], bytes = 32;
+        for (const item of items) {
+            if (item.maximumBytes + 32 > responseBytes) throw new Error('Immutable document exceeds its bounded response pack');
+            const next = [...batch, item];
+            const requestBytes = Buffer.byteLength(JSON.stringify({index: this.index, ids: next.map(x => x.id), realtime: true, _source: true}));
+            if (batch.length && (batch.length >= 256 || bytes + item.maximumBytes > responseBytes || requestBytes > 64 * 1024)) {
+                yield batch; batch = []; bytes = 32;
+            }
+            batch.push(item); bytes += item.maximumBytes;
+        }
+        if (batch.length) yield batch;
+    }
+
+    private async readDocuments(ids: string[], maximumResponseBytes: number, signal?: AbortSignal): Promise<any[]> {
+        const scope = currentProofConsumerScope(); scope?.assertActive();
+        const response: any = await checkedIo(signal, () => trackProofConsumerOperation(() =>
+            ownedBoundedProtocolMget(this.client, this.index, ids, true, maximumResponseBytes, 'Immutable bundle full-source read', signal), scope));
+        scope?.assertActive();
+        canonical(response, maximumResponseBytes);
+        if (!response || Object.keys(response).length !== 1 || !Array.isArray(response.docs) || response.docs.length !== ids.length)
+            throw new Error('Incomplete immutable bundle full-source response');
+        for (const [offset, doc] of response.docs.entries()) {
+            if (doc && Object.hasOwn(doc, 'error')) throw new Error('Failed immutable bundle full-source item', {cause: doc.error});
+            if (!doc || doc._index !== this.index || doc._id !== ids[offset] || typeof doc.found !== 'boolean'
+                || Object.keys(doc).some(key => !['_index', '_id', 'found', '_version', '_seq_no', '_primary_term', '_source'].includes(key))
+                || ['_version', '_seq_no', '_primary_term'].some(key => Object.hasOwn(doc, key)
+                    && (!Number.isSafeInteger(doc[key]) || doc[key] < (key === '_seq_no' ? 0 : 1)))
+                || (doc.found ? (!doc._source || Array.isArray(doc._source) || typeof doc._source !== 'object'
+                    || !Number.isSafeInteger(doc._seq_no) || !Number.isSafeInteger(doc._primary_term)) : Object.hasOwn(doc, '_source')))
+                throw new Error('Invalid immutable bundle full-source item');
+        }
+        return response.docs;
+    }
+
     async read(id: string, signal?:AbortSignal): Promise<unknown> {
         await this.initialize(signal,this.options.rejectLifecycleOnRead===true);
         let manifest;
@@ -346,10 +382,7 @@ export class ImmutableProtocolBundleStore {
             if(this.isMissing(error,id))throw new ImmutableProtocolBundleReadError('missing',id,'Immutable protocol bundle is missing');
             throw error;
         }
-        if (manifest.kind !== 'manifest' || manifest.bundle_id !== id || !hex64.test(manifest.digest)
-            || !Number.isSafeInteger(manifest.byte_length) || manifest.byte_length < 1 || manifest.byte_length > this.bounds.maximumBytes
-            || !Array.isArray(manifest.chunk_ids) || !manifest.chunk_ids.length || manifest.chunk_ids.length > this.bounds.maximumChunks
-            || new Set(manifest.chunk_ids).size !== manifest.chunk_ids.length) throw new ImmutableProtocolBundleReadError('invalid',id,'Invalid ABI observation manifest');
+        manifest = this.validateManifest(id, manifest);
         const payloads: Buffer[] = [];
         let bytes = 0;
         for (const [index, chunkId] of manifest.chunk_ids.entries()) {
@@ -359,25 +392,11 @@ export class ImmutableProtocolBundleStore {
                 if(this.isMissing(error,chunkId))throw new ImmutableProtocolBundleReadError('incomplete',id,'Immutable protocol bundle has a missing chunk');
                 throw error;
             }
-            if (chunk.kind !== 'chunk' || chunk.bundle_id !== id || chunk.chunk_index !== index || typeof chunk.payload !== 'string'
-                || chunk.payload.length > Math.ceil(this.bounds.chunkBytes / 3) * 4
-                || !Number.isSafeInteger(chunk.byte_length) || chunk.byte_length < 1 || chunk.byte_length > this.bounds.chunkBytes) {
-                throw new ImmutableProtocolBundleReadError('invalid',id,'Invalid ABI observation chunk');
-            }
-            const payload = Buffer.from(chunk.payload, 'base64');
-            if (payload.toString('base64') !== chunk.payload || payload.length !== chunk.byte_length || sha256(payload) !== chunk.digest) {
-                throw new ImmutableProtocolBundleReadError('invalid',id,'ABI observation chunk integrity mismatch');
-            }
+            const payload = this.decodeChunk(id, chunk, index);
             bytes += payload.length;
             if (bytes > this.bounds.maximumBytes) throw new ImmutableProtocolBundleReadError('invalid',id,'ABI observation read exceeds bounded storage budget');
             payloads.push(payload);
         }
-        const payload = Buffer.concat(payloads);
-        if (bytes !== manifest.byte_length || sha256(payload) !== manifest.digest) throw new ImmutableProtocolBundleReadError('invalid',id,'ABI observation bundle integrity mismatch');
-        try {
-            const record=JSON.parse(payload.toString('utf8'));
-            if(!Buffer.from(canonical(record)).equals(payload))throw new Error('Noncanonical bundle');
-            return record;
-        } catch {throw new ImmutableProtocolBundleReadError('invalid',id,'ABI observation source identity mismatch');}
+        return this.decodeRecord(id, manifest, payloads, bytes);
     }
 }
