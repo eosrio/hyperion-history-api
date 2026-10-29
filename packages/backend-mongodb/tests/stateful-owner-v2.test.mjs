@@ -147,3 +147,16 @@ test('actual owner execution/custody preserves scope-less KV identities includin
     }
     await assert.rejects(v1.captureStatefulSource(projection,input));
 });
+for(const mode of ['bootstrap','takeover'])test(`exact ${mode} acquire retry cannot silently adopt a rollback revision`,async()=>{
+    let s=await setup(),request={expected:null,nextOwner:s.identity};
+    if(mode==='takeover'){
+        const recovery=await s.adapter.recovery();request={expected:{version:recovery.version,view:recovery.view,owner:recovery.owner},nextOwner:ownerIdentity('takeover')};
+        s={...s,identity:request.nextOwner,lease:await s.adapter.acquireOwner(request,guard)};
+    }
+    const target=await admit(s,1);await execute(s,target,put);await retire(s,target);
+    assert.ok(await s.adapter.acquireOwner(structuredClone(request),guard),'ordinary progress permits exact same-revision claim retry');
+    const view=(await s.adapter.recovery()).view;
+    await s.adapter.rollbackOwned(s.lease,{declarationDigest:s.declaration.digest,revision:view.revision,operationId:hex(92),from:view.checkpoint,ancestor:view.checkpoint,maxBlocks:1});
+    await assert.rejects(s.adapter.acquireOwner(structuredClone(request),guard),code('stateful.stale-view'));
+    const next=await takeover(s,'fresh-after-rollback');assert.equal((await value(next)).value.row.value.owner,'bob');
+});
