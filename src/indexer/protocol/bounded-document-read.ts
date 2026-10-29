@@ -96,4 +96,3 @@ export async function ownedBoundedProtocolMget(client: Client, index: string, id
         if (completed) signal?.throwIfAborted();
     }
 }
-
