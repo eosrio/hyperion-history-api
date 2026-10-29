@@ -81,3 +81,55 @@ physical transactions, cleanup, native process termination/restart and independe
 inspection. Host journals, canonical fork coordination, source admission, serving gates and plugin
 domain/API integration remain separate work; production defaults and aggregate per-chain capacity
 remain unchanged.
+# Explicit owner/raw recovery v2
+
+The separate `./stateful-owner-v2` factory negotiates SDK owner recovery v2 and
+original source input v2. It uses `h45-stateful-mongodb-owner-v2` metadata and
+`_stateful_v2_*` collections. It never adopts existing v1 storage. Factory
+construction performs no native action and exposes no public `open` or `read`
+readiness shortcut. The caller retains ownership of the connected client.
+
+The current owner claim, original raw target, decoded-source binding, failure,
+pending intent, receipts, progress and undo live in the same metadata document.
+Owner acquisition compares exact inspected metadata version/view/previous claim;
+an unknown claim ACK can only retry the same fixed claim.
+Claims bind their acquisition revision: ordinary progress may retain an exact
+claim retry, while rollback always requires a freshly inspected acquisition.
+Initialization creates
+empty collections transactionally with the owner-bound initialized CAS, requiring
+a replica-set primary with MongoDB 4.4 or later wire capability. Existing domain
+collection namespaces fail closed. Every native effect checks the actual host
+guard, and transactional metadata CAS binds the current claim and revision.
+That empty-namespace initialization transaction uses `readConcern: local`, as
+required for [explicit collection creation](https://www.mongodb.com/docs/manual/reference/read-concern/),
+with majority+journaled commit and the same-document owner CAS. Domain apply,
+rollback and coherent read transactions continue to use `readConcern: snapshot`.
+
+The real raw target is admitted before source decode. A raw failure has no fake
+decoded digest. Takeover preserves its original owner and certified references.
+Original source and candidate validation use SDK source v2, including scope-less
+KV identities. V1 and v2 share the actual effect, observation, receipt, retention
+and undo algorithms; recovery labels and captured source bytes are not translated.
+
+Apply leaves raw/failure evidence until exact receipt/progress-backed retirement.
+The retirement CAS writes an opaque terminal metadata version bound to the
+declaration, owner claim, revision, checkpoint and target/source/candidate IDs.
+This permits an exact lost-clear ACK retry while that version remains current.
+Any later metadata write, owner acquisition, new raw target or revision invalidates
+the old retry. There is no second journal, and clearing recovery grants no serving
+authority. Cold reconciliation with `raw:null` still requires completed native
+state/receipt validation and the host's current canonical and live-owner checks.
+
+Private reduction reads and API-local completed reads are distinct opaque,
+adapter-local capabilities. Plugin callbacks receive neither native capability.
+A completed-read capability additionally requires the actual host live-owner/
+request guard; persisted in-flight labels do not create that authority. The host
+must refuse unknown/cold-unreconciled state and revalidate all selector epochs,
+canonical source, view and current owner again at final response publication.
+Native raw/source failures and rollback refuse completed reads. Successful normal
+in-flight work may expose one coherent completed checkpoint under that host grant.
+Rollback rotates revision and invalidates old leases/read capabilities.
+
+Controlled driver tests cover these source semantics. Physical MongoDB crash,
+Wire replay, SQL comparison, mixed-owner/API serving and full AtomicAssets/
+AtomicMarket parity remain separate qualification gates.

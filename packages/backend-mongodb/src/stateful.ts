@@ -8,6 +8,7 @@ import {
 import {WriteConcern, type ClientSession, type Collection, type Db, type MongoClient} from 'mongodb';
 import {bsonBytes, MAX_METADATA_BYTES, retainedBytes} from './rollback-contract.js';
 import {serverErrorCode} from './storage.js';
+import {commitStatefulCandidate, rollbackStatefulStep, type StatefulEffects} from './stateful-effects.js';
 import {
     STATEFUL_STORAGE, MAX_BSON_BYTES, ZERO, blockOf, checkedImages, decodeRow, equalPoint, fields, hex, keyId, logicalKey,
     metadata, ready, receiveDeclaration, recoveryOf, requireState, rowOf, sha, size, slotFor, viewOf, writer,
@@ -211,43 +212,7 @@ class MongoDbStatefulAdapter implements StatefulAdapter {
             const pending = {sourceDigest: source.digest, candidateDigest: candidate.digest, block: {blockNum: block.blockNum, blockId: block.blockId}};
             requireState(initial.pending === null || JSON.stringify(initial.pending) === JSON.stringify(pending), 'Pending candidate conflicts', 'stateful.replay-conflict');
             await this.save(initial, {pending});
-            return this.transaction(async session => {
-                const m = await this.load(session); writer(m);
-                if (this.replay(m, source, candidate.digest)) {ready(m); return {status: 'duplicate' as const, progress: viewOf(d, m)};}
-                assertStatefulView(d, viewOf(d, m), candidate.view);
-                requireState(JSON.stringify(m.pending) === JSON.stringify(pending), 'Original durable intent differs', 'stateful.replay-conflict');
-                // Recheck original observations at the same native snapshot as effects/progress.
-                for (const observation of candidate.observations) {
-                    const raw = await this.rows.findOne({_id: keyId(observation.key)}, {session});
-                    if (raw !== null) decodeRow(d, observation.key, raw);
-                    requireState(observation.result.status === 'covered-absent' ? raw === null : raw !== null &&
-                        raw.json === rowOf(d, observation.key, observation.result.value).json, 'Observed base record differs', 'stateful.stale-view');
-                }
-                const images = new Map<string, StatefulImage>(); let imageBytes = 0;
-                for (const mutation of candidate.mutations) if (!images.has(keyId(mutation.target))) {
-                    const raw = await this.rows.findOne({_id: keyId(mutation.target)}, {session});
-                    if (raw !== null) decodeRow(d, mutation.target, raw);
-                    const image: StatefulImage = {_id: sha(block.blockId + keyId(mutation.target)), blockId: block.blockId, target: mutation.target, before: raw?.json ?? null};
-                    imageBytes += bsonBytes(image); requireState(imageBytes <= this.policy.maxBlockBytes, 'Before-image byte bound', 'stateful.apply-unavailable'); images.set(keyId(mutation.target), image);
-                }
-                const ordered = [...images.values()].sort((a, b) => a._id < b._id ? -1 : a._id > b._id ? 1 : 0);
-                const undo: StatefulUndo = {block, digest: candidate.digest, sourceDigest: source.digest, count: ordered.length, imageBytes, imagesHash: sha(JSON.stringify(ordered))};
-                requireState(retainedBytes([undo]) <= this.policy.maxBlockBytes, 'Undo descriptor byte bound', 'stateful.apply-unavailable'); checkedImages(d, undo, ordered);
-                for (const image of ordered) await this.images.insertOne(image, {session});
-                for (const mutation of candidate.mutations) {
-                    if (mutation.kind === 'put') await this.rows.replaceOne({_id: keyId(mutation.target)}, rowOf(d, mutation.target, mutation.value), {session, upsert: true});
-                    else await this.rows.deleteOne({_id: keyId(mutation.target)}, {session});
-                }
-                const retained = [...m.undo, undo]; let floor = m.floor, floorReceipt = m.floorReceipt;
-                while (retained.length > this.policy.maxBlocks || retainedBytes(retained) > this.policy.maxBytes) {
-                    const removed = retained.shift()!; await this.images.deleteMany({blockId: removed.block.blockId}, {session});
-                    floor = {blockNum: removed.block.blockNum, blockId: removed.block.blockId}; floorReceipt = {...floor, sourceDigest: removed.sourceDigest, candidateDigest: removed.digest};
-                }
-                const checkpoint = {blockNum: block.blockNum, blockId: block.blockId};
-                const receipts = [...m.receipts, {...checkpoint, sourceDigest: source.digest, candidateDigest: candidate.digest}].slice(-this.policy.receiptRetention);
-                const next = await this.save(m, {checkpoint, receipts, pending: null, undo: retained, floor, floorReceipt}, session);
-                return {status: 'applied' as const, progress: viewOf(d, next)};
-            });
+            return commitStatefulCandidate(this.effects(), candidate, pending);
         });
     }
     async markIncomplete(input: StatefulDeclaration, expected: StatefulView, supplied: CapturedStatefulSource, reason: string): Promise<void> {
@@ -274,30 +239,18 @@ class MongoDbStatefulAdapter implements StatefulAdapter {
                 m = await this.save(m, {revision: token(), rollback, pending: null, gap: null});
                 requireState(available, 'Ancestor outside retained exact-branch undo', 'stateful.rollback-unavailable');
             }
-            for (let step = 0; step < request.maxBlocks && m.rollback?.status === 'running'; step++) m = await this.transaction(async session => {
-                const current = await this.load(session), operation = current.rollback;
-                requireState(operation?.operationId === request.operationId && operation.sourceRevision === request.revision &&
-                    equalPoint(operation.from, request.from) && equalPoint(operation.ancestor, request.ancestor), 'Another rollback owns progress', 'stateful.stale-view');
-                if (operation.status !== 'running') return current;
-                let checkpoint = current.checkpoint, undo = [...current.undo], receipts = [...current.receipts];
-                if (!equalPoint(checkpoint, operation.ancestor)) {
-                    const u = undo.pop(); requireState(u && equalPoint(u.block, checkpoint), 'Missing original undo descriptor');
-                    const raw = await this.images.find({blockId: u.block.blockId}, {session}).sort({_id: 1}).limit(u.count + 1).toArray();
-                    for (const image of checkedImages(d, u, raw)) {
-                        if (image.before === null) await this.rows.deleteOne({_id: keyId(image.target)}, {session});
-                        else await this.rows.replaceOne({_id: keyId(image.target)}, rowOf(d, image.target, JSON.parse(image.before)), {session, upsert: true});
-                    }
-                    await this.images.deleteMany({blockId: u.block.blockId}, {session});
-                    checkpoint = {blockNum: u.block.blockNum - 1, blockId: u.block.previousBlockId}; receipts = receipts.filter(r => r.blockNum <= checkpoint.blockNum);
-                    if (checkpoint.blockNum > 0 && !receipts.some(r => equalPoint(r, checkpoint))) {
-                        const last = undo.at(-1), receipt = last ? {...checkpoint, sourceDigest: last.sourceDigest, candidateDigest: last.digest} : current.floorReceipt;
-                        requireState(receipt && equalPoint(receipt, checkpoint), 'Missing predecessor replay receipt'); receipts.push(receipt);
-                    }
-                }
-                return this.save(current, {checkpoint, undo, receipts, rollback: {...operation, status: equalPoint(checkpoint, operation.ancestor) ? 'complete' : 'running'}}, session);
-            });
+            for (let step = 0; step < request.maxBlocks && m.rollback?.status === 'running'; step++) m = await rollbackStatefulStep(this.effects(), request);
             return {status: m.rollback?.status === 'complete' ? 'rolled-back' as const : 'in-progress' as const, recovery: recoveryOf(d, m)};
         });
+    }
+    private effects(): StatefulEffects<StatefulMetadata> {
+        const d = this.declaration;
+        return {declaration: d, policy: this.policy, rows: this.rows, images: this.images, call: work => work(),
+            load: session => this.load(session), save: (before, changes, session) => this.save(before, changes, session),
+            transaction: work => this.transaction(work), assertApply: m => writer(m),
+            assertView: (m, candidate) => assertStatefulView(d, viewOf(d, m), candidate.view),
+            replay: (m, candidate) => this.replay(m, candidate.source as CapturedStatefulSource, candidate.digest) !== null,
+            duplicate: m => ready(m), view: m => viewOf(d, m)};
     }
     async retainedCheckpoints(input: StatefulDeclaration, revision: string) {
         await this.binding(input); hex(revision);

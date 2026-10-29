@@ -13,7 +13,8 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./stateful": {"types": "./dist/stateful.d.ts", "import": "./dist/stateful.js"}
+    "./stateful": {"types": "./dist/stateful.d.ts", "import": "./dist/stateful.js"},
+    "./stateful-owner-v2": {"types": "./dist/stateful-owner-v2.d.ts", "import": "./dist/stateful-owner-v2.js"}
   },
   "files": [
     "dist/",
@@ -38,7 +39,7 @@
     "mongodb": "7.2.0"
   },
   "devDependencies": {
-    "@eosrio/hyperion-sdk": "git+https://github.com/eosrio/hyperion-sdk.git#b64bac478fc8015d409d44aa6f100668e0e091d2",
+    "@eosrio/hyperion-sdk": "git+https://github.com/eosrio/hyperion-sdk.git#58d68c5cea81490bbb1c9a7736d633d465bab3ef",
     "@types/node": "25.5.0",
     "typescript": "7.0.2"
   }

@@ -105,6 +105,21 @@ export function metadata(d: StatefulDeclaration, policy: StatefulPolicy, input: 
     recoveryOf(d, m);
     if (!m.initialized) requireState(equalPoint(m.checkpoint, ZERO) && m.pending === null && m.gap === null && m.rollback === null &&
         m.undo.length === 0 && m.receipts.length === 0 && equalPoint(m.floor, ZERO) && m.floorReceipt === null, 'Uninitialized storage contains effects/progress');
+    assertStatefulHistory(d, policy, m);
+    if (m.pending) {
+        fields(m.pending, ['sourceDigest', 'candidateDigest', 'block']);
+        fields(m.pending.block, ['blockNum', 'blockId']);
+        requireState(m.pending.block.blockNum === m.checkpoint.blockNum + 1, 'Pending source is not next');
+        hex(m.pending.block.blockId);
+    }
+    if (m.gap) requireState(m.gap.block.blockNum === m.checkpoint.blockNum + 1, 'Incomplete source is not next');
+    requireState(!(m.pending && m.gap) && (!m.rollback || m.rollback.status === 'complete' || !(m.pending || m.gap)), 'Conflicting recovery ownership');
+    requireState(bsonBytes(m) <= MAX_METADATA_BYTES, 'Metadata BSON bound'); return m;
+}
+/** Shared actual receipt/undo branch validation, with family-specific recovery validation left intact. */
+export function assertStatefulHistory(d: StatefulDeclaration, policy: StatefulPolicy,
+    m: Pick<StatefulMetadata, 'floor' | 'floorReceipt' | 'undo' | 'receipts' | 'checkpoint'>): void {
+    requireState(Array.isArray(m.receipts) && m.receipts.length <= policy.receiptRetention && Array.isArray(m.undo), 'Receipt/undo bound');
     let previous = m.floor; const ids = new Set<string>([previous.blockId]);
     for (const u of m.undo as readonly StatefulUndo[]) {
         fields(u, ['block', 'digest', 'sourceDigest', 'count', 'imageBytes', 'imagesHash']);
@@ -128,15 +143,6 @@ export function metadata(d: StatefulDeclaration, policy: StatefulPolicy, input: 
     if (m.checkpoint.blockNum > 0) requireState(m.receipts.some(r => equalPoint(r, m.checkpoint)), 'Completed progress has no receipt');
     if (m.floor.blockNum === 0) requireState(equalPoint(m.floor, ZERO) && m.floorReceipt === null, 'Genesis coverage differs');
     else {receipt(m.floorReceipt); requireState(equalPoint(m.floorReceipt, m.floor), 'Floor receipt differs');}
-    if (m.pending) {
-        fields(m.pending, ['sourceDigest', 'candidateDigest', 'block']);
-        fields(m.pending.block, ['blockNum', 'blockId']);
-        requireState(m.pending.block.blockNum === m.checkpoint.blockNum + 1, 'Pending source is not next');
-        hex(m.pending.block.blockId);
-    }
-    if (m.gap) requireState(m.gap.block.blockNum === m.checkpoint.blockNum + 1, 'Incomplete source is not next');
-    requireState(!(m.pending && m.gap) && (!m.rollback || m.rollback.status === 'complete' || !(m.pending || m.gap)), 'Conflicting recovery ownership');
-    requireState(bsonBytes(m) <= MAX_METADATA_BYTES, 'Metadata BSON bound'); return m;
 }
 export function checkedImages(d: StatefulDeclaration, u: StatefulUndo, input: readonly StatefulImage[]): readonly StatefulImage[] {
     requireState(input.length === u.count, 'Missing/extra undo images');
