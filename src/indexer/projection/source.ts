@@ -16,7 +16,7 @@ import type {ProjectionFrame, ProjectionTableChange} from './runtime.js';
 import {currentProofConsumerScope, trackProofConsumerOperation} from '../protocol/proof-consumer-scope.js';
 import {ProtocolNativeActionReader} from '../protocol/native-authorization.js';
 import {ProtocolNativeObservationStore} from '../protocol/native-observation-store.js';
-import {decodeStatefulSourceV2} from './stateful-source.js';
+import {decodeStatefulSourceV2, statefulActionMetadataSelection} from './stateful-source.js';
 import {statefulAbiEpoch} from './stateful-abi-epoch.js';
 
 const json = protocolImmutableJson;
@@ -229,7 +229,9 @@ export class PortableProjectionSource {
     }
     /** Complete original action/table input under the version2 owner, independent of history filters. */
     async statefulBlock(blockNum: number, declaration: StatefulOwnerDeclarationV2,
-        admitRawTarget: (target: PortableProjectionRawTarget) => Promise<void>): Promise<PortableStatefulFrameV2> {
+        admitRawTarget: (target: PortableProjectionRawTarget) => Promise<void>,
+        metadataOptions: import('@eosrio/hyperion-sdk/projection-stateful-source-v2').StatefulActionMetadataOptionsV2 = {}): Promise<PortableStatefulFrameV2> {
+        const metadata = statefulActionMetadataSelection(metadataOptions);
         const packet = await this.originalBlock(blockNum, admitRawTarget);
         if (blockNum === 1) verifyNativeGenesisRecord(packet.observation, this.options.provider.verifyNativeGenesis?.bind(this.options.provider));
         let native: ProtocolNativeActionReader | undefined;
@@ -243,7 +245,7 @@ export class PortableProjectionSource {
             const decision = await native.authorize(nativeView, input);
             if (decision.kind !== 'contract') unavailable('Selected stateful action is not a qualified contract action');
         } : undefined;
-        const source = await decodeStatefulSourceV2(declaration, packet, this.options.provider, this.reader, authorize);
+        const source = await decodeStatefulSourceV2(declaration, packet, this.options.provider, this.reader, authorize, metadata);
         if (native && nativeView) await native.revalidate(nativeView);
         await this.revalidate(packet.proof);
         return Object.freeze({source, proof: packet.proof, evidence: packet.evidence});

@@ -3,6 +3,7 @@ import type {Client} from '@elastic/elasticsearch';
 import type {MongoClient} from 'mongodb';
 import {captureStatefulDeclaration} from '@eosrio/hyperion-sdk/projection-stateful';
 import type {StatefulView} from '@eosrio/hyperion-sdk/projection-stateful';
+import {negotiateStatefulActionMetadataV2, type StatefulActionMetadataOptionsV2} from '@eosrio/hyperion-sdk/projection-stateful-source-v2';
 import {captureStatefulOwnerDeclarationV2, negotiateStatefulOwnerV2, STATEFUL_OWNER_FAMILY_V2,
     STATEFUL_OWNER_HOST_CAPABILITIES_V2, type StatefulOwnerAdapterV2, type StatefulOwnerDeclarationV2,
     type StatefulReductionV2} from '@eosrio/hyperion-sdk/projection-stateful-owner-v2';
@@ -14,11 +15,13 @@ import type {ProtocolSourceProfile} from '../protocol/source-bindings.js';
 import type {PortableProjectionSource} from './source.js';
 import type {ResolvedStatefulOwnerConfigurationV2} from './stateful-config.js';
 import type {StatefulPluginProjectionV2, StatefulPluginRegistrationV2} from './stateful-plugin.js';
+import {STATEFUL_SOURCE_CAPABILITIES_V2} from './stateful-source.js';
 
 const hash = (input: unknown) => createHash('sha256').update(protocolImmutableJson(input)).digest('hex');
 export interface RegisteredStatefulProjectionV2 {
     readonly declaration: StatefulOwnerDeclarationV2; readonly adapter: StatefulOwnerAdapterV2;
     readonly reduce: (port: StatefulReductionV2) => Promise<void>;
+    readonly sourceMetadata: StatefulActionMetadataOptionsV2;
 }
 interface RegistryOptions {
     chainId: string; configuration: ResolvedStatefulOwnerConfigurationV2; mongo: MongoClient; client: Client;
@@ -42,14 +45,20 @@ export class StatefulProjectionRegistryV2 {
                 normalizerRevision: hash(['hyperion-stateful-normalizer-v2', runtime.executableSha256, options.profile])});
             let registration: StatefulPluginRegistrationV2;
             try {
-                registration = await entry.plugin.getStatefulProjectionsV2(Object.freeze({binding}));
+                registration = await entry.plugin.getStatefulProjectionsV2(Object.freeze({binding, sourceCapabilities: STATEFUL_SOURCE_CAPABILITIES_V2}));
                 if (registration?.interfaceVersion !== 2 || registration.sourceInputVersion !== 2 || !Array.isArray(registration.projections)
                     || registration.projections.length > 32)
                     throw new Error('Plugin did not negotiate stateful owner/source version2');
             } catch (error) {options.onError?.(entry.plugin.internalPluginName, error); continue;}
             for (const template of registration.projections) {
                 try {
-                    const inert = JSON.parse(protocolImmutableJson({definition: template.definition, limits: template.limits}));
+                    const required = Object.getOwnPropertyDescriptor(template, 'requiredSourceCapabilities');
+                    if (required && (!required.enumerable || !Object.hasOwn(required, 'value')))
+                        throw new Error('Stateful source requirements must be inert data');
+                    const requiredSourceCapabilities = required ? required.value : [];
+                    negotiateStatefulActionMetadataV2(requiredSourceCapabilities, STATEFUL_SOURCE_CAPABILITIES_V2);
+                    const inert = JSON.parse(protocolImmutableJson({definition: template.definition, limits: template.limits,
+                        requiredSourceCapabilities}));
                     const id = inert.definition.id;
                     if (typeof id !== 'string' || !id || typeof template.reduce !== 'function') throw new Error('Invalid stateful plugin template');
                     if (registry.templates.size + registry.invalid.size >= 32 && !registry.templates.has(id)) throw new Error('Per-chain projection budget exceeded');
@@ -88,7 +97,9 @@ export class StatefulProjectionRegistryV2 {
                 const negotiated = await negotiateStatefulOwnerV2(projection, {family: STATEFUL_OWNER_FAMILY_V2, interfaceVersion: 2,
                     sourceInputVersions: [2], supported: STATEFUL_OWNER_HOST_CAPABILITIES_V2, limits: projection.limits}, adapter.capabilities);
                 await this.options.source.revalidate(selected.proof);
-                this.entries.set(id, Object.freeze({declaration: negotiated, adapter, reduce: async port => {await template.reduce(port);}}));
+                const sourceMetadata = negotiateStatefulActionMetadataV2(template.requiredSourceCapabilities, STATEFUL_SOURCE_CAPABILITIES_V2);
+                this.entries.set(id, Object.freeze({declaration: negotiated, adapter, sourceMetadata,
+                    reduce: async port => {await template.reduce(port);}}));
             } catch (error) {this.options.onError?.(id, error);}
         }
     }

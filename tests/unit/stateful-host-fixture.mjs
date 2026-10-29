@@ -22,7 +22,7 @@ const {installStatefulApiHostV2} = await load('api/helpers/stateful-owner.js');
 const {resolveStatefulOwnerConfigurationV2} = await load('indexer/projection/stateful-config.js');
 
 /** Actual emitted/source host and worker methods, with explicit native-command and transport fixtures. */
-export async function statefulHostFixture({timeoutMs = 1000, hooks = {}} = {}) {
+export async function statefulHostFixture({timeoutMs = 1000, hooks = {}, requiredSourceCapabilities = []} = {}) {
     const {p} = await preparedStatefulInputs();
     const rawConfiguration = {interfaceVersion: 2, sourceInputVersion: 2,
         backend: {kind: 'mongodb', id: 'stateful-fixture', database: 'stateful_fixture'}, recovery: {bytes: 8 * 1024 * 1024},
@@ -37,13 +37,16 @@ export async function statefulHostFixture({timeoutMs = 1000, hooks = {}} = {}) {
     writeFileSync(join(pluginRoot, 'entry', 'package.json'), JSON.stringify({name: 'stateful-host-component', version: '1.0.0', type: 'module'}));
     writeFileSync(join(pluginRoot, 'entry', 'build', 'index.js'), `export default class Plugin {
         constructor(options) {this.options = options; this.internalPluginName = 'stateful-component';}
-        getStatefulProjectionsV2() {return {interfaceVersion:2,sourceInputVersion:2,projections:[{
-            definition:this.options.template,limits:this.options.limits,reduce:async port => {
+        getStatefulProjectionsV2(context) {
+            if(this.options.requiredSourceCapabilities.some(capability=>!context.sourceCapabilities.includes(capability)))
+                throw new Error('Required source capability is missing');
+            return {interfaceVersion:2,sourceInputVersion:2,projections:[{
+            definition:this.options.template,limits:this.options.limits,requiredSourceCapabilities:this.options.requiredSourceCapabilities,reduce:async port => {
                 port.put('collection','last',{height:port.source.block.blockNum,occurrences:port.source.inputs.length});
             }}]};}
     }`);
     const cm = {config: {settings: {chain: p.options.chain, parser: '3.2'}, indexer: {},
-        features: {index_transfer_memo: true, stateful_owner_v2: rawConfiguration}, plugins: {entry: {enabled: true, template, limits: limits()}}},
+        features: {index_transfer_memo: true, stateful_owner_v2: rawConfiguration}, plugins: {entry: {enabled: true, template, limits: limits(), requiredSourceCapabilities}}},
         connections: {chains: {[p.options.chain]: {chain_id: capture.chainId}}}, filters: {action_blacklist: new Set(), action_whitelist: new Set(),
             delta_blacklist: new Set(), delta_whitelist: new Set()}};
     const previousConfig = process.env.CONFIG_JSON;
@@ -73,7 +76,7 @@ export async function statefulHostFixture({timeoutMs = 1000, hooks = {}} = {}) {
         assertActive: () => worker.assertWorkerAttemptActive(),
         run: (metadata, operation) => worker.runProjectionFrameAttempt(metadata, operation, () => !worker.stopped),
         maximumFramesPerDrain: 1, custody: createStatefulCandidateCustodyV2(p.options.client, p.options.chain, 0, declaration),
-        reduce: entry.reduce});
+        sourceMetadata: entry.sourceMetadata, reduce: async port => {await hooks.source?.(port); await entry.reduce(port);}});
     worker.statefulControllers.set(selected.id, controller);
     await controller.drain(); await controller.drain(); await controller.drain();
     const broker = new StatefulWorkerProbeBroker(8, timeoutMs, physical => physical === parent && supervisor.ownsActiveWorker(physical, 'projection'));
