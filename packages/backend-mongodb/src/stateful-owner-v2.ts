@@ -91,10 +91,10 @@ class MongoDbStatefulOwnerAdapterV2 implements StatefulOwnerAdapterV2 {
     private claim(input: unknown): StatefulOwnerClaimV2 {
         fields(input, ['identity', 'claimDigest']); const identity = this.identity(input.identity); hex(input.claimDigest); return Object.freeze({identity, claimDigest: input.claimDigest});
     }
-    private initial(owner: StatefulOwnerClaimV2): OwnerMetadataV2 {
+    private initial(owner: StatefulOwnerClaimV2, revision = token()): OwnerMetadataV2 {
         const d = this.declaration;
         return {_id: ownerSlot(d), storageVersion: STATEFUL_OWNER_STORAGE_V2, declaration: JSON.stringify(d), declarationDigest: d.digest, policy: this.policy,
-            etag: token(), checkpoint: {...ZERO}, revision: token(), initialized: false, owner, raw: null, pending: null, gap: null, rollback: null,
+            etag: token(), checkpoint: {...ZERO}, revision, initialized: false, owner, raw: null, pending: null, gap: null, rollback: null,
             receipts: [], undo: [], floor: {...ZERO}, floorReceipt: null};
     }
     private lease(input: StatefulOwnerLeaseV2): OwnerContext {
@@ -153,7 +153,7 @@ class MongoDbStatefulOwnerAdapterV2 implements StatefulOwnerAdapterV2 {
             expected = Object.freeze({version: input.expected.version, view: captureStatefulOwnerViewV2(d, input.expected.view),
                 owner: input.expected.owner === null ? null : this.claim(input.expected.owner)});
         }
-        const claimDigest = sha(JSON.stringify({declarationDigest: d.digest, expected, nextOwner})), claim = {identity: nextOwner, claimDigest};
+        const claimFor = (revision: string) => sha(JSON.stringify({declarationDigest: d.digest, expected, nextOwner, revision}));
         return this.available(async () => {
             let m = await this.call(guard, () => this.load());
             if (m === null) {
@@ -162,12 +162,17 @@ class MongoDbStatefulOwnerAdapterV2 implements StatefulOwnerAdapterV2 {
                 requireState(typeof hello.setName === 'string' && hello.setName.length > 0 && hello.isWritablePrimary === true
                     && Number.isSafeInteger(hello.maxWireVersion) && hello.maxWireVersion >= 9 && Number.isFinite(hello.logicalSessionTimeoutMinutes)
                     && hello.logicalSessionTimeoutMinutes > 0, 'Owner MongoDB requires replica-set primary and transactional collection creation', 'stateful.capability-unavailable');
-                const initial = await this.call(guard, () => ownerMetadata(d, this.policy, this.initial(claim)));
+                const revision = token(), initialClaim = {identity: nextOwner, claimDigest: claimFor(revision)};
+                const initial = await this.call(guard, () => ownerMetadata(d, this.policy, this.initial(initialClaim, revision)));
                 try {await this.call(guard, () => this.meta.insertOne(initial, {writeConcern: this.concern, timeoutMS: this.operationMS}));}
                 catch (error) {if (!serverErrorCode(error, 11000)) throw error;}
                 m = await this.call(guard, () => this.load());
             }
             requireState(m !== null, 'Owner claim outcome unavailable', 'stateful.commit-unknown');
+            // Exact lost-ACK retries may span ordinary progress, never a rollback revision.
+            // Bootstrap retries derive their claim from the persisted original initial revision.
+            if (expected !== null) requireState(m.revision === expected.view.revision, 'Owner acquire revision changed', 'stateful.stale-view');
+            const claimDigest = claimFor(expected?.view.revision ?? m.revision), claim = {identity: nextOwner, claimDigest};
             if (m.owner.claimDigest !== claimDigest || !same(m.owner.identity, nextOwner)) {
                 requireState(expected !== null && m.etag === expected.version && same(ownerView(d, m), expected.view) && same(m.owner, expected.owner),
                     'Owner acquire compare-and-set differs', 'stateful.stale-view');

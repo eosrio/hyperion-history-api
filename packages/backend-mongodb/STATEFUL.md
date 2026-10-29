@@ -92,7 +92,10 @@ readiness shortcut. The caller retains ownership of the connected client.
 The current owner claim, original raw target, decoded-source binding, failure,
 pending intent, receipts, progress and undo live in the same metadata document.
 Owner acquisition compares exact inspected metadata version/view/previous claim;
-an unknown claim ACK can only retry the same fixed claim. Initialization creates
+an unknown claim ACK can only retry the same fixed claim.
+Claims bind their acquisition revision: ordinary progress may retain an exact
+claim retry, while rollback always requires a freshly inspected acquisition.
+Initialization creates
 empty collections transactionally with the owner-bound initialized CAS, requiring
 a replica-set primary with MongoDB 4.4 or later wire capability. Existing domain
 collection namespaces fail closed. Every native effect checks the actual host
