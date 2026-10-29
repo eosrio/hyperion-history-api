@@ -4,8 +4,8 @@ import type {ProtocolProvider} from '@eosrio/hyperion-sdk/protocol';
 import {ProjectionContractError, type ProjectionBlock, type ProjectionCheckpoint, type ProjectionDefinition} from '@eosrio/hyperion-sdk/projection';
 import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
 import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, type ProtocolAbiProofView} from '../protocol/abi-proof.js';
-import {ProtocolAbiObservationStore, protocolAbiObservationId} from '../protocol/abi-observation-store.js';
-import {ProtocolSourceBindingStore, type ProtocolSourceProfile} from '../protocol/source-bindings.js';
+import {ProtocolAbiObservationStore, protocolAbiObservationId, type ProtocolAbiObservationRecord} from '../protocol/abi-observation-store.js';
+import {ProtocolSourceBindingStore, type ProtocolSourceContext, type ProtocolSourceSelection, type ProtocolSourceProfile} from '../protocol/source-bindings.js';
 import {protocolImmutableJson} from '../protocol/immutable-bundle-store.js';
 import {protocolDeployment} from '../protocol/deployments.js';
 import {verifyNativeGenesisRecord} from '../protocol/native-genesis.js';
@@ -27,6 +27,21 @@ export interface PortableProjectionSourceEvidence {
 }
 export interface PortableProjectionFrame {
     readonly frame: ProjectionFrame; readonly proof: ProtocolAbiProofView; readonly evidence: PortableProjectionSourceEvidence;
+}
+/** Original certified locators available before reading or interpreting retained capture bodies. */
+export interface PortableProjectionRawTarget {
+    readonly block: ProjectionBlock;
+    readonly reference: {readonly commitId: string; readonly selectionId: string;
+        readonly observationId: string; readonly observationDigest: string};
+}
+/** Internal source boundary; this packet is not a plugin input or a public serving grant. */
+export interface PortableProjectionOriginalBlock {
+    readonly target: PortableProjectionRawTarget;
+    readonly proof: ProtocolAbiProofView;
+    readonly selection: ProtocolSourceSelection;
+    readonly context: ProtocolSourceContext;
+    readonly observation: ProtocolAbiObservationRecord;
+    readonly evidence: PortableProjectionSourceEvidence;
 }
 /** A known canonical target can be durably fenced even when its retained input cannot be used. */
 export class PortableProjectionFrameError extends Error {
@@ -112,11 +127,8 @@ export class PortableProjectionSource {
             || settled.head.commitId !== control.head.commitId)
             throw new ProjectionContractError('projection.stale-view', 'Canonical ABI head changed during definition validation');
     }
-    /** Bounded certified ancestry; missing old input never becomes an empty frame. */
-    async frame(blockNum: number, definition: ProjectionDefinition,
-                admitCanonicalTarget?: (block: ProjectionBlock) => Promise<void>): Promise<PortableProjectionFrame> {
+    private async canonicalTarget(blockNum: number, admitCanonicalTarget?: (block: ProjectionBlock) => Promise<void>) {
         if (!Number.isSafeInteger(blockNum) || blockNum < 1) unavailable('Invalid source height');
-        const scope = currentProofConsumerScope(this.options.requireAttemptScope);
         const control = await this.control();
         if (blockNum > control.head.blockNum) unavailable('Next projection source has not committed');
         if (control.head.blockNum - blockNum > this.maximumAncestry) {
@@ -142,7 +154,16 @@ export class PortableProjectionSource {
         // Admission failures stay outside the interpretation catch: no contract work has started yet.
         await admitCanonicalTarget?.(Object.freeze({blockNum, blockId: proof.source.blockId,
             previousBlockId: proof.source.previousBlockId ?? zero}));
-        try {
+        return {commit, proof};
+    }
+    private rawTarget(commit: any, proof: ProtocolAbiProofView): PortableProjectionRawTarget {
+        if (!/^h45abi1:[0-9a-f]{64}$/.test(commit.observationId) || !/^[0-9a-f]{64}$/.test(commit.observationDigest))
+            unavailable('Canonical source lacks an original observation reference');
+        return Object.freeze({block: Object.freeze({blockNum: proof.source.blockNum, blockId: proof.source.blockId,
+            previousBlockId: proof.source.previousBlockId ?? zero}), reference: Object.freeze({commitId: proof.commitId,
+            selectionId: proof.selectionId, observationId: commit.observationId as string, observationDigest: commit.observationDigest as string})});
+    }
+    private async originalCapture(commit: any, proof: ProtocolAbiProofView): Promise<Omit<PortableProjectionOriginalBlock, 'target'>> {
         const {selection, context} = await this.retained(() => this.bindings.readSelection(proof.selectionId));
         const link = await this.retained(() => this.bindings.readObservationLink(proof.selectionId));
         const observation = await this.retained(() => this.observations.read(link.observationId));
@@ -156,6 +177,32 @@ export class PortableProjectionSource {
         const evidence = Object.freeze({certificateId: proof.certificateId, commitId: proof.commitId,
             selectionId: proof.selectionId, observationId: link.observationId, observationDigest: link.observationDigest,
             captureSha256: selection.captureSha256, frameSha256: selection.frameSha256});
+        return Object.freeze({proof, selection, context, observation, evidence});
+    }
+    /**
+     * The actual mixed-input owner must retain the raw target before a missing/malformed capture
+     * can fail. No decoded data/time/hash placeholder is needed by that admission callback.
+     */
+    async originalBlock(blockNum: number, admitRawTarget: (target: PortableProjectionRawTarget) => Promise<void>): Promise<PortableProjectionOriginalBlock> {
+        if (!Number.isSafeInteger(blockNum) || blockNum < 1) unavailable('Invalid source height');
+        const scope = currentProofConsumerScope(this.options.requireAttemptScope);
+        const {commit, proof} = await this.canonicalTarget(blockNum);
+        scope?.assertActive();
+        const target = this.rawTarget(commit, proof);
+        await trackProofConsumerOperation(() => admitRawTarget(target), scope);
+        scope?.assertActive();
+        const original = await this.originalCapture(commit, proof);
+        await this.revalidate(proof);
+        return Object.freeze({...original, target});
+    }
+    /** Bounded certified ancestry; missing old input never becomes an empty frame. */
+    async frame(blockNum: number, definition: ProjectionDefinition,
+                admitCanonicalTarget?: (block: ProjectionBlock) => Promise<void>): Promise<PortableProjectionFrame> {
+        if (!Number.isSafeInteger(blockNum) || blockNum < 1) unavailable('Invalid source height');
+        const scope = currentProofConsumerScope(this.options.requireAttemptScope);
+        const {commit, proof} = await this.canonicalTarget(blockNum, admitCanonicalTarget);
+        try {
+        const {selection, context, observation, evidence} = await this.originalCapture(commit, proof);
         const selectedDefinitionDeployment = await this.definitionState(proof, definition, true);
         if (blockNum === 1) {
             verifyNativeGenesisRecord(observation, this.options.provider.verifyNativeGenesis?.bind(this.options.provider));
