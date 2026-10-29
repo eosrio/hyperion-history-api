@@ -84,6 +84,12 @@ export function frontierMemoryClient(replicas=0) {
                     ...(request._source === true ? {_source:structuredClone(stored.document)} : {})}
                     :{_index:request.index,_id:id,found:false};
             });
+            // Keep document-read faults observable after the complete cloned response snapshot.
+            // Source-free membership hints deliberately do not read any document body.
+            if(request._source===true&&faults.read)for(let index=0;index<docs.length;index++){
+                const item=docs[index];
+                if(item.found)docs[index]=await(faults.read?.(item,{...request,id:item._id})??item);
+            }
             const result=await (faults.mget?.({docs},request,options)??{docs});
             if(options?.asStream){
                 const reply={statusCode:200,headers:{'content-type':'application/json','x-elastic-product':'Elasticsearch'},body:Readable.from([Buffer.from(JSON.stringify(result))])};
