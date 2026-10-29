@@ -137,3 +137,27 @@ own prepared lock and installed SDK339 remain exact. Wire18d instead requires SD
 all three installed module positions. This is an internal qualification matrix; it does
 not update the older performance assembly, frozen captures, the standard distribution
 or the launch qualification profile.
+
+The complete executable pin inventory also includes the application replay auditor,
+confirmed-handoff storage qualifier and attempt-disposition storage qualifier. Their
+original absent/empty-profile defaults remain Wire716 (and the storage qualifiers'
+legacy host SDK339). The explicit engineering profile validates the full coordinated
+assembly through the same helper before their own runtime/store work; the journal
+runner also checks it before Docker, run timers or output. CI's journal job selects
+that profile explicitly. The application auditor reports the actual admitted package
+revision in both the fixture and lineage, retaining every captured-byte/transport/row
+oracle and all replay limits. All application-auditor callers inherit that same
+opt-in; their default716 behavior remains unchanged.
+
+The non-CI historical `scripts/diagnostics/native-worker-proof-credit.mjs` deliberately
+retains its original716 source assertion and remains outside this coordinated CI
+matrix. No diagnostic/performance capture, frozen operator or public runtime guard
+is changed. The default716 host fixture assembly described above remains distinct
+from the original716/SDK339 storage qualification default.
+
+The component-evidence reader also accepts only that named engineering opt-in, validates
+the same installed artifact set, and requires the actual selected package root. Its
+original two-argument default remains716, including synthetic guard controls. The
+engineering worker source snapshot retains the shared admission helper bytes as an
+additional input; the default source inventory and every byte/resource bound remain
+unchanged. No caller-provided revision or expected hash selects a new source authority.

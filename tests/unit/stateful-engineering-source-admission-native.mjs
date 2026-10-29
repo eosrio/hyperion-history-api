@@ -83,6 +83,24 @@ try {
             assert.match(child.stderr, /Unknown engineering source profile/, name);
             assert.deepEqual(readdirSync(before), [], name + ' ran fixture effects before admission'); cases++;
         }
+        const {auditWireReplayFixture} = await import('../../scripts/qualification/wire-replay-fixture.ts');
+        await assert.rejects(() => auditWireReplayFixture({outputDirectory: join(before, 'audit-output')}), /Unknown engineering source profile/); cases++;
+        const {readWireComponentSources} = await import('../../scripts/qualification/wire-worker-replay.ts');
+        await assert.rejects(() => readWireComponentSources(before, [], 'unknown'), /Unknown engineering source profile/); cases++;
+        await assert.rejects(() => readWireComponentSources(before, [], profile), /selected installed package/); cases++;
+        let sourceIO = 0;
+        const client = new Proxy({}, {get() {sourceIO++; throw new Error('qualification performed I/O before source admission');}});
+        for (const [file, name] of [['action-handoff-outcomes.mjs', 'qualifyActionHandoffOutcomes'],
+            ['action-attempt-dispositions.mjs', 'qualifyActionAttemptDispositions']]) {
+            const qualification = await import('../../scripts/qualification/' + file);
+            await assert.rejects(() => qualification[name]({client}), /Unknown engineering source profile/);
+            assert.equal(sourceIO, 0); cases++;
+        }
+        const journal = spawnSync(process.execPath, [fileURLToPath(new URL('../../scripts/qualification/check-action-source-journal.mjs', import.meta.url))],
+            {env: {...process.env, PATH: '', TEMP: before, TMP: before, TMPDIR: before}, encoding: 'utf8', timeout: 10000, maxBuffer: 1024 * 1024});
+        assert.equal(journal.status, 1, journal.stderr);
+        assert.match(journal.stderr, /Unknown engineering source profile/);
+        assert.deepEqual(readdirSync(before), [], 'journal source admission precedes Docker and temporary output'); cases++;
         process.env.HYPERION_NATIVE_SOURCE_PROFILE = '';
         assert.throws(() => admitNativeSourceEnvironment(), /Wire source revision/); cases++;
     } finally {if (savedProfile === undefined) delete process.env.HYPERION_NATIVE_SOURCE_PROFILE; else process.env.HYPERION_NATIVE_SOURCE_PROFILE = savedProfile;}
@@ -91,5 +109,5 @@ try {
     rmSync(directory, {recursive: true, force: true});
 }
 console.log(JSON.stringify({cases, sealedEngineeringOption: true, default716Preserved: true, artifactAndSourceSetChecked: true,
-    unknownRevisionPackageTreeArtifactRefused: true, defaultOverrideRefusedBeforeEffects: true, temporaryCodeOnly: true, callerEnvironmentAdmission: true, callerBeforeEffectsNegatives: 8,
+    unknownRevisionPackageTreeArtifactRefused: true, defaultOverrideRefusedBeforeEffects: true, temporaryCodeOnly: true, callerEnvironmentAdmission: true, callerBeforeEffectsNegatives: 8, qualificationBeforeEffectsNegatives: 6,
     services: false, defaultDistributionQualified: false, launchQualified: false}));

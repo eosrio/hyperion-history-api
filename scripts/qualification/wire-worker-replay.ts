@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {assertNativeQualificationRuntime} from './native-node-runtime.mjs';
 import {spawn, execFileSync, type ChildProcess} from 'node:child_process';
-import {mkdir, lstat, open, readFile, readdir, writeFile} from 'node:fs/promises';
+import {mkdir, lstat, open, readFile, readdir, realpath, writeFile} from 'node:fs/promises';
 import {createServer} from 'node:http';
 import {once} from 'node:events';
 import {dirname, join, parse, resolve} from 'node:path';
@@ -192,7 +192,12 @@ const runtimeSources = ['package.json', 'package-lock.json', '.bun-version', 'AG
         'protocol/immutable-bundle-store'].flatMap(file => [`src/indexer/${file}.ts`, `build/indexer/${file}.js`])];
 
 /** Keep the installed components' exact bytes, including source-only Rust members. */
-export async function readWireComponentSources(packageRoot: string, selected: readonly {runtime: string; sha256: string}[]) {
+export async function readWireComponentSources(packageRoot: string, selected: readonly {runtime: string; sha256: string}[], engineeringSourceProfile?: string) {
+    const admission = engineeringSourceProfile
+        ? (await import('../../tests/unit/stateful-engineering-source-admission.mjs')).admitCoordinatedNativeSourceOptions({engineeringSourceProfile}) : undefined;
+    const packageRevision = admission?.wireRevision ?? wireReplayPins.packageRevision;
+    if (admission) assert.equal(await realpath(packageRoot), await realpath(resolve(dirname(fileURLToPath(
+        import.meta.resolve('@eosrio/hyperion-wire-plugin/protocol-provider.json'))), '..')), 'engineering artifacts require the selected installed package');
     assert.equal(selected.length, 2);
     assert.deepEqual(selected.map(component => component.runtime).sort(), ['node', 'rust']);
     const files = new Map<string, Buffer>();
@@ -205,7 +210,7 @@ export async function readWireComponentSources(packageRoot: string, selected: re
         assert.equal(digest(bytes), component.sha256, 'selected Wire component manifest changed');
         const manifest = JSON.parse(bytes.toString());
         assert.equal(manifest.schemaVersion, 1); assert.equal(manifest.sourceModified, false);
-        assert.equal(manifest.sourceRevision, wireReplayPins.packageRevision);
+        assert.equal(manifest.sourceRevision, packageRevision);
         assert.ok(Array.isArray(manifest.files) && manifest.files.length > 0 && manifest.files.length <= 512);
         for (const member of manifest.files) {
             assert.ok(typeof member.path === 'string' && /^(?:[A-Za-z0-9_.-]+\/)*[A-Za-z0-9_.-]+$/.test(member.path)
@@ -228,8 +233,11 @@ export async function readWireComponentSources(packageRoot: string, selected: re
 async function sourceSnapshot(selected: readonly {runtime: string; sha256: string}[], output?: string) {
     const hashes: Record<string, string> = {}; let total = 0;
     const prefix = 'node_modules/@eosrio/hyperion-wire-plugin';
-    const componentFiles = await readWireComponentSources(join(repo, prefix), selected);
+    const profile = process.env.HYPERION_NATIVE_SOURCE_PROFILE;
+    const componentFiles = await readWireComponentSources(join(repo, prefix), selected, profile);
     const members = new Map([...componentFiles].map(([file, bytes]) => [prefix + '/' + file, bytes]));
+    if (profile) members.set('tests/unit/stateful-engineering-source-admission.mjs',
+        await boundedFile(join(repo, 'tests/unit/stateful-engineering-source-admission.mjs')));
     for (const file of runtimeSources) if (!members.has(file)) members.set(file, await boundedFile(join(repo, file)));
     for (const [file, bytes] of members) {
         total += bytes.length; assert.ok(total <= 64 * 1024 * 1024, 'source evidence exceeds byte bound');

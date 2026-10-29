@@ -230,6 +230,8 @@ jobs:
 
   action-source-journal:
     runs-on: ubuntu-24.04
+    env:
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-18d235e-engineering
     timeout-minutes: 15
     strategy:
       fail-fast: false

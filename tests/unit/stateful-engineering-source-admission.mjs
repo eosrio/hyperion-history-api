@@ -95,7 +95,10 @@ function coordinatedRuntime() {
 /** #392: explicit CI selection, fixed source set, no caller-provided authority or executable imports. */
 export function admitNativeSourceEnvironment() {
     const selected = process.env.HYPERION_NATIVE_SOURCE_PROFILE;
-    const admission = admitNativeApiSourceOptions(selected === undefined || selected === '' ? {} : {engineeringSourceProfile: selected});
+    return admitCoordinatedNativeSourceOptions(selected === undefined || selected === '' ? {} : {engineeringSourceProfile: selected});
+}
+export function admitCoordinatedNativeSourceOptions(options = {}) {
+    const admission = admitNativeApiSourceOptions(options);
     const root = rootFor('@eosrio/hyperion-wire-plugin/protocol-provider.json');
     const lock = read(fileURLToPath(new URL('../../package-lock.json', import.meta.url))).json;
     const pin = (name, revision) => assert(['git+https://github.com/', 'git+ssh://git@github.com/'].some(prefix =>
