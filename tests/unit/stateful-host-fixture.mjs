@@ -1,5 +1,5 @@
 import {EventEmitter} from 'node:events';
-import {mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync} from 'node:fs';
+import {mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync, cpSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join, dirname, basename} from 'node:path';
 import Fastify from 'fastify';
@@ -22,18 +22,23 @@ const {installStatefulApiHostV2} = await load('api/helpers/stateful-owner.js');
 const {resolveStatefulOwnerConfigurationV2} = await load('indexer/projection/stateful-config.js');
 
 /** Actual emitted/source host and worker methods, with explicit native-command and transport fixtures. */
-export async function statefulHostFixture({timeoutMs = 1000, hooks = {}, requiredSourceCapabilities = []} = {}) {
-    const {p} = await preparedStatefulInputs();
+export async function statefulHostFixture({timeoutMs = 1000, hooks = {}, requiredSourceCapabilities = [], preparedSource,
+    pluginDirectory, pluginConfiguration, projectionId, through = 3} = {}) {
+    const {p} = preparedSource ? {p: preparedSource} : await preparedStatefulInputs();
     const rawConfiguration = {interfaceVersion: 2, sourceInputVersion: 2,
         backend: {kind: 'mongodb', id: 'stateful-fixture', database: 'stateful_fixture'}, recovery: {bytes: 8 * 1024 * 1024},
         api: {timeoutMs, maximumPendingProbes: 8}};
     const configuration = resolveStatefulOwnerConfigurationV2(rawConfiguration);
     const selected = definition(), {binding: _suppliedBinding, ...template} = selected;
+    if (projectionId) selected.id = projectionId;
     template.selectors = [{id: 'update', kind: 'action', contract: 'target', name: 'update'},
         {id: 'records', kind: 'table', contract: 'target', name: 'records'}];
-    const pluginRoot = mkdtempSync(join(realpathSync(tmpdir()), 'hapi-stateful-plugin-'));
+    const tempParent = pluginDirectory ? realpathSync(new URL('../../out/', import.meta.url)) : realpathSync(tmpdir());
+    const pluginRoot = mkdtempSync(join(tempParent, 'hapi-stateful-plugin-'));
     mkdirSync(join(pluginRoot, 'entry', 'build'), {recursive: true});
     writeFileSync(join(pluginRoot, '.state.json'), JSON.stringify({plugins: {entry: {enabled: true}}}));
+    if (pluginDirectory) cpSync(pluginDirectory, join(pluginRoot, 'entry'), {recursive: true});
+    else {
     writeFileSync(join(pluginRoot, 'entry', 'package.json'), JSON.stringify({name: 'stateful-host-component', version: '1.0.0', type: 'module'}));
     writeFileSync(join(pluginRoot, 'entry', 'build', 'index.js'), `export default class Plugin {
         constructor(options) {this.options = options; this.internalPluginName = 'stateful-component';}
@@ -45,8 +50,9 @@ export async function statefulHostFixture({timeoutMs = 1000, hooks = {}, require
                 port.put('collection','last',{height:port.source.block.blockNum,occurrences:port.source.inputs.length});
             }}]};}
     }`);
+    }
     const cm = {config: {settings: {chain: p.options.chain, parser: '3.2'}, indexer: {},
-        features: {index_transfer_memo: true, stateful_owner_v2: rawConfiguration}, plugins: {entry: {enabled: true, template, limits: limits(), requiredSourceCapabilities}}},
+        features: {index_transfer_memo: true, stateful_owner_v2: rawConfiguration}, plugins: {entry: pluginConfiguration ?? {enabled: true, template, limits: limits(), requiredSourceCapabilities}}},
         connections: {chains: {[p.options.chain]: {chain_id: capture.chainId}}}, filters: {action_blacklist: new Set(), action_whitelist: new Set(),
             delta_blacklist: new Set(), delta_whitelist: new Set()}};
     const previousConfig = process.env.CONFIG_JSON;
@@ -71,14 +77,16 @@ export async function statefulHostFixture({timeoutMs = 1000, hooks = {}, require
     Object.assign(worker, {workerAttemptClient: lifecycle, stopped: false, probes: new Set(), statefulControllers: new Map()});
     const originalSend = process.send;
     process.send = message => {parent.emit('message', structuredClone(message)); return true;};
+    const ownerErrors = [];
     const controller = new StatefulProjectionControllerV2({declaration, adapter: native.adapter, source: p.source,
         identity: {id: 'managed-component', generation: 'one'}, requireAttemptScope: true,
         assertActive: () => worker.assertWorkerAttemptActive(),
         run: (metadata, operation) => worker.runProjectionFrameAttempt(metadata, operation, () => !worker.stopped),
         maximumFramesPerDrain: 1, custody: createStatefulCandidateCustodyV2(p.options.client, p.options.chain, 0, declaration),
-        sourceMetadata: entry.sourceMetadata, reduce: async port => {await hooks.source?.(port); await entry.reduce(port);}});
+        sourceMetadata: entry.sourceMetadata, reduce: async port => {await hooks.source?.(port); await entry.reduce(port);},
+        onError: error => ownerErrors.push(error)});
     worker.statefulControllers.set(selected.id, controller);
-    await controller.drain(); await controller.drain(); await controller.drain();
+    for (let i = 0; i < through && ownerErrors.length === 0; i++) await controller.drain();
     const broker = new StatefulWorkerProbeBroker(8, timeoutMs, physical => physical === parent && supervisor.ownsActiveWorker(physical, 'projection'));
     parent.on('message', message => {if (message.event === 'stateful_owner_probe_reply') broker.accept(parent, message.data);});
     let currentSocket, probeCount = 0;
@@ -93,6 +101,7 @@ export async function statefulHostFixture({timeoutMs = 1000, hooks = {}, require
     currentSocket = socket;
     const app = Fastify();
     const context = installStatefulApiHostV2(app, {configuration, registry: async () => registry, probe: client});
+    for (const plugin of loader.plugins) if (typeof plugin.addRoutes === 'function') await plugin.addRoutes(app, context);
     app.get('/state', {onSend: [async (request, reply, payload) => {
         await hooks.onSend?.({request, reply, payload}); return hooks.payload ? hooks.payload(payload) : payload;
     }]}, async (request, reply) => {
@@ -104,7 +113,7 @@ export async function statefulHostFixture({timeoutMs = 1000, hooks = {}, require
         return result.value;
     });
     app.get('/unrelated', async () => ({ok: true}));
-    return {app, native, p, declaration, controller, supervisor, parent, worker, registry, client, broker, socket, ends,
+    return {app, native, p, declaration, controller, supervisor, parent, worker, registry, client, broker, socket, ends, ownerErrors,
         get probes() {return probeCount;}, replaceSocket() {currentSocket = {...socket};},
         disconnect() {socket.readyState = 3; client.disconnected(socket);},
         async close() {
@@ -112,7 +121,7 @@ export async function statefulHostFixture({timeoutMs = 1000, hooks = {}, require
             supervisor.observeExit(parent); lifecycle.dispose();
             if (originalSend === undefined) delete process.send; else process.send = originalSend;
             if (previousConfig === undefined) delete process.env.CONFIG_JSON; else process.env.CONFIG_JSON = previousConfig;
-            assert.equal(dirname(pluginRoot), realpathSync(tmpdir())); assert(basename(pluginRoot).startsWith('hapi-stateful-plugin-'));
+            assert.equal(dirname(pluginRoot), tempParent); assert(basename(pluginRoot).startsWith('hapi-stateful-plugin-'));
             rmSync(pluginRoot, {recursive: true, force: true});
         }};
 }

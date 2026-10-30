@@ -55,12 +55,14 @@ export default class ProjectionWorker extends HyperionWorker {
             const client = this.manager.mongodbClient!;
             await client.connect();
             this.assertWorkerAttemptActive();
-            const source = new PortableProjectionSource({client: this.client, chain: this.chain, chainId: this.chainId,
+            const sourceOptions = {client: this.client, chain: this.chain, chainId: this.chainId,
                 profile: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
                 provider: this.protocol, replicas: this.conf.settings.es_replicas ?? 0,
                 requireAttemptScope: this.workerAttemptScopeRequired,
-                maxAncestryBlocks: this.conf.settings.protocol_abi_coordination?.recovery_window_blocks});
-            this.statefulSource = source;
+                maxAncestryBlocks: this.conf.settings.protocol_abi_coordination?.recovery_window_blocks};
+            const source = new PortableProjectionSource(sourceOptions);
+            this.statefulSource = stateful && this.conf.settings.protocol_abi_coordination?.historical_certificates
+                ? new PortableProjectionSource({...sourceOptions, historicalCertificates: true}) : source;
             if (configuration) this.controller = await PortableStateController.create({chainId: this.chainId, configuration,
                 adapter: createPortableStateBackend(client, configuration), source,
                 attempts: {run: (metadata, operation) => this.runProjectionFrameAttempt(metadata, operation, () => !this.stopped),
@@ -69,7 +71,7 @@ export default class ProjectionWorker extends HyperionWorker {
             if (stateful) {
                 this.statefulConfiguration = stateful;
                 this.stateful = await StatefulProjectionRegistryV2.create({chainId: this.chainId, configuration: stateful,
-                    mongo: client, client: this.client, source, profile: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
+                    mongo: client, client: this.client, source: this.statefulSource, profile: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
                     onError: (projection, error) => hLog(`Stateful projection ${projection} unavailable:`, error)}, this.mLoader);
             }
             this.assertWorkerAttemptActive();

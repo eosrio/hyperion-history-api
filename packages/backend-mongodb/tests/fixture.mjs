@@ -46,6 +46,7 @@ export function databaseFixture() {
         get storage() { return storage; },
     };
     const mapFor = (name, session) => {
+        if (session?.hasEnded) throw new Error('Session has ended');
         const selected = session?.storage ?? storage;
         if (!selected.has(name)) selected.set(name, new Map());
         return selected.get(name);
@@ -163,19 +164,28 @@ export function databaseFixture() {
         startSession() {
             const session = {
                 storage: null,
+                hasEnded: false,
                 async withTransaction(operation, options) {
+                    if (session.hasEnded) throw new Error('Session has ended');
                     native.push({ command: 'transaction', options });
                     const start = native.length;
                     session.storage = copy(storage);
                     let result = await operation(session);
+                    if (session.hasEnded) throw new Error('Session has ended');
                     if (fixture.retryTransaction) {fixture.retryTransaction = false; session.storage = copy(storage); result = await operation(session);}
+                    if (session.hasEnded) throw new Error('Session has ended');
                     const fault = fixture.failTransaction; fixture.failTransaction = null;
                     if (fault === 'before') throw new Error('injected unknown before commit');
                     if (native.slice(start).some(n => n.options?.session === session && ['insert','update','replace','delete','deleteMany','findAndModify'].includes(n.command))) storage = session.storage;
                     if (fault === 'after') throw new Error('injected lost commit acknowledgment');
                     return result;
                 },
-                async endSession() { native.push({ command: 'endSession' }); },
+                async endSession() {
+                    native.push({ command: 'endSession' });
+                    session.hasEnded = true;
+                    // Audit records retain session identity, never obsolete transaction database copies.
+                    session.storage = null;
+                },
             };
             return session;
         },

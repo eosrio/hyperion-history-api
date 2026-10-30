@@ -11,6 +11,7 @@ import type {ProtocolAbiCoordinatorControl} from './abi-coordinator.js';
 import {validNativeGenesisCoverage, type ProtocolNativeGenesisCoverage} from './native-genesis.js';
 import type {ProjectionFrame} from '../projection/runtime.js';
 import type {ProtocolNativeActionProofMetadata, ProtocolNativeActionSourceMetadata} from './native-authorization.js';
+import {historicalAddressIdentity, historicalRootCertificate, ProtocolAbiHistoricalAddressReadError} from './abi-history.js';
 
 export interface ProtocolAbiProofSource {readonly chainId:string;readonly blockNum:number;readonly blockId:string}
 export type ProtocolAbiProofBinding=Omit<ProtocolAbiActionInput,'rawHex'> & {readonly rawSha256:string;readonly stateId:string|null};
@@ -40,6 +41,8 @@ export interface ProtocolAbiProofReaderOptions {
     readonly maxAncestryBlocks?:number;
     /** Internal worker wiring only; public/API readers remain independent. */
     readonly requireAttemptScope?:boolean;
+    /** Internal opt-in exact historical-address port; unchanged recent ancestry remains bounded. */
+    readonly historicalCertificates?:boolean;
 }
 export class ProtocolAbiProofUnavailableError extends Error {
     readonly statusCode=503;
@@ -58,7 +61,8 @@ interface CanonicalCommit {
     nativeGenesis?:ProtocolNativeGenesisCoverage;
     nativeActionInterfaceVersion?:1;
 }
-interface Issued {certificate:ProtocolAbiHeadCertificate;commit:CanonicalCommit;scope?:ProofConsumerScope}
+interface HistoricalActivation {rootId:string;certificateId:string;anchor:ProtocolAbiHeadCertificate['head']}
+interface Issued {certificate:ProtocolAbiHeadCertificate;commit:CanonicalCommit;scope?:ProofConsumerScope;historicalCertificateId?:string}
 type OriginalActionInput=Omit<ProtocolAbiActionInput,'inputActionOrdinal'> & {inputActionOrdinal?:number};
 const hex64=/^[0-9a-f]{64}$/;
 const text=(value:unknown):value is string=>typeof value==='string'&&value.length>0&&value.length<=256&&value.isWellFormed();
@@ -109,7 +113,8 @@ export class ProtocolAbiProofReader {
     /** Independent issuance/cancellation state over storage that cannot initialize or write indices. */
     asReadOnly():ProtocolAbiProofReader {
         return new ProtocolAbiProofReader({chainId:this.options.chainId,profile:this.profile,
-            store:this.options.store.asReadOnly(),maxAncestryBlocks:this.maximumAncestry,requireAttemptScope:this.options.requireAttemptScope});
+            store:this.options.store.asReadOnly(),maxAncestryBlocks:this.maximumAncestry,requireAttemptScope:this.options.requireAttemptScope,
+            historicalCertificates:this.options.historicalCertificates});
     }
     private consume<T>(view:ProtocolAbiProofView|undefined, operation:()=>Promise<T>):Promise<T> {
         const issued=view&&this.issued.get(view),scope=issued?issued.scope:currentProofConsumerScope(this.options.requireAttemptScope);
@@ -193,8 +198,10 @@ export class ProtocolAbiProofReader {
         source=copy(source);
         const certificate=await this.authority(signal);
         if(certificate.head.blockNum<source.blockNum)unavailable('source_pending','Requested ABI source has not committed');
-        if(certificate.head.blockNum-source.blockNum>this.maximumAncestry)
+        if(certificate.head.blockNum-source.blockNum>this.maximumAncestry) {
+            if(this.options.historicalCertificates)return this.openHistorical(source.blockNum,{source,selectionId,signal});
             unavailable('ancestry_unavailable','Requested ABI source is outside verified ancestry');
+        }
         const certificateId=this.options.store.certificateId(certificate);
         const stored=await this.retained(()=>this.options.store.readCertificate(certificateId,signal),'certificate_unavailable',signal);
         requireProof(json(stored)===json(certificate),'Settled ABI certificate does not match the observed authority');
@@ -221,6 +228,75 @@ export class ProtocolAbiProofReader {
         this.issued.set(view,{certificate:freeze(copy(certificate)),commit:freeze(copy(commit)),scope:currentProofConsumerScope()});
         await this.revalidate(view,{signal});return view;
         });
+    }
+    /** A locator is never authority: validate its settled certificate/commit under fresh current ownership. */
+    async openHistorical(blockNum:number,{source,selectionId,signal}:ProtocolAbiProofReadOptions&{
+        source?:ProtocolAbiProofSource;selectionId?:string}={}):Promise<ProtocolAbiProofView> {
+        return this.consume(undefined,async()=>{
+        signal=proofConsumerSignal(signal);
+        requireProof(this.options.historicalCertificates===true&&uint(blockNum,1)&&blockNum<=0xffffffff,'Historical ABI source is not enabled or height is invalid');
+        if(source)source=copy(source);
+        const current=await this.authority(signal);
+        if(current.head.blockNum<blockNum)unavailable('source_pending','Requested historical ABI source has not committed');
+        const root=await this.activatedHistoricalRoot(current,signal);
+        const active=async()=>{
+            const fresh=await this.authority(signal);
+            if(fresh.ownerId!==current.ownerId||fresh.generation!==current.generation||fresh.head.blockNum<current.head.blockNum
+                ||(fresh.head.blockNum===current.head.blockNum&&json(fresh.head)!==json(current.head)))
+                unavailable('authority_changed','Historical ABI source authority changed during opening');
+            await this.assertHistoricalRoot(root,current,signal);
+        };
+        let address;
+        try {address=await this.retained(()=>this.options.store.readHistoricalAddressRoot(root.rootId,historicalAddressIdentity(current,blockNum),signal),
+            'historical_source_unavailable',signal);}
+        catch(error) {
+            if(error instanceof ProtocolAbiHistoricalAddressReadError)unavailable('historical_source_unavailable',error.message);
+            throw error;
+        }
+        await active();
+        const raw:any=await this.retained(()=>this.options.store.readCertificate(address.certificateId,signal),'certificate_unavailable',signal);
+        await active();
+        requireProof(validHead(raw?.head)&&json(raw)===json({...current,head:raw.head})
+            &&raw.head.blockNum===blockNum&&raw.head.coverageStart===1
+            &&this.options.store.certificateId(raw)===address.certificateId,'Historical settled certificate differs from current identity');
+        const certificate=raw as ProtocolAbiHeadCertificate;
+        const commit=this.validateCommit(await this.retained(()=>this.options.store.readCommit(certificate.head.commitId,signal),'ancestry_unavailable',signal));
+        await active();
+        requireProof(json({blockNum:commit.source.blockNum,blockId:commit.source.blockId,commitId:certificate.head.commitId,
+            stateRootId:commit.stateRootId,lastGlobalSequence:commit.lastGlobalSequence,coverageStart:commit.coverageStart})===json(certificate.head),
+            'Historical settled head differs from its immutable commit');
+        if(source&&(source.chainId!==this.options.chainId||source.blockNum!==blockNum||source.blockId!==commit.source.blockId)
+            ||selectionId!==undefined&&selectionId!==commit.selectionId)unavailable('source_not_canonical','Historical source selection differs');
+        if(commit.status!=='complete'||commit.coverageStart!==1)unavailable('source_incomplete','Historical source lacks complete genesis coverage');
+        const view=freeze(copy({certificateId:address.certificateId,commitId:certificate.head.commitId,selectionId:commit.selectionId,
+            source:commit.source,bindings:commit.bindings,...(commit.nativeActionInterfaceVersion===1?{nativeActionInterfaceVersion:1 as const}:{})}));
+        this.issued.set(view,{certificate:freeze(copy(certificate)),commit:freeze(copy(commit)),scope:currentProofConsumerScope(),
+            historicalCertificateId:address.certificateId});
+        await this.revalidate(view,{signal});return view;
+        });
+    }
+    private async assertHistoricalRoot(root:HistoricalActivation,current:ProtocolAbiHeadCertificate,signal?:AbortSignal):Promise<void> {
+        const stored=await this.retained(()=>this.options.store.readControl(signal),'authority_unavailable',signal),value:any=stored?.value;
+        if(value?.ownerId!==current.ownerId||value?.generation!==current.generation||value?.historical?.interfaceVersion!==1
+            ||value.historical.addressRootId!==root.rootId||value.historical.activationCertificateId!==root.certificateId
+            ||json(value.historical.anchor)!==json(root.anchor)
+            ||value.chainId!==this.options.chainId||json(value.profile)!==json(this.profile)
+            ||value.phase!=='following'||value.gap!==null||value.replayFromBlock!==null)
+            unavailable('authority_changed','Activated historical address root changed');
+    }
+    private async activatedHistoricalRoot(current:ProtocolAbiHeadCertificate,signal?:AbortSignal):Promise<HistoricalActivation> {
+        const stored=await this.retained(()=>this.options.store.readControl(signal),'authority_unavailable',signal),value:any=stored?.value;
+        const rootId=value?.historical?.addressRootId,certificateId=value?.historical?.activationCertificateId,anchor=value?.historical?.anchor;
+        if(value?.ownerId!==current.ownerId||value?.generation!==current.generation||value.historical?.interfaceVersion!==1
+            ||!ident('h45abiroot1',rootId)||!ident('h45abicert1',certificateId)||!validHead(anchor)||anchor.coverageStart!==1
+            ||anchor.blockNum>current.head.blockNum||anchor.blockNum===current.head.blockNum&&json(anchor)!==json(current.head)
+            ||json(value.head)!==json(current.head))
+            unavailable('historical_source_unavailable','Current coordinator has no settled historical address root');
+        const certificate=historicalRootCertificate({...current,head:anchor},rootId);
+        requireProof(this.options.store.certificateId(certificate)===certificateId,'Historical activation certificate address differs');
+        const actual=await this.retained(()=>this.options.store.readCertificate(certificateId,signal),'certificate_unavailable',signal);
+        requireProof(json(actual)===json(certificate),'Historical root certificate differs from the selected control');
+        const root={rootId,certificateId,anchor:copy(anchor)};await this.assertHistoricalRoot(root,current,signal);return root;
     }
     async waitForOpen(source:ProtocolAbiProofSource,selectionId?:string,
                       options:{timeoutMs?:number;signal?:AbortSignal}={}):Promise<ProtocolAbiProofView> {
@@ -269,7 +345,20 @@ export class ProtocolAbiProofReader {
             ||(current.head.blockNum===prior.head.blockNum&&json(current.head)!==json(prior.head)))
             unavailable('authority_changed','Canonical ABI authority changed during consumption');
         if(opening&&current.head.blockNum-issued.commit.source.blockNum>this.maximumAncestry)
-            unavailable('ancestry_unavailable','Requested ABI source is outside verified ancestry');
+            if(!issued.historicalCertificateId)unavailable('ancestry_unavailable','Requested ABI source is outside verified ancestry');
+        if(issued.historicalCertificateId) {
+            const root=await this.activatedHistoricalRoot(current,signal);
+            let address;
+            try {address=await this.retained(()=>this.options.store.readHistoricalAddressRoot(root.rootId,historicalAddressIdentity(current,view.source.blockNum),signal),
+                'historical_source_unavailable',signal);}
+            catch(error) {if(error instanceof ProtocolAbiHistoricalAddressReadError)unavailable('historical_source_unavailable',error.message);throw error;}
+            requireProof(address.certificateId===issued.historicalCertificateId,'Historical source membership changed');
+            await this.assertHistoricalRoot(root,current,signal);
+            const fresh=await this.authority(signal);
+            if(fresh.ownerId!==current.ownerId||fresh.generation!==current.generation||fresh.head.blockNum<current.head.blockNum
+                ||fresh.head.blockNum===current.head.blockNum&&json(fresh.head)!==json(current.head))
+                unavailable('authority_changed','Historical source changed during revalidation');
+        }
         });
     }
     async revalidate(view:ProtocolAbiProofView,options:ProtocolAbiProofReadOptions={}):Promise<void> {
