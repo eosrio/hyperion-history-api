@@ -7,6 +7,7 @@ import {tmpdir} from 'node:os';
 import {dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {admitNativeSourceEnvironment} from './stateful-engineering-source-admission.mjs';
+import {isPinnedGitSource} from './pinned-git-source.mjs';
 const nativeSourceAdmission = admitNativeSourceEnvironment();
 const {loadChainProtocol} = await import('../../build/indexer/protocol/selection.js');
 const {deriveActionSourceInventory, deriveProtocolActionInputs, validateActionSourceTransactionOutput,
@@ -27,10 +28,10 @@ const wire = dirname(dirname(fileURLToPath(import.meta.resolve('@eosrio/hyperion
 const original = join(wire, 'fixtures/codec/native-onblock-6508-20261022');
 const readJson = path => JSON.parse(readFileSync(path));
 const lock = readJson(join(repo, 'package-lock.json'));
-assert.equal(lock.packages['node_modules/@eosrio/hyperion-wire-plugin'].resolved,
-    `git+ssh://git@github.com/eosrio/hyperion-wire-plugin.git#${wireRevision}`);
-assert.equal(lock.packages['node_modules/@eosrio/hyperion-sdk'].resolved,
-    `git+ssh://git@github.com/eosrio/hyperion-sdk.git#${sdkRevision}`);
+assert.ok(isPinnedGitSource(lock.packages['node_modules/@eosrio/hyperion-wire-plugin'].resolved,
+    'hyperion-wire-plugin', wireRevision), 'Installed Wire lock source differs');
+assert.ok(isPinnedGitSource(lock.packages['node_modules/@eosrio/hyperion-sdk'].resolved,
+    'hyperion-sdk', sdkRevision), 'Installed SDK lock source differs');
 assert.equal(readJson(join(wire, 'dist/protocol-source-receipt.json')).sourceRevision, wireRevision);
 assert.equal(hash(readFileSync(join(fixture, 'source-1-1480-20261020.tar.gz'))), archiveSha256);
 const manifest = readJson(join(original, 'manifest.json'));

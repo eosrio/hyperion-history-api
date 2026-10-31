@@ -7,6 +7,8 @@ import {ProtocolAbiFrontierStore, ProtocolAbiFrontierConflictError, ProtocolAbiF
 import {reduceProtocolAbiBlock, type ProtocolAbiAccountState, type ProtocolAbiBlockReduction} from './abi-reducer.js';
 import {protocolAbiCertificateForControl} from './abi-proof.js';
 import {validNativeGenesisCoverage, type ProtocolNativeGenesisCoverage, type ProtocolNativeGenesisVerifier} from './native-genesis.js';
+import {resolveProtocolAbiHistory, historicalAddressIdentity, historicalAddressId, historicalRootCertificate,
+    type ProtocolAbiHistoryOptions, type ProtocolAbiHistoricalAddress} from './abi-history.js';
 
 type Head = {blockNum:number;blockId:string;commitId:string;stateRootId:string|null;
     lastGlobalSequence:string|null;coverageStart:number|null};
@@ -15,6 +17,7 @@ export interface ProtocolAbiCoordinatorControl {
     schemaVersion:1; chainId:string; profile:ProtocolSourceProfile; ownerId:string; generation:string; revision:number;
     source:{contextId:string;readerSessionId:string}|null; head:Head|null; pending:string[];
     phase:'awaiting-source'|'recovering'|'following'|'incomplete'; gap:Gap|null; replayFromBlock:number|null;
+    historical?:{interfaceVersion:1;addressRootId:string;activationCertificateId:string;anchor:Head};
 }
 interface Commit {
     schemaVersion:1; kind:'canonical-abi-block'; chainId:string; profile:ProtocolSourceProfile; generation:string;
@@ -34,11 +37,14 @@ export interface ProtocolAbiCoordinatorOptions {
     verifyNativeGenesis?:ProtocolNativeGenesisVerifier;
     /** Native-aware epochs keep this requirement in immutable canonical commits, including failed extraction. */
     nativeActionInterfaceVersion?:1;
+    historicalCertificates?:ProtocolAbiHistoryOptions;
+    onHistoricalError?:(error:unknown)=>void;
 }
 export class ProtocolAbiCoordinatorStaleError extends Error {
     constructor(message='Protocol ABI source was superseded'){super(message);this.name='ProtocolAbiCoordinatorStaleError';}
 }
 class InvalidPreparedObservation extends Error {}
+class HistoricalWorkYield extends Error {}
 const hex64=/^[0-9a-f]{64}$/;
 const id=(prefix:string,value:unknown):value is string=>typeof value==='string'&&new RegExp('^'+prefix+':[0-9a-f]{64}$').test(value);
 const uint32=(value:unknown):value is number=>Number.isSafeInteger(value)&&Number(value)>=0&&Number(value)<=0xffffffff;
@@ -64,6 +70,14 @@ export class ProtocolAbiCoordinator {
     private activeSession?:string;
     private openingSession?:string;
     private certifiedId?:string;
+    private readonly historicalCertificates?:ProtocolAbiHistoryOptions;
+    private historicalWalk?:{ownerId:string;generation:string;anchor:Head;nextCommitId:string|null;child:Commit|null};
+    private historicalError?:string;
+    private queuedAdmissions=0;
+    private historicalAuthorityId?:string;
+    private historicalPublishedHead?:string;
+    private historicalQueueGeneration?:string;
+    private readonly historicalQueue=new Map<string,ProtocolAbiHistoricalAddress>();
     /** Process-local evidence of successful live-source CAS admissions, never a restart cursor. */
     private readonly recentSelections=new Map<string,{source:ProtocolSourcePosition;generation:string;readerSessionId:string}>();
 
@@ -75,6 +89,7 @@ export class ProtocolAbiCoordinator {
         this.profile=copy(options.profile);
         this.profile.components=[...this.profile.components].sort((a,b)=>(a.runtime+':'+a.id)<(b.runtime+':'+b.id)?-1:1);
         this.maximumPending=options.maxPendingBlocks??128;this.recoveryWindow=options.recoveryWindowBlocks??256;
+        this.historicalCertificates=resolveProtocolAbiHistory(options.historicalCertificates);
         if(!Number.isSafeInteger(this.maximumPending)||this.maximumPending<1||this.maximumPending>4096
             ||!Number.isSafeInteger(this.recoveryWindow)||this.recoveryWindow<1||this.recoveryWindow>4096)
             throw new Error('Invalid bounded ABI coordinator configuration');
@@ -106,6 +121,16 @@ export class ProtocolAbiCoordinator {
             ||(value.gap.fromBlock!==null&&!uint32(value.gap.fromBlock))))throw new Error('Invalid canonical ABI gap');
         if(value.head!==null)this.validateHead(value.head);
         if(!value.source&&value.pending.length)throw new Error('Canonical ABI pending work has no source');
+        if(value.historical!==undefined&&(!value.historical||Object.keys(value.historical).sort().join(',')!=='activationCertificateId,addressRootId,anchor,interfaceVersion'
+            ||value.historical.interfaceVersion!==1||!id('h45abiroot1',value.historical.addressRootId)
+            ||!id('h45abicert1',value.historical.activationCertificateId)))
+            throw new Error('Invalid activated historical ABI address root');
+        if(value.historical) {
+            this.validateHead(value.historical.anchor);
+            if(!value.head||value.historical.anchor.coverageStart!==1||value.historical.anchor.blockNum>value.head.blockNum
+                ||value.historical.anchor.blockNum===value.head.blockNum&&json(value.historical.anchor)!==json(value.head))
+                throw new Error('Historical activation anchor differs from current canonical head');
+        }
         return value;
     }
     private validateHead(head:Head):void {
@@ -116,6 +141,7 @@ export class ProtocolAbiCoordinator {
                 ||BigInt(head.lastGlobalSequence)>0xffffffffffffffffn)))throw new Error('Invalid canonical ABI head');
     }
     private async save(version:Version,next:ProtocolAbiCoordinatorControl):Promise<Version> {
+        if(next.generation!==version.value.generation) {const {historical:_oldAuthority,...fresh}=next;next=fresh;}
         next={...next,revision:version.value.revision+1};this.validateControl(next);
         if(next.ownerId!==this.options.ownerId)throw new ProtocolAbiCoordinatorStaleError('ABI coordinator owner changed');
         try {
@@ -194,7 +220,7 @@ export class ProtocolAbiCoordinator {
     }
 
     async admit(selectedId:string,generation:string):Promise<{status:'accepted'|'backpressure'|'stale';generation:string}> {
-        const epoch=this.sourceEpoch;
+        const epoch=this.sourceEpoch;this.queuedAdmissions++;
         try {return await this.run(async()=>{
             let version=await this.owned();this.assertEpoch(epoch);
             if(generation!==version.value.generation||!version.value.source)return {status:'stale',generation:version.value.generation};
@@ -235,6 +261,7 @@ export class ProtocolAbiCoordinator {
             this.rememberSelection(selectedId,source,version.value.generation,selection.readerSessionId);
             return {status:'accepted',generation:version.value.generation};
         });} catch(error){if(error instanceof ProtocolAbiCoordinatorStaleError)return {status:'stale',generation:this.known?.value.generation??generation};throw error;}
+        finally {this.queuedAdmissions--;}
     }
     /** Synchronous local revocation only. Source membership and canonical input still require their own checks. */
     retainSourceFence(readerSessionId:string,generation:string):()=>boolean {
@@ -345,12 +372,146 @@ export class ProtocolAbiCoordinator {
         this.assertEpoch(epoch);
         const certificate=protocolAbiCertificateForControl(control);
         const certificateId=this.options.store.certificateId(certificate);
-        if(this.certifiedId===certificateId)return;
-        const certified=await this.options.store.prepareCertificate(certificate);
-        if(json(await this.options.store.readCertificate(certified.id))!==json(certificate))
-            throw new Error('Settled ABI certificate readback mismatch');
-        this.assertEpoch(epoch);
-        this.certifiedId=certificateId;
+        if(this.certifiedId!==certificateId) {
+            const certified=await this.options.store.prepareCertificate(certificate);
+            if(json(await this.options.store.readCertificate(certified.id))!==json(certificate))
+                throw new Error('Settled ABI certificate readback mismatch');
+            this.assertEpoch(epoch);this.certifiedId=certificateId;
+        }
+        // Queue only after the ordinary settled certificate. All locator/map I/O is lower priority.
+        if(this.historicalCertificates&&this.historicalPublishedHead!==certificateId
+            &&control.phase==='following'&&control.gap===null&&control.head?.coverageStart===1)
+            if(!this.queueHistorical(certificate))this.historicalWalk=undefined;
+        if(this.historicalCertificates&&control.historical)try {await this.certifyHistoricalRoot(control,epoch);}
+        catch(error) {if(error instanceof ProtocolAbiCoordinatorStaleError)throw error;if(!(error instanceof HistoricalWorkYield))this.noteHistoricalError(error);}
+    }
+    private queueHistorical(certificate:ReturnType<typeof protocolAbiCertificateForControl>):boolean {
+        const generation=json([certificate.ownerId,certificate.generation]);
+        if(this.historicalQueueGeneration!==generation) {
+            this.historicalQueue.clear();this.historicalQueueGeneration=generation;this.historicalAuthorityId=undefined;this.historicalPublishedHead=undefined;
+        }
+        const identity=historicalAddressIdentity(certificate),key=historicalAddressId(identity);
+        if(this.historicalQueue.has(key))return true;
+        const address:ProtocolAbiHistoricalAddress={schemaVersion:1,kind:'historical-abi-certificate-address',identity,
+            certificateId:this.options.store.certificateId(certificate)};
+        const budget=this.historicalCertificates!;
+        if(this.historicalQueue.size>=budget.maxCommitsPerDrain
+            ||Buffer.byteLength(json([...this.historicalQueue.values(),address]))>budget.maxCommitBytesPerDrain)
+            return false; // A live locator can be recovered by the verified backward walk.
+        this.historicalQueue.set(key,address);
+        return true;
+    }
+    private async certifyHistoricalRoot(control:ProtocolAbiCoordinatorControl,epoch:number):Promise<void> {
+        if(!control.historical)return;
+        const value=historicalRootCertificate(protocolAbiCertificateForControl({...control,head:control.historical.anchor}),control.historical.addressRootId);
+        const expected=this.options.store.certificateId(value);
+        if(expected!==control.historical.activationCertificateId)throw new Error('Historical activation certificate identity differs');
+        if(this.historicalAuthorityId===expected)return;
+        await this.assertHistoricalAuthority(control,epoch,control.historical.addressRootId,control.historical.activationCertificateId);
+        const prepared=await this.options.store.prepareCertificate(value);
+        await this.assertHistoricalAuthority(control,epoch,control.historical.addressRootId,control.historical.activationCertificateId);
+        if(json(await this.options.store.readCertificate(prepared.id))!==json(value))throw new Error('Historical root certificate readback differs');
+        await this.assertHistoricalAuthority(control,epoch,control.historical.addressRootId,control.historical.activationCertificateId);
+        this.historicalAuthorityId=expected;
+    }
+    private async activateHistorical(control:ProtocolAbiCoordinatorControl,epoch:number,deadline:number):Promise<void> {
+        if(!this.historicalQueue.size||performance.now()>=deadline)return;
+        const current=await this.assertHistoricalAuthority(control,epoch);
+        if(current.pending.length)return;
+        const generation=json([current.ownerId,current.generation]);
+        if(generation!==this.historicalQueueGeneration)return;
+        const entries=[...this.historicalQueue.entries()];
+        for(const [,address] of entries) {
+            const certificate=await this.options.store.readCertificate(address.certificateId);
+            await this.assertHistoricalAuthority(control,epoch,current.historical?.addressRootId??null);
+            if(performance.now()>=deadline)return;
+            await this.options.store.prepareHistoricalCertificateAddress(certificate as ReturnType<typeof protocolAbiCertificateForControl>);
+            await this.assertHistoricalAuthority(control,epoch,current.historical?.addressRootId??null);
+            if(performance.now()>=deadline)return;
+        }
+        const checkpoint=async()=>{
+            if(performance.now()>=deadline)throw new HistoricalWorkYield();
+            await this.assertHistoricalAuthority(control,epoch,current.historical?.addressRootId??null);
+            if(performance.now()>=deadline)throw new HistoricalWorkYield();
+        };
+        const root=await this.options.store.prepareHistoricalAddressRoot(current.historical?.addressRootId??null,entries.map(([,value])=>value),checkpoint);
+        await this.assertHistoricalAuthority(control,epoch,current.historical?.addressRootId??null);
+        if(performance.now()>=deadline)return;
+        const observed=await this.owned();this.assertEpoch(epoch);
+        if(observed.value.ownerId!==current.ownerId||observed.value.generation!==current.generation
+            ||(observed.value.historical?.addressRootId??null)!==(current.historical?.addressRootId??null))
+            throw new ProtocolAbiCoordinatorStaleError('Historical activation owner/root changed');
+        const activation=historicalRootCertificate(protocolAbiCertificateForControl(observed.value),root);
+        const activationCertificateId=this.options.store.certificateId(activation);
+        const settled=await this.save(observed,{...observed.value,historical:{interfaceVersion:1,addressRootId:root,
+            activationCertificateId,anchor:copy(observed.value.head!)}});
+        await this.certifyHistoricalRoot(settled.value,epoch);
+        for(const [key,value] of entries) {
+            if(json(this.historicalQueue.get(key))===json(value))this.historicalQueue.delete(key);
+            if(value.identity.blockNum===settled.value.head?.blockNum)this.historicalPublishedHead=value.certificateId;
+        }
+    }
+    private noteHistoricalError(error:unknown):void {
+        const message=String(error).slice(0,4096).toWellFormed();
+        if(message!==this.historicalError) {this.historicalError=message;try {this.options.onHistoricalError?.(error);}catch {}}
+    }
+
+    private async assertHistoricalAuthority(anchor:ProtocolAbiCoordinatorControl,epoch:number,expectedRoot?:string|null,activationCertificateId?:string):Promise<ProtocolAbiCoordinatorControl> {
+        if(this.queuedAdmissions)throw new HistoricalWorkYield();
+        this.assertEpoch(epoch);const current=(await this.owned()).value;this.assertEpoch(epoch);
+        if(this.queuedAdmissions)throw new HistoricalWorkYield();
+        if(current.ownerId!==anchor.ownerId||current.generation!==anchor.generation||current.phase!=='following'||current.gap!==null
+            ||current.replayFromBlock!==null||current.head?.coverageStart!==1||!anchor.head||current.head.blockNum<anchor.head.blockNum
+            ||(current.head.blockNum===anchor.head.blockNum&&json(current.head)!==json(anchor.head))
+            ||expectedRoot!==undefined&&(current.historical?.addressRootId??null)!==expectedRoot
+            ||activationCertificateId!==undefined&&current.historical?.activationCertificateId!==activationCertificateId)
+            throw new ProtocolAbiCoordinatorStaleError('Historical ABI source authority changed');
+        return current;
+    }
+    /** Bounded low-priority re-certification; volatile progress is discarded after process/authority loss. */
+    private async extendHistorical(control:ProtocolAbiCoordinatorControl,epoch:number):Promise<void> {
+        const budget=this.historicalCertificates;
+        if(!budget||control.pending.length||control.phase!=='following'||control.gap!==null||control.replayFromBlock!==null
+            ||control.head?.coverageStart!==1)return;
+        const started=performance.now();let bytes=0;
+        const deadline=started+budget.maxMillisecondsPerDrain;
+        let walk=this.historicalWalk;
+        if(!walk||walk.ownerId!==control.ownerId||walk.generation!==control.generation) {
+            walk={ownerId:control.ownerId,generation:control.generation,anchor:copy(control.head),nextCommitId:control.head.commitId,child:null};
+            this.historicalWalk=walk;
+        }
+        const anchor={...control,head:walk.anchor};
+        for(let count=0;count<budget.maxCommitsPerDrain&&walk.nextCommitId;count++) {
+            if(performance.now()-started>=budget.maxMillisecondsPerDrain)return;
+            const current=await this.assertHistoricalAuthority(anchor,epoch);if(current.pending.length)return;
+            const commitId=walk.nextCommitId,commit=await this.readCommit(commitId);
+            await this.assertHistoricalAuthority(anchor,epoch);
+            const size=Buffer.byteLength(json(commit));
+            if(bytes+size>budget.maxCommitBytesPerDrain) {
+                if(!bytes)throw new ProtocolAbiFrontierLimitError('Historical ABI commit exceeds explicit byte budget');
+                return;
+            }
+            if(performance.now()-started>=budget.maxMillisecondsPerDrain)return;
+            bytes+=size;
+            if(!walk.child) {
+                if(json(this.head(commit,commitId))!==json(walk.anchor))throw new Error('Historical walk head differs from adopted canonical head');
+            } else if(commit.source.blockNum+1!==walk.child.source.blockNum||commit.source.blockId!==walk.child.source.previousBlockId
+                ||walk.child.previousCommitId!==commitId)throw new Error('Historical ABI ancestry is not complete and contiguous');
+            if(commit.status!=='complete'||commit.coverageStart!==1)throw new Error('Historical ABI ancestry lacks complete genesis coverage');
+            if(commit.source.blockNum===1&&(commit.previousCommitId!==null||commit.source.previousBlockId!==null))
+                throw new Error('Historical ABI genesis linkage differs');
+            if(commit.source.blockNum>1&&!commit.previousCommitId)throw new Error('Historical ABI ancestry ended before genesis');
+            const certificate=protocolAbiCertificateForControl({...current,head:this.head(commit,commitId)});
+            const prepared=await this.options.store.prepareCertificate(certificate);
+            await this.assertHistoricalAuthority(anchor,epoch);
+            if(json(await this.options.store.readCertificate(prepared.id))!==json(certificate))throw new Error('Historical certificate readback differs');
+            await this.assertHistoricalAuthority(anchor,epoch);
+            if(performance.now()-started>=budget.maxMillisecondsPerDrain)return;
+            if(!this.queueHistorical(certificate)) {await this.activateHistorical(anchor,epoch,deadline);return;}
+            this.historicalError=undefined;
+            walk.child=commit;walk.nextCommitId=commit.previousCommitId;
+        }
+        await this.activateHistorical(anchor,epoch,deadline);
     }
 
     async drain():Promise<{committed:number;pending:number}> {
@@ -394,6 +555,11 @@ export class ProtocolAbiCoordinator {
             // Retry it even without a new block; owned() has re-established durable ownership.
             if(!committed&&version.value.head&&version.value.source&&version.value.replayFromBlock===null
                 &&['following','incomplete'].includes(version.value.phase))await this.certify(version.value,epoch);
+            try {await this.extendHistorical(version.value,epoch);}
+            catch(error) {
+                if(error instanceof ProtocolAbiCoordinatorStaleError)throw error;
+                if(!(error instanceof HistoricalWorkYield))this.noteHistoricalError(error);
+            }
             return {committed,pending:version.value.pending.length};
         });} catch(error){if(error instanceof ProtocolAbiCoordinatorStaleError)return {committed:0,pending:this.known?.value.pending.length??0};throw error;}
     }

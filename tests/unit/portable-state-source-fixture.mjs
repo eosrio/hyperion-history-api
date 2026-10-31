@@ -24,36 +24,42 @@ const frames = [
   assert.equal(hash(frame), entry.response.sha256);
   return frame;
 });
-export async function prepared(constructedEpochs = {}, initialThrough = 4, construct) {
-  const selected = await loadChainProtocol({ provider: "extension", package: "@eosrio/hyperion-wire-plugin", profileId: capture.profileId });
+export async function prepared(constructedEpochs = {}, initialThrough = 4, construct, retained) {
+  // Explicit test input only. The retained-range fixture verifies its original member hashes first;
+  // normal tests keep their exact four-frame capture and construction controls.
+  const inputFrames = retained?.frames ?? frames;
+  const inputSchema = retained?.schemaJson ?? schemaJson;
+  const inputCapture = retained?.capture ?? capture;
+  const selected = await loadChainProtocol({ provider: "extension", package: "@eosrio/hyperion-wire-plugin", profileId: inputCapture.profileId });
   const profile = { id: selected.id, profileId: selected.provider.profileId, components: selected.components };
   const memory = frontierMemoryClient(), chain = "portable-source-fixture";
   const store = new ProtocolAbiFrontierStore(memory.client, chain), bindings = new ProtocolSourceBindingStore(memory.client, chain);
   const observations = new ProtocolAbiObservationStore(memory.client, chain);
   const coordinator = new ProtocolAbiCoordinator({
-    chainId: capture.chainId,
+    chainId: inputCapture.chainId,
     profile,
     ownerId: "fixture-owner",
     store,
     bindings,
     observations,
-    verifyNativeGenesis: selected.provider.verifyNativeGenesis?.bind(selected.provider)
+    verifyNativeGenesis: selected.provider.verifyNativeGenesis?.bind(selected.provider),
+    historicalCertificates: retained?.historicalCertificates
   });
   await coordinator.start();
-  const contextId = (await bindings.prepareContext({ schemaVersion: 1, chainId: capture.chainId, protocol: profile, schemaJson })).id;
+  const contextId = (await bindings.prepareContext({ schemaVersion: 1, chainId: inputCapture.chainId, protocol: profile, schemaJson: inputSchema })).id;
   const { generation } = await coordinator.openSource(contextId, "fixture-source");
-  const schema = JSON.parse(schemaJson);
+  const schema = JSON.parse(inputSchema);
   const positions = [], observed = [];
   async function advance(through) {
-    const session = selected.provider.createShipSession(JSON.parse(schemaJson));
+    const session = selected.provider.createShipSession(JSON.parse(inputSchema));
     try {
-      const nativeDeltas = session.decodeDeltas(Buffer.from(session.decodeResult(frames[0])[1].deltas, "hex"));
+      const nativeDeltas = session.decodeDeltas(Buffer.from(session.decodeResult(inputFrames[0])[1].deltas, "hex"));
       const nativeAbiHex = session.decodeRow("account", Buffer.from(nativeDeltas[0][1].rows[0].data, "hex"))[1].abi;
       const nativeAbi = selected.provider.contractCodec.decodeAbi(Buffer.from(nativeAbiHex, "hex"));
-      for (const frame of frames.slice(positions.length, through)) {
+      for (const frame of inputFrames.slice(positions.length, through)) {
         const decoded = session.decodeResult(frame), result = decoded[1];
         const source = {
-          chainId: capture.chainId,
+          chainId: inputCapture.chainId,
           blockNum: Number(result.this_block.block_num),
           blockId: result.this_block.block_id,
           previousBlockId: result.prev_block?.block_id ?? null
@@ -75,7 +81,7 @@ export async function prepared(constructedEpochs = {}, initialThrough = 4, const
         const sourceFrame = epoch || constructed ? selected.provider.contractCodec.encodeValue(schema, "result", decoded) : frame;
         const sections = {
           kind: "unattested-ship-result-sections-v1",
-          schemaJson,
+          schemaJson: inputSchema,
           blockHex: result.block,
           tracesHex: result.traces,
           deltasHex: result.deltas
@@ -97,7 +103,7 @@ export async function prepared(constructedEpochs = {}, initialThrough = 4, const
         let observation;
         if (source.blockNum === 1)
           observation = { status: "native-genesis", facts: selected.provider.verifyNativeGenesis({
-            schemaJson,
+            schemaJson: inputSchema,
             block: Buffer.from(result.block, "hex"),
             traces: null,
             deltas: Buffer.from(result.deltas, "hex")
@@ -136,9 +142,11 @@ export async function prepared(constructedEpochs = {}, initialThrough = 4, const
     }
   }
   await advance(initialThrough);
-  const options = { client: memory.client, chain, chainId: capture.chainId, profile, provider: selected.provider };
+  const options = { client: memory.client, chain, chainId: inputCapture.chainId, profile, provider: selected.provider,
+    maxAncestryBlocks: retained?.maxAncestryBlocks, historicalCertificates: retained?.historicalCertificates !== undefined };
   memory.calls.length = 0;
-  return { memory, options, coordinator, positions, observed, advance, source: new PortableProjectionSource(options) };
+  return { memory, options, coordinator, store, bindings, observations, contextId, positions, observed, advance,
+    source: new PortableProjectionSource(options) };
 }
 
 export { hash, read, original, forward, capture, follow, schemaJson, frames };

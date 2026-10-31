@@ -1,0 +1,9 @@
+{
+  "name": "@eosrio/hyperion-wire-state-qualification",
+  "version": "0.0.0-dev.1",
+  "private": true,
+  "type": "module",
+  "main": "./build/index.js",
+  "license": "MIT",
+  "peerDependencies": {"@eosrio/hyperion-sdk": "0.0.0-dev.1"}
+}
