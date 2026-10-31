@@ -13,8 +13,8 @@ export const STATEFUL_METADATA_FIELDS_API_SOURCE_PROFILE = 'stateful-owner-v2-dd
 export const STATEFUL_METADATA_FIELDS_LEGACY_SOURCE_PROFILE = 'stateful-owner-v2-dd85ee5-7167659-fields-engineering';
 export const STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE = 'stateful-owner-v2-7412889-18d235e-complete-kind-engineering';
 export const STATEFUL_COMPLETE_KIND_NATIVE_SOURCE = Object.freeze({
-    commit: 'cacce8fe177eab3a3b07a10c92dd5fd9a16cfef5', tree: '4ec2ec9ff6ba451c68a72e8b5271c609a75283eb',
-    files: 33, sha256: '154ccf70c141e6fadc4f7e55b08d5de0463d2e976258873511031fb1cb1d3c6e',
+    commit: '71dc69240f87b4dfc98e6089ec7e075564457055', tree: '218071940baf5a7e773dc8d9df50d32b2d85e86a',
+    files: 36, sha256: '53e26e3d0e564bc6b02265341c139054c5d79b4924bf14eb1cdbf39dc4ef0e50',
 });
 export const STATEFUL_COMPLETE_KIND_CALLER_SOURCE = Object.freeze({
     commit: 'cacce8fe177eab3a3b07a10c92dd5fd9a16cfef5', files: 550,

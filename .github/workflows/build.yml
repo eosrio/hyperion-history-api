@@ -65,7 +65,7 @@ jobs:
           node --experimental-strip-types tests/unit/portable-state-mongo-sampling.mjs
           node --experimental-strip-types tests/unit/portable-state-mongo-admission-red.mjs characterize
       - name: Check stateful MongoDB fixture source guards on Node ${{ matrix.node-version }}
-        run: node --test scripts/qualification/stateful-mongodb-fixture/offline.test.mjs
+        run: node --test scripts/qualification/stateful-mongodb-fixture/offline.test.mjs scripts/qualification/stateful-complete-kind-mongodb/offline.test.mjs
       - name: Check portable state source and fixture ownership guards
         run: python3 tests/fixtures/portable-state-worker/test_helpers.py
       - name: Verify published native Wire CPU evidence
@@ -203,6 +203,15 @@ jobs:
           npm test --prefix packages/backend-mongodb
       - name: Exercise the portable runtime and adapter against owned MongoDB 8.0.34
         run: node scripts/qualification/check-projection-mongodb.mjs projection-report.json
+      - name: Exercise complete-kind accounting and same-snapshot ownership against a separately owned MongoDB 8.0.34
+        run: node scripts/qualification/stateful-complete-kind-mongodb/ci.mjs complete-kind-mongodb-${{ matrix.node-version }}
+      - name: Retain complete-kind native traces, terminal logs and verified fixture cleanup
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: complete-kind-mongodb-${{ matrix.node-version }}
+          path: complete-kind-mongodb-${{ matrix.node-version }}/
+          if-no-files-found: error
       - name: Retain portable MongoDB conformance report
         if: always()
         uses: actions/upload-artifact@v4
