@@ -40,6 +40,18 @@ function originalFields(value, names) {
         names.every(n => descriptors[n]?.enumerable && Object.hasOwn(descriptors[n], 'value')), 'Unexpected fields/accessors');
 }
 
+test('duplicate expected names retain the original string behavior and never admit an extra symbol', () => {
+    const hiddenSymbol = Object.defineProperty({owner: 1}, Symbol('hidden'), {value: 2});
+    const hiddenString = Object.defineProperty({owner: 1}, 'hidden', {value: 2});
+    const verdict = (validator, value) => {
+        try {validator(value, ['owner', 'owner']); return {valid: true};}
+        catch (error) {return {valid: false, name: error.name, code: error.code, message: error.message};}
+    };
+    for (const value of [{owner: 1, extra: 2}, {owner: 1, [Symbol('extra')]: 2}, hiddenSymbol, hiddenString]) {
+        assert.deepEqual(verdict(fields, value), verdict(originalFields, value));
+    }
+});
+
 test('mutable proxies preserve the original ownKeys/descriptor traps, refusals and thrown errors', () => {
     for (const mode of ['stable', 'missing-descriptor', 'delete-during-reflection', 'new-symbol', 'descriptor-throws', 'second-ownKeys-throws']) {
         const check = validator => {

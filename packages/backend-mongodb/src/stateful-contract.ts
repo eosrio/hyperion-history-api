@@ -24,7 +24,8 @@ export function fields(value: unknown, names: readonly string[]): asserts value 
             names.every(n => descriptors[n]?.enumerable && Object.hasOwn(descriptors[n], 'value')), 'Unexpected fields/accessors');
         return;
     }
-    requireState(Reflect.ownKeys(value).length === names.length && names.every(name => {
+    const keys = Reflect.ownKeys(value);
+    requireState(keys.every(key => typeof key === 'string') && keys.length === names.length && names.every(name => {
         const descriptor = Object.getOwnPropertyDescriptor(value, name);
         return descriptor?.enumerable && Object.hasOwn(descriptor, 'value');
     }), 'Unexpected fields/accessors');
