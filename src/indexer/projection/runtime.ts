@@ -1,4 +1,4 @@
-import {currentProofConsumerScope} from '../protocol/proof-consumer-scope.js';
+import {currentProofConsumerScope, type ProofConsumerScope} from '../protocol/proof-consumer-scope.js';
 import {
     ProjectionContractError,
     PROJECTION_LIMITS,
@@ -75,6 +75,19 @@ function sameView(a: ProjectionReadView, b: ProjectionReadView): boolean {
         && sameBinding(a.binding, b.binding);
 }
 
+// Issued only by the actual mapping result after its failure marker completes. Neither an error
+// class/code nor a caller-authored property can create a rejection for another process promise.
+const mappingRejections = new WeakMap<Promise<ProjectionApplyResult>, {runtime: DeclarativeProjectionRuntime;
+    error: unknown; block: ProjectionBlock; scope: ProofConsumerScope | undefined}>();
+export function consumeDeclarativeMappingRejection(runtime: DeclarativeProjectionRuntime,
+                                                  work: Promise<ProjectionApplyResult>, error: unknown): ProjectionBlock | undefined {
+    const issued = mappingRejections.get(work);
+    mappingRejections.delete(work);
+    if (!issued || issued.runtime !== runtime || issued.error !== error || issued.scope?.signal.aborted) return;
+    try {if (currentProofConsumerScope() !== issued.scope) return; issued.scope?.assertActive();} catch {return;}
+    return issued.block;
+}
+
 /** One fixed definition/instance: ordering is local to the projection, never a global chain writer. */
 export class DeclarativeProjectionRuntime {
     private tail: Promise<void> = Promise.resolve();
@@ -147,13 +160,16 @@ export class DeclarativeProjectionRuntime {
         }
         this.pendingFrames++;
         this.pendingBytes += bytes;
+        let result: Promise<ProjectionApplyResult>;
         const work = this.tail.then(async () => {
+            const scope = currentProofConsumerScope();
             currentProofConsumerScope()?.assertActive();
             // Production admission is durable before mapping can reject. Ordinary callers retain exact
             // adapter duplicate-replay behavior and need not reserve an already completed source again.
             await admitSource?.(header.block);
             currentProofConsumerScope()?.assertActive();
             let request: ProjectionApplyRequest;
+            let mappingRejected = false;
             try {
                 if (frameError) throw frameError;
                 const mutations: ProjectionMutation[] = [];
@@ -165,8 +181,11 @@ export class DeclarativeProjectionRuntime {
                         throw new ProjectionContractError('projection.invalid-contract', 'Projection change must declare presence');
                     }
                     const key = projectionRowKey(change.scope, change.primaryKey);
-                    mutations.push(change.present ? {kind: 'put', key, value: checked(projectTableValue(this.definition, change.value))}
-                        : {kind: 'delete', key});
+                    if (change.present) {
+                        const mapped = projectTableValue(this.definition, change.value);
+                        mappingRejected = !mapped.valid;
+                        mutations.push({kind: 'put', key, value: checked(mapped)});
+                    } else mutations.push({kind: 'delete', key});
                 }
                 request = checked(validateProjectionApply(this.definition, {...header, mutations}));
             } catch (error) {
@@ -180,6 +199,11 @@ export class DeclarativeProjectionRuntime {
                     Object.assign(unavailable, {cause: new AggregateError([error, storageError])});
                     throw unavailable;
                 }
+                if (mappingRejected) {
+                    // A late cancellation must preserve the original mapping error and mint no eligibility.
+                    try {if (currentProofConsumerScope() !== scope) throw error; scope?.assertActive();} catch {throw error;}
+                    mappingRejections.set(result, {runtime: this, error, block: header.block, scope});
+                }
                 throw error;
             }
             currentProofConsumerScope()?.assertActive();
@@ -188,7 +212,8 @@ export class DeclarativeProjectionRuntime {
             return applied;
         });
         this.tail = work.then(() => undefined, () => undefined);
-        return work.finally(() => {this.pendingFrames--; this.pendingBytes -= bytes;});
+        result = work.finally(() => {this.pendingFrames--; this.pendingBytes -= bytes;});
+        return result;
     }
 
     open(): Promise<ProjectionReadView> {

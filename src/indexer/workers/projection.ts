@@ -24,6 +24,8 @@ export default class ProjectionWorker extends HyperionWorker {
     private stopped = false;
     async assertQueues(): Promise<void> {} // Existing worker lifecycle/AMQP connection; no second source fan-out queue.
     onIpcMessage(message: any): void {
+        if (['stop', 'worker_attempt_fence', 'worker_attempt_fence_active', 'reload_config', 'reload_contract_config'].includes(message.event))
+            this.controller?.invalidateMappingRetryEligibility();
         if (message.event === 'stop') this.stopped = true;
         if (message.event === 'stateful_owner_probe_request' && validStatefulProbeId(message.data?.requestId)
             && validStatefulProbeTarget(message.data?.target)) {
