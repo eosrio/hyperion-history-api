@@ -3,6 +3,8 @@ import test from 'node:test';
 import {Long} from 'mongodb';
 import {setupComplete, completeFixture, totals, createMongoDbStatefulCompleteKindAdapterV1} from './stateful-complete-kind-fixture.mjs';
 import {configured, sdk, admit, execute, retire, takeover, physical, hex} from './stateful-owner-v2-fixture.mjs';
+import {definition, limits} from './stateful-fixture.mjs';
+import {captureStatefulDeclaration} from '@eosrio/hyperion-sdk/projection-stateful';
 const plain = value => JSON.parse(JSON.stringify(value));
 const read = (state, limits = totals()) => state.compose(async port => ({rows: await port.all('collection')}), limits);
 async function populated() {
@@ -27,6 +29,21 @@ test('genuine native cursor exhaustion includes empty coverage, zero row budget,
     const command = state.fixture.dataCommands[0].value;
     assert.equal(command.limit, undefined); assert.equal(command.batchSize, 1); assert.equal(command.hint, 'h45_complete_kind_v1');
     assert.ok(state.fixture.sessions.every(session => session.hasEnded));
+});
+
+test('opaque signed native cursor ids are preserved; only exact zero establishes exhaustion', async () => {
+    const state = await populated(); state.fixture.cursorIds.push(Long.fromString('-9223372036854775808'));
+    assert.equal((await read(state)).value.rows.length, 2);
+    assert.equal(state.fixture.dataCommands[1].value.getMore.toString(), '-9223372036854775808');
+});
+
+test('direct counted keyed reads retain the declared zero-key bound while kind enumeration remains available', async () => {
+    const projection = await captureStatefulDeclaration(definition(), {...limits(), readKeys: 0});
+    const state = await setupComplete(undefined, totals(), {projection}), view = (await state.adapter.recovery()).view;
+    const cap = await state.adapter.completedRead(state.identity, view, () => {});
+    await assert.rejects(state.adapter.readCompletedKey(cap, view, {kind: 'collection', key: 'x'}, totals()), /keyed read bound/);
+    assert.equal(state.fixture.dataCommands.length, 0); state.adapter.closeRead(cap);
+    assert.deepEqual(plain((await read(state)).value), {rows: []});
 });
 
 test('all rows/fields and exact bigint text survive; foreign kinds are excluded by native scope', async () => {

@@ -93,7 +93,7 @@ export async function createMongoDbStatefulCompleteKindAdapterV1(options: MongoD
                     let batchName = 'firstBatch';
                     for (;;) {
                         const cursor = answer.cursor;
-                        requireState(cursor && Long.isLong(cursor.id) && !cursor.id.isNegative()
+                        requireState(cursor && Long.isLong(cursor.id)
                             && cursor.ns === options.databaseName + '.' + rows.collectionName && Array.isArray(cursor[batchName])
                             && cursor[batchName].length <= 1, 'Malformed native complete-kind cursor', 'stateful.unavailable');
                         for (const raw of cursor[batchName]) {
@@ -154,6 +154,7 @@ export async function createMongoDbStatefulCompleteKindAdapterV1(options: MongoD
             } catch (error) {if (read) base.closeRead(read); throw error;}
         },
         async readCompletedKey(read, view, input, supplied) {
+            requireState(options.declaration.projection.limits.readKeys >= 1, 'Complete-kind keyed read bound');
             const key = logicalKey(options.declaration.projection, input), available = remaining(supplied);
             requireState(available.responseRecords >= 1, 'Complete-kind keyed record total exceeded', 'stateful.unavailable');
             return await readData(read, view, key.kind, available, key) as Awaited<ReturnType<StatefulCompleteKindAdapterV1['readCompletedKey']>>;

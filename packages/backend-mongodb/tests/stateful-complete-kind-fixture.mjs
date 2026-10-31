@@ -12,6 +12,7 @@ export function completeFixture() {
     const sessions = new WeakSet(), cursors = new Map(), indexes = new Map(); let cursorSequence = 1;
     fixture.dataCommands = []; fixture.cleanup = []; fixture.indexes = indexes; fixture.beforeData = undefined; fixture.reply = undefined;
     fixture.emptyFirstBatch = false; fixture.sessions = []; fixture.client.options = {retryReads: false, retryWrites: false, maxAdaptiveRetries: 0};
+    fixture.cursorIds = [];
     fixture.client.startSession = (...args) => {const session = start(...args); sessions.add(session); fixture.sessions.push(session); return session;};
     fixture.client.db = (database, ...args) => {
         const db = dbFor(database, ...args);
@@ -37,7 +38,7 @@ export function completeFixture() {
                 let state;
                 if (command.find) {
                     const selected = [...(storage.get(name) ?? new Map()).values()].filter(row => command.filter._id ? row._id === command.filter._id : row.kind === command.filter.kind);
-                    state = {name, rows: selected, offset: 0, id: Long.fromNumber(cursorSequence++)};
+                    state = {name, rows: selected, offset: 0, id: fixture.cursorIds.shift() ?? Long.fromNumber(cursorSequence++)};
                     if (!command.singleBatch) cursors.set(state.id.toString(), state);
                 } else {state = cursors.get(command.getMore.toString()); assert.ok(state, 'Unknown native cursor');}
                 let batch;
@@ -54,8 +55,8 @@ export function completeFixture() {
     return fixture;
 }
 
-export async function setupComplete(fixture = completeFixture(), limits = totals()) {
-    const state = await configured(fixture);
+export async function setupComplete(fixture = completeFixture(), limits = totals(), changes = {}) {
+    const state = await configured(fixture, changes);
     state.adapter = await createMongoDbStatefulCompleteKindAdapterV1(state.options, limits);
     state.declaration = await sdk.negotiateStatefulOwnerV2(state.declaration.projection,
         {family: sdk.STATEFUL_OWNER_FAMILY_V2, interfaceVersion: 2, sourceInputVersions: [2], supported: sdk.STATEFUL_OWNER_HOST_CAPABILITIES_V2,
