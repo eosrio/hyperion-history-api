@@ -18,7 +18,7 @@ export const STATEFUL_COMPLETE_KIND_NATIVE_SOURCE = Object.freeze({
 });
 export const STATEFUL_COMPLETE_KIND_CALLER_SOURCE = Object.freeze({
     commit: 'cacce8fe177eab3a3b07a10c92dd5fd9a16cfef5', files: 550,
-    sha256: '7e41b71e109f4cca5786f5fca75965a92ac77ebdbd0da05af77c55aa52027c56',
+    sha256: '44b547b566e65941dd4bcd0af0695ca93ded85a2644436634d90a62e09e10a38',
     sources: Object.freeze([
         ['src/api/helpers/stateful-owner.ts', '8bdf6914852f2d9f008adbfd81fe83c0b3f94d6a2928f5567147a9030f72cb82'],
         ['src/indexer/connections/stateful-complete-kind-client.ts', '37ee22762dda7b1a10c9adbe036e1e0b2d19b8d39b9c2cc5391fca83ba0fb906'],
