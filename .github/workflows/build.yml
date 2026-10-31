@@ -14,7 +14,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-dd85ee5-18d235e-engineering
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-dd85ee5-18d235e-fields-engineering
     strategy:
       matrix:
         node-version: [24.x, 26.x]
@@ -40,7 +40,7 @@ jobs:
         run: |
           node tests/unit/portable-state-owner-v2.mjs
           node tests/unit/stateful-host-native.mjs
-          node tests/unit/stateful-action-metadata-source-admission-native.mjs
+          node tests/unit/stateful-metadata-fields-source-admission-native.mjs
       - name: Check retained Wire managed state and historical source authority on Node ${{ matrix.node-version }}
         run: |
           node --test tests/unit/wire-managed-state-v2-native.mjs
@@ -155,7 +155,7 @@ jobs:
           npm install --package-lock-only --ignore-scripts --allow-git=all
           npm ci --allow-git=all
           test "$(git diff --name-only)" = $'package-lock.json\npackage.json'
-          export HYPERION_NATIVE_SOURCE_PROFILE=stateful-owner-v2-dd85ee5-7167659-engineering
+          export HYPERION_NATIVE_SOURCE_PROFILE=stateful-owner-v2-dd85ee5-7167659-fields-engineering
           node tests/unit/protocol-native-installed.mjs
           node tests/unit/action-source-inventory-native.mjs
           node tests/unit/protocol-native-consumer-worker.mjs
@@ -235,7 +235,7 @@ jobs:
   action-source-journal:
     runs-on: ubuntu-24.04
     env:
-      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-dd85ee5-18d235e-engineering
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-dd85ee5-18d235e-fields-engineering
     timeout-minutes: 15
     strategy:
       fail-fast: false

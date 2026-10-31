@@ -9,11 +9,19 @@ import {findPackageJSON} from 'node:module';
 export const STATEFUL_ENGINEERING_API_SOURCE_PROFILE = 'stateful-owner-v2-18d235e-engineering';
 export const STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE = 'stateful-owner-v2-dd85ee5-18d235e-engineering';
 export const STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE = 'stateful-owner-v2-dd85ee5-7167659-engineering';
+export const STATEFUL_METADATA_FIELDS_API_SOURCE_PROFILE = 'stateful-owner-v2-dd85ee5-18d235e-fields-engineering';
+export const STATEFUL_METADATA_FIELDS_LEGACY_SOURCE_PROFILE = 'stateful-owner-v2-dd85ee5-7167659-fields-engineering';
+// Production source was committed before these additive qualification profiles.
+export const STATEFUL_METADATA_FIELDS_NATIVE_SOURCE = Object.freeze({
+    commit: '0b51a20c3d9a9b95c39a713c89cad6d55c5103d4', tree: '686850ba3acb00fc1f9424dd300483b83f84c654',
+    files: 30, sha256: '3686c0473d9304288c7bf54bf44ea481f528185724da1ce024a59f2d16bea76e',
+});
 const oldWire = '7167659e9c043cb3351074fcacb40200cc57f3a3', wire = '18d235e34a9b7ab8c3e9f9a322874444d90eed8a';
 const sdk = '58d68c5cea81490bbb1c9a7736d633d465bab3ef';
 const metadataSdk = 'dd85ee590dcd1e359509c6c41ee99b541706b1f6';
-const metadataProfile = profile => profile === STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE || profile === STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE;
-const legacyProfile = profile => profile === 'default-716' || profile === STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE;
+const fieldsProfile = profile => profile === STATEFUL_METADATA_FIELDS_API_SOURCE_PROFILE || profile === STATEFUL_METADATA_FIELDS_LEGACY_SOURCE_PROFILE;
+const metadataProfile = profile => profile === STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE || profile === STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE || fieldsProfile(profile);
+const legacyProfile = profile => profile === 'default-716' || profile === STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE || profile === STATEFUL_METADATA_FIELDS_LEGACY_SOURCE_PROFILE;
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const read = path => {assert(statSync(path).size <= 4 * 1024 * 1024, 'Qualification metadata byte bound');
     const bytes = readFileSync(path); return {bytes, json: JSON.parse(bytes), sha256: sha(bytes)};};
@@ -57,7 +65,7 @@ export function admitNativeApiSourceOptions(input = {}) {
     exact(pkg.json.name, '@eosrio/hyperion-wire-plugin', 'Wire package');
     const descriptor = read(resolve(root, 'dist/protocol-provider.json'));
     const node = read(resolve(root, 'dist/protocol-node-artifact.json')), rust = read(resolve(root, 'dist/protocol-rust-artifact.json'));
-    for (const artifact of [node, rust]) {exact(artifact.json.sourceRevision, profile === undefined || profile === STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE ? oldWire : wire, 'Wire source revision'); exact(artifact.json.sourceModified, false, 'modified Wire source');}
+    for (const artifact of [node, rust]) {exact(artifact.json.sourceRevision, profile === undefined || legacyProfile(profile) ? oldWire : wire, 'Wire source revision'); exact(artifact.json.sourceModified, false, 'modified Wire source');}
     const lock = read(fileURLToPath(new URL('../../package-lock.json', import.meta.url))).json;
     const checkPin = (name, revision) => {
         const selected = lock.packages['node_modules/' + name];
@@ -66,12 +74,13 @@ export function admitNativeApiSourceOptions(input = {}) {
     };
     if (profile === undefined) {checkPin('@eosrio/hyperion-wire-plugin', oldWire);
         return Object.freeze({nativeMarker, wireRevision: oldWire, profile: 'default-716', qualificationOnly: true});}
-    if (profile === STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE) {
+    if (profile === STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE || profile === STATEFUL_METADATA_FIELDS_LEGACY_SOURCE_PROFILE) {
         checkPin('@eosrio/hyperion-wire-plugin', oldWire); checkPin('@eosrio/hyperion-sdk', metadataSdk);
         legacyWireArtifacts(root);
         const runtime = coordinatedRuntime(profile);
         return Object.freeze({nativeMarker, wireRevision: oldWire, profile, ...runtime,
-            sdkTree: 'd9a8af0b8d284facca5d28b5905a1b5ffc911200', nativeTree: '8c97c35eaa7dd64785ecc6c3ef30da9ac6d4b025', qualificationOnly: true});
+            sdkTree: 'd9a8af0b8d284facca5d28b5905a1b5ffc911200', nativeTree: fieldsProfile(profile) ? STATEFUL_METADATA_FIELDS_NATIVE_SOURCE.tree : '8c97c35eaa7dd64785ecc6c3ef30da9ac6d4b025',
+            ...(fieldsProfile(profile) ? {nativeSourceCommit: STATEFUL_METADATA_FIELDS_NATIVE_SOURCE.commit} : {}), qualificationOnly: true});
     }
     exact(pkg.sha256, '3795011555117b2b5f7a05924a0b3e168851308080e4862955e40a96fef9168e', 'Wire package bytes');
     exact(descriptor.sha256, 'ed711d3ca0175c69b08646f052caa952f123a1128ae1a30f2d8e10d23dbf1706', 'Wire descriptor');
@@ -84,7 +93,8 @@ export function admitNativeApiSourceOptions(input = {}) {
     return Object.freeze({nativeMarker, wireRevision: wire, profile, descriptorSha256: descriptor.sha256, nodeSha256: node.sha256,
         rustSha256: rust.sha256, sdkFiles, nativeFiles, wireTree: '719a03aa0ea7b72d6a7411cfaaad78b05a1a8c4a',
         sdkTree: metadataProfile(profile) ? 'd9a8af0b8d284facca5d28b5905a1b5ffc911200' : '1f666cff5afe489b66e8a3729502b9a5978c5138',
-        nativeTree: metadataProfile(profile) ? '8c97c35eaa7dd64785ecc6c3ef30da9ac6d4b025' : 'e1c51022e4478975538d0dd7d4d31f8ed63790b8', qualificationOnly: true});
+        nativeTree: fieldsProfile(profile) ? STATEFUL_METADATA_FIELDS_NATIVE_SOURCE.tree : metadataProfile(profile) ? '8c97c35eaa7dd64785ecc6c3ef30da9ac6d4b025' : 'e1c51022e4478975538d0dd7d4d31f8ed63790b8',
+        ...(fieldsProfile(profile) ? {nativeSourceCommit: STATEFUL_METADATA_FIELDS_NATIVE_SOURCE.commit} : {}), qualificationOnly: true});
 }
 
 function coordinatedRuntime(profile) {
@@ -101,7 +111,8 @@ function coordinatedRuntime(profile) {
     const sdkFiles = inventory(resolve(sdkRoot, 'dist')), nativeFiles = inventory(resolve(nativeRoot, 'dist'));
     exact(sdkFiles.files, 31, 'SDK emission count'); exact(sdkFiles.sha256, metadata ? 'a4c203b00a2cf1e655709bb926e507eec065ac29e81d1ba6a05373b26c55a11a'
         : 'df919dbdbfe8eb6c0b0f05a7f4b4ddabf42095d9da1e2621d0adba250fd3b7cc', 'SDK emissions');
-    exact(nativeFiles.files, 30, 'native emission count'); exact(nativeFiles.sha256, '6b9b8355aa2eca52a26d0e395d85c71679b414c348b466f614e6321f42b64e24', 'native emissions');
+    exact(nativeFiles.files, 30, 'native emission count'); exact(nativeFiles.sha256, fieldsProfile(profile)
+        ? STATEFUL_METADATA_FIELDS_NATIVE_SOURCE.sha256 : '6b9b8355aa2eca52a26d0e395d85c71679b414c348b466f614e6321f42b64e24', 'native emissions');
     const nativeSdk = findPackageJSON('@eosrio/hyperion-sdk', pathToFileURL(resolve(nativeRoot, 'package.json')));
     assert(nativeSdk, 'Native runtime SDK is absent');
     exact(read(nativeSdk).sha256, sdkPackage.sha256, 'native runtime SDK package');
