@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import {isProxy} from 'node:util/types';
 import {
     captureStatefulDeclaration, captureStatefulRecovery, canonicalStatefulRecord, StatefulContractError,
     type StatefulDeclaration, type StatefulKey, type StatefulRecovery, type StatefulView,
@@ -16,9 +17,17 @@ export function requireState(ok: unknown, message: string, code = 'stateful.inva
 }
 export function fields(value: unknown, names: readonly string[]): asserts value is Record<string, unknown> {
     requireState(typeof value === 'object' && value !== null && !Array.isArray(value), 'Expected data record');
-    const descriptors = Object.getOwnPropertyDescriptors(value);
-    requireState(Object.getOwnPropertySymbols(value).length === 0 && Object.keys(descriptors).length === names.length &&
-        names.every(n => descriptors[n]?.enumerable && Object.hasOwn(descriptors[n], 'value')), 'Unexpected fields/accessors');
+    // Preserve the original reflection order for proxies whose traps can change the record.
+    if (isProxy(value)) {
+        const descriptors = Object.getOwnPropertyDescriptors(value);
+        requireState(Object.getOwnPropertySymbols(value).length === 0 && Object.keys(descriptors).length === names.length &&
+            names.every(n => descriptors[n]?.enumerable && Object.hasOwn(descriptors[n], 'value')), 'Unexpected fields/accessors');
+        return;
+    }
+    requireState(Reflect.ownKeys(value).length === names.length && names.every(name => {
+        const descriptor = Object.getOwnPropertyDescriptor(value, name);
+        return descriptor?.enumerable && Object.hasOwn(descriptor, 'value');
+    }), 'Unexpected fields/accessors');
 }
 export function hex(value: unknown): asserts value is string {
     requireState(typeof value === 'string' && /^[a-f0-9]{64}$/.test(value), 'Expected SHA-256');
