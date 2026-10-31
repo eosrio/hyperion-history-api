@@ -1,5 +1,6 @@
 import type {StatefulDefinition, StatefulLimits, StatefulSelector} from '@eosrio/hyperion-sdk/projection-stateful';
-import type {StatefulReductionV2, StatefulQueryHostV2} from '@eosrio/hyperion-sdk/projection-stateful-owner-v2';
+import type {StatefulReductionV2, StatefulQueryHostV2, StatefulCompleteKindCapabilitiesV1,
+    StatefulCompleteKindQueryHostV1} from '@eosrio/hyperion-sdk/projection-stateful-owner-v2';
 import type {FastifyRequest} from 'fastify';
 
 /** Plugins declare logical selection; only the canonical source host fills ABI occurrences/hashes. */
@@ -12,6 +13,8 @@ export interface StatefulPluginProjectionV2 {
     readonly reduce: (reduction: StatefulReductionV2) => void | Promise<void>;
     /** Source metadata requirements; the host must negotiate these before creating an owner. */
     readonly requiredSourceCapabilities?: readonly string[];
+    /** Optional negotiated query extension with explicit totals; old get-only projections omit it. */
+    readonly requiredCompleteKindRead?: StatefulCompleteKindCapabilitiesV1;
 }
 export interface StatefulPluginRegistrationV2 {
     readonly interfaceVersion: 2;
@@ -23,6 +26,7 @@ export interface StatefulPluginHostContextV2 {
     readonly binding: StatefulDefinition['binding'];
     /** Actual retained-original metadata supplied by this host, never a serving grant. */
     readonly sourceCapabilities?: readonly string[];
+    readonly completeKindRead?: Pick<StatefulCompleteKindCapabilitiesV1, 'family' | 'interfaceVersion'>;
 }
 /** Optional method on the existing loaded Hyperion plugin; it is not another executable loader. */
 export interface StatefulPluginV2 {
@@ -36,4 +40,5 @@ export interface StatefulOwnerQueryHostV2 extends StatefulQueryHostV2 {
 /** Additive second argument to existing plugin.addRoutes; all HTTP authority remains in HAPI. */
 export interface StatefulPluginApiContextV2 {
     readonly statefulQueryHost: (request: FastifyRequest) => StatefulOwnerQueryHostV2;
+    readonly statefulCompleteKindQueryHost?: (request: FastifyRequest, projectionId: string) => Promise<StatefulCompleteKindQueryHostV1>;
 }

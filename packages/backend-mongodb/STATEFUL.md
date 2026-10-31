@@ -133,3 +133,17 @@ Rollback rotates revision and invalidates old leases/read capabilities.
 Controlled driver tests cover these source semantics. Physical MongoDB crash,
 Wire replay, SQL comparison, mixed-owner/API serving and full AtomicAssets/
 AtomicMarket parity remain separate qualification gates.
+
+The separate `./stateful-owner-complete-kind-v1` export implements SDK
+`stateful-owner-complete-kind` version 1 at SDK revision
+`7412889a14c84342551fd864ea3ebfcf28849385`. Its factory requires an explicitly
+nonretrying client and explicit total attempts/records/serialized bytes. It
+delegates the actual owner-v2 recovery and completed-read tokens, admits a generic
+kind index under the owner, and enumerates until the native cursor id is zero.
+`readCompletedKey` and `readCompletedKind` count data commands including any
+transaction callback retries. Kind enumeration has no native limit or public
+ordering guarantee. Successful serialized JSON totals are separate from wire/
+BSON buffers and the documented extra-row overflow probe. The host manages the
+lazy bounded client and retains final publication fencing. Existing factories,
+clients, declarations and get-only callbacks remain unchanged. Source and packed
+controls do not qualify physical MongoDB or public HTTP parity.

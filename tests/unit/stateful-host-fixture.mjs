@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import {preparedStatefulInputs, capture} from './portable-state-source-fixture.mjs';
 import {definition, limits} from '../../packages/backend-mongodb/tests/stateful-fixture.mjs';
 import {ownerFixture} from '../../packages/backend-mongodb/tests/stateful-owner-v2-fixture.mjs';
+import {completeFixture, totals, offer} from '../../packages/backend-mongodb/tests/stateful-complete-kind-fixture.mjs';
 
 const code = process.versions.bun ? '../../src/' : '../../build/';
 const load = path => import(new URL(code + path, import.meta.url));
@@ -23,7 +24,7 @@ const {resolveStatefulOwnerConfigurationV2} = await load('indexer/projection/sta
 
 /** Actual emitted/source host and worker methods, with explicit native-command and transport fixtures. */
 export async function statefulHostFixture({timeoutMs = 1000, hooks = {}, requiredSourceCapabilities = [], preparedSource,
-    pluginDirectory, pluginConfiguration, projectionId, through = 3} = {}) {
+    pluginDirectory, pluginConfiguration, projectionId, through = 3, completeKind = false} = {}) {
     const {p} = preparedSource ? {p: preparedSource} : await preparedStatefulInputs();
     const rawConfiguration = {interfaceVersion: 2, sourceInputVersion: 2,
         backend: {kind: 'mongodb', id: 'stateful-fixture', database: 'stateful_fixture'}, recovery: {bytes: 8 * 1024 * 1024},
@@ -48,19 +49,21 @@ export async function statefulHostFixture({timeoutMs = 1000, hooks = {}, require
             return {interfaceVersion:2,sourceInputVersion:2,projections:[{
             definition:this.options.template,limits:this.options.limits,requiredSourceCapabilities:this.options.requiredSourceCapabilities,reduce:async port => {
                 port.put('collection','last',{height:port.source.block.blockNum,occurrences:port.source.inputs.length});
-            }}]};}
+            },...(this.options.requiredCompleteKindRead?{requiredCompleteKindRead:this.options.requiredCompleteKindRead}:{})}]};}
     }`);
     }
     const cm = {config: {settings: {chain: p.options.chain, parser: '3.2'}, indexer: {},
-        features: {index_transfer_memo: true, stateful_owner_v2: rawConfiguration}, plugins: {entry: pluginConfiguration ?? {enabled: true, template, limits: limits(), requiredSourceCapabilities}}},
+        features: {index_transfer_memo: true, stateful_owner_v2: rawConfiguration}, plugins: {entry: pluginConfiguration ?? {enabled: true, template, limits: limits(), requiredSourceCapabilities,
+            ...(completeKind ? {requiredCompleteKindRead: offer(totals())} : {})}}},
         connections: {chains: {[p.options.chain]: {chain_id: capture.chainId}}}, filters: {action_blacklist: new Set(), action_whitelist: new Set(),
             delta_blacklist: new Set(), delta_whitelist: new Set()}};
     const previousConfig = process.env.CONFIG_JSON;
     process.env.CONFIG_JSON = join(pluginRoot, 'chain.json'); writeFileSync(process.env.CONFIG_JSON, JSON.stringify(cm.config));
     const loader = new HyperionModuleLoader(cm, pluginRoot); await loader.init();
     assert.equal(loader.statefulPluginsV2().length, 1);
-    const storage = ownerFixture();
+    const storage = completeKind ? completeFixture() : ownerFixture();
     const registry = await StatefulProjectionRegistryV2.create({chainId: capture.chainId, configuration, mongo: storage.client,
+        ...(completeKind ? {completeKindMongo: async () => storage.client} : {}),
         client: p.options.client, source: p.source, profile: p.options.profile, onError: (_id, error) => {throw error;}}, loader);
     await registry.initializeMissing();
     const entry = registry.entries.get(selected.id); assert(entry, 'actual host registry must resolve and capture the loaded template');
@@ -113,7 +116,17 @@ export async function statefulHostFixture({timeoutMs = 1000, hooks = {}, require
         return result.value;
     });
     app.get('/unrelated', async () => ({ok: true}));
-    return {app, native, p, declaration, controller, supervisor, parent, worker, registry, client, broker, socket, ends, ownerErrors,
+    if (completeKind) app.get('/complete-kind', {onSend: [async (request, reply, payload) => {
+        await hooks.onSend?.({request, reply, payload}); return hooks.payload ? hooks.payload(payload) : payload;
+    }]}, async (request, reply) => {
+        await hooks.beforeCompose?.({request, reply});
+        const host = await context.statefulCompleteKindQueryHost(request, selected.id);
+        const result = await host.compose(selected.id, async port => {
+            const rows = await port.all('collection'); await hooks.compose?.({port, request, reply, host}); return {success: true, data: rows};
+        });
+        return result.value;
+    });
+    return {app, native, p, declaration, controller, supervisor, parent, worker, registry, client, broker, socket, ends, ownerErrors, context,
         get probes() {return probeCount;}, replaceSocket() {currentSocket = {...socket};},
         disconnect() {socket.readyState = 3; client.disconnected(socket);},
         async close() {
