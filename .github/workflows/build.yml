@@ -38,6 +38,7 @@ jobs:
       - run: npm run build
       - name: Check mixed stateful source and final publication on Node ${{ matrix.node-version }}
         run: |
+          node --test tests/native/pinned-git-source.test.mjs
           node tests/unit/portable-state-owner-v2.mjs
           node tests/unit/stateful-host-native.mjs
           node tests/unit/stateful-metadata-fields-source-admission-native.mjs
