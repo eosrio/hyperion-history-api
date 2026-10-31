@@ -224,9 +224,10 @@ export async function run(options) {
         });
         for (const command of ['find', 'getMore']) await caseRun('nonretrying-' + command + '-failure', async () => {
             arm(command, 2, ['SystemOverloadedError', 'RetryableError']);
-            await assert.rejects(direct('collection'));
-            const evidence = verifyReadTrace(trace, phase.name, {maximum: command === 'find' ? 1 : 2});
-            assert.equal(evidence.dataAttempts, command === 'find' ? 1 : 2);
+            const maximum = command === 'find' ? 1 : 2;
+            await assert.rejects(direct('collection', {...PLAN.budgets, readAttempts: maximum}));
+            const evidence = verifyReadTrace(trace, phase.name, {maximum});
+            assert.equal(evidence.dataAttempts, maximum);
             assert.equal(trace.filter(row => row.phase === phase.name && row.event === 'failed' && row.command === command).length, 1); return evidence;
         });
         for (const maximum of [1, PLAN.budgets.readAttempts]) await caseRun('callback-retry-total-' + maximum, async () => {
@@ -277,12 +278,13 @@ export async function run(options) {
             await assert.rejects(compose(async port => {
                 const rows = await port.all('collection'); const target = await raw(2);
                 await apply(target, async write => {write.put('collection', 'a', {name: 'new-at-two'});}); return {rows};
-            })); return {closedPortRefused: true, changedFinalViewRefused: true};
+            })); verifyReadTrace(trace, phase.name, {maximum: 2 * PLAN.budgets.readAttempts});
+            return {closedPortRefused: true, changedFinalViewRefused: true};
         });
         await caseRun('raw-gap-restart-takeover-and-fork', async () => {
             const pending = await raw(3); await adapter.admitRaw(lease, pending);
-            await assert.rejects(compose(async port => ({rows: await port.all('collection')})));
             await adapter.markRawFailure(lease, pending.digest, 'synthetic raw gap');
+            await assert.rejects(compose(async port => ({rows: await port.all('collection')})));
             const reopened = await native.createMongoDbStatefulCompleteKindAdapterV1(config, PLAN.budgets);
             await assert.rejects(reopened.completedRead(identity, (await reopened.recovery()).view, noCancel));
             await sdk.executeStatefulOwnerBlockV2(declaration, adapter, lease, pending.digest, sourceFor(pending), custody, async () => {}, noCancel);
@@ -301,8 +303,10 @@ export async function run(options) {
             lease = await adapter.acquireOwner({expected: {version: rolled.version, view: rolled.view, owner: rolled.owner}, nextOwner: identity}, noCancel);
             assert.notEqual(rolled.view.revision, before.view.revision);
             const replacement = await raw(2, 92); await apply(replacement, async port => {port.put('collection', 'a', {name: 'replacement-branch'});});
+            phase = {name: phase.name + '-fresh-replacement'};
             const result = await direct('collection'); assert.equal(result.rows.find(row => row.key === 'a').value.name, 'replacement-branch');
-            return {persistedGapRefused: true, staleOwnerRefused: true, actualRollbackAndReplacement: true};
+            return {...verifyReadTrace(trace, phase.name, {attempts: result.attempts, maximum: PLAN.budgets.readAttempts, success: true}),
+                persistedGapRefused: true, staleOwnerRefused: true, actualRollbackAndReplacement: true};
         });
         await caseRun('changed-declaration-refused', async () => {
             const changed = definition(logical, options.database); changed.binding.generation += '_other';

@@ -58,7 +58,8 @@ test('outside bookends and a different session/transaction/client cannot authori
 });
 test('stale metadata, ABA revision and owner rotation refuse trace acceptance', () => {
     for (const change of [meta => {meta.checkpoint.blockNum = 0;}, meta => {meta.revision = 'd'.repeat(64);},
-        meta => {meta.owner.generation = 'two';}, meta => {meta.ownerClaim = 'f'.repeat(64);}, meta => {meta.gap = true;}, meta => {meta.pending = true;}]) {
+        meta => {meta.owner.generation = 'two';}, meta => {meta.ownerClaim = 'f'.repeat(64);}, meta => {meta.gap = true;},
+        meta => {meta.pending = true;}, meta => {meta.rollback = 'pending';}]) {
         const {trace} = events(); change(trace[1].metadata);
         assert.throws(() => verifyReadTrace(trace, 'one', {attempts: 1, maximum: 1, success: true}));
     }

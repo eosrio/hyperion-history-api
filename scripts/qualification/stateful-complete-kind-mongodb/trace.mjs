@@ -37,7 +37,7 @@ export function monitor(client, database, label, phase, trace) {
                     declarationDigest: batch[0].declarationDigest, revision: batch[0].revision,
                     checkpoint: plain(batch[0].checkpoint), owner: plain(batch[0].owner.identity), ownerClaim: batch[0].owner.claimDigest,
                     initialized: batch[0].initialized, raw: batch[0].raw !== null, pending: batch[0].pending !== null,
-                    gap: batch[0].gap !== null, rollback: batch[0].rollback !== null}} : {})}
+                    gap: batch[0].gap !== null, rollback: batch[0].rollback?.status ?? null}} : {})}
                 : {code: event.failure?.code ?? null, labels: [...(event.failure?.errorLabels ?? [])]})});
     };
     const succeeded = event => finish(event, true), failed = event => finish(event, false);
@@ -74,7 +74,8 @@ export function verifyReadTrace(trace, phase, {attempts, maximum, success = fals
         assert.equal(meta.declarationDigest, row.expected.declarationDigest); assert.equal(meta.revision, row.expected.revision);
         assert.deepEqual(meta.checkpoint, row.expected.checkpoint); assert.deepEqual(meta.owner, row.owner);
         assert.match(row.ownerClaim, /^[a-f0-9]{64}$/); assert.equal(meta.ownerClaim, row.ownerClaim);
-        assert.equal(meta.initialized, true); assert.equal(meta.pending, false); assert.equal(meta.gap, false); assert.equal(meta.rollback, false);
+        assert.equal(meta.initialized, true); assert.equal(meta.pending, false); assert.equal(meta.gap, false);
+        assert.ok(meta.rollback === null || meta.rollback === 'complete', 'Native rollback is incomplete');
     }
     if (success) {
         assert.ok(data.length > 0, 'Successful native read requires an actual data command');
