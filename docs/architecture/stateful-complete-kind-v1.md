@@ -5,8 +5,9 @@ SDK contract: `7412889a14c84342551fd864ea3ebfcf28849385`, optional
 `stateful-owner-complete-kind` interface version 1. This component implements that
 accepted contract; it does not qualify physical services or full Atomic parity.
 
-The existing owner-v2 factory, clients, get-only API, declaration/storage formats
-and historical qualification profiles remain unchanged. A separate native factory
+The existing owner-v2 public factory, clients, get-only API and declaration/storage
+formats retain their behavior; historical profiles keep their exact frozen sources.
+A separate native factory
 and per-projection `requiredCompleteKindRead` offer select explicit attempt/row/
 serialized-byte totals. Registry negotiation refuses missing support before
 projection activation. A separately named source profile pins the new SDK,
@@ -32,6 +33,16 @@ is sent. The counter lives outside any transaction callback, so callback retries
 share the supplied remaining total. No driver-hidden data retry is permitted.
 Owner/view/index/readiness metadata inspections are guarded authority work,
 separate from projection data attempts; they cannot contain hidden data reads.
+Each transaction callback also reuses the native adapter's actual opaque
+completed-read token to inspect owner/revision/checkpoint metadata inside that
+same session and snapshot, before any projection rows. The session must belong
+to that adapter's bounded client. Outside bookends are additional checks; they
+cannot authorize a server-selected older snapshot or a different retry snapshot.
+This follows the distinction in [MongoDB 8 snapshot guarantees](https://www.mongodb.com/docs/v8.0/reference/read-concern-snapshot/).
+The private bridge registers sessions created by that same native adapter and
+rejects foreign, unissued, ended or nontransaction sessions. It exposes no new
+SDK port or plugin handle. A controlled older-snapshot and retry counterexample
+failed before this check and now refuses before stale projection data reads.
 Commit/abort/cursor cleanup are transaction/resource lifecycle, not projection
 data reads. Every await retains cancellation/deadline and completed-view fencing.
 

@@ -76,6 +76,34 @@ test('data callback retries share one attempt total; no excessive command is sen
     await read(allowed, {...totals(), readAttempts: 2}); assert.equal(allowed.fixture.dataCommands.length, 2);
 });
 
+test('current bookends cannot authorize an older native metadata and data snapshot', async () => {
+    const state = await populated(), oldSnapshot = structuredClone(state.fixture.storage), target = await admit(state, 2);
+    await execute(state, target, async port => {port.put('collection', 'z', {name: 'new-at-two'});}); await retire(state, target);
+    state.fixture.snapshotOverride = oldSnapshot;
+    await assert.rejects(read(state), /changed|snapshot|owner/i);
+    await assert.rejects(state.compose(async port => ({value: await port.get('collection', 'z')})), /changed|snapshot|owner/i);
+    assert.equal(state.fixture.dataCommands.length, 0, 'Stale snapshot must refuse before reading projection rows');
+});
+
+test('each transaction callback retry validates metadata inside that callback snapshot', async () => {
+    const state = await populated(), oldSnapshot = structuredClone(state.fixture.storage), target = await admit(state, 2);
+    await execute(state, target, async port => {port.put('collection', 'z', {name: 'new-at-two'});}); await retire(state, target);
+    let callbacks = 0; state.fixture.snapshotOverride = () => ++callbacks === 1 ? undefined : oldSnapshot;
+    state.fixture.retryTransaction = true;
+    await assert.rejects(read(state), /changed|snapshot|owner/i);
+    assert.equal(state.fixture.dataCommands.length, 2, 'Only the first valid snapshot can read its two rows');
+});
+
+test('an ABA snapshot with the same checkpoint cannot adopt a rotated owner/revision', async () => {
+    const state = await populated(), oldSnapshot = structuredClone(state.fixture.storage), before = await state.adapter.recovery();
+    await state.adapter.rollbackOwned(state.lease, {declarationDigest: state.declaration.digest, revision: before.view.revision,
+        operationId: hex(93), from: before.view.checkpoint, ancestor: before.view.checkpoint, maxBlocks: 1});
+    const current = await takeover(state, 'after-aba'); state.identity = current.identity; state.lease = current.lease;
+    const after = await state.adapter.recovery(); assert.deepEqual(after.view.checkpoint, before.view.checkpoint);
+    assert.notEqual(after.view.revision, before.view.revision); state.fixture.snapshotOverride = oldSnapshot;
+    await assert.rejects(read(state), /changed|snapshot|owner/i); assert.equal(state.fixture.dataCommands.length, 0);
+});
+
 test('counted keyed data and kind enumeration consume the same explicit total', async () => {
     const state = await populated();
     const result = await state.compose(async port => ({keyed: await port.get('collection', 'a'), rows: await port.all('collection')}), {...totals(), readAttempts: 3});

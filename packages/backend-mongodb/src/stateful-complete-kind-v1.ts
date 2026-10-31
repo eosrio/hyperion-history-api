@@ -8,6 +8,7 @@ import {assertStatefulOwnerViewV2, captureStatefulOwnerViewV2, receiveStatefulOw
     type StatefulOwnerAdapterV2} from '@eosrio/hyperion-sdk/projection-stateful-owner-v2';
 import {createMongoDbStatefulOwnerAdapterV2, type MongoDbStatefulOwnerAdapterOptionsV2} from './stateful-owner-v2.js';
 import {decodeRow, fields, keyId, logicalKey, requireState} from './stateful-contract.js';
+import {assertStatefulOwnerCompletedSnapshotV2, createStatefulOwnerCompletedSessionV2} from './stateful-owner-v2-internal.js';
 
 const indexName = 'h45_complete_kind_v1';
 const methods = ['recovery', 'admitRaw', 'markRawFailure', 'markSourceFailure', 'bindSource', 'reductionRead',
@@ -72,10 +73,10 @@ export async function createMongoDbStatefulCompleteKindAdapterV1(options: MongoD
         let attempts = 0;
         // A trace label only; this supplies no read/owner authority and never reaches plugin results.
         const comment = {hyperion: 'stateful-complete-kind-v1', declaration: d.digest, operation: key ? 'key' : 'kind', trace: randomUUID()};
-        const session = options.client.startSession({causalConsistency: false});
+        const session = createStatefulOwnerCompletedSessionV2(base);
         try {
             const result = await guarded(guard, () => session.withTransaction(async () => {
-                assertStatefulOwnerViewV2(d, await guarded(guard, () => base.completedView(read)), expected);
+                await guarded(guard, () => assertStatefulOwnerCompletedSnapshotV2(base, read, expected, session));
                 let cursorId: Long = Long.ZERO;
                 const command = async (value: Document): Promise<Document> => {
                     guard(); retryOptions();

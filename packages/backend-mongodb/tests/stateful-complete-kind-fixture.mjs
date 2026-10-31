@@ -12,8 +12,17 @@ export function completeFixture() {
     const sessions = new WeakSet(), cursors = new Map(), indexes = new Map(); let cursorSequence = 1;
     fixture.dataCommands = []; fixture.cleanup = []; fixture.indexes = indexes; fixture.beforeData = undefined; fixture.reply = undefined;
     fixture.emptyFirstBatch = false; fixture.sessions = []; fixture.client.options = {retryReads: false, retryWrites: false, maxAdaptiveRetries: 0};
-    fixture.cursorIds = [];
-    fixture.client.startSession = (...args) => {const session = start(...args); sessions.add(session); fixture.sessions.push(session); return session;};
+    fixture.cursorIds = []; fixture.snapshotOverride = undefined;
+    fixture.client.startSession = (...args) => {
+        const session = start(...args), transaction = session.withTransaction.bind(session);
+        session.client = fixture.client; session.inTransaction = () => session.storage !== null && !session.hasEnded;
+        session.withTransaction = (work, options) => transaction(async (...values) => {
+            const snapshot = typeof fixture.snapshotOverride === 'function' ? fixture.snapshotOverride() : fixture.snapshotOverride;
+            if (snapshot) session.storage = structuredClone(snapshot);
+            return work(...values);
+        }, options);
+        sessions.add(session); fixture.sessions.push(session); return session;
+    };
     fixture.client.db = (database, ...args) => {
         const db = dbFor(database, ...args);
         return {...db,

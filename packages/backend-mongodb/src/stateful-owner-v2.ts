@@ -16,6 +16,7 @@ import {MAX_BSON_BYTES, ZERO, decodeRow, equalPoint, fields, hex, keyId, logical
 import {commitStatefulCandidate, rollbackStatefulStep, type StatefulEffects, type StatefulNativeCandidate} from './stateful-effects.js';
 import {matchingRaw, ownerMetadata, ownerRecovery, ownerSlot, ownerView, STATEFUL_OWNER_STORAGE_V2, type OwnerMetadataV2}
     from './stateful-owner-v2-contract.js';
+import {registerStatefulOwnerCompletedSnapshotV2} from './stateful-owner-v2-internal.js';
 
 export interface MongoDbStatefulOwnerAdapterOptionsV2 {
     readonly client: MongoClient; readonly databaseName: string; readonly backendId: string; readonly collectionPrefix: string;
@@ -74,6 +75,18 @@ class MongoDbStatefulOwnerAdapterV2 implements StatefulOwnerAdapterV2 {
         const prefix = options.collectionPrefix + '_stateful_v2';
         this.meta = this.db.collection<OwnerMetadataV2>(prefix + '_metadata'); this.rows = this.db.collection<StatefulRow>(prefix + '_r_' + declaration.digest);
         this.images = this.db.collection<StatefulImage>(prefix + '_u_' + declaration.digest);
+        const completedSessions = new WeakSet<ClientSession>();
+        registerStatefulOwnerCompletedSnapshotV2(this, Object.freeze({
+            createSession: () => {const session = this.options.client.startSession({causalConsistency: false}); completedSessions.add(session); return session;},
+            check: async (input: StatefulCompletedReadV2, expected: StatefulView, session: ClientSession) => {
+                const read = this.readContext(input, 'completed');
+                requireState(completedSessions.has(session) && !session.hasEnded && session.inTransaction(),
+                    'Completed snapshot session belongs to another client or transaction', 'stateful.unavailable');
+                assertStatefulOwnerViewV2(this.declaration, read.view, expected);
+                // Reuse the actual opaque read's owner/lease/view guard inside the SAME data snapshot.
+                const current = await this.current(read.owner, session); this.assertRead(current, read);
+                assertStatefulOwnerViewV2(this.declaration, ownerView(this.declaration, current), expected);
+        }}));
     }
     private text(value: unknown): asserts value is string {
         const limits = this.declaration.projection.limits;
