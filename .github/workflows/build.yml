@@ -14,7 +14,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-dd85ee5-18d235e-fields-engineering
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-18d235e-complete-kind-engineering
     strategy:
       matrix:
         node-version: [24.x, 26.x]
@@ -41,13 +41,15 @@ jobs:
           node --test tests/native/pinned-git-source.test.mjs
           node tests/unit/portable-state-owner-v2.mjs
           node tests/unit/stateful-host-native.mjs
-          node tests/unit/stateful-metadata-fields-source-admission-native.mjs
+          node tests/unit/stateful-complete-kind-source-admission-native.mjs
       - name: Check retained Wire managed state and historical source authority on Node ${{ matrix.node-version }}
         run: |
           node --test tests/unit/wire-managed-state-v2-native.mjs
           node --test tests/unit/protocol-abi-history-native.mjs
       - name: Check Fastify request admission and state route compatibility on Node ${{ matrix.node-version }}
         run: node --test --test-timeout=15000 tests/native/fastify-compatibility.test.mjs
+      - name: Check complete-kind query/client and final-publication controls
+        run: node --test --test-concurrency=1 tests/native/stateful-complete-kind-client.test.mjs tests/native/stateful-complete-kind-host.test.mjs
       - name: Check stream request lifecycle on Node ${{ matrix.node-version }}
         run: node --test tests/native/stream-request-lifecycle.test.mjs tests/native/stream-history-delivery.test.mjs
       - name: Check history/live stream filters and selectors on Node ${{ matrix.node-version }}
@@ -145,7 +147,8 @@ jobs:
         shell: bash
         run: |
           default_source="$RUNNER_TEMP/hyperion-default716"
-          git worktree add --detach "$default_source" HEAD
+          git fetch origin 6021a536c8032bd143171338457e8bfbda5c042b
+          git -c core.autocrlf=false worktree add --detach "$default_source" 6021a536c8032bd143171338457e8bfbda5c042b
           cd "$default_source"
           node --input-type=module <<'NODE'
           import {readFileSync, writeFileSync} from 'node:fs';
@@ -236,7 +239,7 @@ jobs:
   action-source-journal:
     runs-on: ubuntu-24.04
     env:
-      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-dd85ee5-18d235e-fields-engineering
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-18d235e-complete-kind-engineering
     timeout-minutes: 15
     strategy:
       fail-fast: false
