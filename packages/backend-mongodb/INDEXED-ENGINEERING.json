@@ -1,0 +1,514 @@
+{
+  "schemaVersion": 1,
+  "profile": "indexed-schema-sdk49-native2bf-engineering-v1",
+  "qualificationOnly": true,
+  "sourceBase": "2bf8afdc073c12f750441008513abd5f4b3140d2",
+  "sdkRevision": "dc20a03f2b60ba05a3369d677222a9cf0d65d299",
+  "nativeMongoDB": "pending",
+  "AtomicSQL": "pending",
+  "managedHTTP": "pending",
+  "nativeDist": [
+    {
+      "path": "contract.d.ts",
+      "bytes": 2628,
+      "sha256": "501d377a4eee4f42535d0ba8300e67f598a134f1fa0cfb6d7155ec2350261814"
+    },
+    {
+      "path": "contract.js",
+      "bytes": 7247,
+      "sha256": "a550fa7e3e0237192c871c8aa53cee871762e13c0a1386aa1971fd463b4e6e6c"
+    },
+    {
+      "path": "contract.js.map",
+      "bytes": 7790,
+      "sha256": "b720389784ec5d0d65f34c1569ec9f463be564d55cd3e1100b09d186aff29322"
+    },
+    {
+      "path": "index.d.ts",
+      "bytes": 518,
+      "sha256": "bed7dc1f2edf8f4d20d069cb63d61f4e9e0873f323ffdf102fce96bf2f9b588e"
+    },
+    {
+      "path": "index.js",
+      "bytes": 16924,
+      "sha256": "275e1031d5ce48141f7573f5caf6f954cec5eb870e7d098eab1e2f43f59b499b"
+    },
+    {
+      "path": "index.js.map",
+      "bytes": 14198,
+      "sha256": "4283667e4af5fbfca9cc9ff9d8bfc76692bde30f40b3e428991806bd61ac537a"
+    },
+    {
+      "path": "operator-list-contract.d.ts",
+      "bytes": 1647,
+      "sha256": "ce350a299aaf8caddc6d0041108f24a92b3f951816dd635b3b5eb6f7ffbd42ab"
+    },
+    {
+      "path": "operator-list-contract.js",
+      "bytes": 5495,
+      "sha256": "0d99e72e708390be7ea6776ce09716c5b2c69a288f4739692b05858dd66e6f42"
+    },
+    {
+      "path": "operator-list-contract.js.map",
+      "bytes": 6593,
+      "sha256": "d972d8fa0f79fd64e21620c6e584c0a1ca53e839dcf48f413ad7556f6379e6cb"
+    },
+    {
+      "path": "operator-lists.d.ts",
+      "bytes": 2682,
+      "sha256": "13d38f0d7f57516c2fd771b05027c4d73016e3b0ad6dbac9a2ba03824656ad7d"
+    },
+    {
+      "path": "operator-lists.js",
+      "bytes": 28126,
+      "sha256": "a9c20f6e03a11501ba357fb844504567dc356a0dee394f1a7fb06dd366e776f3"
+    },
+    {
+      "path": "operator-lists.js.map",
+      "bytes": 27187,
+      "sha256": "9344051d9b33768aee959511acc65c43ebd27df11a923d7342568846cac16667"
+    },
+    {
+      "path": "rollback-contract.d.ts",
+      "bytes": 3356,
+      "sha256": "12291bec659ab09179daecd7a0f3b7d6127e03020b4a9a2880eb8241a603820a"
+    },
+    {
+      "path": "rollback-contract.js",
+      "bytes": 9011,
+      "sha256": "06d97fe507a3dc68cb3b11c4d2382f078ca6e184f3123985d9e170d62a447baf"
+    },
+    {
+      "path": "rollback-contract.js.map",
+      "bytes": 8510,
+      "sha256": "15592de2dd7d1959e31dd57ac5a0f9ca03a20375ae29fb0b0d7dcbad2df94900"
+    },
+    {
+      "path": "rollback.d.ts",
+      "bytes": 598,
+      "sha256": "38bae4181a4771a39a943e136ce15bfb701482b137d82668d776142c735d1d44"
+    },
+    {
+      "path": "rollback.js",
+      "bytes": 28851,
+      "sha256": "9b99a85bffc7d018b30af73190516290bf161200ed758d7015f95962d6d8a305"
+    },
+    {
+      "path": "rollback.js.map",
+      "bytes": 25182,
+      "sha256": "401050c08bf8cfb226eca4c4d14a9853eda3e703845cae045690bbbc6bf7b4da"
+    },
+    {
+      "path": "stateful-complete-kind-command.d.ts",
+      "bytes": 317,
+      "sha256": "ba4e0a57573a901ffd48792368dee4ca41e3df549b8acfd661ffe75b51c4a824"
+    },
+    {
+      "path": "stateful-complete-kind-command.js",
+      "bytes": 3967,
+      "sha256": "8868244cf7cf7b72a6ed010b123f7b3a0f7cc50b909f6bc7a16793dafd39c4b9"
+    },
+    {
+      "path": "stateful-complete-kind-command.js.map",
+      "bytes": 3112,
+      "sha256": "7214f013b92a79c1cb803e9de4617813707c7ef8fd1b8f202261aa8a0d4c4c68"
+    },
+    {
+      "path": "stateful-complete-kind-v1.d.ts",
+      "bytes": 527,
+      "sha256": "7fcabe4c90116c81d1a3dd3bacaa050566c8169d15dd719266fc4ee1dbfc6c6d"
+    },
+    {
+      "path": "stateful-complete-kind-v1.js",
+      "bytes": 15550,
+      "sha256": "52dc3fbeae9094f5755c3bf99b967261f7c5bd2887a0c4f53c22fbd6b8d8979e"
+    },
+    {
+      "path": "stateful-complete-kind-v1.js.map",
+      "bytes": 13421,
+      "sha256": "1933055fb0a10490800f08338c608e71b81e8340936c773ed3aba8eb3e7652a9"
+    },
+    {
+      "path": "stateful-contract.d.ts",
+      "bytes": 4170,
+      "sha256": "9a133bb482c6b1958e4b81a49996c0436b319d93c45f2d73f9aea54100dfe44f"
+    },
+    {
+      "path": "stateful-contract.js",
+      "bytes": 11733,
+      "sha256": "ca2673c667abcba648b48101f89efae5a30141b7e7f9cb91987df924dd2a66fc"
+    },
+    {
+      "path": "stateful-contract.js.map",
+      "bytes": 13606,
+      "sha256": "834eaa836f4d042b50d9ab1eff3cb63b6df8f4275759651f84c4056e18d63d11"
+    },
+    {
+      "path": "stateful-effects.d.ts",
+      "bytes": 3632,
+      "sha256": "1f0939cbc0a5431e93ef565dfed708217950a619aeb8337cc9e04e2b520b911a"
+    },
+    {
+      "path": "stateful-effects.js",
+      "bytes": 7096,
+      "sha256": "13abcd6b623a79b0d3630c74eef18fd295af45cdc11f0b1643c2f8966a3b176e"
+    },
+    {
+      "path": "stateful-effects.js.map",
+      "bytes": 8694,
+      "sha256": "0b2fa83da0bc61a3cdfeb79921a3659fd365c89e3c16eb3417e402bd4776aac7"
+    },
+    {
+      "path": "stateful-indexed-cursor-v1.d.ts",
+      "bytes": 953,
+      "sha256": "9b115a954b9ad0498bb463b9c9a347d6d28eb4a426c688e449147767ed113cb6"
+    },
+    {
+      "path": "stateful-indexed-cursor-v1.js",
+      "bytes": 5762,
+      "sha256": "98b2d11c31bd369e92b7a8a7be632185c3859e03d1f79af7f427a95296085a70"
+    },
+    {
+      "path": "stateful-indexed-cursor-v1.js.map",
+      "bytes": 5839,
+      "sha256": "153830db6942046c5bd9f3f47c921decf9a7cd2b8c404eeb0df661648e7cfa53"
+    },
+    {
+      "path": "stateful-indexed-engineering-internal.d.ts",
+      "bytes": 364,
+      "sha256": "3675db35b310ed6c3ee7d02bf4cc2a75db40bdfc1b76e61e10dfcb5b987daf9b"
+    },
+    {
+      "path": "stateful-indexed-engineering-internal.js",
+      "bytes": 775,
+      "sha256": "40cfd01f4fb504fb07f4c37f21328b4df4a92436fb4d73bedd5972f059cb7a29"
+    },
+    {
+      "path": "stateful-indexed-engineering-internal.js.map",
+      "bytes": 621,
+      "sha256": "642c26b7a3ca1242adc77db0bd8e1b3efc40ac3dc11e33af8e088c126cba5a8c"
+    },
+    {
+      "path": "stateful-indexed-engineering-v1.d.ts",
+      "bytes": 506,
+      "sha256": "4363506de4a283ea258297b29a2bdfa2b9a18fb7f4f94f2466f259c586e8072b"
+    },
+    {
+      "path": "stateful-indexed-engineering-v1.js",
+      "bytes": 3186,
+      "sha256": "612df4595af653dadc2ab8f3ec919b4b28fd87ccc068f90e7e528b2d6749289e"
+    },
+    {
+      "path": "stateful-indexed-engineering-v1.js.map",
+      "bytes": 2904,
+      "sha256": "1f26a545382bd7d963792d72138d0dedbe43cbe0a67c139c7404c1c306f1d85f"
+    },
+    {
+      "path": "stateful-indexed-materialization-v1.d.ts",
+      "bytes": 1784,
+      "sha256": "23794194983ca7a66f20da52d12ca6982bc5629f72c2634317aa5414d42f9c23"
+    },
+    {
+      "path": "stateful-indexed-materialization-v1.js",
+      "bytes": 6965,
+      "sha256": "0d248b6175e969723828f1bb43497fb65343490593610a26f50a2f97ac2e7034"
+    },
+    {
+      "path": "stateful-indexed-materialization-v1.js.map",
+      "bytes": 7604,
+      "sha256": "637ca7be3de809a2656ef94ef14a1a13bec0cd30190f5e224caae5f97881da9e"
+    },
+    {
+      "path": "stateful-indexed-model-v1.d.ts",
+      "bytes": 3263,
+      "sha256": "f5690629d7d0f84c387c132e7b06d424987a860364ee2a6c3ccedace3eeb1885"
+    },
+    {
+      "path": "stateful-indexed-model-v1.js",
+      "bytes": 13162,
+      "sha256": "6676526ddf9660abab25aaa6fc1faf810ff42107a0eb69c2cf970208a99780d7"
+    },
+    {
+      "path": "stateful-indexed-model-v1.js.map",
+      "bytes": 14871,
+      "sha256": "3d74a9305b893c5734181f585ec7cf4b35c99f5486100ffe4a2880b5a777e650"
+    },
+    {
+      "path": "stateful-indexed-v1.d.ts",
+      "bytes": 1318,
+      "sha256": "042d7e9a96f8ff705ebedb052189825c270a706bea7693a52d4db530707d05c4"
+    },
+    {
+      "path": "stateful-indexed-v1.js",
+      "bytes": 20199,
+      "sha256": "99a2f12afdbcd34a75efd8da91b47afd5258ffb40d041df6bde1b6374b1988e0"
+    },
+    {
+      "path": "stateful-indexed-v1.js.map",
+      "bytes": 17698,
+      "sha256": "1e60c34c79a16d09a4c12438005864ed8072e63157d8dbc31017eee6420fc08a"
+    },
+    {
+      "path": "stateful-owner-v2-contract.d.ts",
+      "bytes": 1324,
+      "sha256": "9bc433b047857b441e031ec5257330e61e68dcb43c9293501b46400ea25de8fb"
+    },
+    {
+      "path": "stateful-owner-v2-contract.js",
+      "bytes": 3224,
+      "sha256": "8fcef1168c1441de1482d051c640b786762503c929cf1d9a9ce35aea5f06186f"
+    },
+    {
+      "path": "stateful-owner-v2-contract.js.map",
+      "bytes": 3663,
+      "sha256": "92ce1395fcf5c1172289657c55b6e5f86ec0d78bc6064cd6072a98b98cf870b5"
+    },
+    {
+      "path": "stateful-owner-v2-internal.d.ts",
+      "bytes": 2370,
+      "sha256": "c6c3f2105cf28553554547d7df34899077a3abb77b298e301c7185810cb2399b"
+    },
+    {
+      "path": "stateful-owner-v2-internal.js",
+      "bytes": 2965,
+      "sha256": "6826db6fcea081b033e4fc9c51d72b74e18092d0e7558a9e9d5dcc7f43f47e47"
+    },
+    {
+      "path": "stateful-owner-v2-internal.js.map",
+      "bytes": 2550,
+      "sha256": "3e1fa8b5b061046be707c9153830df506cdebbbd64a58817fc302a615103fdf1"
+    },
+    {
+      "path": "stateful-owner-v2.d.ts",
+      "bytes": 938,
+      "sha256": "e657be9b965856e4ff23c19d6b745aee056e7989f94386cb8f3c147baaaf96f1"
+    },
+    {
+      "path": "stateful-owner-v2.js",
+      "bytes": 38426,
+      "sha256": "7c9d4af87b68cdbbe63042051c0b9e25900b03c8356cbe1f40d9a95c1aeeb283"
+    },
+    {
+      "path": "stateful-owner-v2.js.map",
+      "bytes": 39047,
+      "sha256": "d6dfeca58f90bdf4be230462abf11b993f6fb6574dc599afaebf83375e312595"
+    },
+    {
+      "path": "stateful.d.ts",
+      "bytes": 1078,
+      "sha256": "a255916a15bbceeafcd9c39eee2b988021aa884f48f0df9e6cea16d57d84352a"
+    },
+    {
+      "path": "stateful.js",
+      "bytes": 19835,
+      "sha256": "d2e3733e8406afa0c9f78807e965263594f16415657c4ecd7e077159150d171c"
+    },
+    {
+      "path": "stateful.js.map",
+      "bytes": 19799,
+      "sha256": "0902d818cc8ccaa25081669444590f0da9b7dc3822872636e63a7277bf488c74"
+    },
+    {
+      "path": "storage.d.ts",
+      "bytes": 2179,
+      "sha256": "bb48d7a45457101af44639b7ea45726104f1ae9af007a56a5609425dfc5852a4"
+    },
+    {
+      "path": "storage.js",
+      "bytes": 7524,
+      "sha256": "ec4a4af6c2b2e7c5e6750ab827eadc51ffb5a4ed1289b9aff7ea560b771f8399"
+    },
+    {
+      "path": "storage.js.map",
+      "bytes": 6991,
+      "sha256": "24ed8cdbb1b7646923f187141188dbb542c587745e4b35f8a60a11b2d428c904"
+    }
+  ],
+  "sdkDist": [
+    {
+      "path": "component-manifest.schema.json",
+      "bytes": 2347,
+      "sha256": "7e0ff66b1f6d33517d39380742a917634fadd2e8bd44e1891d69e5197e580c99"
+    },
+    {
+      "path": "examples/table-projection.d.ts",
+      "bytes": 1221,
+      "sha256": "4d5ae54f674f7df451a669fdae9a10ca7b70a47dfd887dd8cb128ecc2b8a0fcc"
+    },
+    {
+      "path": "examples/table-projection.js",
+      "bytes": 3674,
+      "sha256": "24e9a6e3f7ff54e0e527066476d97eb1f459c44c67d5e7a7e79777dde6701809"
+    },
+    {
+      "path": "index.d.ts",
+      "bytes": 95,
+      "sha256": "88077596a7b9eed41bb34955d0009de3196e7fc7d24b37ff52c688c45ce77370"
+    },
+    {
+      "path": "index.js",
+      "bytes": 95,
+      "sha256": "88077596a7b9eed41bb34955d0009de3196e7fc7d24b37ff52c688c45ce77370"
+    },
+    {
+      "path": "internal/stateful-execution.d.ts",
+      "bytes": 4198,
+      "sha256": "1be97b700a041ac41209004fd840ff27dbde0cb72e72ce1504b8f95ba7f27300"
+    },
+    {
+      "path": "internal/stateful-execution.js",
+      "bytes": 8394,
+      "sha256": "857438141d88144a16b4aaa88e7f43c348d237c9dff12e406a7fa43ba863a6d1"
+    },
+    {
+      "path": "internal/stateful-input-v2.d.ts",
+      "bytes": 1815,
+      "sha256": "60021a61bc288db416149f1053ba1c60f5662b1ec283a037517950f6c177c8ef"
+    },
+    {
+      "path": "internal/stateful-input-v2.js",
+      "bytes": 5108,
+      "sha256": "db764f991a984dfec8900f36d8dce9b4c8dd69a97cb0d79b8b455c148826586a"
+    },
+    {
+      "path": "internal/stateful-owner-read.d.ts",
+      "bytes": 1006,
+      "sha256": "a7efbcfd6a8d6f87a7d31091c79fda4be4cb1cd6a4bbe1076eb441fd65991b61"
+    },
+    {
+      "path": "internal/stateful-owner-read.js",
+      "bytes": 3417,
+      "sha256": "1c9d92669d52076e61b788c36c278ed8827429f98625f044411efb4bfd8a24a8"
+    },
+    {
+      "path": "internal/stateful-ownership.d.ts",
+      "bytes": 529,
+      "sha256": "6992cf4f6f5eaec43573a64a7cfee4254b3682dc43452dec34fcc75d0f6f4907"
+    },
+    {
+      "path": "internal/stateful-ownership.js",
+      "bytes": 842,
+      "sha256": "656380125cb1b48c7bd689e64246b503ad5cb343a419aa24d42ef9223703d764"
+    },
+    {
+      "path": "internal/structured-values.d.ts",
+      "bytes": 1614,
+      "sha256": "de6c3242cccaa68ce6d48497144666d78942643e997093d03a82d7d0242ec21a"
+    },
+    {
+      "path": "internal/structured-values.js",
+      "bytes": 11219,
+      "sha256": "7e0ad313a4cd59cdb8cfc75644c5d08f5811fda90f9fa50de86057eb96fb6c91"
+    },
+    {
+      "path": "manifest.d.ts",
+      "bytes": 1547,
+      "sha256": "645c1ebf2af5b7cc98101d7e15e34c54c951471d8a68682ea6dbc4440dd4cb55"
+    },
+    {
+      "path": "manifest.js",
+      "bytes": 5271,
+      "sha256": "fbcff747d2c7a8ba891fa971ef0203bfed13d2f1fae85a828997bb5c46b72786"
+    },
+    {
+      "path": "operator-lists.d.ts",
+      "bytes": 1860,
+      "sha256": "e1a4eaae97954b750739af925c7e52e172878bb7188718895cecfed1ba9841dc"
+    },
+    {
+      "path": "operator-lists.js",
+      "bytes": 5877,
+      "sha256": "e8ee75eb0b7c0182b759fcf3e586efac2f434102f08b7400adb3ed3ca34adfa2"
+    },
+    {
+      "path": "projection-stateful-indexed-query-v1.d.ts",
+      "bytes": 7352,
+      "sha256": "136dd06dd620d49110be628d26633251d2927927ecda44f7b23e217e002163df"
+    },
+    {
+      "path": "projection-stateful-indexed-query-v1.js",
+      "bytes": 25660,
+      "sha256": "180da43862bc71ba57229db4a1373a0d36c0a47e9b60924fdcf719b9d8f50919"
+    },
+    {
+      "path": "projection-stateful-owner-v2.d.ts",
+      "bytes": 5096,
+      "sha256": "f0a9c8c64c5b0cb59669d197aea0b60d5433dc244a1cdc4e2ad147c99c0eaec5"
+    },
+    {
+      "path": "projection-stateful-owner-v2.js",
+      "bytes": 32336,
+      "sha256": "d602ef46c4087cb7adba1ed69ada5fc4b342ab46f9bf329e2b5a0c916f98cb5d"
+    },
+    {
+      "path": "projection-stateful-source-v2.d.ts",
+      "bytes": 2423,
+      "sha256": "e711484753b6847b908e06c2e8fb17e4f0153502109115ab60ffa4a73b411182"
+    },
+    {
+      "path": "projection-stateful-source-v2.js",
+      "bytes": 10948,
+      "sha256": "82ed9a3176f076352b0f9671fcf32c0c9ae6fd73cab42bb1dbaedd707d7ebc19"
+    },
+    {
+      "path": "projection-stateful.d.ts",
+      "bytes": 4699,
+      "sha256": "778eb1a856d34f3ab36891be052384a10831a2e9c1319510c6ac33468942a367"
+    },
+    {
+      "path": "projection-stateful.js",
+      "bytes": 26047,
+      "sha256": "e88c6a7f3e1d9127a4d168d2522c4d8faf4ad198e05dc8a642cebb3b3af5bfff"
+    },
+    {
+      "path": "projection.d.ts",
+      "bytes": 32733,
+      "sha256": "9ce6af6a657cf6acd5d3c5aae4cd043ce119518017994171d09513d65d7f63d1"
+    },
+    {
+      "path": "projection.js",
+      "bytes": 58369,
+      "sha256": "b34d739fc141d053030c8f6a2c4f24c81fef790a3db7b962356ca4774bc7a2ff"
+    },
+    {
+      "path": "protocol-native-actions.d.ts",
+      "bytes": 3779,
+      "sha256": "15a969392e4d059e468ecaa352a3c6b0d1562c4afd10e43c45e021b0e7f24c94"
+    },
+    {
+      "path": "protocol-native-actions.js",
+      "bytes": 10326,
+      "sha256": "8ed6567ceb9f414474a8e36eb4aed98c3d46575b0d2c29ebc67a09d10bb2c593"
+    },
+    {
+      "path": "protocol.d.ts",
+      "bytes": 12774,
+      "sha256": "b72be5c637731a22a286e5da7092f6e6641f0b2ad50b63b5f61d5b19074e831a"
+    },
+    {
+      "path": "protocol.js",
+      "bytes": 11022,
+      "sha256": "491dc37f993e671980155238a3d36ccfcaeaecd7456f2d60a7e337220d9b9924"
+    },
+    {
+      "path": "stateful-owner-v2-types.d.ts",
+      "bytes": 10682,
+      "sha256": "4ac1e90700e0cc844d936bd04787b2559251e7733315ce857411bba5881dc767"
+    },
+    {
+      "path": "stateful-owner-v2-types.js",
+      "bytes": 11,
+      "sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+    },
+    {
+      "path": "stateful-types.d.ts",
+      "bytes": 9705,
+      "sha256": "cd6d20d8616af394f6cd8a4aa69d5577ee65798725c0bff2addce9b7b8eddacd"
+    },
+    {
+      "path": "stateful-types.js",
+      "bytes": 11,
+      "sha256": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+    }
+  ]
+}

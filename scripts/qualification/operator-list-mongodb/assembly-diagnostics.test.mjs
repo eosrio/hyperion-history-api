@@ -86,9 +86,11 @@ test('an admission error remains primary when capture fails and successful colle
 test('workflow retains failed raw assembly diagnostics before the physical step while old profile stays frozen', () => {
     const workflow = readFileSync(new URL('../../../.github/workflows/build.yml', import.meta.url), 'utf8');
     const dedicated = workflow.slice(workflow.indexOf('\n  operator-lists-mongodb:'), workflow.indexOf('\n  action-sequences-design:'));
-    assert.ok(dedicated.includes('linux-cleanup-source-profile.mjs --diagnostics operator-list-assembly-${{ matrix.node-version }}'));
+    assert.ok(dedicated.includes('sdk49-source-profile.mjs --diagnostics operator-list-assembly-${{ matrix.node-version }}'));
     assert.ok(dedicated.includes('operator-list-assembly-${{ matrix.node-version }}/'));
-    assert.ok(dedicated.indexOf('linux-cleanup-source-profile.mjs --diagnostics') < dedicated.indexOf('operator-list-mongodb/ci.mjs'));
+    assert.ok(dedicated.indexOf('sdk49-source-profile.mjs --diagnostics') < dedicated.indexOf('operator-list-mongodb/ci.mjs'));
+    const successor = readFileSync(new URL('./sdk49-source-profile.mjs', import.meta.url), 'utf8');
+    assert.ok(successor.includes('retainAdmission(')); assert.ok(successor.includes('writeAssemblyDiagnostic('));
     assert.ok(dedicated.includes('if: always()')); assert.equal(OPERATOR_LIST_ASSEMBLY.trees.rootBuild.sha256,
         '6fdcae1f6f79a2dda709dc574f28a8888985c4f8bc18071aeffe73dd951ab419');
 });

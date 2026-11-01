@@ -7,10 +7,12 @@ import {loadChainProtocol} from '../../indexer/protocol/selection.js';
 import {protocolImmutableJson} from '../../indexer/protocol/immutable-bundle-store.js';
 import {PortableProjectionSource} from '../../indexer/projection/source.js';
 import {StatefulProjectionRegistryV2, type RegisteredStatefulProjectionV2} from '../../indexer/projection/stateful-registry.js';
-import {statefulOwnerExpectationDigest, type StatefulOwnerExpectation} from '../../indexer/projection/stateful-controller.js';
+import {statefulOwnerExpectationDigest, type StatefulOwnerExpectation} from '../../indexer/projection/stateful-expectation.js';
 import type {ResolvedStatefulOwnerConfigurationV2} from '../../indexer/projection/stateful-config.js';
 import type {StatefulOwnerQueryHostV2, StatefulPluginApiContextV2} from '../../indexer/projection/stateful-plugin.js';
 import {STATE_RESPONSE_HEADERS, stateResponseHeaders} from './state-headers.js';
+import {composeStatefulOwnerIndexedReadV1, assertIndexedQueryPublicationV1, negotiateIndexedQueryV1, STATEFUL_INDEXED_QUERY_FAMILY_V1,
+    type IndexedQueryHostV1, type IndexedOfferV1} from '@eosrio/hyperion-sdk/projection-stateful-indexed-query-v1';
 
 export class StatefulApiUnavailableError extends Error {
     readonly statusCode = 503; readonly code = 'stateful.query-unavailable'; readonly retryable = true;
@@ -29,6 +31,8 @@ interface RequestState {
     readonly host: StatefulOwnerQueryHostV2; used: boolean; failed: boolean;
     readonly execute: (projectionId: string, run: RequestExecution) => Promise<StatefulQueryResult>;
     result?: {registry: RegistryPort; entry: RegisteredStatefulProjectionV2; expected: StatefulOwnerExpectation};
+    indexedResult?: StatefulQueryResult;
+    indexedPublication?: () => Promise<void>;
 }
 type RequestExecution = (entry: RegisteredStatefulProjectionV2, expected: StatefulOwnerExpectation,
     guard: StatefulGuard) => Promise<StatefulQueryResult>;
@@ -79,6 +83,9 @@ export function installStatefulApiHostV2(fastify: FastifyInstance, options: {con
             requireReady(state.result && (typeof payload === 'string' || Buffer.isBuffer(payload)));
             requireReady(Buffer.byteLength(payload as string | Buffer) <= state.result.entry.declaration.projection.limits.responseBytes);
             await cancelled(verify(state), state.abort.signal); guard(state);
+            if (state.indexedPublication) await cancelled(state.indexedPublication(),state.abort.signal);
+            guard(state);
+            if (state.indexedResult) assertIndexedQueryPublicationV1(state.indexedResult);
             reply.headers(stateResponseHeaders(state.result.expected.view));
             return payload;
         } catch {state.failed = true; return failure(reply);}
@@ -136,6 +143,33 @@ export function installStatefulApiHostV2(fastify: FastifyInstance, options: {con
                         requireReady(id === projectionId && current === entry && current.completeKind);
                         return composeStatefulOwnerCompleteKindReadV1(current.completeKind.selection, current.completeKind.adapter,
                             expected.owner.identity, expected.view, compose, authority);
+                    })});
+            } catch {state.failed = true; throw new StatefulApiUnavailableError();}
+        },
+        async statefulIndexedQueryHost(request: FastifyRequest, projectionId: string, modelId: string): Promise<IndexedQueryHostV1> {
+            statefulQueryHost(request); const state = requests.get(request)!;
+            try {
+                const entry = await cancelled((async () => {
+                    guard(state); const registry = await options.registry(); guard(state); await registry.initializeMissing(); guard(state);
+                    const selected = registry.entries.get(projectionId); requireReady(selected); requireReady(selected.indexed?.models.has(modelId)); return selected;
+                })(), state.abort.signal);
+                guard(state); requireReady(entry.indexed);
+                const model = entry.indexed.models.get(modelId)!;
+                const offer: IndexedOfferV1 = Object.freeze({family:STATEFUL_INDEXED_QUERY_FAMILY_V1, interfaceVersion:1,
+                    queryDeclarationDigests:Object.freeze([model.declaration.digest]), comparisonProfiles:Object.freeze([model.declaration.model.textComparison]), limits:model.limits});
+                // The accessor's existence/declaration is not a default production comparison offer.
+                // Actual native profile admission happens within the original execute/owner scope.
+                return Object.freeze({indexedCapabilities:Object.freeze({...offer,queryDeclarationDigests:Object.freeze([]),comparisonProfiles:Object.freeze([])}),
+                    compose: (id, compose) => state.execute(id, async (current, expected, authority) => {
+                        requireReady(id === projectionId && current === entry && current.indexed?.models.get(modelId) === model);
+                        const adapter = await current.indexed.adapter.indexedForModel(expected.view,model.declaration.digest,authority); authority();
+                        const selection = negotiateIndexedQueryV1(model.declaration,model.limits,offer,adapter.indexedCapabilities);
+                        const result = await composeStatefulOwnerIndexedReadV1(selection,adapter,expected.owner.identity,expected.view,compose,authority);
+                        state.indexedResult = result;
+                        state.indexedPublication = async () => {
+                            authority(); const selected = await current.indexed!.adapter.indexedForModel(expected.view,model.declaration.digest,authority); authority();
+                            negotiateIndexedQueryV1(model.declaration,model.limits,offer,selected.indexedCapabilities);
+                        }; return result;
                     })});
             } catch {state.failed = true; throw new StatefulApiUnavailableError();}
         }});

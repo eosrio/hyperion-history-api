@@ -1,0 +1,52 @@
+name: Indexed schema finite engineering
+on:
+  pull_request:
+    paths:
+      - 'src/api/helpers/stateful-owner.ts'
+      - 'src/indexer/projection/stateful-*.ts'
+      - 'packages/backend-mongodb/**'
+      - 'scripts/check-indexed-package.mjs'
+      - 'scripts/qualification/indexed-schema-mongodb/**'
+      - 'tests/unit/stateful-indexed-host-finite.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/indexed-schema-finite.yml'
+  workflow_dispatch:
+jobs:
+  finite:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [24.x, 26.x]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: npm ci --allow-git=all
+      - run: npm ci --prefix packages/backend-mongodb --allow-git=all
+      - run: |
+          test "$(bun --version)" = "$(cat .bun-version)"
+          test "$(bun -p process.versions.typescript)" = "7.0.2"
+          bun check -p tsconfig.json
+          bun check -p packages/backend-mongodb/tsconfig.json
+          npm run build
+      - run: node scripts/qualification/indexed-schema-mongodb/assembly.mjs --profile indexed-schema-sdk49-native2bf-engineering-v1 > indexed-source.json
+      - run: node --test scripts/qualification/indexed-schema-mongodb/assembly.test.mjs scripts/qualification/indexed-schema-mongodb/assembly-cli.test.mjs
+      - run: npm run test:indexed:finite
+      - run: npm run test:indexed:package
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: indexed-finite-${{ matrix.node }}
+          path: |
+            indexed-source.json
+            out/indexed-packed-*/receipt.json
+            out/indexed-packed-*/*.stdout
+            out/indexed-packed-*/*.stderr
+            out/indexed-packed-*/failed.json
+          if-no-files-found: error
