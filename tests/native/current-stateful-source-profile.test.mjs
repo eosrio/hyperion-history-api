@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
-import {CURRENT_NATIVE_ASSEMBLY as current, STATEFUL_CURRENT_NATIVE_API_SOURCE_PROFILE, assertCurrentNativeOptions} from '../unit/current-stateful-engineering-source-admission.mjs';
+import {NATIVE_SNAPSHOT_ASSEMBLY as current, STATEFUL_NATIVE_SNAPSHOT_API_SOURCE_PROFILE as STATEFUL_CURRENT_NATIVE_API_SOURCE_PROFILE, assertNativeSnapshotOptions as assertCurrentNativeOptions} from '../unit/native-snapshot-source-admission.mjs';
 import {admitNativeApiSourceOptions, STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE,
     STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE} from '../unit/stateful-engineering-source-admission.mjs';
+import {CURRENT_NATIVE_ASSEMBLY as priorCurrent} from '../unit/current-stateful-engineering-source-admission.mjs';
 const root = new URL('../../', import.meta.url), sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const canonical = path => readFileSync(new URL(path, root), 'utf8').replaceAll('\r\n', '\n');
 
@@ -19,6 +20,13 @@ test('active helpers have honest current pins and every historical snapshot keep
     const shared = 'tests/unit/stateful-engineering-source-admission.mjs';
     assert.notEqual(current.helperSources[shared], current.historicalHelperSha256);
     let prior = canonical(shared);
+    for (const addition of [
+        "import {STATEFUL_NATIVE_SNAPSHOT_API_SOURCE_PROFILE, admitNativeSnapshotApiSourceOptions} from './native-snapshot-source-admission.mjs';\nexport {STATEFUL_NATIVE_SNAPSHOT_API_SOURCE_PROFILE};\n",
+        '    if (profile === STATEFUL_NATIVE_SNAPSHOT_API_SOURCE_PROFILE)\n        return admitNativeSnapshotApiSourceOptions({nativeMarker, engineeringSourceProfile: profile});\n',
+        '    if (admission.profile === STATEFUL_NATIVE_SNAPSHOT_API_SOURCE_PROFILE) return admission;\n']) {
+        assert.equal(prior.split(addition).length, 2); prior = prior.replace(addition, '');
+    }
+    assert.equal(sha(prior), priorCurrent.helperSources[shared], 'The e6 dispatcher predicates remain unchanged');
     for (const addition of [
         "import {STATEFUL_CURRENT_NATIVE_API_SOURCE_PROFILE, admitCurrentNativeApiSourceOptions} from './current-stateful-engineering-source-admission.mjs';\nexport {STATEFUL_CURRENT_NATIVE_API_SOURCE_PROFILE};\n",
         '    if (profile === STATEFUL_CURRENT_NATIVE_API_SOURCE_PROFILE)\n        return admitCurrentNativeApiSourceOptions({nativeMarker, engineeringSourceProfile: profile});\n',

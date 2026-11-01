@@ -7,6 +7,8 @@ import {fileURLToPath, pathToFileURL} from 'node:url';
 import {findPackageJSON} from 'node:module';
 import {STATEFUL_CURRENT_NATIVE_API_SOURCE_PROFILE, admitCurrentNativeApiSourceOptions} from './current-stateful-engineering-source-admission.mjs';
 export {STATEFUL_CURRENT_NATIVE_API_SOURCE_PROFILE};
+import {STATEFUL_NATIVE_SNAPSHOT_API_SOURCE_PROFILE, admitNativeSnapshotApiSourceOptions} from './native-snapshot-source-admission.mjs';
+export {STATEFUL_NATIVE_SNAPSHOT_API_SOURCE_PROFILE};
 
 export const STATEFUL_ENGINEERING_API_SOURCE_PROFILE = 'stateful-owner-v2-18d235e-engineering';
 export const STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE = 'stateful-owner-v2-dd85ee5-18d235e-engineering';
@@ -129,6 +131,8 @@ export function admitNativeApiSourceOptions(input = {}) {
     assert(typeof nativeMarker === 'boolean');
     if (profile === STATEFUL_CURRENT_NATIVE_API_SOURCE_PROFILE)
         return admitCurrentNativeApiSourceOptions({nativeMarker, engineeringSourceProfile: profile});
+    if (profile === STATEFUL_NATIVE_SNAPSHOT_API_SOURCE_PROFILE)
+        return admitNativeSnapshotApiSourceOptions({nativeMarker, engineeringSourceProfile: profile});
     assert(profile === undefined || profile === STATEFUL_ENGINEERING_API_SOURCE_PROFILE || metadataProfile(profile)
         || completeKindProfile(profile), 'Unknown engineering source profile');
     const root = rootFor('@eosrio/hyperion-wire-plugin/protocol-provider.json'), pkg = read(resolve(root, 'package.json'));
@@ -243,6 +247,7 @@ export function admitNativeSourceEnvironment() {
 export function admitCoordinatedNativeSourceOptions(options = {}) {
     const admission = admitNativeApiSourceOptions(options);
     if (admission.profile === STATEFUL_CURRENT_NATIVE_API_SOURCE_PROFILE) return admission;
+    if (admission.profile === STATEFUL_NATIVE_SNAPSHOT_API_SOURCE_PROFILE) return admission;
     const root = rootFor('@eosrio/hyperion-wire-plugin/protocol-provider.json');
     const lock = read(fileURLToPath(new URL('../../package-lock.json', import.meta.url))).json;
     const pin = (name, revision) => assert(['git+https://github.com/', 'git+ssh://git@github.com/'].some(prefix =>

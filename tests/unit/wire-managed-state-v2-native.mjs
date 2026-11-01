@@ -9,10 +9,10 @@ import {prepared} from './portable-state-source-fixture.mjs';
 import {statefulHostFixture} from './stateful-host-fixture.mjs';
 import {limits} from '../../packages/backend-mongodb/tests/stateful-fixture.mjs';
 import Plugin, {PROJECTION_ID, wireRecordKey} from '../fixtures/wire-managed-state-v2/plugin/build/index.js';
-import {admitCoordinatedNativeSourceOptions, STATEFUL_CURRENT_NATIVE_API_SOURCE_PROFILE} from './stateful-engineering-source-admission.mjs';
+import {admitCoordinatedNativeSourceOptions, STATEFUL_NATIVE_SNAPSHOT_API_SOURCE_PROFILE} from './stateful-engineering-source-admission.mjs';
 
 // This fixture composes the combined complete-kind caller/native graph with Wire's own unchanged SDK.
-admitCoordinatedNativeSourceOptions({engineeringSourceProfile: STATEFUL_CURRENT_NATIVE_API_SOURCE_PROFILE});
+admitCoordinatedNativeSourceOptions({engineeringSourceProfile: STATEFUL_NATIVE_SNAPSHOT_API_SOURCE_PROFILE});
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const sourceRoot = join(root, 'tests/fixtures/portable-state-worker');

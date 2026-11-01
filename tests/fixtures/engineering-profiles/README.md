@@ -1,5 +1,7 @@
 # Explicit engineering assembly evidence
 
+`native-snapshot-linux.json` and `operator-list-snapshot-observation.json` describe the separate source5aaaee4 provisioning repair candidate. The e6 `current-native45-linux.json`, original Linux/Windows profiles and their helper modules remain unchanged historical inputs. New tests preserve both generations' predicates and refusals. `historical-e6-native45` contains exact old positive-test source as non-executable evidence. Actual repaired Linux/native qualification remains pending.
+
 `historical-native39-9c4dd228` preserves the exact Git-LF bytes of the earlier admission helper and positive tests from8e753246. The `.txt` snapshots are non-executable evidence; their manifest records exact sizes and SHA-256. The active shared helper has an additive current-profile dispatch and a new SHA. No active file is presented as the old9c4 helper.
 
 `current-native45-linux.json` explicitly selects caller SDK741, receiving SDK429a, native45 and Wire69 through the separately named Linux Git-LF assembly. It also pins current helper source and guards the full original workloads after replacing only explicit profile headers. Frozen profile data/default refusals remain unchanged.
