@@ -64,6 +64,7 @@ export function databaseFixture() {
     const update = (collection, filter, change, session) => {
         const records = mapFor(collection, session);
         for (const [key, record] of records) if (matches(record, filter)) {
+            fixture.copyObserver?.('update', null);
             const changed = { ...record, ...copy(change.$set) };
             records.set(key, changed);
             return changed;
@@ -85,6 +86,7 @@ export function databaseFixture() {
         async findOne(filter, options) {
             native.push({ command: 'findOne', name, options });
             if (fixture.beforeFind) await fixture.beforeFind(name, options);
+            fixture.copyObserver?.('findOne', null);
             return copy([...mapFor(name, options?.session).values()].find(record => matches(record, filter)) ?? null);
         },
         async updateOne(filter, change, options) {
@@ -169,10 +171,11 @@ export function databaseFixture() {
                     if (session.hasEnded) throw new Error('Session has ended');
                     native.push({ command: 'transaction', options });
                     const start = native.length;
+                    fixture.copyObserver?.('transaction', storage);
                     session.storage = copy(storage);
                     let result = await operation(session);
                     if (session.hasEnded) throw new Error('Session has ended');
-                    if (fixture.retryTransaction) {fixture.retryTransaction = false; session.storage = copy(storage); result = await operation(session);}
+                    if (fixture.retryTransaction) {fixture.retryTransaction = false; fixture.copyObserver?.('transaction', storage); session.storage = copy(storage); result = await operation(session);}
                     if (session.hasEnded) throw new Error('Session has ended');
                     const fault = fixture.failTransaction; fixture.failTransaction = null;
                     if (fault === 'before') throw new Error('injected unknown before commit');

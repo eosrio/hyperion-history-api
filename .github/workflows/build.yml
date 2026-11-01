@@ -54,8 +54,16 @@ jobs:
           node tests/unit/stateful-complete-kind-source-admission-native.mjs
       - name: Check retained Wire managed state and historical source authority on Node ${{ matrix.node-version }}
         run: |
-          node --test tests/unit/wire-managed-state-v2-native.mjs
+          mkdir "$RUNNER_TEMP/retained-wire-cpu"
+          node --cpu-prof --cpu-prof-dir="$RUNNER_TEMP/retained-wire-cpu" --test tests/unit/wire-managed-state-v2-native.mjs
           node --test tests/unit/protocol-abi-history-native.mjs
+      - name: Retain retained Wire CPU samples
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: retained-wire-cpu-${{ matrix.node-version }}
+          path: ${{ runner.temp }}/retained-wire-cpu/*.cpuprofile
+          if-no-files-found: warn
       - name: Check Fastify request admission and state route compatibility on Node ${{ matrix.node-version }}
         run: node --test --test-timeout=15000 tests/native/fastify-compatibility.test.mjs
       - name: Check complete-kind query/client and final-publication controls

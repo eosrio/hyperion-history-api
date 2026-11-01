@@ -27,8 +27,8 @@ test('integrated native profile closes every static import, literal data input a
  assertSourceClosure(closure,NATIVE_PROFILE);
  assert.equal(NATIVE_PROFILE.sourceClosure.algorithm,'bounded-static-import-and-literal-url-v2');
  for(const path of ['tests/unit/sdk49-indexed-source-admission.mjs','tests/fixtures/engineering-profiles/sdk49-indexed-linux.json','scripts/qualification/operator-list-mongodb/sdk49-source-profile.mjs'])assert(closure.files.some(row=>row.path===path));
- assert.equal(NATIVE_PROFILE.sourceClosure.inputs.manifestRouteCount,24);assert.equal(closure.edges.filter(row=>row.kind==='declared-route').length,24);
- assert.throws(()=>observeSourceClosure({root:fileURLToPath(new URL('../../../',import.meta.url)),ts,boundaries,...NATIVE_PROFILE.sourceClosure.inputs,manifestRouteCount:18}),/Exact selected manifest route count/);
+ assert.equal(NATIVE_PROFILE.sourceClosure.inputs.manifestRouteCount,25);assert.equal(closure.edges.filter(row=>row.kind==='declared-route').length,25);
+ for(const manifestRouteCount of [18,24])assert.throws(()=>observeSourceClosure({root:fileURLToPath(new URL('../../../',import.meta.url)),ts,boundaries,...NATIVE_PROFILE.sourceClosure.inputs,manifestRouteCount}),/Exact selected manifest route count/);
  for(const path of ['tests/unit/sdk49-indexed-source-admission.mjs','tests/fixtures/engineering-profiles/sdk49-indexed-linux.json','tests/native/retained-workload-progress.mjs','tests/native/retained-workload-test.mjs']){
   const altered=structuredClone(NATIVE_PROFILE);altered.sourceFiles=altered.sourceFiles.filter(row=>row.path!==path);assert.throws(()=>assertSourceClosure(closure,altered),/transitive source\/data pin/);
  }
