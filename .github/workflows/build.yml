@@ -36,6 +36,8 @@ jobs:
           test "$(bun -p process.versions.typescript)" = "$(node -p 'require("./package.json").dependencies.typescript')"
       - run: npm run typecheck
       - run: npm run build
+      - name: Check bounded canonical JSON and authentic protocol records on Node ${{ matrix.node-version }}
+        run: node --test tests/unit/bounded-json.test.mjs tests/native/bounded-json-protocol-records.test.mjs
       - name: Check mixed stateful source and final publication on Node ${{ matrix.node-version }}
         run: |
           node --test tests/native/pinned-git-source.test.mjs
