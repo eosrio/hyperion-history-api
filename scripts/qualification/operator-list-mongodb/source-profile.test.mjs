@@ -16,6 +16,7 @@ test('new list qualification profile binds exact distinct caller/receiving SDK a
     assert.notEqual(result.pins.rootSDK, result.pins.nativeSDK); assert.equal(result.productSource.commit, '47d5c2c6552788146dac51cfef086b2c766b2b19');
     for (const mutate of [v => {v.profile = 'default';}, v => {v.pins.nativeSDK = v.pins.rootSDK;},
         v => {v.trees.nativeBuild.files = 39;}, v => {v.trees.nativeBuild.sha256 = '0'.repeat(64);},
+        v => {v.trees.rootBuild.sha256 = '362a4ef3d8c1ce3afcfa7a22c0eab5efa7bfcb4047a64d82005e38cf20a8d2fe';},
         v => {v.trees.nativeSDK.files = 31;}, v => {v.trees.rootDriver.sha256 = '0'.repeat(64);},
         v => {v.trees.nativeBSON.sha256 = v.trees.rootBSON.sha256;}, v => {v.sourceFiles[0].sha256 = '0'.repeat(64);},
         v => {v.runtime.node = 'v22.0.0';}, v => {v.runtime.node = 'v24.22.2';}, v => {v.extra = 'caller override';}]) {

@@ -1,10 +1,11 @@
-// Read-only qualification admission. This module creates no client, child process, socket or service.
+// Default admission is read-only. Explicit diagnostics write bounded evidence only; no client, child, socket or service.
 import assert from 'node:assert/strict';
 import {lstatSync, readFileSync, realpathSync} from 'node:fs';
 import {isAbsolute, relative, resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {inventory} from './inventory.mjs';
 import {sha} from './contract.mjs';
+import {diagnosticDirectory, retainAdmission, writeAssemblyDiagnostic} from './assembly-diagnostics.mjs';
 const defaultRoot = fileURLToPath(new URL('../../../', import.meta.url));
 const data = JSON.parse(readFileSync(new URL('./profile.json', import.meta.url)));
 const freeze = value => {if (value && typeof value === 'object') {for (const child of Object.values(value)) freeze(child); Object.freeze(value);} return value;};
@@ -36,7 +37,7 @@ const gitPin = (value, name, commit) => assert.ok(['git+https://github.com/eosri
     .some(prefix => value === prefix + name + '.git#' + commit), 'Unqualified operator-list installed source pin');
 
 /** Exact new profile only: no default source override and no old profile acceptance. */
-export function admitOperatorListAssembly(profile, root = defaultRoot) {
+function observeOperatorListAssembly(profile, root) {
     equal(profile, OPERATOR_LIST_PROFILE, 'profile selection'); root = realpathSync(root);
     const path = name => {
         assert.ok(typeof name === 'string' && !isAbsolute(name) && !name.includes('\\'));
@@ -54,8 +55,10 @@ export function admitOperatorListAssembly(profile, root = defaultRoot) {
         const bytes = expected.textLF ? text(read(expected.path)) : read(expected.path);
         return {path: expected.path, bytes: bytes.length, sha256: sha(bytes), textLF: expected.textLF};
     });
+    const inventories = {};
     const trees = Object.fromEntries(Object.entries(OPERATOR_LIST_ASSEMBLY.trees).map(([name, expected]) => {
         const rows = inventory(path(expected.path), {textLF: expected.textLF});
+        inventories[name] = rows;
         return [name, {path: expected.path, files: rows.length, sha256: digest(rows), textLF: expected.textLF}];
     }));
     const rootPackage = json('package.json'), nativePackage = json('packages/backend-mongodb/package.json');
@@ -72,9 +75,25 @@ export function admitOperatorListAssembly(profile, root = defaultRoot) {
         bun: text(read('.bun-version')).toString().trim(), rootCompiler: json('node_modules/typescript/package.json').version,
         nativeCompiler: json('packages/backend-mongodb/node_modules/typescript/package.json').version,
         rootDriver: json('node_modules/mongodb/package.json').version, nativeDriver: json('packages/backend-mongodb/node_modules/mongodb/package.json').version}};
-    return assertOperatorListObservation(observed);
+    return {root, observed, inventories};
+}
+export function admitOperatorListAssembly(profile, root = defaultRoot) {
+    return assertOperatorListObservation(observeOperatorListAssembly(profile, root).observed);
+}
+/** Evidence capture never changes the strict profile, original rejection or downstream service admission. */
+export function diagnoseOperatorListAssembly(directory, root = defaultRoot) {
+    diagnosticDirectory(directory);
+    const snapshot = observeOperatorListAssembly(OPERATOR_LIST_PROFILE, root);
+    const provenance = {platform: process.platform, arch: process.arch, environmentObservations: Object.fromEntries(
+        ['GITHUB_SHA', 'GITHUB_WORKFLOW_SHA', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'GITHUB_JOB', 'RUNNER_OS', 'RUNNER_ARCH']
+            .map(name => [name, (process.env[name] ?? '').slice(0, 512)]))};
+    return retainAdmission(() => assertOperatorListObservation(snapshot.observed), admission => writeAssemblyDiagnostic({
+        ...snapshot, directory, expected: OPERATOR_LIST_ASSEMBLY, admission, provenance}));
 }
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
-    assert.equal(process.argv.length, 2, 'Read-only admission selects only the fixed list fixture profile');
-    console.log(JSON.stringify(admitOperatorListAssembly(OPERATOR_LIST_PROFILE), null, 2));
+    const args = process.argv.slice(2);
+    assert.ok(args.length === 0 || (args.length === 2 && args[0] === '--diagnostics'),
+        'Admission selects only the fixed list fixture profile, with an optional bounded diagnostic directory');
+    const result = args.length ? diagnoseOperatorListAssembly(args[1]) : admitOperatorListAssembly(OPERATOR_LIST_PROFILE);
+    console.log(JSON.stringify(result, null, 2));
 }

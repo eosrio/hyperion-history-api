@@ -261,8 +261,9 @@ jobs:
           packages/backend-mongodb/tests/operator-lists-driver.test.mjs
           scripts/qualification/operator-list-mongodb/offline.test.mjs
           scripts/qualification/operator-list-mongodb/source-profile.test.mjs
+          scripts/qualification/operator-list-mongodb/assembly-diagnostics.test.mjs
       - name: Retain exact new source and compiled assembly admission
-        run: node scripts/qualification/operator-list-mongodb/source-profile.mjs > operator-list-source-${{ matrix.node-version }}.json
+        run: node scripts/qualification/operator-list-mongodb/source-profile.mjs --diagnostics operator-list-assembly-${{ matrix.node-version }} > operator-list-source-${{ matrix.node-version }}.json
       - name: Exercise operator lists against a separately owned MongoDB 8.0.34
         run: node scripts/qualification/operator-list-mongodb/ci.mjs operator-list-mongodb-${{ matrix.node-version }}
       - name: Retain original list results, traces, terminal logs and owned-fixture cleanup
@@ -272,6 +273,7 @@ jobs:
           name: operator-list-mongodb-${{ matrix.node-version }}
           path: |
             operator-list-source-${{ matrix.node-version }}.json
+            operator-list-assembly-${{ matrix.node-version }}/
             operator-list-mongodb-${{ matrix.node-version }}/
           if-no-files-found: error
 
