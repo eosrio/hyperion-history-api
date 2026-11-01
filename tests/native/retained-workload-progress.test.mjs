@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {readFileSync} from 'node:fs';
-import {createRetainedProgress,withRetainedProgress,retainedCall,retainedPosition,retainedCounter,observeRetainedMethod,RETAINED_PROGRESS_LIMITS,summarizeRetainedProgress,assertRetainedProvenance} from './retained-workload-progress.mjs';
+import {createRetainedProgress,withRetainedProgress,retainedCall,retainedPosition,retainedCounter,observeRetainedMethod,RETAINED_PROGRESS_LIMITS,summarizeRetainedProgress,assertRetainedProvenance,finishRetainedProgress} from './retained-workload-progress.mjs';
 function setup(changes={}){let time=0,samples=0;const rows=[],ledger=createRetainedProgress({emit:raw=>rows.push(JSON.parse(raw)),clock:()=>time,resources:()=>{samples++;return{rssBytes:100,cpuUserUS:20};},...changes});return{ledger,rows,advance:n=>time+=n,samples:()=>samples};}
 
 test('retained diagnostic persists the active await before invoking the unchanged synchronous operation',()=>{
@@ -51,7 +51,11 @@ test('original test wrapper forwards the existing timeout and callback and uses 
  const source=readFileSync(new URL('./retained-workload-test.mjs',import.meta.url),'utf8');
  assert(source.includes('originalTest(name,options,async testContext=>'));assert(source.includes("testContext.signal.addEventListener('abort',aborted,{once:true})"));
  for(const forbidden of ['setTimeout(','setInterval(','AbortController','SIGTERM','SIGKILL','process.kill','child_process'])assert(!source.includes(forbidden));
- assert(source.includes("'callback-returned-after-original-abort'"));assert(source.includes("mkdtempSync(join(outputRoot,'wire-managed-diagnostic-'))"));
+ assert(source.includes('finishRetainedProgress({ledger,primarySeen,primary,originalAborted:testContext.signal.aborted'));
+ assert(source.includes('primarySeen=true;primary=error;throw error;'));
+ assert.equal(source.split('close:()=>closeSync(fd)').length,2);assert(!source.replace('close:()=>closeSync(fd)','').includes('closeSync('));
+ assert(!/!primary\b|\bprimary\s*\?/.test(source),'Actual wrapper must not infer failure presence from thrown-value truthiness');
+ assert(source.includes("mkdtempSync(join(outputRoot,'wire-managed-diagnostic-'))"));
 });
 test('observed GHA source and runtime receipts must match the actual supplied environment, including a PR merge identity',()=>{
  const runtime={node:'v24.22.1',platform:'linux',arch:'x64',executable:'/actual/node'},github={sha:'a'.repeat(40),runId:'123',attempt:'1',job:'build'},
@@ -64,4 +68,33 @@ test('all bounded phase aggregates remain in the typed rows while the terminal s
  const s=setup();for(let n=0;n<64;n++){const token=s.ledger.begin('phase.'+n);s.advance(1);s.ledger.end(token);}
  const {timings,...summary}=s.ledger.snapshot();s.ledger.record('settled','retained-wire-workload',{status:'callback-returned',summary,phaseKinds:Object.keys(timings).length});
  const observed=summarizeRetainedProgress(s.rows.map(row=>JSON.stringify(row)+'\n').join(''));assert.equal(Object.keys(observed.timings).length,64);assert.equal(observed.qualification,'not-granted');
+});
+test('end and emit faults preserve every synchronous and asynchronous primary thrown value',async()=>{
+ for(const fault of ['end','emit'])for(const asynchronous of [false,true])for(const primary of [undefined,null,false,0,0n,'',Symbol('primary'),new Error('primary')]){
+  const secondary=new Error('secondary '+fault),s=setup(fault==='emit'?{emit:raw=>{if(JSON.parse(raw).event==='after')throw secondary;}}:{}),ledger=fault==='end'?{...s.ledger,end(){throw secondary;}}:s.ledger;
+  let caught=false,value;try{await withRetainedProgress(ledger,()=>retainedCall('owner.drain',222,()=>{if(asynchronous)return Promise.reject(primary);throw primary;}));}catch(error){caught=true;value=error;}
+  assert(caught);assert.equal(value,primary);assert.equal(s.ledger.firstFailure().error,secondary);assert.equal(s.ledger.snapshot().diagnosticFailures[0].where,'operation-error-evidence');
+ }
+});
+test('primary values with throwing diagnostic accessors keep their identity',()=>{
+ const primary=Object.defineProperties({},{name:{get(){throw new Error('name getter');}},message:{get(){throw new Error('message getter');}}}),s=setup();
+ assert.throws(()=>withRetainedProgress(s.ledger,()=>retainedCall('owner.drain',222,()=>{throw primary;})),error=>error===primary);
+ assert.equal(s.rows.at(-1).error.name,'UninspectableThrownValue');assert.equal(s.rows.at(-1).error.thrownType,'object');
+});
+test('finalization preserves primary identity through close failure, including falsy thrown values',()=>{
+ for(const primary of [undefined,null,false,0,'',Symbol('primary'),new Error('primary')]){const s=setup(),closeError=new Error('close'),reports=[];let caught=false,value,closes=0;
+  try{try{throw primary;}finally{finishRetainedProgress({ledger:s.ledger,primarySeen:true,primary,originalAborted:true,close(){closes++;throw closeError;},report:row=>reports.push(row)});}}catch(error){caught=true;value=error;}
+  assert(caught);assert.equal(value,primary);assert.equal(closes,1);assert.equal(reports[0].callbackThrew,true);assert.equal(reports[0].diagnosticFileClosed,false);assert.equal(reports[0].originalSignalAborted,true);assert.equal(reports[0].diagnosticFailures[0].where,'diagnostic-close');
+ }
+});
+test('failed settlement, close and report remain secondary to primary, and fail otherwise-successful work',()=>{
+ for(const primarySeen of [false,true]){const emitError=new Error('emit'),closeError=new Error('close'),reportError=new Error('report'),primary=new Error('primary'),s=setup({emit:()=>{throw emitError;}});let closes=0;
+  const finish=()=>finishRetainedProgress({ledger:s.ledger,primarySeen,primary,originalAborted:false,close(){closes++;throw closeError;},report(){throw reportError;}});
+  if(primarySeen)assert.doesNotThrow(finish);else assert.throws(finish,error=>error===emitError);assert.equal(closes,1);
+  assert.deepEqual(s.ledger.snapshot().diagnosticFailures.map(row=>row.where),['callback-settlement-evidence','diagnostic-close','diagnostic-report']);
+ }
+});
+test('secondary diagnostics have an explicit bounded inventory and omitted count',()=>{
+ const s=setup(),first=new Error('first');for(let n=0;n<10;n++)s.ledger.noteFailure(n===0?first:new Error('extra '+n),'inert-fault');
+ assert.equal(s.ledger.snapshot().diagnosticFailures.length,8);assert.equal(s.ledger.snapshot().omittedDiagnosticFailures,2);assert.equal(s.ledger.firstFailure().error,first);
 });

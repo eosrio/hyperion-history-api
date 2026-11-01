@@ -41,6 +41,14 @@ the already written genuine Git/assembly receipts against the current environmen
 and actual process version/path. It never substitutes a guessed head SHA or a
 previous runtime observation.
 
+Original synchronous throws and asynchronous rejections retain their exact values
+and identity, including falsy values. A failed diagnostic end record or file close
+stays secondary while an original failure is active. The ledger keeps up to eight
+bounded secondary descriptions and an explicit count beyond that inventory; the
+final diagnostic report includes observed file-close status. Evidence failure
+still fails otherwise-successful work. Neither diagnostic failure nor closure
+rewrites an original workload failure or promotes an aborted callback to success.
+
 An observed timeout remains a timeout even if the callback returns later.
 Missing settlement remains unknown. Ledger summaries grant no qualification;
 the original Node test and GitHub job verdicts remain authoritative. The new

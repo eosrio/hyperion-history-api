@@ -4,7 +4,11 @@ import {AsyncLocalStorage} from 'node:async_hooks';
 
 const context=new AsyncLocalStorage();
 export const RETAINED_PROGRESS_LIMITS=Object.freeze({events:65536,bytes:32*1024*1024,rowBytes:4096,activeSpans:16,resourceIntervalMS:1000});
-const boundedError=error=>({name:String(error?.name??'Error').slice(0,64),message:String(error?.message??error).slice(0,512)});
+const boundedError=error=>{let name='UninspectableThrownValue',message='Thrown value could not be inspected';
+ try{name=String(error?.name??'Error').slice(0,64);}catch{}
+ try{message=String(error?.message??error).slice(0,512);}catch{}
+ return{name,message,thrownType:error===null?'null':typeof error};};
+const secondary=(ledger,error,where)=>{try{ledger.noteFailure(error,where);}catch{/* A diagnostic recorder must never replace an active workload failure. */}};
 const label=value=>{assert(typeof value==='string'&&/^[a-z][a-z0-9.-]{0,95}$/.test(value));return value;};
 
 export function createRetainedProgress({emit,clock,resources,limits=RETAINED_PROGRESS_LIMITS}){
@@ -12,8 +16,11 @@ export function createRetainedProgress({emit,clock,resources,limits=RETAINED_PRO
  for(const key of ['events','bytes','rowBytes','activeSpans','resourceIntervalMS'])assert(Number.isSafeInteger(limits[key])&&limits[key]>0&&limits[key]<=RETAINED_PROGRESS_LIMITS[key]);
  const start=clock();assert(Number.isFinite(start));let previous=start,lastResource=-Infinity,sequence=0,bytes=0,nextSpan=0;
  const active=new Map(),positions={},timings={},sampledCounters=new Map();
+ const diagnosticFailures=[];let firstDiagnosticSeen=false,firstDiagnostic,omittedDiagnosticFailures=0;
+ const noteFailure=(error,where)=>{if(!firstDiagnosticSeen){firstDiagnosticSeen=true;firstDiagnostic=error;}
+  if(diagnosticFailures.length<8)diagnosticFailures.push({where:String(where).slice(0,96),...boundedError(error)});else omittedDiagnosticFailures++;};
  const now=()=>{const value=clock();assert(Number.isFinite(value)&&value>=previous,'Monotonic fixture clock required');previous=value;return Math.round((value-start)*1000)/1000;};
- const snapshot=()=>({positions:{...positions},active:[...active.values()].map(({id,phase,height})=>({id,phase,...(height===undefined?{}:{height})})),timings:structuredClone(timings)});
+ const snapshot=()=>({positions:{...positions},active:[...active.values()].map(({id,phase,height})=>({id,phase,...(height===undefined?{}:{height})})),timings:structuredClone(timings),diagnosticFailures:diagnosticFailures.map(value=>({...value})),omittedDiagnosticFailures});
  const record=(event,phase,extra={},forceResource=false)=>{
   assert(extra&&Object.getPrototypeOf(extra)===Object.prototype&&!Object.getOwnPropertySymbols(extra).length);
   for(const [key,descriptor]of Object.entries(Object.getOwnPropertyDescriptors(extra)))assert(descriptor.enumerable&&Object.hasOwn(descriptor,'value')&&!['schemaVersion','sequence','elapsedMS','event','phase','awaitLabel','activeDepth','positions','resources'].includes(key),'Diagnostic fields cannot override observed identity');
@@ -32,9 +39,9 @@ export function createRetainedProgress({emit,clock,resources,limits=RETAINED_PRO
  const end=(id,status='returned',error)=>{const entry=active.get(id);assert(entry,'Unknown retained diagnostic span');assert(['returned','threw'].includes(status));
   const durationMS=Math.round((now()-entry.at)*1000)/1000;active.delete(id);if(!timings[entry.phase])assert(Object.keys(timings).length<64,'Retained diagnostic phase bound exceeded');const total=timings[entry.phase]??={completed:0,failed:0,totalMS:0,maximumMS:0};
   total.completed++;total.failed+=status==='threw'?1:0;total.totalMS=Math.round((total.totalMS+durationMS)*1000)/1000;total.maximumMS=Math.max(total.maximumMS,durationMS);
-  record('after',entry.phase,{span:id,status,durationMS,...(error?{error:boundedError(error)}:{})});};
+  record('after',entry.phase,{span:id,status,durationMS,...(status==='threw'?{error:boundedError(error)}:{})});};
  const counter=(key,read)=>{label(key);assert.equal(typeof read,'function');assert(!sampledCounters.has(key)&&sampledCounters.size<16);sampledCounters.set(key,read);};
- return Object.freeze({record,position,begin,end,counter,snapshot,counts:()=>({events:sequence,bytes})});
+ return Object.freeze({record,position,begin,end,counter,snapshot,noteFailure,firstFailure:()=>({seen:firstDiagnosticSeen,error:firstDiagnostic}),counts:()=>({events:sequence,bytes})});
 }
 
 export const withRetainedProgress=(ledger,operation)=>context.run(ledger,operation);
@@ -44,9 +51,23 @@ export function retainedCounter(name,read){context.getStore()?.counter(name,read
 export function retainedCall(phase,height,operation){
  const ledger=context.getStore();if(!ledger)return operation();
  const token=ledger.begin(phase,height);let value;
- try{value=operation();}catch(error){ledger.end(token,'threw',error);throw error;}
- if(value&&typeof value.then==='function')return Promise.resolve(value).then(result=>{ledger.end(token);return result;},error=>{ledger.end(token,'threw',error);throw error;});
+ try{value=operation();}catch(error){try{ledger.end(token,'threw',error);}catch(diagnostic){secondary(ledger,diagnostic,'operation-error-evidence');}throw error;}
+ if(value&&typeof value.then==='function')return Promise.resolve(value).then(result=>{ledger.end(token);return result;},error=>{try{ledger.end(token,'threw',error);}catch(diagnostic){secondary(ledger,diagnostic,'operation-error-evidence');}throw error;});
  ledger.end(token);return value;
+}
+
+/** Only injected observational ports execute here; an active primary always owns its throw. */
+export function finishRetainedProgress({ledger,primarySeen,primary,originalAborted,close,report}){
+ let closed=false,localFailureSeen=false,localFailure;
+ const failed=(error,where)=>{if(!localFailureSeen){localFailureSeen=true;localFailure=error;}secondary(ledger,error,where);};
+ try{const {timings,diagnosticFailures,...summary}=ledger.snapshot();ledger.record('settled','retained-wire-workload',{status:primarySeen?'callback-threw':originalAborted?'callback-returned-after-original-abort':'callback-returned',
+  ...(primarySeen?{error:boundedError(primary)}:{}),summary,diagnosticFailureCount:diagnosticFailures.length,firstDiagnosticFailure:diagnosticFailures[0]??null,
+  phaseKinds:Object.keys(timings).length,counts:ledger.counts(),acceptance:'Original node:test verdict remains authoritative; diagnostic records grant no qualification'},true);}catch(error){failed(error,'callback-settlement-evidence');}
+ try{close();closed=true;}catch(error){failed(error,'diagnostic-close');}
+ try{const snapshot=ledger.snapshot();report({callbackThrew:primarySeen,originalSignalAborted:originalAborted,diagnosticFileClosed:closed,
+  diagnosticFailures:snapshot.diagnosticFailures,omittedDiagnosticFailures:snapshot.omittedDiagnosticFailures});}catch(error){failed(error,'diagnostic-report');}
+ if(!primarySeen){let first;try{first=ledger.firstFailure();}catch(error){failed(error,'diagnostic-failure-read');}
+  if(first?.seen)throw first.error;if(localFailureSeen)throw localFailure;}
 }
 export function observeRetainedMethod(target,key,phase,height){
  const ledger=context.getStore();if(!ledger)return;

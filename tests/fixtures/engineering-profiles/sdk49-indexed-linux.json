@@ -4525,8 +4525,8 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/retained-wire-diagnostics.md",
-      "bytes": 3304,
-      "sha256": "b177c1b0309380a269a9436bd3ff83a66d93f78c66974037490bddd4e74d6883"
+      "bytes": 3870,
+      "sha256": "55822119b588c381ff373ee89db9c765596a1c03e571176edd703740082a7c87"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/sdk49-ci-routing.md",
@@ -4585,18 +4585,18 @@
     },
     {
       "path": "tests/native/retained-workload-progress.mjs",
-      "bytes": 8577,
-      "sha256": "3d8241c58e89af766ee964392be3d71a3682a4002b7eea8a18057017e5649eb0"
+      "bytes": 11195,
+      "sha256": "20939b094561a03edb6122a50f6ee3982d7a3b73d211a90921eb10ecc39b7e7e"
     },
     {
       "path": "tests/native/retained-workload-progress.test.mjs",
-      "bytes": 8449,
-      "sha256": "68a58b810c1f7412a337eb347653ca966b8f709c6e6dc025f09bd9a30de34228"
+      "bytes": 12243,
+      "sha256": "0b5b74b06615564a07bf29ba6822d70f1c7f0133fddb53e54ffbb3dd7150f8ad"
     },
     {
       "path": "tests/native/retained-workload-test.mjs",
-      "bytes": 4710,
-      "sha256": "d34d94bf9f573420ed757b4da2f9a94dc2b7c9c676a3415b052ae00174defd39"
+      "bytes": 4249,
+      "sha256": "88ff9bf17d733b8282d8f9217911057d0ee1589a816a47e75146536579976623"
     },
     {
       "path": "tests/native/stateful-complete-kind-codec-profile.test.mjs",
