@@ -24,6 +24,8 @@ export default class ProjectionWorker extends HyperionWorker {
     private stopped = false;
     async assertQueues(): Promise<void> {} // Existing worker lifecycle/AMQP connection; no second source fan-out queue.
     onIpcMessage(message: any): void {
+        if (['stop', 'worker_attempt_fence', 'worker_attempt_fence_active', 'reload_config', 'reload_contract_config'].includes(message.event))
+            this.controller?.invalidateMappingRetryEligibility();
         if (message.event === 'stop') this.stopped = true;
         if (message.event === 'stateful_owner_probe_request' && validStatefulProbeId(message.data?.requestId)
             && validStatefulProbeTarget(message.data?.target)) {
@@ -65,6 +67,7 @@ export default class ProjectionWorker extends HyperionWorker {
                 ? new PortableProjectionSource({...sourceOptions, historicalCertificates: true}) : source;
             if (configuration) this.controller = await PortableStateController.create({chainId: this.chainId, configuration,
                 adapter: createPortableStateBackend(client, configuration), source,
+                mappingRetryEligibilityMs: 1000,
                 attempts: {run: (metadata, operation) => this.runProjectionFrameAttempt(metadata, operation, () => !this.stopped),
                     bind: fields => this.bindWorkerAttempt(fields)},
                 onProgress: data => {try {process.send?.({event: 'portable_state_progress', data});} catch {}}});
