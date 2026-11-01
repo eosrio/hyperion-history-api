@@ -80,7 +80,28 @@ export function verifyCursorClosure(trace){
  }
  assert.equal(live.size,0,'Original native cursors remain unclosed');assert.equal(opened,closed);return {opened,closed,live:0};
 }
-export function verifyExplain(explain,{baseHint,lookupIndexes}){
+export function lookupIndexSpecs(aliases){
+ assert(Array.isArray(aliases)&&new Set(aliases).size===aliases.length);
+ return aliases.map(alias=>{assert(/^[a-z][a-z0-9_]*$/.test(alias));const suffix=sha(alias).slice(0,20);
+  return {alias,indexes:[{name:'h45_ix_j_'+suffix,key:{alias:1,['joins.'+alias]:1},unique:true,partial:{alias}},
+   {name:'h45_ix_l_'+suffix,key:{['joins.'+alias]:1,alias:1},unique:false}]};});
+}
+export function verifyLookupCatalog(catalog,bindings){
+ assert(Array.isArray(catalog)&&catalog.length<=128,'Bounded actual index catalog required');
+ for(const binding of bindings)for(const expected of binding.indexes){
+  const matches=catalog.filter(row=>row.name===expected.name);assert.equal(matches.length,1,'Missing or ambiguous lookup index specification');const actual=matches[0];
+  assert.equal(JSON.stringify(actual.key),JSON.stringify(expected.key),'Lookup index key differs');assert.equal(!!actual.unique,expected.unique,'Lookup index uniqueness differs');
+  assert.deepEqual(actual.partialFilterExpression,expected.partial,'Lookup index partial filter differs');assert(!actual.hidden&&!actual.sparse&&actual.expireAfterSeconds===undefined,'Lookup index visibility differs');
+  assert(!actual.collation||actual.collation.locale==='simple','Lookup index collation differs');
+ }
+}
+function nonnegative(value,label){
+ assert(typeof value==='number'&&Number.isSafeInteger(value)||Long.isLong(value)||value?._bsontype==='Int32','Missing or malformed '+label);
+ const n=BigInt(value.toString());assert(n>=0n,'Negative '+label);return n;
+}
+export function verifyExplain(explain,{baseHint,command,aliases,catalog}){
+ assert(command&&command.hint===baseHint&&command.allowDiskUse===false,'Exact base hint and no-disk-use required');
+ const bindings=lookupIndexSpecs(aliases);verifyLookupCatalog(catalog,bindings);
  const indexes=new Set(),lookups=new Set();let visited=0;
  const visit=(value,path=[])=>{if(value===null||typeof value!=='object')return;assert(++visited<32768,'Explain shape bound');
   assert.notEqual(value.stage,'COLLSCAN','Unindexed native scan');assert.notEqual(value.stage,'SORT','Order was not supplied by the admitted index');
@@ -90,20 +111,43 @@ export function verifyExplain(explain,{baseHint,lookupIndexes}){
   }
   if(typeof value.indexName==='string')indexes.add(value.indexName);for(const name of value.indexesUsed??[])lookups.add(name);
   for(const [name,child]of Object.entries(value))if(name!=='command'){if(name==='$sort')assert.fail('Blocking aggregate sort');visit(child,[...path,name]);}
- };visit(explain);assert(indexes.has(baseHint),'Hinted base index not observed');for(const name of lookupIndexes)assert(lookups.has(name)||indexes.has(name),'Lookup index not observed: '+name);
- return {baseIndex:baseHint,lookupIndexes:[...lookups],planNodes:visited};
+ };visit(explain);assert(indexes.has(baseHint),'Hinted base index not observed');
+ const cursor=explain.stages?.filter(row=>row.$cursor)??[];assert.equal(cursor.length,1,'Single base cursor required');
+ const winning=cursor[0].$cursor.queryPlanner?.winningPlan;assert(winning,'Missing winning base plan');const baseScans=[];
+ const findBase=value=>{if(value&&typeof value==='object'){if(value.stage==='IXSCAN'&&value.indexName===baseHint)baseScans.push(value);for(const child of Object.values(value))findBase(child);}};findBase(winning);assert.equal(baseScans.length,1,'Hinted base index absent or ambiguous in winning plan');
+ const baseIndexes=catalog.filter(row=>row.name===baseHint);assert.equal(baseIndexes.length,1,'Missing or ambiguous base index specification');const base=baseIndexes[0];
+ assert.equal(JSON.stringify(base.key),JSON.stringify(baseScans[0].keyPattern),'Base index key differs from winning plan');assert(!base.unique&&!base.hidden&&!base.sparse&&base.partialFilterExpression===undefined&&base.expireAfterSeconds===undefined,'Base index options differ');
+ assert(!base.collation||base.collation.locale==='simple','Base index collation differs');
+ assert(Array.isArray(command.pipeline),'Actual command pipeline required');const commanded=command.pipeline.filter(row=>row.$lookup),stages=(explain.stages??[]).filter(row=>row.$lookup);
+ assert.equal(commanded.length,bindings.length,'Command lookup count differs');assert.equal(stages.length,bindings.length,'Explain lookup count differs');
+ const selected=[];
+ for(const {alias,indexes:allowed} of bindings){
+  const target='lookups.'+alias,commands=commanded.filter(row=>row.$lookup.as===target),actual=stages.filter(row=>row.$lookup.as===target);
+  assert.equal(commands.length,1,'Missing or duplicate commanded lookup');assert.equal(actual.length,1,'Missing or duplicate explain lookup');
+  const lookup=commands[0].$lookup,stage=actual[0];assert.deepEqual(stage.$lookup,lookup,'Explain lookup differs from actual command');
+  assert.deepEqual(Object.keys(lookup).sort(),['as','from','let','pipeline']);assert.equal(lookup.from,command.aggregate);assert.deepEqual(lookup.let,{joinKey:'$joins.'+alias});
+  assert.equal(lookup.pipeline?.length,2);assert.deepEqual(Object.keys(lookup.pipeline[0]??{}),['$match']);assert.deepEqual(Object.keys(lookup.pipeline[0].$match??{}).sort(),['$expr','alias']);assert.deepEqual(Object.keys(lookup.pipeline[1]??{}),['$limit']);assert.equal(lookup.pipeline[0].$match.alias,alias);
+  assert.deepEqual(lookup.pipeline[0].$match.$expr,{$eq:['$joins.'+alias,'$$joinKey']});assert.equal(nonnegative(lookup.pipeline[1]?.$limit,'lookup limit'),2n);
+  assert.equal(nonnegative(stage.collectionScans,'collectionScans'),0n,'Lookup performed collection scan');
+  for(const field of ['totalKeysExamined','totalDocsExamined','nReturned'])nonnegative(stage[field],field);
+  assert(Array.isArray(stage.indexesUsed)&&stage.indexesUsed.length>0&&new Set(stage.indexesUsed).size===stage.indexesUsed.length,'Lookup indexes missing or duplicated');
+  assert(stage.indexesUsed.every(name=>allowed.some(index=>index.name===name)),'Lookup selected an unadmitted or wrong-alias index');selected.push({alias,indexes:[...stage.indexesUsed]});
+ }
+ return {baseIndex:baseHint,lookupIndexes:selected,planNodes:visited};
 }
 
 /** Retain each received native command/explain before the sealed-view and plan assertions. */
-export async function captureAndVerifyExplain(records,{command,explanation,sealedView,baseHint,lookupIndexes},readView){
+export async function captureAndVerifyExplain(records,{command,explanation,sealedView,baseHint,aliases,catalogBefore},readAfter,validateCatalog){
  assert(Array.isArray(records)&&records.length<3,'Explain attempt count bound');
  const pin=value=>{const raw=BSON.serialize(value);return {bytes:raw.length,sha256:sha(raw),base64:raw.toString('base64')};};
  const attempt={status:'received',pipelineSha256:sha(BSON.serialize({pipeline:command.pipeline})),
   actualCommand:bsonEvidence(command),explain:bsonEvidence(explanation),
   bsonReserialization:{method:'mongodb-bson-serialize-not-wire-bytes',command:pin(command),explain:pin(explanation)},
-  sealedView,expected:{baseHint,lookupIndexes:[...lookupIndexes]}};
+  sealedView,catalogBefore:bsonEvidence(catalogBefore),expected:{baseHint,aliases:[...aliases]}};
  assert(Buffer.byteLength(JSON.stringify([...records,attempt],null,2)+'\n')<=PLAN.evidenceBytes,'Explain evidence byte bound');
  records.push(attempt);
- attempt.afterView=await readView();assert.deepEqual(attempt.afterView,sealedView);
- attempt.checked=verifyExplain(explanation,{baseHint,lookupIndexes});attempt.status='verified';return attempt;
+ const after=await readAfter();attempt.afterView=after.view;attempt.catalogAfter=bsonEvidence(after.catalog);assert.deepEqual(attempt.afterView,sealedView);
+ assert.equal(typeof validateCatalog,'function','Native model index validator required');validateCatalog(catalogBefore);validateCatalog(after.catalog);
+ const bindings=lookupIndexSpecs(aliases);verifyLookupCatalog(catalogBefore,bindings);verifyLookupCatalog(after.catalog,bindings);
+ attempt.checked=verifyExplain(explanation,{baseHint,command,aliases,catalog:after.catalog});attempt.status='verified';return attempt;
 }

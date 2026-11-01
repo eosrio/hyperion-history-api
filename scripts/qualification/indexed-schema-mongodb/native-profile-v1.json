@@ -207,14 +207,44 @@
       "sha256": "cb713e4341ddd19b21a88f35ae4eee9795b94bf06239cf0b6e3872f67de606ee"
     },
     {
+      "path": "scripts/qualification/indexed-schema-mongodb/fixtures/9d8-explain/PROVENANCE.json",
+      "bytes": 814,
+      "sha256": "f36f21940d54f81b721906dfc20070d1ef95544a22062158355b2a7bfa18cb93"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/fixtures/9d8-explain/README.md",
+      "bytes": 495,
+      "sha256": "de152733a8639662c2dadfcb7adac3a88b41b383a7e6b0ee07d9c16338e9ef3f"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/fixtures/9d8-explain/node24-explain.json",
+      "bytes": 35105,
+      "sha256": "3eb09515b7376c22ef5a10d3efc65deac1ab7923e8abce56a86b30e452efb9d6"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/fixtures/9d8-explain/node24-samples.json",
+      "bytes": 10542,
+      "sha256": "14d35862394dad2acb9245d936ca4d0951f2fffa6db38db8ac74c1a9e3150f6c"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/fixtures/9d8-explain/node26-explain.json",
+      "bytes": 35105,
+      "sha256": "177c462b5298d6599500f457491bc8021fe298236f6bc4299285c68a044a482d"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/fixtures/9d8-explain/node26-samples.json",
+      "bytes": 10542,
+      "sha256": "48f7d3e00a424aca0779ef488c007f65b10bc96c0881b525e7bcf8247d8bd1e3"
+    },
+    {
       "path": "scripts/qualification/indexed-schema-mongodb/native-assembly.mjs",
       "bytes": 4123,
       "sha256": "55db9be0555fe870bae26adef06e3956169db4f187186b48b1210bf6a9210536"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-ci.mjs",
-      "bytes": 9382,
-      "sha256": "008116975edcad38a4beea33c26b904b3e853eec8b0349dd20bfd181049e492a"
+      "bytes": 9623,
+      "sha256": "e7a9511bcc4c3ffa2a362763ebd5a6ae2844c7f98a99283b24cf030d240e9026"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-command-hooks.mjs",
@@ -228,18 +258,18 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-offline.test.mjs",
-      "bytes": 29282,
-      "sha256": "c3a28abcd5576d79f887688aa8dc35a6daf6b26fd099d02a203845b1c510522a"
+      "bytes": 31265,
+      "sha256": "b7ef93f14d79d03a68e8b6c181510623113e3c1220406d843564e57190fa7f0c"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-runner.mjs",
-      "bytes": 40915,
-      "sha256": "7d2cd8942afdad08d6b190da6dcfb4378ad86ca711a3b325b89aa1bcb6be3b0a"
+      "bytes": 41604,
+      "sha256": "c487b2668fcb8b6118a462331c62a23a2b1e67a6ce81fab9acdf5df41c2f3e64"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-trace.mjs",
-      "bytes": 11760,
-      "sha256": "252b1e82ee695606bc55fecff4b97f4d6bc4466a8bada3854eae908e002e83c0"
+      "bytes": 16992,
+      "sha256": "50c6fe81334420ebc3d039e9c05d4732b1d11a9d674ba0392679f590c21863a9"
     },
     {
       "path": "scripts/qualification/operator-list-mongodb/assembly-diagnostics.mjs",

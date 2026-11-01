@@ -1,0 +1,326 @@
+[
+  {
+    "case": "genesis-index-and-coverage",
+    "indexes": [
+      {
+        "v": 2,
+        "key": {
+          "_id": 1
+        },
+        "name": "_id_"
+      },
+      {
+        "v": 2,
+        "key": {
+          "alias": 1,
+          "v.contract": 1,
+          "n.schema": 1,
+          "v.schema": 1
+        },
+        "name": "h45_ix_b_1273b4f744e39e11fc48"
+      },
+      {
+        "v": 2,
+        "key": {
+          "alias": 1,
+          "v.collection": 1,
+          "n.created": 1,
+          "v.created": -1
+        },
+        "name": "h45_ix_b_ad0e09878fa374ccf372"
+      },
+      {
+        "v": 2,
+        "key": {
+          "alias": 1,
+          "v.collection": 1,
+          "n.schema": 1,
+          "v.schema": 1
+        },
+        "name": "h45_ix_b_261835a96032dc9dee8c"
+      },
+      {
+        "v": 2,
+        "key": {
+          "alias": 1,
+          "v.schema": 1,
+          "n.created": 1,
+          "v.created": -1
+        },
+        "name": "h45_ix_b_46ca025f0002136471e3"
+      },
+      {
+        "v": 2,
+        "key": {
+          "alias": 1,
+          "v.schema": 1
+        },
+        "name": "h45_ix_b_d44cfea327faac71fda3"
+      },
+      {
+        "v": 2,
+        "key": {
+          "alias": 1,
+          "joins.collection": 1
+        },
+        "name": "h45_ix_j_fa7496e4ae840306df41",
+        "unique": true,
+        "partialFilterExpression": {
+          "alias": "collection"
+        }
+      },
+      {
+        "v": 2,
+        "key": {
+          "joins.collection": 1,
+          "alias": 1
+        },
+        "name": "h45_ix_l_fa7496e4ae840306df41"
+      },
+      {
+        "v": 2,
+        "key": {
+          "alias": 1,
+          "joins.assets": 1
+        },
+        "name": "h45_ix_j_8bf729ffe074caee622c",
+        "unique": true,
+        "partialFilterExpression": {
+          "alias": "assets"
+        }
+      },
+      {
+        "v": 2,
+        "key": {
+          "joins.assets": 1,
+          "alias": 1
+        },
+        "name": "h45_ix_l_8bf729ffe074caee622c"
+      },
+      {
+        "v": 2,
+        "key": {
+          "alias": 1,
+          "v.contract": 1,
+          "n.created": 1,
+          "v.created": -1
+        },
+        "name": "h45_ix_b_ecbb57f6d76f8adfb86a"
+      }
+    ],
+    "genesisCoverage": {
+      "_id": "633257a926bd0821d82a5212cdbd0067e393fd142ce5ea4d0eae825796f436cd",
+      "representation": "h45-owner-indexed-materialization-v1",
+      "owner": "1b9a7e52cc8b7e5c9af3f6011acd8b4aa9d606533598b22cd4f04363c71b355d",
+      "model": "633257a926bd0821d82a5212cdbd0067e393fd142ce5ea4d0eae825796f436cd",
+      "generation": "fresh-indexed-generation",
+      "revision": "464f9a90a9e62d54971d976a8c533e98c8cf5dfbbe53ca2089e700ccdb7bf1dd",
+      "checkpoint": {
+        "blockNum": 0,
+        "blockId": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "ready": true,
+      "reason": null
+    }
+  },
+  {
+    "case": "typed-transactional-materialization",
+    "canonical": {
+      "_id": "318a2c7a5ce858859d0c35451834996ee1ed889730bd8326c267b064e2dff93c",
+      "key": "s:a",
+      "kind": "schema",
+      "json": "{\"collection_name\":\"one\",\"contract\":\"atomicassets\",\"created_at_time\":\"9007199254740993\",\"format\":[{\"name\":\"author\",\"type\":\"string\"}],\"schema_name\":\"Alpha\"}"
+    },
+    "sidecar": {
+      "_id": "1ee859c0badf4fb936281712743bd97ec21f8b4c1bbf5b3ce30ac8610271c8be",
+      "model": "633257a926bd0821d82a5212cdbd0067e393fd142ce5ea4d0eae825796f436cd",
+      "representation": "h45-owner-indexed-materialization-v1",
+      "alias": "schema",
+      "kind": "schema",
+      "key": "s:a",
+      "json": "{\"collection_name\":\"one\",\"contract\":\"atomicassets\",\"created_at_time\":\"9007199254740993\",\"format\":[{\"name\":\"author\",\"type\":\"string\"}],\"schema_name\":\"Alpha\"}",
+      "v": {
+        "contract": "atomicassets",
+        "collection": "one",
+        "schema": "Alpha",
+        "created": {
+          "$numberLong": "9007199254740993"
+        }
+      },
+      "n": {
+        "contract": {
+          "$numberInt": "0"
+        },
+        "collection": {
+          "$numberInt": "0"
+        },
+        "schema": {
+          "$numberInt": "0"
+        },
+        "created": {
+          "$numberInt": "0"
+        }
+      },
+      "joins": {
+        "collection": "[\"atomicassets\",\"one\"]",
+        "assets": "[\"atomicassets\",\"one\",\"Alpha\"]"
+      }
+    },
+    "coverage": {
+      "_id": "633257a926bd0821d82a5212cdbd0067e393fd142ce5ea4d0eae825796f436cd",
+      "representation": "h45-owner-indexed-materialization-v1",
+      "owner": "1b9a7e52cc8b7e5c9af3f6011acd8b4aa9d606533598b22cd4f04363c71b355d",
+      "model": "633257a926bd0821d82a5212cdbd0067e393fd142ce5ea4d0eae825796f436cd",
+      "generation": "fresh-indexed-generation",
+      "revision": "464f9a90a9e62d54971d976a8c533e98c8cf5dfbbe53ca2089e700ccdb7bf1dd",
+      "checkpoint": {
+        "blockNum": 1,
+        "blockId": "0000000000000000000000000000000000000000000000000000000000000065"
+      },
+      "ready": true,
+      "reason": null
+    }
+  },
+  {
+    "case": "typed-transactional-materialization",
+    "failedChangedSentinel": {
+      "canonicalBefore": {
+        "_id": "318a2c7a5ce858859d0c35451834996ee1ed889730bd8326c267b064e2dff93c",
+        "key": "s:a",
+        "kind": "schema",
+        "json": "{\"collection_name\":\"one\",\"contract\":\"atomicassets\",\"created_at_time\":\"9007199254740993\",\"format\":[{\"name\":\"author\",\"type\":\"string\"}],\"schema_name\":\"Alpha\"}"
+      },
+      "canonicalAfterFailure": {
+        "_id": "318a2c7a5ce858859d0c35451834996ee1ed889730bd8326c267b064e2dff93c",
+        "key": "s:a",
+        "kind": "schema",
+        "json": "{\"collection_name\":\"one\",\"contract\":\"atomicassets\",\"created_at_time\":\"9007199254740993\",\"format\":[{\"name\":\"author\",\"type\":\"string\"}],\"schema_name\":\"Alpha\"}"
+      },
+      "sidecarBefore": {
+        "_id": "1ee859c0badf4fb936281712743bd97ec21f8b4c1bbf5b3ce30ac8610271c8be",
+        "model": "633257a926bd0821d82a5212cdbd0067e393fd142ce5ea4d0eae825796f436cd",
+        "representation": "h45-owner-indexed-materialization-v1",
+        "alias": "schema",
+        "kind": "schema",
+        "key": "s:a",
+        "json": "{\"collection_name\":\"one\",\"contract\":\"atomicassets\",\"created_at_time\":\"9007199254740993\",\"format\":[{\"name\":\"author\",\"type\":\"string\"}],\"schema_name\":\"Alpha\"}",
+        "v": {
+          "contract": "atomicassets",
+          "collection": "one",
+          "schema": "Alpha",
+          "created": {
+            "$numberLong": "9007199254740993"
+          }
+        },
+        "n": {
+          "contract": {
+            "$numberInt": "0"
+          },
+          "collection": {
+            "$numberInt": "0"
+          },
+          "schema": {
+            "$numberInt": "0"
+          },
+          "created": {
+            "$numberInt": "0"
+          }
+        },
+        "joins": {
+          "collection": "[\"atomicassets\",\"one\"]",
+          "assets": "[\"atomicassets\",\"one\",\"Alpha\"]"
+        }
+      },
+      "sidecarAfterFailure": {
+        "_id": "1ee859c0badf4fb936281712743bd97ec21f8b4c1bbf5b3ce30ac8610271c8be",
+        "model": "633257a926bd0821d82a5212cdbd0067e393fd142ce5ea4d0eae825796f436cd",
+        "representation": "h45-owner-indexed-materialization-v1",
+        "alias": "schema",
+        "kind": "schema",
+        "key": "s:a",
+        "json": "{\"collection_name\":\"one\",\"contract\":\"atomicassets\",\"created_at_time\":\"9007199254740993\",\"format\":[{\"name\":\"author\",\"type\":\"string\"}],\"schema_name\":\"Alpha\"}",
+        "v": {
+          "contract": "atomicassets",
+          "collection": "one",
+          "schema": "Alpha",
+          "created": {
+            "$numberLong": "9007199254740993"
+          }
+        },
+        "n": {
+          "contract": {
+            "$numberInt": "0"
+          },
+          "collection": {
+            "$numberInt": "0"
+          },
+          "schema": {
+            "$numberInt": "0"
+          },
+          "created": {
+            "$numberInt": "0"
+          }
+        },
+        "joins": {
+          "collection": "[\"atomicassets\",\"one\"]",
+          "assets": "[\"atomicassets\",\"one\",\"Alpha\"]"
+        }
+      },
+      "coverageBefore": {
+        "_id": "633257a926bd0821d82a5212cdbd0067e393fd142ce5ea4d0eae825796f436cd",
+        "representation": "h45-owner-indexed-materialization-v1",
+        "owner": "1b9a7e52cc8b7e5c9af3f6011acd8b4aa9d606533598b22cd4f04363c71b355d",
+        "model": "633257a926bd0821d82a5212cdbd0067e393fd142ce5ea4d0eae825796f436cd",
+        "generation": "fresh-indexed-generation",
+        "revision": "464f9a90a9e62d54971d976a8c533e98c8cf5dfbbe53ca2089e700ccdb7bf1dd",
+        "checkpoint": {
+          "blockNum": 1,
+          "blockId": "0000000000000000000000000000000000000000000000000000000000000065"
+        },
+        "ready": true,
+        "reason": null
+      },
+      "repairedCanonical": {
+        "_id": "318a2c7a5ce858859d0c35451834996ee1ed889730bd8326c267b064e2dff93c",
+        "key": "s:a",
+        "kind": "schema",
+        "json": "{\"collection_name\":\"one\",\"contract\":\"atomicassets\",\"created_at_time\":\"9007199254740993\",\"format\":[{\"name\":\"transaction-fault-sentinel\",\"type\":\"string\"}],\"schema_name\":\"Alpha\"}"
+      },
+      "repairedSidecar": {
+        "_id": "1ee859c0badf4fb936281712743bd97ec21f8b4c1bbf5b3ce30ac8610271c8be",
+        "model": "633257a926bd0821d82a5212cdbd0067e393fd142ce5ea4d0eae825796f436cd",
+        "representation": "h45-owner-indexed-materialization-v1",
+        "alias": "schema",
+        "kind": "schema",
+        "key": "s:a",
+        "json": "{\"collection_name\":\"one\",\"contract\":\"atomicassets\",\"created_at_time\":\"9007199254740993\",\"format\":[{\"name\":\"transaction-fault-sentinel\",\"type\":\"string\"}],\"schema_name\":\"Alpha\"}",
+        "v": {
+          "contract": "atomicassets",
+          "collection": "one",
+          "schema": "Alpha",
+          "created": {
+            "$numberLong": "9007199254740993"
+          }
+        },
+        "n": {
+          "contract": {
+            "$numberInt": "0"
+          },
+          "collection": {
+            "$numberInt": "0"
+          },
+          "schema": {
+            "$numberInt": "0"
+          },
+          "created": {
+            "$numberInt": "0"
+          }
+        },
+        "joins": {
+          "collection": "[\"atomicassets\",\"one\"]",
+          "assets": "[\"atomicassets\",\"one\",\"Alpha\"]"
+        }
+      }
+    }
+  }
+]

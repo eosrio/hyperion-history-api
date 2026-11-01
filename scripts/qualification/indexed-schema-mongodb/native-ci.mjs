@@ -61,7 +61,8 @@ export async function runCI(profile,output){
    for(const row of trace.slice(start,end).filter(row=>row.event==='started'&&row.model&&['aggregate','getMore'].includes(row.command))){assert.equal(row.model,query.model);assert.deepEqual(row.expected,query.view);}}
   const explanations=JSON.parse(readFileSync(join(output,'native/explain.json'),'utf8'));assert.equal(explanations.length,3);
   for(const row of explanations){const actual=BSON.EJSON.deserialize(row.actualCommand,{relaxed:false}),explain=BSON.EJSON.deserialize(row.explain,{relaxed:false});assert.equal(sha(BSON.serialize({pipeline:actual.pipeline})),row.pipelineSha256);
-   verifyExplain(explain,{baseHint:actual.hint,lookupIndexes:['collection','assets'].map(alias=>'h45_ix_l_'+sha(alias).slice(0,20))});}
+   assert.equal(row.status,'verified');assert.deepEqual(row.afterView,row.sealedView);assert.deepEqual(row.expected,{baseHint:actual.hint,aliases:['collection','assets']});
+   for(const raw of [row.catalogBefore,row.catalogAfter])verifyExplain(explain,{baseHint:actual.hint,command:actual,aliases:['collection','assets'],catalog:BSON.EJSON.deserialize(raw,{relaxed:false})});}
   report.native={status:native.status,cases:native.cases.length,independentlyVerifiedQueries:native.successfulQueryAttestations.length,independentlyVerifiedExplains:explanations.length,checksums};
  }catch(error){original??=error;report.failure=failure(original);if(error!==original)report.secondaryFailure=failure(error);}
  finally{
