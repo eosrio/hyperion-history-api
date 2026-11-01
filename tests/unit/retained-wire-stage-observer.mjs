@@ -48,7 +48,8 @@ export function createRetainedWireStageObserver({enabled = false, now = () => pr
         });
     }) ?? (() => {});
     // Audited async fixture/adapter methods return void, booleans or owned plain records.
-    // Their result/error identity and receiver are retained; the diagnostic adds a promise reaction.
+    // Resolved values/errors, receiver and exact original/shared promise are retained.
+    // Reactions settle to undefined; these audited fixture callers await their results.
     const watch = (object, methods) => {
         if (closed) return object;
         let names = watched.get(object); if (!names) watched.set(object, names = new Map());
@@ -65,7 +66,10 @@ export function createRetainedWireStageObserver({enabled = false, now = () => pr
                 try {
                     const result = Reflect.apply(original, this, args);
                     if (!isPromise(result)) return returned(result);
-                    return Promise.prototype.then.call(result, returned, error => {finish('failed'); throw error;});
+                    const reaction = safe(() => Promise.prototype.then.call(result,
+                        value => {returned(value);}, () => {finish('failed');}));
+                    if (reaction) safe(() => Promise.prototype.then.call(reaction, undefined, () => {failures++;}));
+                    return result;
                 } catch (error) {finish('failed'); throw error;}
             };
             Object.defineProperty(object, name, {value: replacement, writable: true, configurable: true, enumerable: own?.enumerable ?? false});

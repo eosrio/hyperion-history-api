@@ -27,7 +27,7 @@ input identity and report generated-corpus differences rather than inventing a
 byte-identical paired performance result. Node 24.22.1 and 26.13.0 are the observed
 failing/passing runtime versions; 26.13 remains an engineering candidate, not runtime acceptance.
 
-The existing Linux Node 24.x/26.x build matrix runs the nine pure observer controls
+The existing Linux Node 24.x/26.x build matrix runs the eleven pure observer controls
 alongside the existing source/profile/snapshot controls. Only the retained test
 command receives the inline observation flag; the following ABI-history command
 and other fixtures keep it unset. CI uses the unchanged admitted source/profile
@@ -77,6 +77,18 @@ drift and resource delta expose the gap without attributing it. Snapshot constru
 extra audited promise reactions and stdout writes add overhead. Retain a separate
 unprofiled original verdict and do not infer speedup or a causal hot module from a
 single diagnostic run.
+
+Watched calls return the exact original promise, including repeated calls sharing
+one in-flight controller promise. Observation reactions discard their return values
+and settle to undefined on fulfillment or rejection; a guarded handler observes any
+diagnostic reaction rejection. Original resolved values/rejection objects, receiver,
+arguments and native session identity are preserved. Counts describe watched method
+invocations, which may share one underlying promise. Attaching observation does add
+a rejection handler to the original promise: these audited fixture callers await it,
+and this observer makes no generic ignored-promise/unhandled-event parity claim.
+The separate existing generic unobservable policy in the full-worker action observer
+is unchanged. The two added controls reproduce and prevent the prior promise
+substitution without importing or executing the actual retained fixture.
 
 The timer is unref'd. Explicit close or process `beforeExit` clears it and restores
 original methods; the fixed snapshot cap also closes with a censored boundary.

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
+import {setImmediate as turn} from 'node:timers/promises';
 import {createRetainedWireStageObserver, observeRetainedWireNativeFixture, retainedWireStageBounds as bounds,
     retainedWireStageNames, sourceBlock} from '../unit/retained-wire-stage-observer.mjs';
 
@@ -173,4 +174,50 @@ test('original retained test body/profile and 180000ms deadline remain exact; so
     assert(workflow.includes('          node --test tests/unit/protocol-abi-history-native.mjs'));
     assert(workflow.includes('scripts/qualification/wire-source-snapshot.test.mjs tests/native/retained-wire-stage-observer.test.mjs'));
     assert.match(workflow, /node-version: \[24\.x, 26\.x\]/);
+});
+
+test('concurrent callers retain the exact original shared in-flight promise without extra value assimilation', async () => {
+    async function sample(enabled) {
+        const c = enabled ? control() : {observer: createRetainedWireStageObserver()};
+        let release, reads = 0, starts = 0;
+        const value = Object.defineProperty({}, 'then', {get() {reads++; return undefined;}});
+        const original = new Promise(resolve => {release = resolve;});
+        const owner = {current: undefined, drain() {
+            assert.equal(this, owner);
+            if (this.current) return this.current;
+            starts++; this.current = original; return this.current;
+        }};
+        c.observer.watch(owner, [['drain', 'projection.drain']]);
+        try {
+            const first = owner.drain(), concurrent = owner.drain();
+            assert.equal(first, original); assert.equal(concurrent, original); assert.equal(first, concurrent);
+            assert.equal(owner.current, original); assert.equal(starts, 1);
+            release(value); assert.equal(await first, value); assert.equal(await concurrent, value);
+            await turn();
+            if (enabled) {c.observer.report(); assert.equal(c.last().stages['projection.drain'].completed, 2);}
+            return reads;
+        } finally {release(value); c.observer.close();}
+    }
+    assert.equal(await sample(true), await sample(false));
+});
+
+test('original promise rejection remains exact and diagnostic failures create no detached unhandled rejection', async () => {
+    const c = control(), primary = new Error('original shared native rejection'), observedUnhandled = [];
+    const unhandled = error => observedUnhandled.push(error);
+    process.on('unhandledRejection', unhandled);
+    let handled;
+    try {
+        const original = Promise.reject(primary), value = Object.freeze({ok: true});
+        const fulfilled = Promise.resolve(value);
+        const target = {reject() {return original;}, resolve() {return fulfilled;}};
+        c.observer.watch(target, [['reject', 'native.command'], ['resolve', 'native.command', undefined,
+            () => {throw new Error('diagnostic value hook failure');}]]);
+        const received = target.reject(); handled = assert.rejects(received, error => error === primary);
+        assert.equal(received, original); assert.equal(target.reject(), original); await handled;
+        const success = target.resolve(); assert.equal(success, fulfilled); assert.equal(await success, value);
+        await turn(); await turn(); c.observer.report();
+        assert.equal(c.last().stages['native.command'].failed, 2);
+        assert.equal(c.last().stages['native.command'].completed, 1);
+        assert.equal(c.last().observationFailures, 1); assert.deepEqual(observedUnhandled, []);
+    } finally {await handled; c.observer.close(); process.removeListener('unhandledRejection', unhandled);}
 });
