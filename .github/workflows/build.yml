@@ -14,7 +14,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-root741-native429-source-5aaaee4-linux-gitlf-engineering
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-root741-native429-source-9c3db03-linux-gitlf-engineering
     strategy:
       matrix:
         node-version: [24.x, 26.x]
@@ -39,9 +39,9 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - name: Record the explicit current Linux assembly and actual runtime candidate
-        run: node tests/unit/native-snapshot-source-admission.mjs --admit-native-snapshot > current-native-source-${{ matrix.node-version }}.json
+        run: node tests/unit/native-cleanup-source-admission.mjs --admit-native-cleanup > current-native-source-${{ matrix.node-version }}.json
       - name: Check explicit current profile, frozen historical predicates and workload boundaries
-        run: node --test tests/native/current-stateful-source-profile.test.mjs scripts/qualification/operator-list-mongodb/snapshot-source-profile.test.mjs scripts/qualification/wire-source-snapshot.test.mjs
+        run: node --test tests/native/current-stateful-source-profile.test.mjs scripts/qualification/operator-list-mongodb/cleanup-source-profile.test.mjs scripts/qualification/wire-source-snapshot.test.mjs
       - name: Check bounded canonical JSON and authentic protocol records on Node ${{ matrix.node-version }}
         run: node --test tests/unit/bounded-json.test.mjs tests/native/bounded-json-protocol-records.test.mjs
       - name: Check mixed stateful source and final publication on Node ${{ matrix.node-version }}
@@ -273,12 +273,13 @@ jobs:
           packages/backend-mongodb/tests/operator-lists.test.mjs
           packages/backend-mongodb/tests/operator-lists-driver.test.mjs
           packages/backend-mongodb/tests/operator-list-native-snapshot.test.mjs
+          packages/backend-mongodb/tests/operator-list-native-cleanup.test.mjs
           scripts/qualification/operator-list-mongodb/offline.test.mjs
           scripts/qualification/operator-list-mongodb/source-profile.test.mjs
-          scripts/qualification/operator-list-mongodb/snapshot-source-profile.test.mjs
+          scripts/qualification/operator-list-mongodb/cleanup-source-profile.test.mjs
           scripts/qualification/operator-list-mongodb/assembly-diagnostics.test.mjs
       - name: Retain exact new source and compiled assembly admission
-        run: node scripts/qualification/operator-list-mongodb/linux-snapshot-source-profile.mjs --diagnostics operator-list-assembly-${{ matrix.node-version }} > operator-list-source-${{ matrix.node-version }}.json
+        run: node scripts/qualification/operator-list-mongodb/linux-cleanup-source-profile.mjs --diagnostics operator-list-assembly-${{ matrix.node-version }} > operator-list-source-${{ matrix.node-version }}.json
       - name: Exercise operator lists against a separately owned MongoDB 8.0.34
         run: node scripts/qualification/operator-list-mongodb/ci.mjs operator-list-mongodb-${{ matrix.node-version }}
       - name: Retain original list results, traces, terminal logs and owned-fixture cleanup
@@ -320,7 +321,7 @@ jobs:
   action-source-journal:
     runs-on: ubuntu-24.04
     env:
-      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-root741-native429-source-5aaaee4-linux-gitlf-engineering
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-root741-native429-source-9c3db03-linux-gitlf-engineering
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -338,7 +339,7 @@ jobs:
           npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false
           npm run build
       - name: Record explicit current source and actual Node runtime metadata
-        run: node tests/unit/native-snapshot-source-admission.mjs --admit-native-snapshot > journal-native-source-${{ matrix.node }}.json
+        run: node tests/unit/native-cleanup-source-admission.mjs --admit-native-cleanup > journal-native-source-${{ matrix.node }}.json
       - name: Qualify source journal records and two-copy recovery on owned Elasticsearch 9.5.5
         run: node scripts/qualification/check-action-source-journal.mjs action-source-journal-${{ matrix.node }}.json
       - name: Retain source journal evidence and cleanup result

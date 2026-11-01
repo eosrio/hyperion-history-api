@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
-import {NATIVE_SNAPSHOT_ASSEMBLY as current, STATEFUL_NATIVE_SNAPSHOT_API_SOURCE_PROFILE as STATEFUL_CURRENT_NATIVE_API_SOURCE_PROFILE, assertNativeSnapshotOptions as assertCurrentNativeOptions} from '../unit/native-snapshot-source-admission.mjs';
+import {NATIVE_CLEANUP_ASSEMBLY as current, STATEFUL_NATIVE_CLEANUP_API_SOURCE_PROFILE as STATEFUL_CURRENT_NATIVE_API_SOURCE_PROFILE, assertNativeCleanupOptions as assertCurrentNativeOptions} from '../unit/native-cleanup-source-admission.mjs';
+import {NATIVE_SNAPSHOT_ASSEMBLY as priorSnapshot} from '../unit/native-snapshot-source-admission.mjs';
 import {admitNativeApiSourceOptions, STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE,
     STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE} from '../unit/stateful-engineering-source-admission.mjs';
 import {CURRENT_NATIVE_ASSEMBLY as priorCurrent} from '../unit/current-stateful-engineering-source-admission.mjs';
@@ -13,6 +14,9 @@ const canonical = path => readFileSync(new URL(path, root), 'utf8').replaceAll('
 test('active helpers have honest current pins and every historical snapshot keeps its original bytes', () => {
     for (const [path, expected] of Object.entries(current.helperSources)) assert.equal(sha(canonical(path)), expected, path);
     const manifest = JSON.parse(readFileSync(new URL(current.historicalSnapshot, root)));
+    const previous = JSON.parse(readFileSync(new URL('tests/fixtures/engineering-profiles/historical-81db-snapshot45/manifest.json', root)));
+    assert.equal(previous.executable, false);
+    for (const row of previous.files) {const bytes = readFileSync(new URL(row.snapshot, root)); assert.equal(bytes.length, row.bytes); assert.equal(sha(bytes), row.sha256);}
     assert.equal(manifest.executable, false); assert.equal(manifest.sourceCommit, '8e753246b7690ea1a98e9e47bde8d1f4ace56035');
     for (const row of manifest.files) {
         const bytes = readFileSync(new URL(row.snapshot, root)); assert.equal(bytes.length, row.bytes); assert.equal(sha(bytes), row.sha256);
@@ -20,6 +24,13 @@ test('active helpers have honest current pins and every historical snapshot keep
     const shared = 'tests/unit/stateful-engineering-source-admission.mjs';
     assert.notEqual(current.helperSources[shared], current.historicalHelperSha256);
     let prior = canonical(shared);
+    for (const addition of [
+        "import {STATEFUL_NATIVE_CLEANUP_API_SOURCE_PROFILE, admitNativeCleanupApiSourceOptions} from './native-cleanup-source-admission.mjs';\nexport {STATEFUL_NATIVE_CLEANUP_API_SOURCE_PROFILE};\n",
+        '    if (profile === STATEFUL_NATIVE_CLEANUP_API_SOURCE_PROFILE)\n        return admitNativeCleanupApiSourceOptions({nativeMarker, engineeringSourceProfile: profile});\n',
+        '    if (admission.profile === STATEFUL_NATIVE_CLEANUP_API_SOURCE_PROFILE) return admission;\n']) {
+        assert.equal(prior.split(addition).length, 2); prior = prior.replace(addition, '');
+    }
+    assert.equal(sha(prior), priorSnapshot.helperSources[shared], 'The 81db dispatcher predicates remain unchanged');
     for (const addition of [
         "import {STATEFUL_NATIVE_SNAPSHOT_API_SOURCE_PROFILE, admitNativeSnapshotApiSourceOptions} from './native-snapshot-source-admission.mjs';\nexport {STATEFUL_NATIVE_SNAPSHOT_API_SOURCE_PROFILE};\n",
         '    if (profile === STATEFUL_NATIVE_SNAPSHOT_API_SOURCE_PROFILE)\n        return admitNativeSnapshotApiSourceOptions({nativeMarker, engineeringSourceProfile: profile});\n',
@@ -50,6 +61,7 @@ test('current selector refuses getters, unknown/default/historical selections be
 });
 
 test('actual installed current native45 remains refused by the unchanged historical native39 and older profiles', () => {
+    assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: priorSnapshot.profile}), /Git-LF helper|complete byte inventories/);
     assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE}), /complete-kind native Git-LF package/);
     for (const profile of [undefined, STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE,
         STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE]) {

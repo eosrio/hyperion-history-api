@@ -32,7 +32,8 @@ test('actual shared snapshot writer retains complete loadable helper/data closur
     // Current and historical selections both load the active dispatcher graph. Only file bytes are exercised here.
     for (const selected of ['stateful-owner-v2-7412889-69a6606-complete-kind-engineering',
         'stateful-owner-v2-root741-native429-wire69-native45-linux-gitlf-engineering',
-        'stateful-owner-v2-root741-native429-source-5aaaee4-linux-gitlf-engineering']) {
+        'stateful-owner-v2-root741-native429-source-5aaaee4-linux-gitlf-engineering',
+        'stateful-owner-v2-root741-native429-source-9c3db03-linux-gitlf-engineering']) {
         const output = await owned(t), hashes = await captureWireSourceSnapshot({...base, output, engineeringSelected: Boolean(selected)});
         for (const file of [...engineeringAdmissionSourcePaths, ...base.runtimeSources]) {
             const original = await readFile(join(repo, file)), retained = await readFile(join(output, 'sources', file));

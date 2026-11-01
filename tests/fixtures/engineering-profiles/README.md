@@ -1,3 +1,5 @@
+`native-cleanup-linux.json` and `operator-list-cleanup-observation.json` describe the separately selected source9c3db03 cursor-cleanup candidate. Actual81db Linux evidence passes two bounded list cases then fails killCursors readConcern; new native Linux/physical qualification remains pending. Windows/e6/81db profile data and modules stay frozen; historical-81db-snapshot45 retains exact previous positive-test source. Every selected dispatcher snapshot now carries the full18-file transitive helper/data closure.
+
 # Explicit engineering assembly evidence
 
 `native-snapshot-linux.json` and `operator-list-snapshot-observation.json` describe the separate source5aaaee4 provisioning repair candidate. The e6 `current-native45-linux.json`, original Linux/Windows profiles and their helper modules remain unchanged historical inputs. New tests preserve both generations' predicates and refusals. `historical-e6-native45` contains exact old positive-test source as non-executable evidence. Actual repaired Linux/native qualification remains pending.

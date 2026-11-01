@@ -10,7 +10,7 @@ import {randomBytes} from 'node:crypto';
 import {argumentsFor, failure, PLAN, sha, verifyReadTrace} from './contract.mjs';
 import {installPublicationBarrier} from './cas-barrier.mjs';
 import {inventory} from './inventory.mjs';
-import {admitOperatorListAssembly} from './linux-snapshot-source-profile.mjs';
+import {admitOperatorListAssembly} from './linux-cleanup-source-profile.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..'), adapter = join(root, 'packages/backend-mongodb');
 const require = createRequire(join(adapter, 'package.json'));
 const rootRequire = createRequire(join(root, 'package.json'));

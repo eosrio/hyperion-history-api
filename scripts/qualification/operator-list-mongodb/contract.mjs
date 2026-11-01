@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 export const PLAN = Object.freeze({schemaVersion: 1, scope: 'synthetic-native-operator-lists',
-    profile: 'operator-list-mongodb-root741-native429-source-5aaaee4-linux-gitlf-engineering', rootSDK: '7412889a14c84342551fd864ea3ebfcf28849385',
+    profile: 'operator-list-mongodb-root741-native429-source-9c3db03-linux-gitlf-engineering', rootSDK: '7412889a14c84342551fd864ea3ebfcf28849385',
     sdk: '429a1bf1d3bddb746fa662de9529480890b7368f', driver: '7.2.0', server: '8.0.34',
     operationMS: 5000, snapshotMS: 60000, readMS: 10000, publicationMS: 120000,
     read: {names: 8, items: 2048, bytes: 2 * 1024 * 1024, attempts: 256},
