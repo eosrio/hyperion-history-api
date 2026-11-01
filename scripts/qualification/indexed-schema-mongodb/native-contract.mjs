@@ -6,7 +6,7 @@ export const sha=value=>createHash('sha256').update(value).digest('hex');
 export const hex=n=>n.toString(16).padStart(64,'0');
 export const plain=value=>JSON.parse(JSON.stringify(value));
 export const PLAN=freeze({schemaVersion:1,scope:'synthetic-native-indexed-schema',
- profile:'indexed-schema-mongodb-sdk49-2da-linux-gha-v1',assembly:'indexed-schema-sdk49-native2bf-engineering-v1',
+ profile:'indexed-schema-mongodb-sdk49-2da-linux-gha-v2',assembly:'indexed-schema-sdk49-native2bf-engineering-v1',
  product:'28f31a21e817a1ada684c4bb3b843c70e2580b17',base:'2da0d8fa44b447134261128d75d3ada100e9a59b',
  sdk:'dc20a03f2b60ba05a3369d677222a9cf0d65d299',driver:'7.2.0',server:'8.0.34',comparison:'mongodb-simple-utf8-v1',
  operationMS:5000,transactionMS:15000,traceEvents:16384,evidenceBytes:32*1024*1024,runtimeVersions:['v24.22.1','v26.4.0'],

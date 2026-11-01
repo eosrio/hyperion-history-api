@@ -10,7 +10,7 @@ import {OwnedMongoFixture,MONGODB_IMAGE,MONGODB_VERSION,waitForMongo} from '../p
 import {terminalChild} from '../stateful-complete-kind-mongodb/ci.mjs';
 import {afterReadiness} from '../operator-list-mongodb/contract.mjs';
 import {PLAN,failure,sha,assertNativeCompletion,persistNativeChildIntent} from './native-contract.mjs';
-import {admitNativeAssembly,NATIVE_PROFILE} from './native-assembly.mjs';
+import {admitNativeAssembly,NATIVE_PROFILE,NATIVE_PROFILE_PATH} from './native-assembly.mjs';
 import {verifyIndexedTrace,verifyCursorClosure,verifyExplain} from './native-trace.mjs';
 const root=fileURLToPath(new URL('../../../',import.meta.url)),json=(path,value)=>writeFileSync(path,JSON.stringify(value,null,2)+'\n',{flag:'wx'});
 export async function runCI(profile,output){
@@ -26,7 +26,7 @@ export async function runCI(profile,output){
   report.checkout={commit:git(['rev-parse','HEAD']),tree:git(['rev-parse','HEAD^{tree}']),workflowSha:process.env.GITHUB_WORKFLOW_SHA,
    runId:process.env.GITHUB_RUN_ID,runAttempt:process.env.GITHUB_RUN_ATTEMPT,job:process.env.GITHUB_JOB};assert.equal(report.checkout.commit,source);
   assert.equal(git(['status','--porcelain=v1','--untracked-files=all','--','src','packages/backend-mongodb','package.json','package-lock.json','tsconfig.json','.bun-version',
-   '.github/workflows/indexed-schema-native.yml',...NATIVE_PROFILE.sourceFiles.map(row=>row.path),'scripts/qualification/indexed-schema-mongodb/native-profile-v1.json']),'','Unreviewed native/fixture source');
+   '.github/workflows/indexed-schema-native.yml',...NATIVE_PROFILE.sourceFiles.map(row=>row.path),NATIVE_PROFILE_PATH]),'','Unreviewed native/fixture source');
   assert.equal(MONGODB_IMAGE,NATIVE_PROFILE.fixture.image);assert.equal(MONGODB_VERSION,PLAN.server);
   // Source/runtime admission and original GHA source binding finish before creating any Docker effect.
   check();fixture=new OwnedMongoFixture();report.run=fixture.run;report.cleanup=fixture.cleanupResult;

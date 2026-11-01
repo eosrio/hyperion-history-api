@@ -15,8 +15,35 @@ import {createMongoDbStatefulIndexedAdapterV1} from '../../../packages/backend-m
 import {selectMongoDbIndexedEngineeringAssemblyV1} from '../../../packages/backend-mongodb/dist/stateful-indexed-engineering-v1.js';
 import {PLAN,ORACLE,argumentsFor,dispatchCases,assertNativeCompletion,persistNativeChildIntent,projectionDefinition,projectionLimits,schemaModel,corpus,page,count,assertCreatedPeers,assertCoveredAbsence,hex,sha} from './native-contract.mjs';
 import {NATIVE_PROFILE,observeNativeInputs,assertNativeInputs,assertNativeRuntime} from './native-assembly.mjs';
+import {ASSEMBLY} from './assembly.mjs';
+import {sourceReferences,observeSourceClosure,assertSourceClosure} from './native-source-closure.mjs';
 import {installIndexedCommandHooks} from './native-command-hooks.mjs';
 import {verifyIndexedTrace,verifyCursorClosure,verifyExplain,bsonCopy,captureAndVerifyExplain,lookupIndexSpecs,verifyLookupCatalog} from './native-trace.mjs';
+
+test('integrated native profile closes every static import, literal data input and all 18 declared SDK49 routes without evaluating them',()=>{
+ const boundaries=new Set(ASSEMBLY.sources.map(row=>row.path));
+ for(const [key,prefix]of Object.entries({rootBuild:'build',nativeBuild:'packages/backend-mongodb/dist',rootSDK:'node_modules/@eosrio/hyperion-sdk/dist',nativeSDK:'packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist'}))for(const row of ASSEMBLY.trees[key])boundaries.add(prefix+'/'+row.path);
+ const closure=observeSourceClosure({root:fileURLToPath(new URL('../../../',import.meta.url)),ts,boundaries,...NATIVE_PROFILE.sourceClosure.inputs});
+ assertSourceClosure(closure,NATIVE_PROFILE);
+ for(const path of ['tests/unit/sdk49-indexed-source-admission.mjs','tests/fixtures/engineering-profiles/sdk49-indexed-linux.json','scripts/qualification/operator-list-mongodb/sdk49-source-profile.mjs'])assert(closure.files.some(row=>row.path===path));
+ assert.equal(closure.edges.filter(row=>row.kind==='declared-route').length,18);
+ for(const path of ['tests/unit/sdk49-indexed-source-admission.mjs','tests/fixtures/engineering-profiles/sdk49-indexed-linux.json']){
+  const altered=structuredClone(NATIVE_PROFILE);altered.sourceFiles=altered.sourceFiles.filter(row=>row.path!==path);assert.throws(()=>assertSourceClosure(closure,altered),/transitive source\/data pin/);
+ }
+ const altered=structuredClone(closure);altered.edges.pop();assert.throws(()=>assertSourceClosure(altered,NATIVE_PROFILE),/complete graph/);
+ const legacy=JSON.parse(readFileSync(new URL('./native-profile-v1.json',import.meta.url)));assert.equal(legacy.profile,NATIVE_PROFILE.supersedes.profile);assert.notEqual(legacy.profile,PLAN.profile);
+ const argv=['--profile',legacy.profile,'--run','--allow-failpoints','--database','h45_indexed_'+'a'.repeat(12),'--output','new-dir','--source','b'.repeat(40),'--assembly-sha256','c'.repeat(64)];assert.throws(()=>argumentsFor(argv,{}));
+});
+
+test('source inspection rejects mismatched or stalled scanner APIs within an independent finite input bound',()=>{
+ const source="// import './comment.mjs'\nimport {x} from './actual.mjs'; const a = new URL('./data.json',import.meta.url); import('./lazy.mjs');";
+ assert.deepEqual(sourceReferences(ts,source),[{kind:'module',specifier:'./actual.mjs'},{kind:'data',specifier:'./data.json'},{kind:'module',specifier:'./lazy.mjs'}]);
+ assert.throws(()=>sourceReferences({...ts,SyntaxKind:{...ts.SyntaxKind,EndOfFile:undefined}},source),/EOF API/);
+ assert.throws(()=>sourceReferences({...ts,createScanner:()=>({getText:()=>'',scan:()=>2})},source),/text API/);
+ let calls=0;const stalled={...ts,createScanner:()=>({getText:()=>source,scan:()=>{calls++;return 2;},getTokenEnd:()=>0,getTokenText:()=>'',getTokenValue:()=>''})};
+ assert.throws(()=>sourceReferences(stalled,source),/advance/);assert.equal(calls,2);
+ assert.throws(()=>sourceReferences({createScanner:()=>assert.fail('Oversized source reached scanner')},' '.repeat(1024*1024+1)),/finite input bound/);
+});
 
 function observedPlan(major){
  const dir='./fixtures/9d8-explain/';
