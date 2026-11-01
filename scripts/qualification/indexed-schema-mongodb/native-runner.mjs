@@ -7,7 +7,7 @@ import {pathToFileURL} from 'node:url';
 import {PLAN,ORACLE,argumentsFor,dispatchCases,projectionDefinition,projectionLimits,schemaModel,corpus,page,count,assertCreatedPeers,assertCoveredAbsence,plain,hex,sha,failure} from './native-contract.mjs';
 import {admitNativeAssembly} from './native-assembly.mjs';
 import {installIndexedCommandHooks} from './native-command-hooks.mjs';
-import {monitorIndexed,verifyIndexedTrace,verifyCursorClosure,verifyExplain,bsonCopy,bsonEvidence} from './native-trace.mjs';
+import {monitorIndexed,verifyIndexedTrace,verifyCursorClosure,captureAndVerifyExplain,bsonCopy,bsonEvidence} from './native-trace.mjs';
 const json=(path,value)=>{const raw=Buffer.from(JSON.stringify(value,null,2)+'\n');assert(raw.length<=PLAN.evidenceBytes);writeFileSync(path,raw,{flag:'wx'});};
 export async function run(options){
  assert.equal(process.platform,'linux');assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(options.source,process.env.GITHUB_SHA);
@@ -144,9 +144,9 @@ export async function run(options){
     for(const request of [page(),page({order:schemaModel().orders[1]}),count()]){
      const before=await state.adapter.recovery(),start=captured.length;await direct(request);const actual=captured.slice(start).find(row=>row.input.aggregate).input;
      const command={aggregate:actual.aggregate,pipeline:actual.pipeline,hint:actual.hint,collation:actual.collation,allowDiskUse:actual.allowDiskUse,cursor:{batchSize:1},maxTimeMS:PLAN.operationMS};
+     const lookupIndexes=modelNative.mongoIndexedIndexesV1(state.entries[0].native).filter(row=>row.name.startsWith('h45_ix_l_')).map(row=>row.name);
      const explanation=await admin.db(options.database).command({explain:command,verbosity:'executionStats'},{promoteLongs:false,signal:AbortSignal.timeout(PLAN.operationMS)});
-     assert.deepEqual((await state.adapter.recovery()).view,before.view);const checked=verifyExplain(explanation,{baseHint:actual.hint,lookupIndexes:modelNative.mongoIndexedIndexesV1(state.entries[0].native).filter(row=>row.name.startsWith('h45_ix_l_')).map(row=>row.name)});
-     explains.push({pipelineSha256:sha(BSON.serialize({pipeline:actual.pipeline})),actualCommand:bsonEvidence(command),explain:bsonEvidence(explanation),checked,sealedView:before.view});
+     await captureAndVerifyExplain(explains,{command,explanation,sealedView:before.view,baseHint:actual.hint,lookupIndexes},async()=>(await state.adapter.recovery()).view);
     }return {actualBsonPipelines:explains.length,explainOutsideServingTransaction:true};
    },
    'update-delete-and-canonical-fork':async()=>{

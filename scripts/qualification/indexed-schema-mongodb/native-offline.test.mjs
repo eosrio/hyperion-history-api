@@ -4,7 +4,7 @@ import test from 'node:test';
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import * as ts from 'typescript/unstable/ast';
-import {Long} from 'mongodb';
+import {BSON,Long} from 'mongodb';
 import * as logical from '@eosrio/hyperion-sdk/projection-stateful';
 import * as ownerSdk from '@eosrio/hyperion-sdk/projection-stateful-owner-v2';
 import * as indexed from '@eosrio/hyperion-sdk/projection-stateful-indexed-query-v1';
@@ -13,10 +13,37 @@ import {receiveMongoIndexedModelV1,planMongoIndexedQueryV1,mongoIndexedIndexesV1
 import {createMongoDbStatefulCompleteKindAdapterV1} from '../../../packages/backend-mongodb/dist/stateful-complete-kind-v1.js';
 import {createMongoDbStatefulIndexedAdapterV1} from '../../../packages/backend-mongodb/dist/stateful-indexed-v1.js';
 import {selectMongoDbIndexedEngineeringAssemblyV1} from '../../../packages/backend-mongodb/dist/stateful-indexed-engineering-v1.js';
-import {PLAN,ORACLE,argumentsFor,dispatchCases,assertNativeCompletion,persistNativeChildIntent,projectionDefinition,projectionLimits,schemaModel,corpus,page,count,assertCreatedPeers,assertCoveredAbsence,hex} from './native-contract.mjs';
+import {PLAN,ORACLE,argumentsFor,dispatchCases,assertNativeCompletion,persistNativeChildIntent,projectionDefinition,projectionLimits,schemaModel,corpus,page,count,assertCreatedPeers,assertCoveredAbsence,hex,sha} from './native-contract.mjs';
 import {NATIVE_PROFILE,observeNativeInputs,assertNativeInputs,assertNativeRuntime} from './native-assembly.mjs';
 import {installIndexedCommandHooks} from './native-command-hooks.mjs';
-import {verifyIndexedTrace,verifyCursorClosure,verifyExplain,bsonCopy} from './native-trace.mjs';
+import {verifyIndexedTrace,verifyCursorClosure,verifyExplain,bsonCopy,captureAndVerifyExplain} from './native-trace.mjs';
+
+test('a received invalid explain remains raw and checksummed evidence while its real verifier still fails',async()=>{
+ const records=[],view={checkpoint:{blockNum:7,blockId:'a'.repeat(64)}},command={aggregate:'sidecar',pipeline:[{$match:{x:Long.fromString('9007199254740993')}}],hint:'base',allowDiskUse:false},
+  explain={stages:[{$cursor:{queryPlanner:{winningPlan:{stage:'IXSCAN',indexName:'base'}}}},{$lookup:{indexesUsed:['join-a']}},{$lookup:{indexesUsed:[]}}],nReturned:Long.fromString('9007199254740993')},
+  input={command,explanation:explain,sealedView:view,baseHint:'base',lookupIndexes:['join-a','join-b']};
+ await assert.rejects(captureAndVerifyExplain(records,input,async()=>structuredClone(view)),/Lookup index not observed: join-b/);
+ assert.equal(records.length,1);assert.equal(records[0].status,'received');assert.equal(records[0].checked,undefined);
+ const raw=Buffer.from(JSON.stringify(records,null,2)+'\n'),saved=JSON.parse(raw.toString());
+ assert.equal(sha(raw),sha(Buffer.from(JSON.stringify(saved,null,2)+'\n')));
+ assert.deepEqual(BSON.EJSON.deserialize(saved[0].actualCommand,{relaxed:false}),command);
+ assert.deepEqual(BSON.EJSON.deserialize(saved[0].explain,{relaxed:false}),explain);assert.deepEqual(saved[0].sealedView,view);assert.deepEqual(saved[0].afterView,view);
+ for(const [key,value]of [['command',command],['explain',explain]]){const pin=saved[0].bsonReserialization[key],bytes=Buffer.from(pin.base64,'base64');
+  assert.equal(pin.bytes,bytes.length);assert.equal(pin.sha256,sha(bytes));assert.deepEqual(bytes,BSON.serialize(value));}
+ assert.equal(saved[0].bsonReserialization.method,'mongodb-bson-serialize-not-wire-bytes');
+ assert.equal(saved[0].pipelineSha256,sha(BSON.serialize({pipeline:command.pipeline})));
+ const runner=readFileSync(new URL('./native-runner.mjs',import.meta.url),'utf8');
+ const failure=runner.indexOf('}catch(error){primary=error;report.failure=failure(error);}'),write=runner.indexOf("['explain.json',explains]"),checksums=runner.indexOf("['trace.json','samples.json','explain.json','report.json'].map");
+ assert(failure>=0&&write>failure&&checksums>write);assert(runner.includes("report.status=primary?'failed':'passed-native-indexed-only'"));
+});
+test('valid plans verify only after retention; changed or unavailable post-view keeps the received record',async()=>{
+ const command={aggregate:'sidecar',pipeline:[],hint:'base'},view={revision:'one'},explanation={queryPlanner:{winningPlan:{stage:'IXSCAN',indexName:'base'}}};
+ const input={command,explanation,sealedView:view,baseHint:'base',lookupIndexes:[]},good=[];
+ await captureAndVerifyExplain(good,input,async()=>({...view}));assert.equal(good[0].status,'verified');assert.equal(good[0].checked.baseIndex,'base');
+ for(const read of [async()=>({revision:'two'}),async()=>{throw new Error('view unavailable');}]){
+  const rows=[];await assert.rejects(captureAndVerifyExplain(rows,input,read));assert.equal(rows.length,1);assert.equal(rows[0].status,'received');assert.equal(rows[0].checked,undefined);
+ }
+});
 
 function actualMakePrefixes(){
  const source=readFileSync(new URL('./native-runner.mjs',import.meta.url),'utf8');assert(source.length<=512*1024);

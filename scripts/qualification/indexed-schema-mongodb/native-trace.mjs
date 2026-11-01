@@ -93,3 +93,17 @@ export function verifyExplain(explain,{baseHint,lookupIndexes}){
  };visit(explain);assert(indexes.has(baseHint),'Hinted base index not observed');for(const name of lookupIndexes)assert(lookups.has(name)||indexes.has(name),'Lookup index not observed: '+name);
  return {baseIndex:baseHint,lookupIndexes:[...lookups],planNodes:visited};
 }
+
+/** Retain each received native command/explain before the sealed-view and plan assertions. */
+export async function captureAndVerifyExplain(records,{command,explanation,sealedView,baseHint,lookupIndexes},readView){
+ assert(Array.isArray(records)&&records.length<3,'Explain attempt count bound');
+ const pin=value=>{const raw=BSON.serialize(value);return {bytes:raw.length,sha256:sha(raw),base64:raw.toString('base64')};};
+ const attempt={status:'received',pipelineSha256:sha(BSON.serialize({pipeline:command.pipeline})),
+  actualCommand:bsonEvidence(command),explain:bsonEvidence(explanation),
+  bsonReserialization:{method:'mongodb-bson-serialize-not-wire-bytes',command:pin(command),explain:pin(explanation)},
+  sealedView,expected:{baseHint,lookupIndexes:[...lookupIndexes]}};
+ assert(Buffer.byteLength(JSON.stringify([...records,attempt],null,2)+'\n')<=PLAN.evidenceBytes,'Explain evidence byte bound');
+ records.push(attempt);
+ attempt.afterView=await readView();assert.deepEqual(attempt.afterView,sealedView);
+ attempt.checked=verifyExplain(explanation,{baseHint,lookupIndexes});attempt.status='verified';return attempt;
+}
