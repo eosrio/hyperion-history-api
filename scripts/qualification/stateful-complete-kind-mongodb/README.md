@@ -59,9 +59,20 @@ getMore must omit the field. Failure diagnostics retain bounded names, messages,
 numeric/string codes and at most two nested causes, without stack or command
 payloads. This preserves the server reason if cursor cleanup also fails.
 
-The current executor profile additionally requires a controlled full-driver
+The executor profile additionally requires a controlled full-driver
 test using the actual root-managed client/session and the separately installed
 adapter driver. It covers the public option allowlist, real execution/server
 command path, exact initial bound, getMore omission, transaction callback retries,
 shared attempt refusal and foreign-client refusal. Those controls have no socket
 or database and cannot replace this physical replica-set run.
+
+The current `stateful-owner-v2-7412889-18d235e-complete-kind-metadata-engineering`
+profile combines the reviewed canonical JSON and native metadata changes. Its
+new native and caller inventories are pinned separately from every older
+profile. The qualification gates use the bounded client's selected server
+command boundary, await before sending and after the actual response, and leave
+metadata, cleanup and unrelated clients outside those gates. Five focused
+no-socket cases cover these gates, fault-triggered callback retry, cancellation
+and argument/result identity. They supplement the six existing execution
+controls and two pure source-profile checks; physical MongoDB remains a
+separate CI requirement.

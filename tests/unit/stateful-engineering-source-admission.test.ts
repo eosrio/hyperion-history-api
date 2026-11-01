@@ -5,7 +5,7 @@ test('native engineering source option checks exact artifacts and leaves the def
         {stdout: 'pipe', stderr: 'pipe', timeout: 60000});
     const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
     expect({code, error: code ? stderr : undefined}).toEqual({code: 0, error: undefined});
-    const result = JSON.parse(stdout); expect(result.cases).toBe(40); expect(result.sealedEngineeringOption).toBe(true);
+    const result = JSON.parse(stdout); expect(result.cases).toBe(41); expect(result.sealedEngineeringOption).toBe(true);
     expect(result.default716Preserved).toBe(true); expect(result.artifactAndSourceSetChecked).toBe(true);
     expect(result.unknownRevisionPackageTreeArtifactRefused).toBe(true); expect(result.defaultOverrideRefusedBeforeEffects).toBe(true);
     expect(result.services).toBe(false); expect(result.defaultDistributionQualified).toBe(false); expect(result.launchQualified).toBe(false);

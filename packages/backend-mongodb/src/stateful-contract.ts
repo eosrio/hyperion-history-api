@@ -10,6 +10,11 @@ import {bsonBytes, MAX_METADATA_BYTES, retainedBytes, type RollbackPolicy, type 
 export const STATEFUL_STORAGE = 'h45-stateful-mongodb-v1';
 export const MAX_BSON_BYTES = 16 * 1024 * 1024;
 export const ZERO: ProjectionCheckpoint = Object.freeze({blockNum: 0, blockId: '0'.repeat(64)});
+// Static schema/predicate allocations only; every supplied metadata value is revalidated.
+const nonHexCharacter = /[^a-f0-9]/;
+const receiptFields = ['blockNum', 'blockId', 'sourceDigest', 'candidateDigest'] as const;
+const undoFields = ['block', 'digest', 'sourceDigest', 'count', 'imageBytes', 'imagesHash'] as const;
+const blockFields = ['blockNum', 'blockId', 'previousBlockId'] as const;
 export const sha = (value: string): string => createHash('sha256').update(value).digest('hex');
 export const equalPoint = (a: ProjectionCheckpoint, b: ProjectionCheckpoint): boolean => a.blockNum === b.blockNum && a.blockId === b.blockId;
 export function requireState(ok: unknown, message: string, code = 'stateful.invalid-contract'): asserts ok {
@@ -31,7 +36,7 @@ export function fields(value: unknown, names: readonly string[]): asserts value 
     }), 'Unexpected fields/accessors');
 }
 export function hex(value: unknown): asserts value is string {
-    requireState(typeof value === 'string' && /^[a-f0-9]{64}$/.test(value), 'Expected SHA-256');
+    requireState(typeof value === 'string' && value.length === 64 && !nonHexCharacter.test(value), 'Expected SHA-256');
 }
 export function size(value: number, maximum: number, name: string): number {
     requireState(Number.isSafeInteger(value) && value > 0 && value <= maximum, `Explicit ${name} bound required`); return value;
@@ -100,7 +105,7 @@ export function decodeRow(d: StatefulDeclaration, target: StatefulKey, input: un
     requireState(result.canonical === input.json && bsonBytes(input) <= MAX_BSON_BYTES, 'Stored canonical value differs'); return result.value;
 }
 function receipt(value: unknown): asserts value is StatefulReceipt {
-    fields(value, ['blockNum', 'blockId', 'sourceDigest', 'candidateDigest']); hex(value.blockId); hex(value.sourceDigest); hex(value.candidateDigest);
+    fields(value, receiptFields); hex(value.blockId); hex(value.sourceDigest); hex(value.candidateDigest);
     requireState(Number.isSafeInteger(value.blockNum) && (value.blockNum as number) > 0, 'Receipt height differs');
 }
 /** Complete portable state plus native chain/receipt/byte invariants on every storage load/CAS. */
@@ -132,8 +137,8 @@ export function assertStatefulHistory(d: StatefulDeclaration, policy: StatefulPo
     requireState(Array.isArray(m.receipts) && m.receipts.length <= policy.receiptRetention && Array.isArray(m.undo), 'Receipt/undo bound');
     let previous = m.floor; const ids = new Set<string>([previous.blockId]);
     for (const u of m.undo as readonly StatefulUndo[]) {
-        fields(u, ['block', 'digest', 'sourceDigest', 'count', 'imageBytes', 'imagesHash']);
-        fields(u.block, ['blockNum', 'blockId', 'previousBlockId']); hex(u.block.blockId); hex(u.block.previousBlockId);
+        fields(u, undoFields);
+        fields(u.block, blockFields); hex(u.block.blockId); hex(u.block.previousBlockId);
         hex(u.digest); hex(u.sourceDigest); hex(u.imagesHash);
         requireState(u.block.blockNum === previous.blockNum + 1 && u.block.previousBlockId === previous.blockId && !ids.has(u.block.blockId) &&
             Number.isSafeInteger(u.count) && u.count >= 0 && u.count <= d.limits.mutations && Number.isSafeInteger(u.imageBytes) && u.imageBytes >= 0 &&

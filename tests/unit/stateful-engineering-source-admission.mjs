@@ -14,6 +14,11 @@ export const STATEFUL_METADATA_FIELDS_LEGACY_SOURCE_PROFILE = 'stateful-owner-v2
 export const STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE = 'stateful-owner-v2-7412889-18d235e-complete-kind-engineering';
 export const STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE = 'stateful-owner-v2-7412889-18d235e-complete-kind-commands-engineering';
 export const STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE = 'stateful-owner-v2-7412889-18d235e-complete-kind-executor-engineering';
+export const STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE = 'stateful-owner-v2-7412889-18d235e-complete-kind-metadata-engineering';
+export const STATEFUL_COMPLETE_KIND_METADATA_NATIVE_SOURCE = Object.freeze({
+    commit: '056c7c4d03be81bd1f0353a165b9aa3c9c6735ec', tree: 'ee94a480a8aede39ec7fe1b707c87efaa7164868',
+    files: 39, sha256: 'be3705434fc5c9ec4a7a0a604247303c57515ee28a23b111b62512920c1894c9',
+});
 export const STATEFUL_COMPLETE_KIND_EXECUTOR_NATIVE_SOURCE = Object.freeze({
     commit: '66d3a6b4152ba1ee6766b6ee3a22ccfe89b08224', tree: 'f21644e0642b67863524058dc62c574ee33d0061',
     files: 39, sha256: '8455fe288d51a02d39a143c9f152dd7ee6e3c3f098616d957c072b8aa8817d4a',
@@ -40,6 +45,13 @@ export const STATEFUL_COMPLETE_KIND_CALLER_SOURCE = Object.freeze({
         ['src/indexer/projection/runtime.ts', '697c2ed177bc51e04cb9170debf644d595bcc7bcc1f4c8f7735f1415648f6785'],
     ]),
 });
+export const STATEFUL_COMPLETE_KIND_METADATA_CALLER_SOURCE = Object.freeze({
+    commit: '056c7c4d03be81bd1f0353a165b9aa3c9c6735ec', files: 550,
+    sha256: '7f0117c6ec49a801820c9130cea1ec7f7e09227db524ff85b24ed9385933b911',
+    sources: Object.freeze([...STATEFUL_COMPLETE_KIND_CALLER_SOURCE.sources,
+        ['src/indexer/helpers/bounded-json.ts', '9c62cc0fbb69fe34dc739d4904690dd506c10335590aba2a3d1e6a5dc068b5b7'],
+    ]),
+});
 // Production source was committed before these additive qualification profiles.
 export const STATEFUL_METADATA_FIELDS_NATIVE_SOURCE = Object.freeze({
     commit: '0b51a20c3d9a9b95c39a713c89cad6d55c5103d4', tree: '686850ba3acb00fc1f9424dd300483b83f84c654',
@@ -50,9 +62,12 @@ const sdk = '58d68c5cea81490bbb1c9a7736d633d465bab3ef';
 const metadataSdk = 'dd85ee590dcd1e359509c6c41ee99b541706b1f6';
 const completeKindSdk = '7412889a14c84342551fd864ea3ebfcf28849385';
 const completeKindProfile = profile => profile === STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE || profile === STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE
-    || profile === STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE;
-const completeKindNativeSource = profile => profile === STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE ? STATEFUL_COMPLETE_KIND_EXECUTOR_NATIVE_SOURCE
+    || profile === STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE || profile === STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE;
+const completeKindNativeSource = profile => profile === STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE ? STATEFUL_COMPLETE_KIND_METADATA_NATIVE_SOURCE
+    : profile === STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE ? STATEFUL_COMPLETE_KIND_EXECUTOR_NATIVE_SOURCE
     : profile === STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE ? STATEFUL_COMPLETE_KIND_COMMANDS_NATIVE_SOURCE : STATEFUL_COMPLETE_KIND_NATIVE_SOURCE;
+const completeKindCallerSource = profile => profile === STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE
+    ? STATEFUL_COMPLETE_KIND_METADATA_CALLER_SOURCE : STATEFUL_COMPLETE_KIND_CALLER_SOURCE;
 const fieldsProfile = profile => profile === STATEFUL_METADATA_FIELDS_API_SOURCE_PROFILE || profile === STATEFUL_METADATA_FIELDS_LEGACY_SOURCE_PROFILE;
 const metadataProfile = profile => profile === STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE || profile === STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE || fieldsProfile(profile);
 const legacyProfile = profile => profile === 'default-716' || profile === STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE || profile === STATEFUL_METADATA_FIELDS_LEGACY_SOURCE_PROFILE;
@@ -128,7 +143,7 @@ export function admitNativeApiSourceOptions(input = {}) {
         const runtime = coordinatedRuntime(profile), nativeSource = completeKindNativeSource(profile);
         return Object.freeze({nativeMarker, wireRevision: wire, profile, ...runtime, wireTree: '719a03aa0ea7b72d6a7411cfaaad78b05a1a8c4a',
             sdkTree: 'c486de0538bf33b4d7a199147e97ba763d731bab', nativeTree: nativeSource.tree,
-            nativeSourceCommit: nativeSource.commit, callerSourceCommit: STATEFUL_COMPLETE_KIND_CALLER_SOURCE.commit,
+            nativeSourceCommit: nativeSource.commit, callerSourceCommit: completeKindCallerSource(profile).commit,
             qualificationOnly: true});
     }
     const {sdkFiles, nativeFiles} = coordinatedRuntime(profile);
@@ -146,7 +161,7 @@ function coordinatedRuntime(profile) {
     const nativeRoot = rootFor('@eosrio/hyperion-backend-mongodb/stateful-owner-v2');
     const sdkPackage = read(resolve(sdkRoot, 'package.json')), nativePackage = read(resolve(nativeRoot, 'package.json'));
     if (completeKindProfile(profile)) {
-        const nativeSource = completeKindNativeSource(profile);
+        const nativeSource = completeKindNativeSource(profile), callerSource = completeKindCallerSource(profile);
         exact(sdkPackage.sha256, 'd2d92cb7a7f2d8b939391910372d8e551103939cce488244cf657f3ae301d680', 'complete-kind SDK package');
         exact(nativePackage.sha256, 'a63644e9195126e18955f91ef663161e6f9d215d262513d1d5375b28300f84d5', 'complete-kind native Git-LF package');
         exact(nativePackage.json.devDependencies['@eosrio/hyperion-sdk'], 'git+https://github.com/eosrio/hyperion-sdk.git#' + completeKindSdk, 'complete-kind native SDK source');
@@ -160,9 +175,9 @@ function coordinatedRuntime(profile) {
         const callerRoot = fileURLToPath(new URL('../../', import.meta.url));
         exact(read(resolve(callerRoot, 'package.json')).sha256, 'c98370f6c9f81aa8d6c4554ea798896d5e02bf9f8554e775f6edb1ee2c8bae54', 'complete-kind caller package');
         const callerFiles = inventory(resolve(callerRoot, 'build'), 1024);
-        exact(callerFiles.files, STATEFUL_COMPLETE_KIND_CALLER_SOURCE.files, 'complete-kind caller count');
-        exact(callerFiles.sha256, STATEFUL_COMPLETE_KIND_CALLER_SOURCE.sha256, 'complete-kind caller emissions');
-        for (const [path, expected] of STATEFUL_COMPLETE_KIND_CALLER_SOURCE.sources)
+        exact(callerFiles.files, callerSource.files, 'complete-kind caller count');
+        exact(callerFiles.sha256, callerSource.sha256, 'complete-kind caller emissions');
+        for (const [path, expected] of callerSource.sources)
             exact(sha(readFileSync(resolve(callerRoot, path))), expected, 'complete-kind Git-LF caller ' + path);
         return {sdkFiles, nativeFiles, callerFiles};
     }
