@@ -4,7 +4,7 @@ import {EventEmitter} from 'node:events';
 import {createHash} from 'node:crypto';
 import {get as httpGet} from 'node:http';
 import Fastify from 'fastify';
-import {nativeApiWireSource, STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE} from './protocol-native-api-source.mjs';
+import {nativeApiWireSource, STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE} from './protocol-native-api-source.mjs';
 
 registerHooks({resolve(specifier, context, next) {
     if (specifier.includes('node-abieos')) throw new Error('Native API imported the legacy addon');
@@ -96,7 +96,7 @@ const relay = (manager, row) => manager.routeActionTraceToClients({account: row.
     message: JSON.stringify(row)});
 const history = (app, socket, row, readUntil = row.block_num) => streamPastCommon(app, socket, 'native-history-request', {
     contract: row.act.account, action: row.act.name, start_from: row.block_num, read_until: readUntil}, 'action');
-const source = await nativeApiWireSource({engineeringSourceProfile: STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE}); let consumer;
+const source = await nativeApiWireSource({engineeringSourceProfile: STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE}); let consumer;
 const result = {passed: true, originalNative: [], schema1Compatibility: 'separate existing API runners', nativeActivation: false,
     fullWorkerQualification: false, transportQualification: false};
 try {
@@ -267,7 +267,7 @@ try {
     assert(consumer.signals.filter(signal => signal !== undefined).every(signal => signal instanceof AbortSignal));
 } finally {await consumer?.app.close(); await source.dispose();}
 // An old unmarked canonical source cannot acquire native authority by storing a new-format label.
-const legacySource = await nativeApiWireSource({nativeMarker: false, engineeringSourceProfile: STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE}); let legacy;
+const legacySource = await nativeApiWireSource({nativeMarker: false, engineeringSourceProfile: STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE}); let legacy;
 try {
     await legacySource.appendUntil(2); const row = await legacySource.action(2); legacy = await api(legacySource); legacy.setRows([row]);
     const refused = await legacy.request(); assert.equal(refused.statusCode, 503, refused.body); result.unmarkedNativeRefused = true;

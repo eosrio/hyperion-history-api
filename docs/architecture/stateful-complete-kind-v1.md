@@ -101,3 +101,18 @@ fallback. A root-managed client/session from the separately installed root drive
 must pass full no-socket execution controls through actual server-command and
 wire preparation, in addition to physical MongoDB CI. Transaction CSOT, abort
 signals, snapshot validation and shared attempt accounting remain unchanged.
+
+The additive `stateful-owner-v2-7412889-18d235e-complete-kind-metadata-engineering`
+profile combines the reviewed canonical JSON and metadata validation changes.
+It pins source `056c7c4d03be81bd1f0353a165b9aa3c9c6735ec`, native tree
+`ee94a480a8aede39ec7fe1b707c87efaa7164868`, and separate exact inventories for
+the 39 native outputs and 550 caller outputs. The caller source checks include
+the bounded canonical JSON implementation. SDK, Wire and driver pins are
+unchanged. All previous profiles retain their original pins and failed outcomes.
+
+This combined assembly must pass the existing 1,480-block workload within its
+180,000 ms deadline and the separately guarded physical workload, resource,
+900-second run, 60-second startup and 90-second cleanup gates. The complete
+source-admission subprocess suite also retains all original controls and adds
+refusal of the earlier executor assembly, for 41 cases. These workload and
+subprocess gates run in CI; the no-socket controls remain separate evidence.
