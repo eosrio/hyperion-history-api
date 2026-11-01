@@ -42,6 +42,7 @@ class SnapshotCursorCleanupOperation extends RunCommandOperation {
         requireState(session === this.session && !session.hasEnded && session.snapshotEnabled && !session.inTransaction()
             && session.id !== undefined, 'Snapshot cursor cleanup requires its original live session', 'stateful.unavailable');
         const command = super.buildCommand(connection, session);
+        requireState(Object.keys(command)[0] === 'killCursors', 'Snapshot cursor cleanup must remain a killCursors command', 'stateful.unavailable');
         requireState(command.readConcern === undefined, 'Cursor cleanup cannot carry read concern', 'stateful.unavailable');
         return {...command, lsid: session.id};
     }
@@ -59,7 +60,7 @@ export function executeCompleteKindCommand(client: MongoClient, database: string
     // Public Db.command reconstructs an option allowlist and strips omitMaxTimeMS.
     // Use the same pinned operation/session/selection engine without that lossy facade.
     // Its real execution still consumes the client's actual transaction CSOT and signal.
-    const Operation = command.killCursors !== undefined && options.session.snapshotEnabled && !options.session.inTransaction()
+    const Operation = Object.keys(command)[0] === 'killCursors' && options.session.snapshotEnabled && !options.session.inTransaction()
         ? SnapshotCursorCleanupOperation : RunCommandOperation;
     return executeOperation(client, new Operation(new MongoDBNamespace(database), command,
         {session: options.session, signal: options.signal, promoteLongs: options.promoteLongs, omitMaxTimeMS: true,

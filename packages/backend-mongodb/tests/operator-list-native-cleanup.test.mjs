@@ -126,3 +126,38 @@ test('ordinary and transaction sessions retain the original generic operation an
         } finally {await f.close();}
     }
 });
+
+test('first-key find and getMore retain snapshot preparation despite an extra killCursors field', async () => {
+    for (const name of ['find', 'getMore']) {
+        const f = await nativeSnapshotFixture();
+        try {
+            await f.publish(); const session = f.client.startSession({snapshot: true, causalConsistency: false});
+            const invoke = command => executeCompleteKindCommand(f.client, 'lists_fixture', command,
+                {session, signal: new AbortController().signal, timeoutMS: 1000, promoteLongs: false});
+            const initial = {find: 'bounded_ol_v1_item', filter: {}, hint: '_id_', batchSize: 1};
+            const first = name === 'getMore' ? await invoke(initial) : undefined;
+            await invoke(name === 'getMore' ? {getMore: first.cursor.id, collection: 'bounded_ol_v1_item', batchSize: 1,
+                killCursors: 'bounded_ol_v1_item'} : {...initial, killCursors: 'bounded_ol_v1_item'});
+            const sent = f.commands.at(-1), operation = f.operations.at(-1);
+            assert.equal(Object.keys(sent.command)[0], name); assert.equal(operation.operation.constructor, RunCommandOperation);
+            assert.equal(operation.session, session); assert.equal(sent.options.session, session);
+            assert.equal(sent.command.readConcern.level, 'snapshot'); assert.deepEqual(sent.command.lsid, session.id);
+            // Extra fields are modeled only to observe dispatch. Server acceptance of
+            // this deliberately ambiguous input is not asserted by this control.
+        } finally {await f.close();}
+    }
+});
+
+test('a command whose first key changes after cleanup selection refuses before wire dispatch', async () => {
+    const f = await nativeSnapshotFixture(), session = f.client.startSession({snapshot: true, causalConsistency: false});
+    const command = {killCursors: 'bounded_ol_v1_item', cursors: [f.nativeDriver.Long.fromNumber(10)]};
+    try {
+        const select = f.client.topology.selectServer;
+        f.client.topology.selectServer = async (...args) => {const server = await select(...args);
+            delete command.killCursors; delete command.cursors;
+            command.find = 'bounded_ol_v1_item'; command.killCursors = 'bounded_ol_v1_item'; return server;};
+        await assert.rejects(executeCompleteKindCommand(f.client, 'lists_fixture', command,
+            {session, signal: new AbortController().signal, timeoutMS: 1000}), /must remain a killCursors command/);
+        assert.equal(f.commands.length, 0); assert.equal(session.snapshotEnabled, true);
+    } finally {await f.close();}
+});

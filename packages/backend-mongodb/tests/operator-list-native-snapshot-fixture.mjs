@@ -37,7 +37,7 @@ export async function nativeSnapshotFixture(changes = {}) {
         const store = session.storage;
         const exists = store.has(database + '.' + collection);
         commands.push({command, options: commandOptions, session, namespaceExisted: exists});
-        if (command.killCursors && command.readConcern !== undefined) {
+        if (Object.keys(command)[0] === 'killCursors' && command.readConcern !== undefined) {
             // MongoDB8.0.34 KillCursorsCmd::supportsReadConcern is false.
             yield Response.make(rootDriver.BSON.serialize({ok: 0, code: 72,
                 errmsg: 'Command killCursors does not support readConcern'})); return;
