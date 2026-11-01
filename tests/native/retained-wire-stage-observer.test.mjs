@@ -170,7 +170,7 @@ test('original retained test body/profile and 180000ms deadline remain exact; so
     assert.equal(reads, 0); assert.equal(sourceBlock([{source: {blockNum: 222}}]), 222);
     const workflow = readFileSync(new URL('../../.github/workflows/build.yml', import.meta.url), 'utf8');
     assert.equal(workflow.split('HYPERION_RETAINED_WIRE_STAGES').length, 2, 'Only one inline workload invocation enables observation');
-    assert(workflow.includes('HYPERION_RETAINED_WIRE_STAGES=1 node --test tests/unit/wire-managed-state-v2-native.mjs'));
+    assert(workflow.includes('HYPERION_RETAINED_WIRE_STAGES=1 node --cpu-prof --cpu-prof-dir="$RUNNER_TEMP/retained-wire-cpu" --test tests/unit/wire-managed-state-v2-native.mjs'));
     assert(workflow.includes('          node --test tests/unit/protocol-abi-history-native.mjs'));
     assert(workflow.includes('scripts/qualification/wire-source-snapshot.test.mjs tests/native/retained-wire-stage-observer.test.mjs'));
     assert.match(workflow, /node-version: \[24\.x, 26\.x\]/);
