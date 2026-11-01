@@ -16,6 +16,7 @@ import {assertOwnedServices, assertResourceIsolation, assertEmptyProjection} fro
 import {validateFixture} from './es955-replicas.ts';
 import {assertSuccessfulWorkerShutdown} from './es955-workers.ts';
 import {startBulkLedger, summarizeBulkLedger} from './replay-bulk-ledger.ts';
+import {captureWireSourceSnapshot} from './wire-source-snapshot.mjs';
 import {auditWireReplayFixture, createWireReplayRpc, serveWireReplay, assertWireReplayComplete,
     wireReplayPins, type AuditedWireReplayFixture} from './wire-replay-fixture.ts';
 import {assertWireStateSnapshot, readWireState, wireStateBarriers, wireStateContracts, type WireStateMode} from './wire-state-outputs.ts';
@@ -178,7 +179,7 @@ async function serveRpc(fixture: AuditedWireReplayFixture, errors: string[]) {
 }
 
 const runtimeSources = ['package.json', 'package-lock.json', '.bun-version', 'AGENTS.md',
-    'scripts/qualification/wire-worker-replay.ts', 'scripts/qualification/wire-replay-fixture.ts', 'scripts/qualification/wire-replay-outputs.ts',
+    'scripts/qualification/wire-worker-replay.ts', 'scripts/qualification/wire-source-snapshot.mjs', 'scripts/qualification/wire-replay-fixture.ts', 'scripts/qualification/wire-replay-outputs.ts',
     'scripts/qualification/wire-state-outputs.ts',
     'scripts/qualification/contract-replay.ts', 'scripts/qualification/contract-fixture.ts', 'scripts/qualification/replay-bulk-ledger.ts',
     'scripts/qualification/es955-worker-observer.mjs', 'scripts/qualification/es955-workers.ts', 'scripts/qualification/es955-replicas.ts',
@@ -231,19 +232,11 @@ export async function readWireComponentSources(packageRoot: string, selected: re
 }
 
 async function sourceSnapshot(selected: readonly {runtime: string; sha256: string}[], output?: string) {
-    const hashes: Record<string, string> = {}; let total = 0;
     const prefix = 'node_modules/@eosrio/hyperion-wire-plugin';
     const profile = process.env.HYPERION_NATIVE_SOURCE_PROFILE;
     const componentFiles = await readWireComponentSources(join(repo, prefix), selected, profile);
-    const members = new Map([...componentFiles].map(([file, bytes]) => [prefix + '/' + file, bytes]));
-    if (profile) members.set('tests/unit/stateful-engineering-source-admission.mjs',
-        await boundedFile(join(repo, 'tests/unit/stateful-engineering-source-admission.mjs')));
-    for (const file of runtimeSources) if (!members.has(file)) members.set(file, await boundedFile(join(repo, file)));
-    for (const [file, bytes] of members) {
-        total += bytes.length; assert.ok(total <= 64 * 1024 * 1024, 'source evidence exceeds byte bound');
-        hashes[file] = digest(bytes);
-        if (output) {const target = join(output, 'sources', file); await mkdir(dirname(target), {recursive: true}); await writeFile(target, bytes, {flag: 'wx'});}
-    }
+    const hashes = await captureWireSourceSnapshot({repo, prefix, componentFiles, runtimeSources,
+        engineeringSelected: Boolean(profile), output, readSource: boundedFile});
     for (const file of ['src/indexer/workers/hyperionWorker.ts', 'build/indexer/workers/hyperionWorker.js']) {
         const text = (await boundedFile(join(repo, file))).toString();
         assert.match(text, /get actionSourceAdmissionEnabled\(\)(?:: boolean)?\s*\{\s*return false;?\s*\}/, 'public action admission must remain disabled');

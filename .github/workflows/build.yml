@@ -41,7 +41,7 @@ jobs:
       - name: Record the explicit current Linux assembly and actual runtime candidate
         run: node tests/unit/current-stateful-engineering-source-admission.mjs --admit-current > current-native-source-${{ matrix.node-version }}.json
       - name: Check explicit current profile, frozen historical predicates and workload boundaries
-        run: node --test tests/native/current-stateful-source-profile.test.mjs scripts/qualification/operator-list-mongodb/linux-source-profile.test.mjs
+        run: node --test tests/native/current-stateful-source-profile.test.mjs scripts/qualification/operator-list-mongodb/linux-source-profile.test.mjs scripts/qualification/wire-source-snapshot.test.mjs
       - name: Check bounded canonical JSON and authentic protocol records on Node ${{ matrix.node-version }}
         run: node --test tests/unit/bounded-json.test.mjs tests/native/bounded-json-protocol-records.test.mjs
       - name: Check mixed stateful source and final publication on Node ${{ matrix.node-version }}
