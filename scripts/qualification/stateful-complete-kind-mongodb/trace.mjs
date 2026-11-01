@@ -17,7 +17,7 @@ export function monitor(client, database, label, phase, trace) {
             requestId: event.requestId, command: event.commandName, collection: collection(command),
             lsid: identity(command.lsid), txn: command.txnNumber?.toString() ?? null,
             transactional: command.autocommit === false, startsTransaction: command.startTransaction === true,
-            readConcern: command.readConcern?.level ?? null, tagged: tagged(command),
+            readConcern: command.readConcern?.level ?? null, maxTimeMS: command.maxTimeMS ?? null, tagged: tagged(command),
             ...(tagged(command) ? {comment: plain(command.comment)} : {}),
             ...(scope.expected ? {expected: plain(scope.expected), owner: plain(scope.owner), ownerClaim: scope.ownerClaim} : {}),
             ...(command.find ? {filter: plain(command.filter ?? {}), hint: command.hint ?? null,
@@ -38,7 +38,8 @@ export function monitor(client, database, label, phase, trace) {
                     checkpoint: plain(batch[0].checkpoint), owner: plain(batch[0].owner.identity), ownerClaim: batch[0].owner.claimDigest,
                     initialized: batch[0].initialized, raw: batch[0].raw !== null, pending: batch[0].pending !== null,
                     gap: batch[0].gap !== null, rollback: batch[0].rollback?.status ?? null}} : {})}
-                : {code: event.failure?.code ?? null, labels: [...(event.failure?.errorLabels ?? [])]})});
+                : {code: event.failure?.code ?? null, labels: [...(event.failure?.errorLabels ?? [])],
+                    message: String(event.failure?.message ?? 'Unknown native command failure').slice(0, 512)})});
     };
     const succeeded = event => finish(event, true), failed = event => finish(event, false);
     client.on('commandStarted', started); client.on('commandSucceeded', succeeded); client.on('commandFailed', failed);
@@ -46,7 +47,7 @@ export function monitor(client, database, label, phase, trace) {
 }
 
 /** Independent evidence check: every projection command belongs to a validated data snapshot. */
-export function verifyReadTrace(trace, phase, {attempts, maximum, success = false, operation = 'kind'} = {}) {
+export function verifyReadTrace(trace, phase, {attempts, maximum, success = false, operation = 'kind', operationTimeoutMS} = {}) {
     const all = trace.filter(row => row.phase === phase);
     const data = all.filter(row => row.event === 'started' && ['find', 'getMore'].includes(row.command)
         && row.collection?.includes('_stateful_v2_r_'));
@@ -63,6 +64,10 @@ export function verifyReadTrace(trace, phase, {attempts, maximum, success = fals
         if (operation !== 'mixed') assert.equal(row.comment.operation, operation);
         if (row.comment.operation === 'kind') assert.equal(row.limit ?? null, null, 'A native kind limit cannot prove exhaustion');
         assert.equal(row.batchSize, 1);
+        if (operationTimeoutMS !== undefined) {
+            assert.equal(row.maxTimeMS, row.command === 'find' ? operationTimeoutMS : null,
+                'Initial find keeps its operation bound; non-tailable getMore must omit server maxTimeMS');
+        }
         const inspected = all.findLast(meta => meta.event === 'started' && meta.seq < row.seq
             && meta.command === 'find' && meta.collection?.endsWith('_stateful_v2_metadata')
             && meta.client === row.client && meta.lsid === row.lsid && meta.txn === row.txn && meta.transactional);

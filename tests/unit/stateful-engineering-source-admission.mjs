@@ -12,6 +12,11 @@ export const STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE = 'stateful-owner-v2
 export const STATEFUL_METADATA_FIELDS_API_SOURCE_PROFILE = 'stateful-owner-v2-dd85ee5-18d235e-fields-engineering';
 export const STATEFUL_METADATA_FIELDS_LEGACY_SOURCE_PROFILE = 'stateful-owner-v2-dd85ee5-7167659-fields-engineering';
 export const STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE = 'stateful-owner-v2-7412889-18d235e-complete-kind-engineering';
+export const STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE = 'stateful-owner-v2-7412889-18d235e-complete-kind-commands-engineering';
+export const STATEFUL_COMPLETE_KIND_COMMANDS_NATIVE_SOURCE = Object.freeze({
+    commit: '05c60d93f4d35d1d17edf5cba8ca3caddc8ee481', tree: '4d15a2043667b072261ba90dd7f0eef760a9272f',
+    files: 36, sha256: '31c606437a5f65282eff845ca1653e6bfa8941d3ccfea4b87a2544a5ef54c3b1',
+});
 export const STATEFUL_COMPLETE_KIND_NATIVE_SOURCE = Object.freeze({
     commit: '71dc69240f87b4dfc98e6089ec7e075564457055', tree: '218071940baf5a7e773dc8d9df50d32b2d85e86a',
     files: 36, sha256: '53e26e3d0e564bc6b02265341c139054c5d79b4924bf14eb1cdbf39dc4ef0e50',
@@ -39,6 +44,9 @@ const oldWire = '7167659e9c043cb3351074fcacb40200cc57f3a3', wire = '18d235e34a9b
 const sdk = '58d68c5cea81490bbb1c9a7736d633d465bab3ef';
 const metadataSdk = 'dd85ee590dcd1e359509c6c41ee99b541706b1f6';
 const completeKindSdk = '7412889a14c84342551fd864ea3ebfcf28849385';
+const completeKindProfile = profile => profile === STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE || profile === STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE;
+const completeKindNativeSource = profile => profile === STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE
+    ? STATEFUL_COMPLETE_KIND_COMMANDS_NATIVE_SOURCE : STATEFUL_COMPLETE_KIND_NATIVE_SOURCE;
 const fieldsProfile = profile => profile === STATEFUL_METADATA_FIELDS_API_SOURCE_PROFILE || profile === STATEFUL_METADATA_FIELDS_LEGACY_SOURCE_PROFILE;
 const metadataProfile = profile => profile === STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE || profile === STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE || fieldsProfile(profile);
 const legacyProfile = profile => profile === 'default-716' || profile === STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE || profile === STATEFUL_METADATA_FIELDS_LEGACY_SOURCE_PROFILE;
@@ -81,7 +89,7 @@ export function admitNativeApiSourceOptions(input = {}) {
     const nativeMarker = properties.nativeMarker?.value ?? true, profile = properties.engineeringSourceProfile?.value;
     assert(typeof nativeMarker === 'boolean');
     assert(profile === undefined || profile === STATEFUL_ENGINEERING_API_SOURCE_PROFILE || metadataProfile(profile)
-        || profile === STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE, 'Unknown engineering source profile');
+        || completeKindProfile(profile), 'Unknown engineering source profile');
     const root = rootFor('@eosrio/hyperion-wire-plugin/protocol-provider.json'), pkg = read(resolve(root, 'package.json'));
     exact(pkg.json.name, '@eosrio/hyperion-wire-plugin', 'Wire package');
     const descriptor = read(resolve(root, 'dist/protocol-provider.json'));
@@ -109,12 +117,12 @@ export function admitNativeApiSourceOptions(input = {}) {
     exact(rust.sha256, 'ae99a8f13e223273c6e54fe8495338eac09179fc79b8dc135f2b530645e22fbb', 'Wire Rust artifact');
     members(root, node.json); members(root, rust.json);
     exact(pkg.json.dependencies['@eosrio/hyperion-sdk'], 'git+https://github.com/eosrio/hyperion-sdk.git#' + sdk, 'Wire SDK pin');
-    if (profile === STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE) {
+    if (completeKindProfile(profile)) {
         checkPin('@eosrio/hyperion-wire-plugin', wire); checkPin('@eosrio/hyperion-sdk', completeKindSdk);
-        const runtime = coordinatedRuntime(profile);
+        const runtime = coordinatedRuntime(profile), nativeSource = completeKindNativeSource(profile);
         return Object.freeze({nativeMarker, wireRevision: wire, profile, ...runtime, wireTree: '719a03aa0ea7b72d6a7411cfaaad78b05a1a8c4a',
-            sdkTree: 'c486de0538bf33b4d7a199147e97ba763d731bab', nativeTree: STATEFUL_COMPLETE_KIND_NATIVE_SOURCE.tree,
-            nativeSourceCommit: STATEFUL_COMPLETE_KIND_NATIVE_SOURCE.commit, callerSourceCommit: STATEFUL_COMPLETE_KIND_CALLER_SOURCE.commit,
+            sdkTree: 'c486de0538bf33b4d7a199147e97ba763d731bab', nativeTree: nativeSource.tree,
+            nativeSourceCommit: nativeSource.commit, callerSourceCommit: STATEFUL_COMPLETE_KIND_CALLER_SOURCE.commit,
             qualificationOnly: true});
     }
     const {sdkFiles, nativeFiles} = coordinatedRuntime(profile);
@@ -131,14 +139,15 @@ function coordinatedRuntime(profile) {
     const sdkRoot = rootFor('@eosrio/hyperion-sdk/projection-stateful-owner-v2');
     const nativeRoot = rootFor('@eosrio/hyperion-backend-mongodb/stateful-owner-v2');
     const sdkPackage = read(resolve(sdkRoot, 'package.json')), nativePackage = read(resolve(nativeRoot, 'package.json'));
-    if (profile === STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE) {
+    if (completeKindProfile(profile)) {
+        const nativeSource = completeKindNativeSource(profile);
         exact(sdkPackage.sha256, 'd2d92cb7a7f2d8b939391910372d8e551103939cce488244cf657f3ae301d680', 'complete-kind SDK package');
         exact(nativePackage.sha256, 'a63644e9195126e18955f91ef663161e6f9d215d262513d1d5375b28300f84d5', 'complete-kind native Git-LF package');
         exact(nativePackage.json.devDependencies['@eosrio/hyperion-sdk'], 'git+https://github.com/eosrio/hyperion-sdk.git#' + completeKindSdk, 'complete-kind native SDK source');
         const sdkFiles = inventory(resolve(sdkRoot, 'dist')), nativeFiles = inventory(resolve(nativeRoot, 'dist'));
         exact(sdkFiles.files, 31, 'complete-kind SDK count'); exact(sdkFiles.sha256, 'cf77c0fe595f3fbb2bb828147579d9e4e8215aeef3fb5d4d8b213cceeba0821c', 'complete-kind SDK emissions');
-        exact(nativeFiles.files, STATEFUL_COMPLETE_KIND_NATIVE_SOURCE.files, 'complete-kind native count');
-        exact(nativeFiles.sha256, STATEFUL_COMPLETE_KIND_NATIVE_SOURCE.sha256, 'complete-kind native emissions');
+        exact(nativeFiles.files, nativeSource.files, 'complete-kind native count');
+        exact(nativeFiles.sha256, nativeSource.sha256, 'complete-kind native emissions');
         const nativeSdk = findPackageJSON('@eosrio/hyperion-sdk', pathToFileURL(resolve(nativeRoot, 'package.json'))); assert(nativeSdk);
         exact(read(nativeSdk).sha256, sdkPackage.sha256, 'complete-kind receiving SDK package');
         exact(inventory(resolve(dirname(nativeSdk), 'dist')).sha256, sdkFiles.sha256, 'complete-kind receiving SDK emissions');
@@ -191,7 +200,7 @@ export function admitCoordinatedNativeSourceOptions(options = {}) {
     const lock = read(fileURLToPath(new URL('../../package-lock.json', import.meta.url))).json;
     const pin = (name, revision) => assert(['git+https://github.com/', 'git+ssh://git@github.com/'].some(prefix =>
         lock.packages['node_modules/' + name]?.resolved === prefix + 'eosrio/' + name.split('/')[1] + '.git#' + revision), 'Unqualified coordinated lock source');
-    const selectedSdk = admission.profile === STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE ? completeKindSdk : metadataProfile(admission.profile) ? metadataSdk : sdk;
+    const selectedSdk = completeKindProfile(admission.profile) ? completeKindSdk : metadataProfile(admission.profile) ? metadataSdk : sdk;
     pin('@eosrio/hyperion-sdk', selectedSdk);
     const runtime = coordinatedRuntime(admission.profile);
     const wireSdkRevision = legacyProfile(admission.profile) ? '339b5c93d1338968c18ed14254961439dcab16a0' : sdk;

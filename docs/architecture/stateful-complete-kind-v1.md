@@ -73,3 +73,16 @@ true exhaustion, no hidden data retries, budgets, refusal, cleanup and final
 view/publication fencing. Root alone runs physical services/hosts after source
 review. Boundary fixtures cannot establish physical acceptance. MongoDB is the
 4.5 state target, Elasticsearch holds history, and WormDB remains follow-up.
+
+The `stateful-owner-v2-7412889-18d235e-complete-kind-commands-engineering`
+profile is a separate native-command correction. It pins native source
+`05c60d93f4d35d1d17edf5cba8ca3caddc8ee481` and backend tree
+`4d15a2043667b072261ba90dd7f0eef760a9272f`. The previous complete-kind profile
+keeps its original source and emission pins. Generic command execution uses the
+pinned driver's internal `omitMaxTimeMS` control to retain the initial-find
+operation limit and omit server-side `maxTimeMS` from non-tailable `getMore`.
+Client-side transaction CSOT, per-operation abort deadlines, shared attempt
+totals and metadata validation inside every snapshot callback remain mandatory.
+The correction also preserves primary data errors across cursor/session cleanup.
+Actual MongoDB command traces must confirm these boundaries; command-preparation
+and controlled storage tests alone cannot establish physical acceptance.
