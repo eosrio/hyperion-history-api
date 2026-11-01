@@ -48,6 +48,15 @@ export const withRetainedProgress=(ledger,operation)=>context.run(ledger,operati
 export function retainedPosition(patch){context.getStore()?.position(patch);}
 export function retainedMark(event,phase,extra){context.getStore()?.record(event,phase,extra);}
 export function retainedCounter(name,read){context.getStore()?.counter(name,read);}
+export function retainedFixtureCopyObserver(){
+ const ledger=context.getStore();if(!ledger)return undefined;
+ const counters={findOne:0,update:0,transaction:0,snapshotCollections:0,snapshotDocuments:0,maxSnapshotDocuments:0};
+ for(const name of Object.keys(counters))ledger.counter('fixture.copy.'+name.toLowerCase(),()=>counters[name]);
+ return (origin,storage)=>{assert(Object.hasOwn(counters,origin)&&['findOne','update','transaction'].includes(origin));counters[origin]++;
+  if(origin==='transaction'){assert(storage instanceof Map);assert(storage.size<=1024,'Fixture snapshot collection observation bound');let documents=0;for(const collection of storage.values()){assert(collection instanceof Map);documents+=collection.size;}
+   counters.snapshotCollections+=storage.size;counters.snapshotDocuments+=documents;counters.maxSnapshotDocuments=Math.max(counters.maxSnapshotDocuments,documents);}
+ };
+}
 export function retainedCall(phase,height,operation){
  const ledger=context.getStore();if(!ledger)return operation();
  const token=ledger.begin(phase,height);let value;
@@ -90,7 +99,7 @@ export function summarizeRetainedProgress(raw){
 }
 
 export function assertRetainedProvenance({runtime,github,sourceReceipt,assemblyReceipt}){
- assert.match(github.sha,/^[a-f0-9]{40}$/);const git=sourceReceipt.value,assembly=assemblyReceipt.value;
+ assert.match(github.sha,/^[a-f0-9]{40}$/);assert(Number.isSafeInteger(runtime.pid)&&runtime.pid>0&&Number.isSafeInteger(runtime.ppid)&&runtime.ppid>0);assert(Array.isArray(runtime.execArgv)&&runtime.execArgv.every(value=>typeof value==='string'&&value.length<=4096));const git=sourceReceipt.value,assembly=assemblyReceipt.value;
  assert.equal(git.schemaVersion,1);assert.equal(git.source,github.sha);assert.equal(git.runId,github.runId);assert.equal(git.runAttempt,github.attempt);assert.equal(git.job,github.job);assert.equal(git.trackedAndClean,true);assert.match(git.tree,/^[a-f0-9]{40}$/);
  assert.equal(assembly.runtime.node,runtime.node);assert.equal(assembly.runtime.executable,runtime.executable);assert.equal(assembly.runtime.platform,runtime.platform);assert.equal(assembly.runtime.arch,runtime.arch);
  return{runtime,github,sourceReceipt,assemblyReceipt:{path:assemblyReceipt.path,bytes:assemblyReceipt.bytes,sha256:assemblyReceipt.sha256,profile:assembly.profile,runtime:assembly.runtime,

@@ -2,7 +2,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {readFileSync} from 'node:fs';
-import {createRetainedProgress,withRetainedProgress,retainedCall,retainedPosition,retainedCounter,observeRetainedMethod,RETAINED_PROGRESS_LIMITS,summarizeRetainedProgress,assertRetainedProvenance,finishRetainedProgress} from './retained-workload-progress.mjs';
+import {databaseFixture} from '../../packages/backend-mongodb/tests/fixture.mjs';
+import {createRetainedProgress,withRetainedProgress,retainedCall,retainedPosition,retainedCounter,observeRetainedMethod,RETAINED_PROGRESS_LIMITS,summarizeRetainedProgress,assertRetainedProvenance,finishRetainedProgress,retainedFixtureCopyObserver} from './retained-workload-progress.mjs';
 function setup(changes={}){let time=0,samples=0;const rows=[],ledger=createRetainedProgress({emit:raw=>rows.push(JSON.parse(raw)),clock:()=>time,resources:()=>{samples++;return{rssBytes:100,cpuUserUS:20};},...changes});return{ledger,rows,advance:n=>time+=n,samples:()=>samples};}
 
 test('retained diagnostic persists the active await before invoking the unchanged synchronous operation',()=>{
@@ -58,10 +59,10 @@ test('original test wrapper forwards the existing timeout and callback and uses 
  assert(source.includes("mkdtempSync(join(outputRoot,'wire-managed-diagnostic-'))"));
 });
 test('observed GHA source and runtime receipts must match the actual supplied environment, including a PR merge identity',()=>{
- const runtime={node:'v24.22.1',platform:'linux',arch:'x64',executable:'/actual/node'},github={sha:'a'.repeat(40),runId:'123',attempt:'1',job:'build'},
+ const runtime={node:'v24.22.1',platform:'linux',arch:'x64',executable:'/actual/node',pid:123,ppid:120,execArgv:['--cpu-prof','--cpu-prof-dir=/profile']},github={sha:'a'.repeat(40),runId:'123',attempt:'1',job:'build'},
   input={runtime,github,sourceReceipt:{path:'actual-git.json',bytes:267,sha256:'b'.repeat(64),value:{schemaVersion:1,source:github.sha,runId:github.runId,runAttempt:github.attempt,job:github.job,trackedAndClean:true,tree:'c'.repeat(40)}},
    assemblyReceipt:{path:'actual-source.json',bytes:1000,sha256:'d'.repeat(64),value:{profile:'inert-source-control',runtime:{...runtime,sha256:'e'.repeat(64)},runtimeAcceptance:'pending',engineeringRuntimeCandidate:false}}};
- assert.equal(assertRetainedProvenance(input).sourceReceipt.value.source,github.sha);
+ assert.equal(assertRetainedProvenance(input).sourceReceipt.value.source,github.sha);assert.equal(assertRetainedProvenance(input).runtime.pid,123);assert.deepEqual(assertRetainedProvenance(input).runtime.execArgv,runtime.execArgv);
  for(const change of [x=>x.sourceReceipt.value.source='f'.repeat(40),x=>x.sourceReceipt.value.runAttempt='2',x=>x.sourceReceipt.value.trackedAndClean=false,x=>x.assemblyReceipt.value.runtime.node='v26.4.0',x=>x.assemblyReceipt.value.runtime.executable='/other/node']){const copy=structuredClone(input);change(copy);assert.throws(()=>assertRetainedProvenance(copy));}
 });
 test('all bounded phase aggregates remain in the typed rows while the terminal summary stays within its row cap',()=>{
@@ -97,4 +98,28 @@ test('failed settlement, close and report remain secondary to primary, and fail 
 test('secondary diagnostics have an explicit bounded inventory and omitted count',()=>{
  const s=setup(),first=new Error('first');for(let n=0;n<10;n++)s.ledger.noteFailure(n===0?first:new Error('extra '+n),'inert-fault');
  assert.equal(s.ledger.snapshot().diagnosticFailures.length,8);assert.equal(s.ledger.snapshot().omittedDiagnosticFailures,2);assert.equal(s.ledger.firstFailure().error,first);
+});
+
+test('fixture copy counters observe actual isolated reads, writes, snapshots and retry without changing results',async()=>{
+ const s=setup(),fixture=databaseFixture(),db=fixture.client.db();await db.createCollection('rows');const col=db.collection('rows');
+ await col.insertOne({_id:'one',nested:{n:1}},{});await col.insertOne({_id:'two',nested:{n:2}},{});
+ assert.equal(retainedFixtureCopyObserver(),undefined);
+ await withRetainedProgress(s.ledger,async()=>{fixture.copyObserver=retainedFixtureCopyObserver();const session=fixture.client.startSession();fixture.retryTransaction=true;let calls=0;
+  await session.withTransaction(async()=>{calls++;const value=await col.findOne({_id:'one'},{session});value.nested.n=99;assert.equal((await col.findOne({_id:'one'},{session})).nested.n,1);await col.updateOne({_id:'one'},{$set:{nested:{n:3}}},{session});});
+  await session.endSession();assert.equal(calls,2);s.ledger.record('after','fixture.copy-test',{},true);});
+ const resource=s.rows.at(-1).resources;assert.equal(resource['fixture.copy.transaction'],2);assert.equal(resource['fixture.copy.findone'],4);assert.equal(resource['fixture.copy.update'],2);
+ assert.equal(resource['fixture.copy.snapshotcollections'],2);assert.equal(resource['fixture.copy.snapshotdocuments'],4);assert.equal(resource['fixture.copy.maxsnapshotdocuments'],2);assert.equal((await col.findOne({_id:'one'})).nested.n,3);
+});
+
+test('copy observation leaves transaction isolation and rollback unchanged under external mutation',async()=>{
+ for(const enabled of [false,true]){const s=setup(),fixture=databaseFixture(),db=fixture.client.db();await db.createCollection('rows');const col=db.collection('rows');await col.insertOne({_id:'one',nested:{n:1}},{});
+  await withRetainedProgress(s.ledger,async()=>{if(enabled)fixture.copyObserver=retainedFixtureCopyObserver();const session=fixture.client.startSession();
+   await assert.rejects(session.withTransaction(async()=>{fixture.storage.get('rows').get('one').nested.n=2;assert.equal((await col.findOne({_id:'one'},{session})).nested.n,1);
+    await col.replaceOne({_id:'one'},{_id:'one',nested:{n:3}},{session});assert.equal((await col.findOne({_id:'one'},{session})).nested.n,3);throw new Error('expected rollback');}),/expected rollback/);
+   await session.endSession();assert.equal((await col.findOne({_id:'one'})).nested.n,2);});}
+});
+
+test('fixture snapshot cardinality observation refuses an oversized collection map before walking it',()=>{
+ const s=setup(),storage=new Map(Array.from({length:1025},(_,i)=>[String(i),new Map()]));
+ withRetainedProgress(s.ledger,()=>{const observe=retainedFixtureCopyObserver();assert.throws(()=>observe('transaction',storage),/collection observation bound/);});
 });

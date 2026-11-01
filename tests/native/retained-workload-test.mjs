@@ -13,7 +13,7 @@ const root=fileURLToPath(new URL('../../',import.meta.url));
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 function receipt(name){const path=join(root,name),stat=lstatSync(path);assert(stat.isFile()&&!stat.isSymbolicLink()&&stat.size<=4*1024*1024);const raw=readFileSync(path);return{path,bytes:raw.length,sha256:sha(raw),value:JSON.parse(raw)};}
 function provenance(){
- const runtime={node:process.version,platform:process.platform,arch:process.arch,executable:process.execPath};
+ const runtime={node:process.version,platform:process.platform,arch:process.arch,executable:process.execPath,pid:process.pid,ppid:process.ppid,execArgv:[...process.execArgv]};
  if(process.env.GITHUB_ACTIONS!=='true')return{runtime,github:null,source:'not-an-actual-GHA-receipt'};
  const github={sha:process.env.GITHUB_SHA,runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,job:process.env.GITHUB_JOB};assert.match(github.sha,/^[a-f0-9]{40}$/);
  const major=process.versions.node.split('.')[0],git=receipt('current-native-git-'+major+'.x.json'),assembly=receipt('current-native-source-'+major+'.x.json');

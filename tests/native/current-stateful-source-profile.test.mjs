@@ -119,3 +119,16 @@ test('original retained1480 callbacks/assertions and complete-kind17cases retain
     assert.equal(current.originalLimits.nativeCases, 17); assert.equal(current.originalLimits.nativeComponentMS, 300000);
     assert.equal(current.acceptance.runtime, 'pending'); assert.equal(current.acceptance.physicalMongoDB, 'pending');
 });
+
+test('combined420 selects full CI through its exact419 base while every prior workflow byte stays fixed',()=>{
+    const workflow=canonical('.github/workflows/build.yml'),selected='feat/stateful-indexed-schema-415',addition=', "'+selected+'"';
+    const match=/^  pull_request:\n    branches: (\[[^\n]+\])/m.exec(workflow);assert(match,'Explicit existing PR base list required');
+    const branches=JSON.parse(match[1]);assert.equal(branches.filter(branch=>branch===selected).length,1);assert(branches.includes('feat/mongodb-operator-lists-414'));
+    assert.equal(workflow.split(addition).length,2,'Exactly one routing entry may be added');
+    const profiled='          mkdir "$RUNNER_TEMP/retained-wire-cpu"\n          node --cpu-prof --cpu-prof-dir="$RUNNER_TEMP/retained-wire-cpu" --test tests/unit/wire-managed-state-v2-native.mjs\n';
+    const original='          node --test tests/unit/wire-managed-state-v2-native.mjs\n';
+    const retention='      - name: Retain retained Wire CPU samples\n        if: always()\n        uses: actions/upload-artifact@v4\n        with:\n          name: retained-wire-cpu-${{ matrix.node-version }}\n          path: ${{ runner.temp }}/retained-wire-cpu/*.cpuprofile\n          if-no-files-found: warn\n';
+    assert.equal(workflow.split(profiled).length,2);assert.equal(workflow.split(retention).length,2);
+    assert.equal(sha(workflow.replace(addition,'').replace(profiled,original).replace(retention,'')),'60368ea5bbf10bf4b98cdfcc9ded61faedb1811e18f57ff11424a510fa848aad',
+        'All prior branches, workloads, deadlines and the accepted diagnostic artifact path must remain byte-identical to2b');
+});

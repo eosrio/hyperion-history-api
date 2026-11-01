@@ -1,0 +1,21 @@
+{
+  "run": 41333567862,
+  "head": "9d8c11f57bceb6c9df297de60d86005a96022033",
+  "merge": "5d87e6e3c53d984b44aeaa17694fb4df96c4e0bc",
+  "artifacts": {
+    "node24": {
+      "id": 13094565921,
+      "sha256": "9d90167b0a6fdb5e44d47301037be4fd557d6c2828ab1bf4e903a66c8576dc95"
+    },
+    "node26": {
+      "id": 13093339485,
+      "sha256": "0f597e60bd653987db501676cdfdf9208e603d479ca96400dea9e1086a532ee6"
+    }
+  },
+  "files": {
+    "node24-explain.json": "3eb09515b7376c22ef5a10d3efc65deac1ab7923e8abce56a86b30e452efb9d6",
+    "node24-samples.json": "14d35862394dad2acb9245d936ca4d0951f2fffa6db38db8ac74c1a9e3150f6c",
+    "node26-explain.json": "177c462b5298d6599500f457491bc8021fe298236f6bc4299285c68a044a482d",
+    "node26-samples.json": "48f7d3e00a424aca0779ef488c007f65b10bc96c0881b525e7bcf8247d8bd1e3"
+  }
+}

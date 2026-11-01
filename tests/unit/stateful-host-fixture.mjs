@@ -8,7 +8,7 @@ import {preparedStatefulInputs, capture} from './portable-state-source-fixture.m
 import {definition, limits} from '../../packages/backend-mongodb/tests/stateful-fixture.mjs';
 import {ownerFixture} from '../../packages/backend-mongodb/tests/stateful-owner-v2-fixture.mjs';
 import {completeFixture, totals, offer} from '../../packages/backend-mongodb/tests/stateful-complete-kind-fixture.mjs';
-import {retainedCall,retainedMark,retainedCounter,observeRetainedMethod} from '../native/retained-workload-progress.mjs';
+import {retainedCall,retainedMark,retainedCounter,retainedFixtureCopyObserver,observeRetainedMethod} from '../native/retained-workload-progress.mjs';
 
 const code = process.versions.bun ? '../../src/' : '../../build/';
 const load = path => import(new URL(code + path, import.meta.url));
@@ -69,6 +69,7 @@ export async function statefulHostFixture({timeoutMs = 1000, hooks = {}, require
     const loader = new HyperionModuleLoader(cm, pluginRoot); await retainedCall('host.loader',undefined,()=>loader.init());
     assert.equal(loader.statefulPluginsV2().length, 1);
     const storage = completeKind ? completeFixture() : ownerFixture();
+    storage.copyObserver=retainedFixtureCopyObserver();
     retainedCounter('fixture.native.commands',()=>storage.native.length);
     const registry = await retainedCall('host.registry-create',undefined,()=>StatefulProjectionRegistryV2.create({chainId: capture.chainId, configuration, mongo: storage.client,
         ...(completeKind ? {completeKindMongo: async () => storage.client} : {}),

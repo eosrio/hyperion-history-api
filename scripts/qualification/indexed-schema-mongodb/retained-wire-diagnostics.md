@@ -56,3 +56,14 @@ controls run only the inert ledger/hooks and source checks on Windows. Actual
 retained workloads, controllers and native fixtures are reserved for Root's next
 owned Linux execution. Product sources/emissions, input bytes, `1..1480`, the
 `180000ms` budget and existing resource/lifecycle policy remain unchanged.
+
+The same retained Node test now enables the runtime CPU profiler with native
+per-process filenames, and the always-run artifact step retains any generated
+profiles. The JSONL provenance records actual test-child PID, parent PID and
+execArgv; profile identity and completion must be checked from actual files.
+The profiler can perturb timing and missing files remain missing evidence.
+While the retained context is active, the fake driver counts copy origins and
+transaction snapshots. Snapshot cardinality uses at most 1,024 collection Map.size values; an oversized
+collection map fails visibly. No
+document walk, serialization or BSON sizing is added. Counters are cumulative
+fixture observations, not physical MongoDB commands or allocation bytes.

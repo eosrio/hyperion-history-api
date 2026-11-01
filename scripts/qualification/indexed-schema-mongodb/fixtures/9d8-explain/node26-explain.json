@@ -1,0 +1,858 @@
+[
+  {
+    "status": "received",
+    "pipelineSha256": "bd07cb36bc5c748d431b28776b4d88d82adca87b276dffd744622a7506e3747c",
+    "actualCommand": {
+      "aggregate": "bounded_ix1_633257a926bd0821d82a5212cdbd0067e393fd142ce5ea4d0eae825796f436cd_r",
+      "pipeline": [
+        {
+          "$match": {
+            "$and": [
+              {
+                "alias": "schema"
+              },
+              {
+                "v.contract": {
+                  "$eq": "atomicassets"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "$sort": {
+            "n.created": {
+              "$numberInt": "1"
+            },
+            "v.created": {
+              "$numberInt": "-1"
+            }
+          }
+        },
+        {
+          "$lookup": {
+            "from": "bounded_ix1_633257a926bd0821d82a5212cdbd0067e393fd142ce5ea4d0eae825796f436cd_r",
+            "let": {
+              "joinKey": "$joins.collection"
+            },
+            "pipeline": [
+              {
+                "$match": {
+                  "alias": "collection",
+                  "$expr": {
+                    "$eq": [
+                      "$joins.collection",
+                      "$$joinKey"
+                    ]
+                  }
+                }
+              },
+              {
+                "$limit": {
+                  "$numberInt": "2"
+                }
+              }
+            ],
+            "as": "lookups.collection"
+          }
+        },
+        {
+          "$match": {
+            "lookups.collection.0": {
+              "$exists": true
+            }
+          }
+        },
+        {
+          "$lookup": {
+            "from": "bounded_ix1_633257a926bd0821d82a5212cdbd0067e393fd142ce5ea4d0eae825796f436cd_r",
+            "let": {
+              "joinKey": "$joins.assets"
+            },
+            "pipeline": [
+              {
+                "$match": {
+                  "alias": "assets",
+                  "$expr": {
+                    "$eq": [
+                      "$joins.assets",
+                      "$$joinKey"
+                    ]
+                  }
+                }
+              },
+              {
+                "$limit": {
+                  "$numberInt": "2"
+                }
+              }
+            ],
+            "as": "lookups.assets"
+          }
+        },
+        {
+          "$skip": {
+            "$numberLong": "0"
+          }
+        },
+        {
+          "$limit": {
+            "$numberLong": "2"
+          }
+        },
+        {
+          "$project": {
+            "_id": {
+              "$numberInt": "0"
+            },
+            "base": {
+              "_id": "$_id",
+              "model": "$model",
+              "representation": "$representation",
+              "alias": "$alias",
+              "kind": "$kind",
+              "key": "$key",
+              "json": "$json",
+              "v": "$v",
+              "n": "$n",
+              "joins": "$joins"
+            },
+            "joined": "$lookups"
+          }
+        }
+      ],
+      "hint": "h45_ix_b_ecbb57f6d76f8adfb86a",
+      "collation": {
+        "locale": "simple"
+      },
+      "allowDiskUse": false,
+      "cursor": {
+        "batchSize": {
+          "$numberInt": "1"
+        }
+      },
+      "maxTimeMS": {
+        "$numberInt": "5000"
+      }
+    },
+    "explain": {
+      "explainVersion": "1",
+      "stages": [
+        {
+          "$cursor": {
+            "queryPlanner": {
+              "namespace": "h45_indexed_b624d905aab0.bounded_ix1_633257a926bd0821d82a5212cdbd0067e393fd142ce5ea4d0eae825796f436cd_r",
+              "parsedQuery": {
+                "$and": [
+                  {
+                    "alias": {
+                      "$eq": "schema"
+                    }
+                  },
+                  {
+                    "v.contract": {
+                      "$eq": "atomicassets"
+                    }
+                  }
+                ]
+              },
+              "indexFilterSet": false,
+              "queryHash": "4BFEDD3D",
+              "planCacheShapeHash": "4BFEDD3D",
+              "planCacheKey": "87D1BD15",
+              "optimizationTimeMillis": {
+                "$numberInt": "0"
+              },
+              "maxIndexedOrSolutionsReached": false,
+              "maxIndexedAndSolutionsReached": false,
+              "maxScansToExplodeReached": false,
+              "prunedSimilarIndexes": false,
+              "winningPlan": {
+                "isCached": false,
+                "stage": "PROJECTION_SIMPLE",
+                "transformBy": {
+                  "_id": {
+                    "$numberInt": "1"
+                  },
+                  "alias": {
+                    "$numberInt": "1"
+                  },
+                  "base": {
+                    "$numberInt": "1"
+                  },
+                  "joins": {
+                    "$numberInt": "1"
+                  },
+                  "json": {
+                    "$numberInt": "1"
+                  },
+                  "key": {
+                    "$numberInt": "1"
+                  },
+                  "kind": {
+                    "$numberInt": "1"
+                  },
+                  "lookups": {
+                    "$numberInt": "1"
+                  },
+                  "model": {
+                    "$numberInt": "1"
+                  },
+                  "n": {
+                    "$numberInt": "1"
+                  },
+                  "representation": {
+                    "$numberInt": "1"
+                  },
+                  "v": {
+                    "$numberInt": "1"
+                  }
+                },
+                "inputStage": {
+                  "stage": "FETCH",
+                  "inputStage": {
+                    "stage": "IXSCAN",
+                    "keyPattern": {
+                      "alias": {
+                        "$numberInt": "1"
+                      },
+                      "v.contract": {
+                        "$numberInt": "1"
+                      },
+                      "n.created": {
+                        "$numberInt": "1"
+                      },
+                      "v.created": {
+                        "$numberInt": "-1"
+                      }
+                    },
+                    "indexName": "h45_ix_b_ecbb57f6d76f8adfb86a",
+                    "isMultiKey": false,
+                    "multiKeyPaths": {
+                      "alias": [],
+                      "v.contract": [],
+                      "n.created": [],
+                      "v.created": []
+                    },
+                    "isUnique": false,
+                    "isSparse": false,
+                    "isPartial": false,
+                    "indexVersion": {
+                      "$numberInt": "2"
+                    },
+                    "direction": "forward",
+                    "indexBounds": {
+                      "alias": [
+                        "[\"schema\", \"schema\"]"
+                      ],
+                      "v.contract": [
+                        "[\"atomicassets\", \"atomicassets\"]"
+                      ],
+                      "n.created": [
+                        "[MinKey, MaxKey]"
+                      ],
+                      "v.created": [
+                        "[MaxKey, MinKey]"
+                      ]
+                    }
+                  }
+                }
+              },
+              "rejectedPlans": []
+            },
+            "executionStats": {
+              "executionSuccess": true,
+              "nReturned": {
+                "$numberInt": "7"
+              },
+              "executionTimeMillis": {
+                "$numberInt": "1"
+              },
+              "totalKeysExamined": {
+                "$numberInt": "7"
+              },
+              "totalDocsExamined": {
+                "$numberInt": "7"
+              },
+              "executionStages": {
+                "isCached": false,
+                "stage": "PROJECTION_SIMPLE",
+                "nReturned": {
+                  "$numberInt": "7"
+                },
+                "executionTimeMillisEstimate": {
+                  "$numberInt": "0"
+                },
+                "works": {
+                  "$numberInt": "8"
+                },
+                "advanced": {
+                  "$numberInt": "7"
+                },
+                "needTime": {
+                  "$numberInt": "0"
+                },
+                "needYield": {
+                  "$numberInt": "0"
+                },
+                "saveState": {
+                  "$numberInt": "1"
+                },
+                "restoreState": {
+                  "$numberInt": "1"
+                },
+                "isEOF": {
+                  "$numberInt": "1"
+                },
+                "transformBy": {
+                  "_id": {
+                    "$numberInt": "1"
+                  },
+                  "alias": {
+                    "$numberInt": "1"
+                  },
+                  "base": {
+                    "$numberInt": "1"
+                  },
+                  "joins": {
+                    "$numberInt": "1"
+                  },
+                  "json": {
+                    "$numberInt": "1"
+                  },
+                  "key": {
+                    "$numberInt": "1"
+                  },
+                  "kind": {
+                    "$numberInt": "1"
+                  },
+                  "lookups": {
+                    "$numberInt": "1"
+                  },
+                  "model": {
+                    "$numberInt": "1"
+                  },
+                  "n": {
+                    "$numberInt": "1"
+                  },
+                  "representation": {
+                    "$numberInt": "1"
+                  },
+                  "v": {
+                    "$numberInt": "1"
+                  }
+                },
+                "inputStage": {
+                  "stage": "FETCH",
+                  "nReturned": {
+                    "$numberInt": "7"
+                  },
+                  "executionTimeMillisEstimate": {
+                    "$numberInt": "0"
+                  },
+                  "works": {
+                    "$numberInt": "8"
+                  },
+                  "advanced": {
+                    "$numberInt": "7"
+                  },
+                  "needTime": {
+                    "$numberInt": "0"
+                  },
+                  "needYield": {
+                    "$numberInt": "0"
+                  },
+                  "saveState": {
+                    "$numberInt": "1"
+                  },
+                  "restoreState": {
+                    "$numberInt": "1"
+                  },
+                  "isEOF": {
+                    "$numberInt": "1"
+                  },
+                  "docsExamined": {
+                    "$numberInt": "7"
+                  },
+                  "alreadyHasObj": {
+                    "$numberInt": "0"
+                  },
+                  "inputStage": {
+                    "stage": "IXSCAN",
+                    "nReturned": {
+                      "$numberInt": "7"
+                    },
+                    "executionTimeMillisEstimate": {
+                      "$numberInt": "0"
+                    },
+                    "works": {
+                      "$numberInt": "8"
+                    },
+                    "advanced": {
+                      "$numberInt": "7"
+                    },
+                    "needTime": {
+                      "$numberInt": "0"
+                    },
+                    "needYield": {
+                      "$numberInt": "0"
+                    },
+                    "saveState": {
+                      "$numberInt": "1"
+                    },
+                    "restoreState": {
+                      "$numberInt": "1"
+                    },
+                    "isEOF": {
+                      "$numberInt": "1"
+                    },
+                    "keyPattern": {
+                      "alias": {
+                        "$numberInt": "1"
+                      },
+                      "v.contract": {
+                        "$numberInt": "1"
+                      },
+                      "n.created": {
+                        "$numberInt": "1"
+                      },
+                      "v.created": {
+                        "$numberInt": "-1"
+                      }
+                    },
+                    "indexName": "h45_ix_b_ecbb57f6d76f8adfb86a",
+                    "isMultiKey": false,
+                    "multiKeyPaths": {
+                      "alias": [],
+                      "v.contract": [],
+                      "n.created": [],
+                      "v.created": []
+                    },
+                    "isUnique": false,
+                    "isSparse": false,
+                    "isPartial": false,
+                    "indexVersion": {
+                      "$numberInt": "2"
+                    },
+                    "direction": "forward",
+                    "indexBounds": {
+                      "alias": [
+                        "[\"schema\", \"schema\"]"
+                      ],
+                      "v.contract": [
+                        "[\"atomicassets\", \"atomicassets\"]"
+                      ],
+                      "n.created": [
+                        "[MinKey, MaxKey]"
+                      ],
+                      "v.created": [
+                        "[MaxKey, MinKey]"
+                      ]
+                    },
+                    "keysExamined": {
+                      "$numberInt": "7"
+                    },
+                    "seeks": {
+                      "$numberInt": "1"
+                    },
+                    "dupsTested": {
+                      "$numberInt": "0"
+                    },
+                    "dupsDropped": {
+                      "$numberInt": "0"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "nReturned": {
+            "$numberLong": "3"
+          },
+          "executionTimeMillisEstimate": {
+            "$numberLong": "0"
+          }
+        },
+        {
+          "$lookup": {
+            "from": "bounded_ix1_633257a926bd0821d82a5212cdbd0067e393fd142ce5ea4d0eae825796f436cd_r",
+            "as": "lookups.collection",
+            "let": {
+              "joinKey": "$joins.collection"
+            },
+            "pipeline": [
+              {
+                "$match": {
+                  "alias": "collection",
+                  "$expr": {
+                    "$eq": [
+                      "$joins.collection",
+                      "$$joinKey"
+                    ]
+                  }
+                }
+              },
+              {
+                "$limit": {
+                  "$numberInt": "2"
+                }
+              }
+            ]
+          },
+          "totalDocsExamined": {
+            "$numberLong": "2"
+          },
+          "totalKeysExamined": {
+            "$numberLong": "2"
+          },
+          "collectionScans": {
+            "$numberLong": "0"
+          },
+          "indexesUsed": [
+            "h45_ix_j_fa7496e4ae840306df41"
+          ],
+          "nReturned": {
+            "$numberLong": "3"
+          },
+          "executionTimeMillisEstimate": {
+            "$numberLong": "0"
+          }
+        },
+        {
+          "$match": {
+            "lookups.collection.0": {
+              "$exists": true
+            }
+          },
+          "nReturned": {
+            "$numberLong": "2"
+          },
+          "executionTimeMillisEstimate": {
+            "$numberLong": "0"
+          }
+        },
+        {
+          "$lookup": {
+            "from": "bounded_ix1_633257a926bd0821d82a5212cdbd0067e393fd142ce5ea4d0eae825796f436cd_r",
+            "as": "lookups.assets",
+            "let": {
+              "joinKey": "$joins.assets"
+            },
+            "pipeline": [
+              {
+                "$match": {
+                  "alias": "assets",
+                  "$expr": {
+                    "$eq": [
+                      "$joins.assets",
+                      "$$joinKey"
+                    ]
+                  }
+                }
+              },
+              {
+                "$limit": {
+                  "$numberInt": "2"
+                }
+              }
+            ]
+          },
+          "totalDocsExamined": {
+            "$numberLong": "2"
+          },
+          "totalKeysExamined": {
+            "$numberLong": "2"
+          },
+          "collectionScans": {
+            "$numberLong": "0"
+          },
+          "indexesUsed": [
+            "h45_ix_j_8bf729ffe074caee622c"
+          ],
+          "nReturned": {
+            "$numberLong": "2"
+          },
+          "executionTimeMillisEstimate": {
+            "$numberLong": "1"
+          }
+        },
+        {
+          "$limit": {
+            "$numberLong": "2"
+          },
+          "nReturned": {
+            "$numberLong": "2"
+          },
+          "executionTimeMillisEstimate": {
+            "$numberLong": "1"
+          }
+        },
+        {
+          "$project": {
+            "base": {
+              "_id": "$_id",
+              "model": "$model",
+              "representation": "$representation",
+              "alias": "$alias",
+              "kind": "$kind",
+              "key": "$key",
+              "json": "$json",
+              "v": "$v",
+              "n": "$n",
+              "joins": "$joins"
+            },
+            "joined": "$lookups",
+            "_id": false
+          },
+          "nReturned": {
+            "$numberLong": "2"
+          },
+          "executionTimeMillisEstimate": {
+            "$numberLong": "1"
+          }
+        }
+      ],
+      "queryShapeHash": "581E232C1B0B20936FFB5AF6B770C9DB475D379578446EBB27954B8B683C2023",
+      "serverInfo": {
+        "host": "d15749d6ba4f",
+        "port": {
+          "$numberInt": "27017"
+        },
+        "version": "8.0.34",
+        "gitVersion": "51db4515a6597aedcf6188ee4e48a27e65b065ae"
+      },
+      "serverParameters": {
+        "internalQueryFacetBufferSizeBytes": {
+          "$numberInt": "104857600"
+        },
+        "internalQueryFacetMaxOutputDocSizeBytes": {
+          "$numberInt": "104857600"
+        },
+        "internalLookupStageIntermediateDocumentMaxSizeBytes": {
+          "$numberInt": "104857600"
+        },
+        "internalDocumentSourceGroupMaxMemoryBytes": {
+          "$numberInt": "104857600"
+        },
+        "internalQueryMaxBlockingSortMemoryUsageBytes": {
+          "$numberInt": "104857600"
+        },
+        "internalQueryProhibitBlockingMergeOnMongoS": {
+          "$numberInt": "0"
+        },
+        "internalQueryMaxAddToSetBytes": {
+          "$numberInt": "104857600"
+        },
+        "internalDocumentSourceSetWindowFieldsMaxMemoryBytes": {
+          "$numberInt": "104857600"
+        },
+        "internalQueryFrameworkControl": "trySbeRestricted",
+        "internalQueryPlannerIgnoreIndexWithCollationForRegex": {
+          "$numberInt": "1"
+        }
+      },
+      "command": {
+        "aggregate": "bounded_ix1_633257a926bd0821d82a5212cdbd0067e393fd142ce5ea4d0eae825796f436cd_r",
+        "pipeline": [
+          {
+            "$match": {
+              "$and": [
+                {
+                  "alias": "schema"
+                },
+                {
+                  "v.contract": {
+                    "$eq": "atomicassets"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "$sort": {
+              "n.created": {
+                "$numberInt": "1"
+              },
+              "v.created": {
+                "$numberInt": "-1"
+              }
+            }
+          },
+          {
+            "$lookup": {
+              "from": "bounded_ix1_633257a926bd0821d82a5212cdbd0067e393fd142ce5ea4d0eae825796f436cd_r",
+              "let": {
+                "joinKey": "$joins.collection"
+              },
+              "pipeline": [
+                {
+                  "$match": {
+                    "alias": "collection",
+                    "$expr": {
+                      "$eq": [
+                        "$joins.collection",
+                        "$$joinKey"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "$limit": {
+                    "$numberInt": "2"
+                  }
+                }
+              ],
+              "as": "lookups.collection"
+            }
+          },
+          {
+            "$match": {
+              "lookups.collection.0": {
+                "$exists": true
+              }
+            }
+          },
+          {
+            "$lookup": {
+              "from": "bounded_ix1_633257a926bd0821d82a5212cdbd0067e393fd142ce5ea4d0eae825796f436cd_r",
+              "let": {
+                "joinKey": "$joins.assets"
+              },
+              "pipeline": [
+                {
+                  "$match": {
+                    "alias": "assets",
+                    "$expr": {
+                      "$eq": [
+                        "$joins.assets",
+                        "$$joinKey"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "$limit": {
+                    "$numberInt": "2"
+                  }
+                }
+              ],
+              "as": "lookups.assets"
+            }
+          },
+          {
+            "$skip": {
+              "$numberLong": "0"
+            }
+          },
+          {
+            "$limit": {
+              "$numberLong": "2"
+            }
+          },
+          {
+            "$project": {
+              "_id": {
+                "$numberInt": "0"
+              },
+              "base": {
+                "_id": "$_id",
+                "model": "$model",
+                "representation": "$representation",
+                "alias": "$alias",
+                "kind": "$kind",
+                "key": "$key",
+                "json": "$json",
+                "v": "$v",
+                "n": "$n",
+                "joins": "$joins"
+              },
+              "joined": "$lookups"
+            }
+          }
+        ],
+        "hint": "h45_ix_b_ecbb57f6d76f8adfb86a",
+        "collation": {
+          "locale": "simple"
+        },
+        "allowDiskUse": false,
+        "cursor": {
+          "batchSize": {
+            "$numberInt": "1"
+          }
+        },
+        "maxTimeMS": {
+          "$numberInt": "5000"
+        },
+        "$db": "h45_indexed_b624d905aab0"
+      },
+      "ok": {
+        "$numberInt": "1"
+      },
+      "$clusterTime": {
+        "clusterTime": {
+          "$timestamp": {
+            "t": 1793555573,
+            "i": 4
+          }
+        },
+        "signature": {
+          "hash": {
+            "$binary": {
+              "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+              "subType": "00"
+            }
+          },
+          "keyId": {
+            "$numberLong": "0"
+          }
+        }
+      },
+      "operationTime": {
+        "$timestamp": {
+          "t": 1793555573,
+          "i": 4
+        }
+      }
+    },
+    "bsonReserialization": {
+      "method": "mongodb-bson-serialize-not-wire-bytes",
+      "command": {
+        "bytes": 1367,
+        "sha256": "8ae2eac19ff59f54e4918e823eec943471410503d466e76bef7eb6ff96f193eb",
+        "base64": "VwUAAAJhZ2dyZWdhdGUATwAAAGJvdW5kZWRfaXgxXzYzMzI1N2E5MjZiZDA4MjFkODJhNTIxMmNkYmQwMDY3ZTM5M2ZkMTQyY2U1ZWE0ZDBlYWU4MjU3OTZmNDM2Y2RfcgAEcGlwZWxpbmUAZQQAAAMwAGYAAAADJG1hdGNoAFkAAAAEJGFuZABOAAAAAzAAFwAAAAJhbGlhcwAHAAAAc2NoZW1hAAADMQAsAAAAA3YuY29udHJhY3QAGwAAAAIkZXEADQAAAGF0b21pY2Fzc2V0cwAAAAAAAAMxAC8AAAADJHNvcnQAIwAAABBuLmNyZWF0ZWQAAQAAABB2LmNyZWF0ZWQA/////wAAAzIAPgEAAAMkbG9va3VwADABAAACZnJvbQBPAAAAYm91bmRlZF9peDFfNjMzMjU3YTkyNmJkMDgyMWQ4MmE1MjEyY2RiZDAwNjdlMzkzZmQxNDJjZTVlYTRkMGVhZTgyNTc5NmY0MzZjZF9yAANsZXQAJAAAAAJqb2luS2V5ABIAAAAkam9pbnMuY29sbGVjdGlvbgAABHBpcGVsaW5lAIQAAAADMABoAAAAAyRtYXRjaABbAAAAAmFsaWFzAAsAAABjb2xsZWN0aW9uAAMkZXhwcgA5AAAABCRlcQAvAAAAAjAAEgAAACRqb2lucy5jb2xsZWN0aW9uAAIxAAoAAAAkJGpvaW5LZXkAAAAAAAMxABEAAAAQJGxpbWl0AAIAAAAAAAJhcwATAAAAbG9va3Vwcy5jb2xsZWN0aW9uAAAAAzMANwAAAAMkbWF0Y2gAKgAAAANsb29rdXBzLmNvbGxlY3Rpb24uMAAPAAAACCRleGlzdHMAAQAAAAM0AC4BAAADJGxvb2t1cAAgAQAAAmZyb20ATwAAAGJvdW5kZWRfaXgxXzYzMzI1N2E5MjZiZDA4MjFkODJhNTIxMmNkYmQwMDY3ZTM5M2ZkMTQyY2U1ZWE0ZDBlYWU4MjU3OTZmNDM2Y2RfcgADbGV0ACAAAAACam9pbktleQAOAAAAJGpvaW5zLmFzc2V0cwAABHBpcGVsaW5lAHwAAAADMABgAAAAAyRtYXRjaABTAAAAAmFsaWFzAAcAAABhc3NldHMAAyRleHByADUAAAAEJGVxACsAAAACMAAOAAAAJGpvaW5zLmFzc2V0cwACMQAKAAAAJCRqb2luS2V5AAAAAAADMQARAAAAECRsaW1pdAACAAAAAAACYXMADwAAAGxvb2t1cHMuYXNzZXRzAAAAAzUAFAAAABIkc2tpcAAAAAAAAAAAAAADNgAVAAAAEiRsaW1pdAACAAAAAAAAAAADNwDnAAAAAyRwcm9qZWN0ANgAAAAQX2lkAAAAAAADYmFzZQCvAAAAAl9pZAAFAAAAJF9pZAACbW9kZWwABwAAACRtb2RlbAACcmVwcmVzZW50YXRpb24AEAAAACRyZXByZXNlbnRhdGlvbgACYWxpYXMABwAAACRhbGlhcwACa2luZAAGAAAAJGtpbmQAAmtleQAFAAAAJGtleQACanNvbgAGAAAAJGpzb24AAnYAAwAAACR2AAJuAAMAAAAkbgACam9pbnMABwAAACRqb2lucwAAAmpvaW5lZAAJAAAAJGxvb2t1cHMAAAAAAmhpbnQAHgAAAGg0NV9peF9iX2VjYmI1N2Y2ZDc2ZjhhZGZiODZhAANjb2xsYXRpb24AGAAAAAJsb2NhbGUABwAAAHNpbXBsZQAACGFsbG93RGlza1VzZQAAA2N1cnNvcgAUAAAAEGJhdGNoU2l6ZQABAAAAABBtYXhUaW1lTVMAiBMAAAA="
+      },
+      "explain": {
+        "bytes": 6562,
+        "sha256": "404f47b09989f18ebd3f03b049e42c2618e4b1af8f05227e6236a115207cbf0d",
+        "base64": "ohkAAAJleHBsYWluVmVyc2lvbgACAAAAMQAEc3RhZ2VzAKUQAAADMADOCgAAAyRjdXJzb3IAiAoAAANxdWVyeVBsYW5uZXIA5gQAAAJuYW1lc3BhY2UAaAAAAGg0NV9pbmRleGVkX2I2MjRkOTA1YWFiMC5ib3VuZGVkX2l4MV82MzMyNTdhOTI2YmQwODIxZDgyYTUyMTJjZGJkMDA2N2UzOTNmZDE0MmNlNWVhNGQwZWFlODI1Nzk2ZjQzNmNkX3IAA3BhcnNlZFF1ZXJ5AGMAAAAEJGFuZABYAAAAAzAAIQAAAANhbGlhcwAVAAAAAiRlcQAHAAAAc2NoZW1hAAAAAzEALAAAAAN2LmNvbnRyYWN0ABsAAAACJGVxAA0AAABhdG9taWNhc3NldHMAAAAAAAhpbmRleEZpbHRlclNldAAAAnF1ZXJ5SGFzaAAJAAAANEJGRUREM0QAAnBsYW5DYWNoZVNoYXBlSGFzaAAJAAAANEJGRUREM0QAAnBsYW5DYWNoZUtleQAJAAAAODdEMUJEMTUAEG9wdGltaXphdGlvblRpbWVNaWxsaXMAAAAAAAhtYXhJbmRleGVkT3JTb2x1dGlvbnNSZWFjaGVkAAAIbWF4SW5kZXhlZEFuZFNvbHV0aW9uc1JlYWNoZWQAAAhtYXhTY2Fuc1RvRXhwbG9kZVJlYWNoZWQAAAhwcnVuZWRTaW1pbGFySW5kZXhlcwAAA3dpbm5pbmdQbGFuAOcCAAAIaXNDYWNoZWQAAAJzdGFnZQASAAAAUFJPSkVDVElPTl9TSU1QTEUAA3RyYW5zZm9ybUJ5AIUAAAAQX2lkAAEAAAAQYWxpYXMAAQAAABBiYXNlAAEAAAAQam9pbnMAAQAAABBqc29uAAEAAAAQa2V5AAEAAAAQa2luZAABAAAAEGxvb2t1cHMAAQAAABBtb2RlbAABAAAAEG4AAQAAABByZXByZXNlbnRhdGlvbgABAAAAEHYAAQAAAAADaW5wdXRTdGFnZQAcAgAAAnN0YWdlAAYAAABGRVRDSAADaW5wdXRTdGFnZQD6AQAAAnN0YWdlAAcAAABJWFNDQU4AA2tleVBhdHRlcm4APgAAABBhbGlhcwABAAAAEHYuY29udHJhY3QAAQAAABBuLmNyZWF0ZWQAAQAAABB2LmNyZWF0ZWQA/////wACaW5kZXhOYW1lAB4AAABoNDVfaXhfYl9lY2JiNTdmNmQ3NmY4YWRmYjg2YQAIaXNNdWx0aUtleQAAA211bHRpS2V5UGF0aHMAQgAAAARhbGlhcwAFAAAAAAR2LmNvbnRyYWN0AAUAAAAABG4uY3JlYXRlZAAFAAAAAAR2LmNyZWF0ZWQABQAAAAAACGlzVW5pcXVlAAAIaXNTcGFyc2UAAAhpc1BhcnRpYWwAABBpbmRleFZlcnNpb24AAgAAAAJkaXJlY3Rpb24ACAAAAGZvcndhcmQAA2luZGV4Qm91bmRzALYAAAAEYWxpYXMAIQAAAAIwABUAAABbInNjaGVtYSIsICJzY2hlbWEiXQAABHYuY29udHJhY3QALQAAAAIwACEAAABbImF0b21pY2Fzc2V0cyIsICJhdG9taWNhc3NldHMiXQAABG4uY3JlYXRlZAAdAAAAAjAAEQAAAFtNaW5LZXksIE1heEtleV0AAAR2LmNyZWF0ZWQAHQAAAAIwABEAAABbTWF4S2V5LCBNaW5LZXldAAAAAAAABHJlamVjdGVkUGxhbnMABQAAAAAAA2V4ZWN1dGlvblN0YXRzAH8FAAAIZXhlY3V0aW9uU3VjY2VzcwABEG5SZXR1cm5lZAAHAAAAEGV4ZWN1dGlvblRpbWVNaWxsaXMAAQAAABB0b3RhbEtleXNFeGFtaW5lZAAHAAAAEHRvdGFsRG9jc0V4YW1pbmVkAAcAAAADZXhlY3V0aW9uU3RhZ2VzAAAFAAAIaXNDYWNoZWQAAAJzdGFnZQASAAAAUFJPSkVDVElPTl9TSU1QTEUAEG5SZXR1cm5lZAAHAAAAEGV4ZWN1dGlvblRpbWVNaWxsaXNFc3RpbWF0ZQAAAAAAEHdvcmtzAAgAAAAQYWR2YW5jZWQABwAAABBuZWVkVGltZQAAAAAAEG5lZWRZaWVsZAAAAAAAEHNhdmVTdGF0ZQABAAAAEHJlc3RvcmVTdGF0ZQABAAAAEGlzRU9GAAEAAAADdHJhbnNmb3JtQnkAhQAAABBfaWQAAQAAABBhbGlhcwABAAAAEGJhc2UAAQAAABBqb2lucwABAAAAEGpzb24AAQAAABBrZXkAAQAAABBraW5kAAEAAAAQbG9va3VwcwABAAAAEG1vZGVsAAEAAAAQbgABAAAAEHJlcHJlc2VudGF0aW9uAAEAAAAQdgABAAAAAANpbnB1dFN0YWdlAKMDAAACc3RhZ2UABgAAAEZFVENIABBuUmV0dXJuZWQABwAAABBleGVjdXRpb25UaW1lTWlsbGlzRXN0aW1hdGUAAAAAABB3b3JrcwAIAAAAEGFkdmFuY2VkAAcAAAAQbmVlZFRpbWUAAAAAABBuZWVkWWllbGQAAAAAABBzYXZlU3RhdGUAAQAAABByZXN0b3JlU3RhdGUAAQAAABBpc0VPRgABAAAAEGRvY3NFeGFtaW5lZAAHAAAAEGFscmVhZHlIYXNPYmoAAAAAAANpbnB1dFN0YWdlAMoCAAACc3RhZ2UABwAAAElYU0NBTgAQblJldHVybmVkAAcAAAAQZXhlY3V0aW9uVGltZU1pbGxpc0VzdGltYXRlAAAAAAAQd29ya3MACAAAABBhZHZhbmNlZAAHAAAAEG5lZWRUaW1lAAAAAAAQbmVlZFlpZWxkAAAAAAAQc2F2ZVN0YXRlAAEAAAAQcmVzdG9yZVN0YXRlAAEAAAAQaXNFT0YAAQAAAANrZXlQYXR0ZXJuAD4AAAAQYWxpYXMAAQAAABB2LmNvbnRyYWN0AAEAAAAQbi5jcmVhdGVkAAEAAAAQdi5jcmVhdGVkAP////8AAmluZGV4TmFtZQAeAAAAaDQ1X2l4X2JfZWNiYjU3ZjZkNzZmOGFkZmI4NmEACGlzTXVsdGlLZXkAAANtdWx0aUtleVBhdGhzAEIAAAAEYWxpYXMABQAAAAAEdi5jb250cmFjdAAFAAAAAARuLmNyZWF0ZWQABQAAAAAEdi5jcmVhdGVkAAUAAAAAAAhpc1VuaXF1ZQAACGlzU3BhcnNlAAAIaXNQYXJ0aWFsAAAQaW5kZXhWZXJzaW9uAAIAAAACZGlyZWN0aW9uAAgAAABmb3J3YXJkAANpbmRleEJvdW5kcwC2AAAABGFsaWFzACEAAAACMAAVAAAAWyJzY2hlbWEiLCAic2NoZW1hIl0AAAR2LmNvbnRyYWN0AC0AAAACMAAhAAAAWyJhdG9taWNhc3NldHMiLCAiYXRvbWljYXNzZXRzIl0AAARuLmNyZWF0ZWQAHQAAAAIwABEAAABbTWluS2V5LCBNYXhLZXldAAAEdi5jcmVhdGVkAB0AAAACMAARAAAAW01heEtleSwgTWluS2V5XQAAABBrZXlzRXhhbWluZWQABwAAABBzZWVrcwABAAAAEGR1cHNUZXN0ZWQAAAAAABBkdXBzRHJvcHBlZAAAAAAAAAAAAAASblJldHVybmVkAAMAAAAAAAAAEmV4ZWN1dGlvblRpbWVNaWxsaXNFc3RpbWF0ZQAAAAAAAAAAAAADMQD8AQAAAyRsb29rdXAAMAEAAAJmcm9tAE8AAABib3VuZGVkX2l4MV82MzMyNTdhOTI2YmQwODIxZDgyYTUyMTJjZGJkMDA2N2UzOTNmZDE0MmNlNWVhNGQwZWFlODI1Nzk2ZjQzNmNkX3IAAmFzABMAAABsb29rdXBzLmNvbGxlY3Rpb24AA2xldAAkAAAAAmpvaW5LZXkAEgAAACRqb2lucy5jb2xsZWN0aW9uAAAEcGlwZWxpbmUAhAAAAAMwAGgAAAADJG1hdGNoAFsAAAACYWxpYXMACwAAAGNvbGxlY3Rpb24AAyRleHByADkAAAAEJGVxAC8AAAACMAASAAAAJGpvaW5zLmNvbGxlY3Rpb24AAjEACgAAACQkam9pbktleQAAAAAAAzEAEQAAABAkbGltaXQAAgAAAAAAABJ0b3RhbERvY3NFeGFtaW5lZAACAAAAAAAAABJ0b3RhbEtleXNFeGFtaW5lZAACAAAAAAAAABJjb2xsZWN0aW9uU2NhbnMAAAAAAAAAAAAEaW5kZXhlc1VzZWQAKgAAAAIwAB4AAABoNDVfaXhfal9mYTc0OTZlNGFlODQwMzA2ZGY0MQAAEm5SZXR1cm5lZAADAAAAAAAAABJleGVjdXRpb25UaW1lTWlsbGlzRXN0aW1hdGUAAAAAAAAAAAAAAzIAbwAAAAMkbWF0Y2gAKgAAAANsb29rdXBzLmNvbGxlY3Rpb24uMAAPAAAACCRleGlzdHMAAQAAEm5SZXR1cm5lZAACAAAAAAAAABJleGVjdXRpb25UaW1lTWlsbGlzRXN0aW1hdGUAAAAAAAAAAAAAAzMA7AEAAAMkbG9va3VwACABAAACZnJvbQBPAAAAYm91bmRlZF9peDFfNjMzMjU3YTkyNmJkMDgyMWQ4MmE1MjEyY2RiZDAwNjdlMzkzZmQxNDJjZTVlYTRkMGVhZTgyNTc5NmY0MzZjZF9yAAJhcwAPAAAAbG9va3Vwcy5hc3NldHMAA2xldAAgAAAAAmpvaW5LZXkADgAAACRqb2lucy5hc3NldHMAAARwaXBlbGluZQB8AAAAAzAAYAAAAAMkbWF0Y2gAUwAAAAJhbGlhcwAHAAAAYXNzZXRzAAMkZXhwcgA1AAAABCRlcQArAAAAAjAADgAAACRqb2lucy5hc3NldHMAAjEACgAAACQkam9pbktleQAAAAAAAzEAEQAAABAkbGltaXQAAgAAAAAAABJ0b3RhbERvY3NFeGFtaW5lZAACAAAAAAAAABJ0b3RhbEtleXNFeGFtaW5lZAACAAAAAAAAABJjb2xsZWN0aW9uU2NhbnMAAAAAAAAAAAAEaW5kZXhlc1VzZWQAKgAAAAIwAB4AAABoNDVfaXhfal84YmY3MjlmZmUwNzRjYWVlNjIyYwAAEm5SZXR1cm5lZAACAAAAAAAAABJleGVjdXRpb25UaW1lTWlsbGlzRXN0aW1hdGUAAQAAAAAAAAAAAzQATQAAABIkbGltaXQAAgAAAAAAAAASblJldHVybmVkAAIAAAAAAAAAEmV4ZWN1dGlvblRpbWVNaWxsaXNFc3RpbWF0ZQABAAAAAAAAAAADNQAcAQAAAyRwcm9qZWN0ANUAAAADYmFzZQCvAAAAAl9pZAAFAAAAJF9pZAACbW9kZWwABwAAACRtb2RlbAACcmVwcmVzZW50YXRpb24AEAAAACRyZXByZXNlbnRhdGlvbgACYWxpYXMABwAAACRhbGlhcwACa2luZAAGAAAAJGtpbmQAAmtleQAFAAAAJGtleQACanNvbgAGAAAAJGpzb24AAnYAAwAAACR2AAJuAAMAAAAkbgACam9pbnMABwAAACRqb2lucwAAAmpvaW5lZAAJAAAAJGxvb2t1cHMACF9pZAAAABJuUmV0dXJuZWQAAgAAAAAAAAASZXhlY3V0aW9uVGltZU1pbGxpc0VzdGltYXRlAAEAAAAAAAAAAAACcXVlcnlTaGFwZUhhc2gAQQAAADU4MUUyMzJDMUIwQjIwOTM2RkZCNUFGNkI3NzBDOURCNDc1RDM3OTU3ODQ0NkVCQjI3OTU0QjhCNjgzQzIwMjMAA3NlcnZlckluZm8AcwAAAAJob3N0AA0AAABkMTU3NDlkNmJhNGYAEHBvcnQAiWkAAAJ2ZXJzaW9uAAcAAAA4LjAuMzQAAmdpdFZlcnNpb24AKQAAADUxZGI0NTE1YTY1OTdhZWRjZjYxODhlZTRlNDhhMjdlNjViMDY1YWUAAANzZXJ2ZXJQYXJhbWV0ZXJzAO0BAAAQaW50ZXJuYWxRdWVyeUZhY2V0QnVmZmVyU2l6ZUJ5dGVzAAAAQAYQaW50ZXJuYWxRdWVyeUZhY2V0TWF4T3V0cHV0RG9jU2l6ZUJ5dGVzAAAAQAYQaW50ZXJuYWxMb29rdXBTdGFnZUludGVybWVkaWF0ZURvY3VtZW50TWF4U2l6ZUJ5dGVzAAAAQAYQaW50ZXJuYWxEb2N1bWVudFNvdXJjZUdyb3VwTWF4TWVtb3J5Qnl0ZXMAAABABhBpbnRlcm5hbFF1ZXJ5TWF4QmxvY2tpbmdTb3J0TWVtb3J5VXNhZ2VCeXRlcwAAAEAGEGludGVybmFsUXVlcnlQcm9oaWJpdEJsb2NraW5nTWVyZ2VPbk1vbmdvUwAAAAAAEGludGVybmFsUXVlcnlNYXhBZGRUb1NldEJ5dGVzAAAAQAYQaW50ZXJuYWxEb2N1bWVudFNvdXJjZVNldFdpbmRvd0ZpZWxkc01heE1lbW9yeUJ5dGVzAAAAQAYCaW50ZXJuYWxRdWVyeUZyYW1ld29ya0NvbnRyb2wAEQAAAHRyeVNiZVJlc3RyaWN0ZWQAEGludGVybmFsUXVlcnlQbGFubmVySWdub3JlSW5kZXhXaXRoQ29sbGF0aW9uRm9yUmVnZXgAAQAAAAADY29tbWFuZAB5BQAAAmFnZ3JlZ2F0ZQBPAAAAYm91bmRlZF9peDFfNjMzMjU3YTkyNmJkMDgyMWQ4MmE1MjEyY2RiZDAwNjdlMzkzZmQxNDJjZTVlYTRkMGVhZTgyNTc5NmY0MzZjZF9yAARwaXBlbGluZQBlBAAAAzAAZgAAAAMkbWF0Y2gAWQAAAAQkYW5kAE4AAAADMAAXAAAAAmFsaWFzAAcAAABzY2hlbWEAAAMxACwAAAADdi5jb250cmFjdAAbAAAAAiRlcQANAAAAYXRvbWljYXNzZXRzAAAAAAAAAzEALwAAAAMkc29ydAAjAAAAEG4uY3JlYXRlZAABAAAAEHYuY3JlYXRlZAD/////AAADMgA+AQAAAyRsb29rdXAAMAEAAAJmcm9tAE8AAABib3VuZGVkX2l4MV82MzMyNTdhOTI2YmQwODIxZDgyYTUyMTJjZGJkMDA2N2UzOTNmZDE0MmNlNWVhNGQwZWFlODI1Nzk2ZjQzNmNkX3IAA2xldAAkAAAAAmpvaW5LZXkAEgAAACRqb2lucy5jb2xsZWN0aW9uAAAEcGlwZWxpbmUAhAAAAAMwAGgAAAADJG1hdGNoAFsAAAACYWxpYXMACwAAAGNvbGxlY3Rpb24AAyRleHByADkAAAAEJGVxAC8AAAACMAASAAAAJGpvaW5zLmNvbGxlY3Rpb24AAjEACgAAACQkam9pbktleQAAAAAAAzEAEQAAABAkbGltaXQAAgAAAAAAAmFzABMAAABsb29rdXBzLmNvbGxlY3Rpb24AAAADMwA3AAAAAyRtYXRjaAAqAAAAA2xvb2t1cHMuY29sbGVjdGlvbi4wAA8AAAAIJGV4aXN0cwABAAAAAzQALgEAAAMkbG9va3VwACABAAACZnJvbQBPAAAAYm91bmRlZF9peDFfNjMzMjU3YTkyNmJkMDgyMWQ4MmE1MjEyY2RiZDAwNjdlMzkzZmQxNDJjZTVlYTRkMGVhZTgyNTc5NmY0MzZjZF9yAANsZXQAIAAAAAJqb2luS2V5AA4AAAAkam9pbnMuYXNzZXRzAAAEcGlwZWxpbmUAfAAAAAMwAGAAAAADJG1hdGNoAFMAAAACYWxpYXMABwAAAGFzc2V0cwADJGV4cHIANQAAAAQkZXEAKwAAAAIwAA4AAAAkam9pbnMuYXNzZXRzAAIxAAoAAAAkJGpvaW5LZXkAAAAAAAMxABEAAAAQJGxpbWl0AAIAAAAAAAJhcwAPAAAAbG9va3Vwcy5hc3NldHMAAAADNQAUAAAAEiRza2lwAAAAAAAAAAAAAAM2ABUAAAASJGxpbWl0AAIAAAAAAAAAAAM3AOcAAAADJHByb2plY3QA2AAAABBfaWQAAAAAAANiYXNlAK8AAAACX2lkAAUAAAAkX2lkAAJtb2RlbAAHAAAAJG1vZGVsAAJyZXByZXNlbnRhdGlvbgAQAAAAJHJlcHJlc2VudGF0aW9uAAJhbGlhcwAHAAAAJGFsaWFzAAJraW5kAAYAAAAka2luZAACa2V5AAUAAAAka2V5AAJqc29uAAYAAAAkanNvbgACdgADAAAAJHYAAm4AAwAAACRuAAJqb2lucwAHAAAAJGpvaW5zAAACam9pbmVkAAkAAAAkbG9va3VwcwAAAAACaGludAAeAAAAaDQ1X2l4X2JfZWNiYjU3ZjZkNzZmOGFkZmI4NmEAA2NvbGxhdGlvbgAYAAAAAmxvY2FsZQAHAAAAc2ltcGxlAAAIYWxsb3dEaXNrVXNlAAADY3Vyc29yABQAAAAQYmF0Y2hTaXplAAEAAAAAEG1heFRpbWVNUwCIEwAAAiRkYgAZAAAAaDQ1X2luZGV4ZWRfYjYyNGQ5MDVhYWIwAAAQb2sAAQAAAAMkY2x1c3RlclRpbWUAWAAAABFjbHVzdGVyVGltZQAEAAAAdXznagNzaWduYXR1cmUAMwAAAAVoYXNoABQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAASa2V5SWQAAAAAAAAAAAAAABFvcGVyYXRpb25UaW1lAAQAAAB1fOdqAA=="
+      }
+    },
+    "sealedView": {
+      "backendId": "h45_indexed_b624d905aab0",
+      "checkpoint": {
+        "blockId": "0000000000000000000000000000000000000000000000000000000000000066",
+        "blockNum": 2
+      },
+      "declarationDigest": "1b9a7e52cc8b7e5c9af3f6011acd8b4aa9d606533598b22cd4f04363c71b355d",
+      "generation": "fresh-indexed-generation",
+      "revision": "a2c3cab97f7e96cec425cd98ddf2f3d86b5ff253c3e083f87a15b5d726c5e173"
+    },
+    "expected": {
+      "baseHint": "h45_ix_b_ecbb57f6d76f8adfb86a",
+      "lookupIndexes": [
+        "h45_ix_l_fa7496e4ae840306df41",
+        "h45_ix_l_8bf729ffe074caee622c"
+      ]
+    },
+    "afterView": {
+      "backendId": "h45_indexed_b624d905aab0",
+      "checkpoint": {
+        "blockId": "0000000000000000000000000000000000000000000000000000000000000066",
+        "blockNum": 2
+      },
+      "declarationDigest": "1b9a7e52cc8b7e5c9af3f6011acd8b4aa9d606533598b22cd4f04363c71b355d",
+      "generation": "fresh-indexed-generation",
+      "revision": "a2c3cab97f7e96cec425cd98ddf2f3d86b5ff253c3e083f87a15b5d726c5e173"
+    }
+  }
+]

@@ -27,6 +27,7 @@ export const engineeringAdmissionSourcePaths = Object.freeze([
     'tests/unit/protocol-abi-history-native.mjs',
     'tests/unit/wire-managed-state-v2-native.mjs',
     'tests/unit/portable-state-source-fixture.mjs',
+    'packages/backend-mongodb/tests/fixture.mjs',
     'tests/unit/stateful-host-fixture.mjs',
     'tests/native/retained-workload-progress.mjs',
     'tests/native/retained-workload-test.mjs',
