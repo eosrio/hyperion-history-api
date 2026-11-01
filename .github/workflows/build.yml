@@ -41,7 +41,7 @@ jobs:
       - name: Record the explicit current Linux assembly and actual runtime candidate
         run: node tests/unit/native-cleanup-trace-source-admission.mjs --admit-native-cleanup-trace > current-native-source-${{ matrix.node-version }}.json
       - name: Check explicit current profile, frozen historical predicates and workload boundaries
-        run: node --test tests/native/current-stateful-source-profile.test.mjs scripts/qualification/operator-list-mongodb/cleanup-source-profile.test.mjs scripts/qualification/wire-source-snapshot.test.mjs tests/native/retained-wire-stage-observer.test.mjs
+        run: node --test tests/native/current-stateful-source-profile.test.mjs scripts/qualification/operator-list-mongodb/cleanup-source-profile.test.mjs scripts/qualification/wire-source-snapshot.test.mjs tests/native/retained-wire-stage-observer.test.mjs tests/native/retained-wire-cpu-ci-source.test.mjs
       - name: Check bounded canonical JSON and authentic protocol records on Node ${{ matrix.node-version }}
         run: node --test tests/unit/bounded-json.test.mjs tests/native/bounded-json-protocol-records.test.mjs
       - name: Check mixed stateful source and final publication on Node ${{ matrix.node-version }}
@@ -52,8 +52,16 @@ jobs:
           node tests/unit/stateful-complete-kind-source-admission-native.mjs
       - name: Check retained Wire managed state and historical source authority on Node ${{ matrix.node-version }}
         run: |
-          HYPERION_RETAINED_WIRE_STAGES=1 node --test tests/unit/wire-managed-state-v2-native.mjs
+          mkdir "$RUNNER_TEMP/retained-wire-cpu"
+          HYPERION_RETAINED_WIRE_STAGES=1 node --cpu-prof --cpu-prof-dir="$RUNNER_TEMP/retained-wire-cpu" --test tests/unit/wire-managed-state-v2-native.mjs
           node --test tests/unit/protocol-abi-history-native.mjs
+      - name: Retain retained Wire CPU samples
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: retained-wire-cpu-${{ matrix.node-version }}
+          path: ${{ runner.temp }}/retained-wire-cpu/
+          if-no-files-found: warn
       - name: Check Fastify request admission and state route compatibility on Node ${{ matrix.node-version }}
         run: node --test --test-timeout=15000 tests/native/fastify-compatibility.test.mjs
       - name: Check complete-kind query/client and final-publication controls
