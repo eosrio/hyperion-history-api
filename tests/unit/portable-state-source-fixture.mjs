@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
+import {retainedWireStages, beginRetainedWireSource, sourceBlock} from './retained-wire-stage-observer.mjs';
 const code = process.versions.bun ? "../../src/" : "../../build/";
 const { loadChainProtocol } = await import(new URL(code + "indexer/protocol/selection.js", import.meta.url));
 const { ProtocolAbiCoordinator } = await import(new URL(code + "indexer/protocol/abi-coordinator.js", import.meta.url));
@@ -25,6 +26,8 @@ const frames = [
   return frame;
 });
 export async function prepared(constructedEpochs = {}, initialThrough = 4, construct, retained) {
+  const finishPreparation = beginRetainedWireSource(); let preparationFailed = true;
+  try {
   // Explicit test input only. The retained-range fixture verifies its original member hashes first;
   // normal tests keep their exact four-frame capture and construction controls.
   const inputFrames = retained?.frames ?? frames;
@@ -35,6 +38,8 @@ export async function prepared(constructedEpochs = {}, initialThrough = 4, const
   const memory = frontierMemoryClient(), chain = "portable-source-fixture";
   const store = new ProtocolAbiFrontierStore(memory.client, chain), bindings = new ProtocolSourceBindingStore(memory.client, chain);
   const observations = new ProtocolAbiObservationStore(memory.client, chain);
+  retainedWireStages.watch(bindings, [['prepareSelection', 'source.selection', sourceBlock], ['prepareObservationLink', 'source.link']]);
+  retainedWireStages.watch(observations, [['prepare', 'source.observation', sourceBlock]]);
   const coordinator = new ProtocolAbiCoordinator({
     chainId: inputCapture.chainId,
     profile,
@@ -45,13 +50,17 @@ export async function prepared(constructedEpochs = {}, initialThrough = 4, const
     verifyNativeGenesis: selected.provider.verifyNativeGenesis?.bind(selected.provider),
     historicalCertificates: retained?.historicalCertificates
   });
+  retainedWireStages.watch(coordinator, [['admit', 'source.admission'], ['drain', 'source.publication']]);
   await coordinator.start();
   const contextId = (await bindings.prepareContext({ schemaVersion: 1, chainId: inputCapture.chainId, protocol: profile, schemaJson: inputSchema })).id;
   const { generation } = await coordinator.openSource(contextId, "fixture-source");
   const schema = JSON.parse(inputSchema);
   const positions = [], observed = [];
   async function advance(through) {
-    const session = selected.provider.createShipSession(JSON.parse(inputSchema));
+    const finishAdvance = retainedWireStages.begin('source.advance', through); let advanceFailed = true;
+    let session;
+    try {session = selected.provider.createShipSession(JSON.parse(inputSchema));}
+    catch (error) {finishAdvance('failed'); throw error;}
     try {
       const nativeDeltas = session.decodeDeltas(Buffer.from(session.decodeResult(inputFrames[0])[1].deltas, "hex"));
       const nativeAbiHex = session.decodeRow("account", Buffer.from(nativeDeltas[0][1].rows[0].data, "hex"))[1].abi;
@@ -64,6 +73,8 @@ export async function prepared(constructedEpochs = {}, initialThrough = 4, const
           blockId: result.this_block.block_id,
           previousBlockId: result.prev_block?.block_id ?? null
         };
+        const finishFrame = retainedWireStages.begin('source.frame', source.blockNum); let frameFailed = true;
+        try {
         const epoch = constructedEpochs[source.blockNum];
         if (epoch) {
           const account = ["account_v0", { name: "target", creation_date: "2025-01-01T00:00:00.000", abi: epoch.abiHex }];
@@ -136,17 +147,25 @@ export async function prepared(constructedEpochs = {}, initialThrough = 4, const
         await coordinator.drain();
         positions.push(source);
         observed.push(receipt.id);
+        frameFailed = false;
+        } finally {finishFrame(frameFailed ? 'failed' : 'completed');}
       }
+      advanceFailed = false;
     } finally {
-      session.close?.();
+      try {session.close?.();} catch (error) {advanceFailed = true; throw error;}
+      finally {finishAdvance(advanceFailed ? 'failed' : 'completed');}
     }
   }
   await advance(initialThrough);
   const options = { client: memory.client, chain, chainId: inputCapture.chainId, profile, provider: selected.provider,
     maxAncestryBlocks: retained?.maxAncestryBlocks, historicalCertificates: retained?.historicalCertificates !== undefined };
   memory.calls.length = 0;
+  const source = new PortableProjectionSource(options);
+  retainedWireStages.watch(source, [['statefulBlock', 'projection.source-frame', args => args[0]]]);
+  preparationFailed = false;
   return { memory, options, coordinator, store, bindings, observations, contextId, positions, observed, advance,
-    source: new PortableProjectionSource(options) };
+    source };
+  } finally {finishPreparation(preparationFailed ? 'failed' : 'completed');}
 }
 
 export { hash, read, original, forward, capture, follow, schemaJson, frames };
