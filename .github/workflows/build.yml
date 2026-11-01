@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "main", "dev", "release/4.5" ]
   pull_request:
-    branches: ["main", "dev", "release/4.5", "codex/fix-action-abi-epochs", "codex/wire-protocol-host", "codex/protocol-abi-observations", "codex/protocol-abi-coverage", "codex/protocol-abi-frontier", "codex/protocol-abi-consumers", "codex/exact-sequence-history-adapter", "codex/action-source-journal", "codex/portable-state-production", "feat/protocol-action-occurrence-proof", "fix/protocol-source-read-cancellation", "build/native-action-dependencies", "feat/native-observation-prepare", "feat/native-action-authorization", "feat/native-action-consumers", "build/native-wire-profile-pin", "build/bun-1.4.4", "fix/native-wire-worker-proofs", "fix/live-reader-ship-credits", "feat/source-handoff-outcomes", "feat/action-attempt-dispositions", "fix/worker-attempt-quiescence", "fix/stream-client-compatibility-45", "codex/wire-full-worker-replay", "feat/source-bound-attempt-adjudication", "perf/native-wire-worker-profiles", "codex/wire-storage-recovery", "codex/native-source-proof-pair", "feat/original-action-authorization-397"]
+    branches: ["main", "dev", "release/4.5", "codex/fix-action-abi-epochs", "codex/wire-protocol-host", "codex/protocol-abi-observations", "codex/protocol-abi-coverage", "codex/protocol-abi-frontier", "codex/protocol-abi-consumers", "codex/exact-sequence-history-adapter", "codex/action-source-journal", "codex/portable-state-production", "feat/protocol-action-occurrence-proof", "fix/protocol-source-read-cancellation", "build/native-action-dependencies", "feat/native-observation-prepare", "feat/native-action-authorization", "feat/native-action-consumers", "build/native-wire-profile-pin", "build/bun-1.4.4", "fix/native-wire-worker-proofs", "fix/live-reader-ship-credits", "feat/source-handoff-outcomes", "feat/action-attempt-dispositions", "fix/worker-attempt-quiescence", "fix/stream-client-compatibility-45", "codex/wire-full-worker-replay", "feat/source-bound-attempt-adjudication", "perf/native-wire-worker-profiles", "codex/wire-storage-recovery", "codex/native-source-proof-pair", "feat/original-action-authorization-397", "fix/portable-mapping-retry-eligibility-403"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
@@ -14,7 +14,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-dd85ee5-18d235e-fields-engineering
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-18d235e-complete-kind-executor-engineering
     strategy:
       matrix:
         node-version: [24.x, 26.x]
@@ -41,13 +41,15 @@ jobs:
           node --test tests/native/pinned-git-source.test.mjs
           node tests/unit/portable-state-owner-v2.mjs
           node tests/unit/stateful-host-native.mjs
-          node tests/unit/stateful-metadata-fields-source-admission-native.mjs
+          node tests/unit/stateful-complete-kind-source-admission-native.mjs
       - name: Check retained Wire managed state and historical source authority on Node ${{ matrix.node-version }}
         run: |
           node --test tests/unit/wire-managed-state-v2-native.mjs
           node --test tests/unit/protocol-abi-history-native.mjs
       - name: Check Fastify request admission and state route compatibility on Node ${{ matrix.node-version }}
         run: node --test --test-timeout=15000 tests/native/fastify-compatibility.test.mjs
+      - name: Check complete-kind query/client and final-publication controls
+        run: node --test --test-concurrency=1 tests/native/stateful-complete-kind-client.test.mjs tests/native/stateful-complete-kind-host.test.mjs
       - name: Check stream request lifecycle on Node ${{ matrix.node-version }}
         run: node --test tests/native/stream-request-lifecycle.test.mjs tests/native/stream-history-delivery.test.mjs
       - name: Check history/live stream filters and selectors on Node ${{ matrix.node-version }}
@@ -63,7 +65,7 @@ jobs:
           node --experimental-strip-types tests/unit/portable-state-mongo-sampling.mjs
           node --experimental-strip-types tests/unit/portable-state-mongo-admission-red.mjs characterize
       - name: Check stateful MongoDB fixture source guards on Node ${{ matrix.node-version }}
-        run: node --test scripts/qualification/stateful-mongodb-fixture/offline.test.mjs
+        run: node --test scripts/qualification/stateful-mongodb-fixture/offline.test.mjs scripts/qualification/stateful-complete-kind-mongodb/offline.test.mjs
       - name: Check portable state source and fixture ownership guards
         run: python3 tests/fixtures/portable-state-worker/test_helpers.py
       - name: Verify published native Wire CPU evidence
@@ -145,7 +147,8 @@ jobs:
         shell: bash
         run: |
           default_source="$RUNNER_TEMP/hyperion-default716"
-          git worktree add --detach "$default_source" HEAD
+          git fetch origin 6021a536c8032bd143171338457e8bfbda5c042b
+          git -c core.autocrlf=false worktree add --detach "$default_source" 6021a536c8032bd143171338457e8bfbda5c042b
           cd "$default_source"
           node --input-type=module <<'NODE'
           import {readFileSync, writeFileSync} from 'node:fs';
@@ -200,6 +203,17 @@ jobs:
           npm test --prefix packages/backend-mongodb
       - name: Exercise the portable runtime and adapter against owned MongoDB 8.0.34
         run: node scripts/qualification/check-projection-mongodb.mjs projection-report.json
+      - name: Check actual root-client/native-driver command execution and source profile
+        run: node --test tests/native/stateful-complete-kind-public-command.test.mjs tests/native/stateful-complete-kind-executor-profile.test.mjs
+      - name: Exercise complete-kind accounting and same-snapshot ownership against a separately owned MongoDB 8.0.34
+        run: node scripts/qualification/stateful-complete-kind-mongodb/ci.mjs complete-kind-mongodb-${{ matrix.node-version }}
+      - name: Retain complete-kind native traces, terminal logs and verified fixture cleanup
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: complete-kind-mongodb-${{ matrix.node-version }}
+          path: complete-kind-mongodb-${{ matrix.node-version }}/
+          if-no-files-found: error
       - name: Retain portable MongoDB conformance report
         if: always()
         uses: actions/upload-artifact@v4
@@ -236,7 +250,7 @@ jobs:
   action-source-journal:
     runs-on: ubuntu-24.04
     env:
-      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-dd85ee5-18d235e-fields-engineering
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-18d235e-complete-kind-executor-engineering
     timeout-minutes: 15
     strategy:
       fail-fast: false

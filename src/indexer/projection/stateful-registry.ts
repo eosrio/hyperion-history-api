@@ -6,8 +6,10 @@ import type {StatefulView} from '@eosrio/hyperion-sdk/projection-stateful';
 import {negotiateStatefulActionMetadataV2, type StatefulActionMetadataOptionsV2} from '@eosrio/hyperion-sdk/projection-stateful-source-v2';
 import {captureStatefulOwnerDeclarationV2, negotiateStatefulOwnerV2, STATEFUL_OWNER_FAMILY_V2,
     STATEFUL_OWNER_HOST_CAPABILITIES_V2, type StatefulOwnerAdapterV2, type StatefulOwnerDeclarationV2,
-    type StatefulReductionV2} from '@eosrio/hyperion-sdk/projection-stateful-owner-v2';
+    type StatefulReductionV2, STATEFUL_COMPLETE_KIND_FAMILY_V1, negotiateStatefulCompleteKindV1,
+    type StatefulCompleteKindAdapterV1, type StatefulCompleteKindSelectionV1} from '@eosrio/hyperion-sdk/projection-stateful-owner-v2';
 import {createMongoDbStatefulOwnerAdapterV2} from '@eosrio/hyperion-backend-mongodb/stateful-owner-v2';
+import {createMongoDbStatefulCompleteKindAdapterV1} from '@eosrio/hyperion-backend-mongodb/stateful-owner-complete-kind-v1';
 import type {HyperionModuleLoader} from '../modules/loader.js';
 import {installedRuntimeArtifacts} from '../helpers/runtime-artifacts.js';
 import {protocolImmutableJson} from '../protocol/immutable-bundle-store.js';
@@ -22,10 +24,12 @@ export interface RegisteredStatefulProjectionV2 {
     readonly declaration: StatefulOwnerDeclarationV2; readonly adapter: StatefulOwnerAdapterV2;
     readonly reduce: (port: StatefulReductionV2) => Promise<void>;
     readonly sourceMetadata: StatefulActionMetadataOptionsV2;
+    readonly completeKind?: {readonly adapter: StatefulCompleteKindAdapterV1; readonly selection: StatefulCompleteKindSelectionV1};
 }
 interface RegistryOptions {
     chainId: string; configuration: ResolvedStatefulOwnerConfigurationV2; mongo: MongoClient; client: Client;
     source: PortableProjectionSource; profile: ProtocolSourceProfile; onError?: (projection: string, error: unknown) => void;
+    completeKindMongo?: () => Promise<MongoClient>;
 }
 /** Existing enabled plugins, one host-owned immutable declaration per projection ID. */
 export class StatefulProjectionRegistryV2 {
@@ -45,7 +49,8 @@ export class StatefulProjectionRegistryV2 {
                 normalizerRevision: hash(['hyperion-stateful-normalizer-v2', runtime.executableSha256, options.profile])});
             let registration: StatefulPluginRegistrationV2;
             try {
-                registration = await entry.plugin.getStatefulProjectionsV2(Object.freeze({binding, sourceCapabilities: STATEFUL_SOURCE_CAPABILITIES_V2}));
+                registration = await entry.plugin.getStatefulProjectionsV2(Object.freeze({binding, sourceCapabilities: STATEFUL_SOURCE_CAPABILITIES_V2,
+                    ...(options.completeKindMongo ? {completeKindRead: Object.freeze({family: STATEFUL_COMPLETE_KIND_FAMILY_V1, interfaceVersion: 1 as const})} : {})}));
                 if (registration?.interfaceVersion !== 2 || registration.sourceInputVersion !== 2 || !Array.isArray(registration.projections)
                     || registration.projections.length > 32)
                     throw new Error('Plugin did not negotiate stateful owner/source version2');
@@ -57,8 +62,12 @@ export class StatefulProjectionRegistryV2 {
                         throw new Error('Stateful source requirements must be inert data');
                     const requiredSourceCapabilities = required ? required.value : [];
                     negotiateStatefulActionMetadataV2(requiredSourceCapabilities, STATEFUL_SOURCE_CAPABILITIES_V2);
+                    const complete = Object.getOwnPropertyDescriptor(template, 'requiredCompleteKindRead');
+                    if (complete && (!complete.enumerable || !Object.hasOwn(complete, 'value') || !complete.value
+                        || typeof complete.value !== 'object' || Array.isArray(complete.value) || !options.completeKindMongo))
+                        throw new Error('Complete-kind requirements must be supported inert data');
                     const inert = JSON.parse(protocolImmutableJson({definition: template.definition, limits: template.limits,
-                        requiredSourceCapabilities}));
+                        requiredSourceCapabilities, ...(complete ? {requiredCompleteKindRead: complete.value} : {})}));
                     const id = inert.definition.id;
                     if (typeof id !== 'string' || !id || typeof template.reduce !== 'function') throw new Error('Invalid stateful plugin template');
                     if (registry.templates.size + registry.invalid.size >= 32 && !registry.templates.has(id)) throw new Error('Per-chain projection budget exceeded');
@@ -90,15 +99,22 @@ export class StatefulProjectionRegistryV2 {
                 const declaration = await captureStatefulOwnerDeclarationV2(projection, 2), c = this.options.configuration;
                 // The explicit generation chooses a private namespace. Changing an ABI does not silently adopt or mutate it.
                 const prefix = 'h45s_' + hash([this.options.chainId, c.generation]).slice(0, 24);
-                const adapter = await createMongoDbStatefulOwnerAdapterV2({client: this.options.mongo, databaseName: c.backend.database,
+                const required = template.requiredCompleteKindRead;
+                if (required && !this.options.completeKindMongo) throw new Error('Complete-kind native query capability unavailable');
+                const nativeOptions = {client: required ? await this.options.completeKindMongo!() : this.options.mongo, databaseName: c.backend.database,
                     backendId: c.backend.id, collectionPrefix: prefix, declaration, receiptRetention: c.recovery.receipts,
                     rollbackRetentionBlocks: c.recovery.blocks, rollbackRetentionBytes: c.recovery.bytes, rollbackMaxBlockBytes: c.recovery.maxBlockBytes,
-                    operationTimeoutMS: c.operationTimeoutMS, transactionTimeoutMS: c.transactionTimeoutMS});
+                    operationTimeoutMS: c.operationTimeoutMS, transactionTimeoutMS: c.transactionTimeoutMS};
+                const adapter = required ? await createMongoDbStatefulCompleteKindAdapterV1(nativeOptions, required.limits)
+                    : await createMongoDbStatefulOwnerAdapterV2(nativeOptions);
                 const negotiated = await negotiateStatefulOwnerV2(projection, {family: STATEFUL_OWNER_FAMILY_V2, interfaceVersion: 2,
                     sourceInputVersions: [2], supported: STATEFUL_OWNER_HOST_CAPABILITIES_V2, limits: projection.limits}, adapter.capabilities);
                 await this.options.source.revalidate(selected.proof);
                 const sourceMetadata = negotiateStatefulActionMetadataV2(template.requiredSourceCapabilities, STATEFUL_SOURCE_CAPABILITIES_V2);
-                this.entries.set(id, Object.freeze({declaration: negotiated, adapter, sourceMetadata,
+                const completeKind = required ? {adapter: adapter as StatefulCompleteKindAdapterV1,
+                    selection: negotiateStatefulCompleteKindV1(negotiated, required.limits, required,
+                        (adapter as StatefulCompleteKindAdapterV1).completeKindCapabilities)} : undefined;
+                this.entries.set(id, Object.freeze({declaration: negotiated, adapter, sourceMetadata, ...(completeKind ? {completeKind: Object.freeze(completeKind)} : {}),
                     reduce: async port => {await template.reduce(port);}}));
             } catch (error) {this.options.onError?.(id, error);}
         }

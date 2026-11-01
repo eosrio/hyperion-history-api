@@ -1,5 +1,7 @@
 import type {FastifyInstance, FastifyReply, FastifyRequest, onSendAsyncHookHandler} from 'fastify';
-import {composeStatefulOwnerReadV2} from '@eosrio/hyperion-sdk/projection-stateful-owner-v2';
+import {composeStatefulOwnerReadV2, composeStatefulOwnerCompleteKindReadV1,
+    type StatefulCompleteKindQueryHostV1} from '@eosrio/hyperion-sdk/projection-stateful-owner-v2';
+import type {StatefulGuard, StatefulQueryResult} from '@eosrio/hyperion-sdk/projection-stateful';
 import type {HyperionModuleLoader} from '../../indexer/modules/loader.js';
 import {loadChainProtocol} from '../../indexer/protocol/selection.js';
 import {protocolImmutableJson} from '../../indexer/protocol/immutable-bundle-store.js';
@@ -25,8 +27,11 @@ interface RequestState {
     readonly abort: AbortController; readonly timer: ReturnType<typeof setTimeout>; readonly connection: object | undefined;
     readonly deadline: number;
     readonly host: StatefulOwnerQueryHostV2; used: boolean; failed: boolean;
+    readonly execute: (projectionId: string, run: RequestExecution) => Promise<StatefulQueryResult>;
     result?: {registry: RegistryPort; entry: RegisteredStatefulProjectionV2; expected: StatefulOwnerExpectation};
 }
+type RequestExecution = (entry: RegisteredStatefulProjectionV2, expected: StatefulOwnerExpectation,
+    guard: StatefulGuard) => Promise<StatefulQueryResult>;
 const same = (left: unknown, right: unknown) => protocolImmutableJson(left) === protocolImmutableJson(right);
 function requireReady(value: unknown): asserts value {if (!value) throw new StatefulApiUnavailableError();}
 function cancelled<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
@@ -84,14 +89,13 @@ export function installStatefulApiHostV2(fastify: FastifyInstance, options: {con
         route.onSend = [...hooks.filter(hook => hook !== publish), publish];
     });
     fastify.addHook('onResponse', async request => {const state = requests.get(request); if (state) {clearTimeout(state.timer); state.abort.abort();}});
-    return Object.freeze({statefulQueryHost(request: FastifyRequest) {
+    const statefulQueryHost = (request: FastifyRequest) => {
         const previous = requests.get(request); if (previous) return previous.host;
         const abort = new AbortController(), connection = options.probe.currentSocket();
         const deadline = (started.get(request) ?? performance.now()) + options.configuration.api.timeoutMs;
         if (closed.has(request) || request.raw.aborted) abort.abort();
         let state: RequestState;
-        const host: StatefulOwnerQueryHostV2 = Object.freeze({interfaceVersion: 2, sourceInputVersion: 2,
-            async compose(projectionId, compose) {
+        const execute = async (projectionId: string, run: RequestExecution) => {
                 try {
                     requireReady(!state.used); state.used = true; guard(state);
                     return await cancelled((async () => {
@@ -103,24 +107,45 @@ export function installStatefulApiHostV2(fastify: FastifyInstance, options: {con
                         const expected = {declarationDigest: entry.declaration.digest, owner: recovery.owner, view: recovery.view};
                         state.result = {registry, entry, expected};
                         await verify(state);
-                        const result = await composeStatefulOwnerReadV2(entry.declaration, entry.adapter, expected.owner.identity, expected.view,
-                            compose, () => guard(state));
+                        const result = await run(entry, expected, () => guard(state));
                         await verify(state); guard(state); return result;
                     })(), abort.signal);
                 } catch {state.failed = true; throw new StatefulApiUnavailableError();}
-            }});
-        state = {abort, connection, deadline, timer: setTimeout(() => abort.abort(), Math.max(0, deadline - performance.now())), host, used: false, failed: false};
+        };
+        const host: StatefulOwnerQueryHostV2 = Object.freeze({interfaceVersion: 2, sourceInputVersion: 2,
+            compose: (projectionId, compose) => execute(projectionId, (entry, expected, authority) =>
+                composeStatefulOwnerReadV2(entry.declaration, entry.adapter, expected.owner.identity, expected.view, compose, authority))});
+        state = {abort, connection, deadline, timer: setTimeout(() => abort.abort(), Math.max(0, deadline - performance.now())), host, execute, used: false, failed: false};
         requests.set(request, state);
         request.raw.once('aborted', () => abort.abort());
         request.raw.once('close', () => {if (request.raw.aborted) abort.abort();});
         return host;
-    }});
+    };
+    return Object.freeze({statefulQueryHost,
+        async statefulCompleteKindQueryHost(request: FastifyRequest, projectionId: string): Promise<StatefulCompleteKindQueryHostV1> {
+            statefulQueryHost(request); const state = requests.get(request)!;
+            try {
+                const entry = await cancelled((async () => {
+                    guard(state); const registry = await options.registry(); guard(state); await registry.initializeMissing(); guard(state);
+                    const selected = registry.entries.get(projectionId); requireReady(selected?.completeKind); return selected;
+                })(), state.abort.signal);
+                guard(state); requireReady(entry.completeKind);
+                const selected = entry.completeKind.selection;
+                return Object.freeze({completeKindCapabilities: Object.freeze({family: selected.family, interfaceVersion: selected.interfaceVersion, limits: selected.limits}),
+                    compose: (id, compose) => state.execute(id, async (current, expected, authority) => {
+                        requireReady(id === projectionId && current === entry && current.completeKind);
+                        return composeStatefulOwnerCompleteKindReadV1(current.completeKind.selection, current.completeKind.adapter,
+                            expected.owner.identity, expected.view, compose, authority);
+                    })});
+            } catch {state.failed = true; throw new StatefulApiUnavailableError();}
+        }});
 }
 
 /** Startup creates a lazy read-only attachment. Only ProjectionWorker acquires native ownership. */
 export function statefulApiRegistryFactory(fastify: FastifyInstance, loader: HyperionModuleLoader,
     configuration: ResolvedStatefulOwnerConfigurationV2): () => Promise<StatefulProjectionRegistryV2> {
     let pending: Promise<StatefulProjectionRegistryV2> | undefined;
+    fastify.addHook('onClose', async () => {await fastify.manager.closeStatefulCompleteKindMongoClient();});
     return () => {
         pending ??= (async () => {
             const manager = fastify.manager; requireReady(manager.mongodbClient);
@@ -130,7 +155,8 @@ export function statefulApiRegistryFactory(fastify: FastifyInstance, loader: Hyp
                 maxAncestryBlocks: manager.config.settings.protocol_abi_coordination?.recovery_window_blocks,
                 historicalCertificates: manager.config.settings.protocol_abi_coordination?.historical_certificates !== undefined,
                 replicas: manager.config.settings.es_replicas ?? 0});
-            return StatefulProjectionRegistryV2.create({chainId, configuration, mongo: manager.mongodbClient, client: manager.elasticsearchClient, source, profile}, loader);
+            return StatefulProjectionRegistryV2.create({chainId, configuration, mongo: manager.mongodbClient, client: manager.elasticsearchClient, source, profile,
+                completeKindMongo: () => manager.statefulCompleteKindMongoClient(configuration.operationTimeoutMS)}, loader);
         })().catch(error => {pending = undefined; throw error;});
         return pending;
     };

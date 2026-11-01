@@ -11,6 +11,7 @@ import {join} from "node:path";
 import {existsSync, readFileSync} from "fs";
 import {MongoClient} from "mongodb";
 import {APIClient} from "@wharfkit/antelope";
+import {StatefulCompleteKindMongoClient} from './stateful-complete-kind-client.js';
 
 export class ConnectionManager {
 
@@ -28,6 +29,14 @@ export class ConnectionManager {
     esIngestClient!: Client;
 
     mongodbClient?: MongoClient;
+    private mongoConnection?: {uri: string; options: import('mongodb').MongoClientOptions};
+    private readonly completeKindMongo = new StatefulCompleteKindMongoClient(() => {
+        if (!this.mongoConnection) this.prepareMongoClient();
+        if (!this.mongoConnection) throw new Error('Complete-kind MongoDB connection is unavailable');
+        return this.mongoConnection;
+    });
+    statefulCompleteKindMongoClient(operationTimeoutMS: number): Promise<MongoClient> {return this.completeKindMongo.get(operationTimeoutMS);}
+    closeStatefulCompleteKindMongoClient(): Promise<void> {return this.completeKindMongo.close();}
 
     constructor(cm: ConfigurationModule) {
 
@@ -241,9 +250,11 @@ export class ConnectionManager {
         if (replicaSet !== undefined && (typeof replicaSet !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(replicaSet))) {
             throw new Error('MongoDB replicaSet must be a bounded replica-set name');
         }
-        this.mongodbClient = new MongoClient(uri, {
+        const options = {
             ...(directConnection === undefined ? {} : {directConnection}),
             ...(replicaSet === undefined ? {} : {replicaSet}),
-        });
+        };
+        this.mongoConnection = {uri, options};
+        this.mongodbClient = new MongoClient(uri, options);
     }
 }

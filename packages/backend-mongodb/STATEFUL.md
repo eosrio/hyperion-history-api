@@ -133,3 +133,36 @@ Rollback rotates revision and invalidates old leases/read capabilities.
 Controlled driver tests cover these source semantics. Physical MongoDB crash,
 Wire replay, SQL comparison, mixed-owner/API serving and full AtomicAssets/
 AtomicMarket parity remain separate qualification gates.
+
+The separate `./stateful-owner-complete-kind-v1` export implements SDK
+`stateful-owner-complete-kind` version 1 at SDK revision
+`7412889a14c84342551fd864ea3ebfcf28849385`. Its factory requires an explicitly
+nonretrying client and explicit total attempts/records/serialized bytes. It
+delegates the actual owner-v2 recovery and completed-read tokens, admits a generic
+kind index under the owner, and enumerates until the native cursor id is zero.
+`readCompletedKey` and `readCompletedKind` count data commands including any
+transaction callback retries. Kind enumeration has no native limit or public
+ordering guarantee. Successful serialized JSON totals are separate from wire/
+BSON buffers and the documented extra-row overflow probe. The host manages the
+lazy bounded client and retains final publication fencing. Existing factories,
+clients, declarations and get-only callbacks remain unchanged. Source and packed
+controls do not qualify physical MongoDB or public HTTP parity.
+
+The pinned MongoDB 7.2.0 driver normally adds transaction CSOT `maxTimeMS` to
+generic commands. This adapter uses its internal `omitMaxTimeMS` option so the
+explicit initial-find server bound survives and non-tailable `getMore` commands
+omit that prohibited field. Client-side transaction CSOT and per-command abort
+deadlines still apply. Real-driver command-preparation regressions guard this
+version-specific seam; the [MongoDB 8.0 command contract](https://www.mongodb.com/docs/v8.0/reference/command/getmore/)
+explains the server restriction. Cursor and session cleanup failures never
+replace an existing data failure; cleanup-only failure still refuses success.
+
+`Db.command` in that version strips the private option before operation creation.
+The complete-kind factory therefore uses a private native command executor that
+retains the original driver operation/session/selection pipeline while bypassing
+that option allowlist. It checks driver 7.2.0 and the exact `execute_operation.js`,
+`run_command.js`, and `utils.js` entrypoint hashes before use; there is no fallback
+to the public facade. The managed root client and its real session can come from
+a separate copy of the same driver. No-socket execution controls exercise those
+two module instances through the factory, actual root `Server.command` and final
+wire preparation. Physical replica-set traces remain mandatory.

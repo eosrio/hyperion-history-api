@@ -75,6 +75,7 @@ export default class ProjectionWorker extends HyperionWorker {
                 this.statefulConfiguration = stateful;
                 this.stateful = await StatefulProjectionRegistryV2.create({chainId: this.chainId, configuration: stateful,
                     mongo: client, client: this.client, source: this.statefulSource, profile: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
+                    completeKindMongo: () => this.manager.statefulCompleteKindMongoClient(stateful.operationTimeoutMS),
                     onError: (projection, error) => hLog(`Stateful projection ${projection} unavailable:`, error)}, this.mLoader);
             }
             this.assertWorkerAttemptActive();
@@ -105,10 +106,12 @@ export default class ProjectionWorker extends HyperionWorker {
             await this.controller?.stop();
             for (const controller of this.statefulControllers.values()) await controller.stop();
             await Promise.allSettled([...this.probes]);
+            await this.manager.closeStatefulCompleteKindMongoClient();
             await initialized.client.close();
             this.profiler.stopReporting();
             process.exit(0);
         } catch (error) {
+            await this.manager.closeStatefulCompleteKindMongoClient();
             this.handleProjectionFailure(error);
         }
     }

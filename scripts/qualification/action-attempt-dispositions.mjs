@@ -1,5 +1,6 @@
 /** #284 typed attempt storage; broker, producer, locators and constructed variants confer no canonical authority. */
 import assert from 'node:assert/strict';
+import {isPinnedGitSource} from '../../tests/unit/pinned-git-source.mjs';
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {EventEmitter} from 'node:events';
@@ -130,7 +131,7 @@ export async function qualifyActionAttemptDispositions({client, chain, targetInd
     assert.equal(receipt.sourceRevision, wireRevision);
     const lock = readJson(new URL('../../package-lock.json', import.meta.url));
     for (const [name, revision] of [['hyperion-wire-plugin', wireRevision], ['hyperion-sdk', sdkRevision]])
-        assert.equal(lock.packages[`node_modules/@eosrio/${name}`].resolved, `git+ssh://git@github.com/eosrio/${name}.git#${revision}`);
+        assert.ok(isPinnedGitSource(lock.packages[`node_modules/@eosrio/${name}`].resolved, name, revision));
     const manifest = readJson(join(fixture, 'manifest.json'));
     assert.equal(manifest.originalArchiveSha256, archiveSha256);
     for (const member of manifest.members) {
