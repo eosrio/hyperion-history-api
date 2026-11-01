@@ -84,7 +84,10 @@ export function verifyExplain(explain,{baseHint,lookupIndexes}){
  const indexes=new Set(),lookups=new Set();let visited=0;
  const visit=(value,path=[])=>{if(value===null||typeof value!=='object')return;assert(++visited<32768,'Explain shape bound');
   assert.notEqual(value.stage,'COLLSCAN','Unindexed native scan');assert.notEqual(value.stage,'SORT','Order was not supplied by the admitted index');
-  assert.notEqual(value.usedDisk,true);if(typeof value.spills==='number')assert.equal(value.spills,0);
+  assert.notEqual(value.usedDisk,true);if(Object.hasOwn(value,'spills')){
+   assert(typeof value.spills==='number'&&Number.isSafeInteger(value.spills)||Long.isLong(value.spills)||value.spills?._bsontype==='Int32','Malformed native spill counter');
+   assert.equal(value.spills.toString(),'0','Native explain spilled');
+  }
   if(typeof value.indexName==='string')indexes.add(value.indexName);for(const name of value.indexesUsed??[])lookups.add(name);
   for(const [name,child]of Object.entries(value))if(name!=='command'){if(name==='$sort')assert.fail('Blocking aggregate sort');visit(child,[...path,name]);}
  };visit(explain);assert(indexes.has(baseHint),'Hinted base index not observed');for(const name of lookupIndexes)assert(lookups.has(name)||indexes.has(name),'Lookup index not observed: '+name);

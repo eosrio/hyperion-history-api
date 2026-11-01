@@ -127,3 +127,7 @@ test('canonical genesis absence oracle uses the actual covered-absent protocol a
  assertCoveredAbsence({results:[{status:'covered-absent'},{status:'covered-absent'}]},2);
  for(const result of [{results:[]},{results:[{status:'missing'},{status:'missing'}]},{results:[{status:'covered-absent'},{status:'present',value:{}}]}])assert.throws(()=>assertCoveredAbsence(result,2));
 });
+test('explain spill counters preserve BSON Long semantics across the EJSON artifact boundary',()=>{
+ const plan={queryPlanner:{winningPlan:{stage:'IXSCAN',indexName:'base'}},spills:Long.ZERO};assert.equal(verifyExplain(plan,{baseHint:'base',lookupIndexes:[]}).baseIndex,'base');
+ assert.throws(()=>verifyExplain({...plan,spills:Long.ONE},{baseHint:'base',lookupIndexes:[]}));assert.throws(()=>verifyExplain({...plan,spills:'0'},{baseHint:'base',lookupIndexes:[]}));
+});
