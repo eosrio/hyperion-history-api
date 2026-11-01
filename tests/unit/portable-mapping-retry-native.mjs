@@ -48,7 +48,7 @@ test('finite100ms arrivals avoid repeated preparation of the unchanged durably r
         assert.equal(candidate.counts.revalidate, baseline.counts.revalidate - 4);
         assert.ok(candidate.schedule.slice(1, 5).every(value => value.reports === 16), 'interval skips publish no failed-lane progress');
         console.log(JSON.stringify({control: 'finite-monotonic-clock-source-adapter-ports', node: process.version,
-            productionDefault: 0, engineeringIntervalMs: 1000, baseline, candidate}));
+            controllerDefaultMs: 0, selectedWorkerIntervalMs: 1000, engineeringIntervalMs: 1000, baseline, candidate}));
     } finally {clock.mock.restore();}
 });
 
@@ -298,4 +298,32 @@ test('actual projection worker lifecycle handlers discard timing on owner/fork/c
         }
         ProjectionWorker.prototype.onIpcMessage.call(worker, {event: 'stop'}); assert.equal(worker.stopped, true);
     } finally {await value.controller.stop(); await original.dispose();}
+});
+
+test('actual emitted worker run selects the bounded interval and stops through its original lifecycle', async () => {
+    const {default: ProjectionWorker} = await import('../../build/indexer/workers/projection.js');
+    const scope = new ProofConsumerScope('actual-worker-policy-selection'), observed = {connect: 0, close: 0, drain: 0, stop: 0, invalidated: 0, exits: []};
+    const mongo = {async connect() {observed.connect++;}, async close() {observed.close++;},
+        db() {return {collection() {return {};}};}};
+    const worker = Object.create(ProjectionWorker.prototype);
+    Object.assign(worker, {chainId: 'c'.repeat(64), chain: 'mapping-retry-selection', protocolId: 'controlled-policy',
+        protocolComponents: [{id: 'controlled-protocol', runtime: 'node', version: '0.0.0-dev.1', sourceRevision: 'c'.repeat(40), sha256: 'd'.repeat(64)}],
+        protocol: {profileId: 'controlled-policy-v1', verifyNativeGenesis() {}}, protocolReady: Promise.resolve(), client: {},
+        conf: {settings: {chain: 'mapping-retry-selection'}, indexer: {live_reader: true}, features: {portable_state: {
+            backend: {kind: 'mongodb', id: 'controlled', database: 'controlled'}, projections: [first]}}},
+        manager: {conn: {mongodb: {}}, mongodbClient: mongo}, stopped: false, statefulControllers: new Map(), probes: new Set(),
+        profiler: {stopReporting() {}}, async runProjectionAttempt(kind, _metadata, operation) {
+            assert.equal(kind, 'projection-initialization'); return scope.run(operation);
+        }});
+    const create = mock.method(PortableStateController, 'create', async options => {
+        currentProofConsumerScope(true).assertActive(); observed.selected = options.mappingRetryEligibilityMs;
+        return {async drain() {observed.drain++; worker.onIpcMessage({event: 'stop'});}, async stop() {observed.stop++;},
+            invalidateMappingRetryEligibility() {observed.invalidated++;}};
+    });
+    const exit = mock.method(process, 'exit', code => {observed.exits.push(code);});
+    try {
+        await worker.run();
+        assert.equal(observed.selected, 1000, 'the actual worker constructor call must select the reviewed capped policy');
+        assert.deepEqual({...observed, selected: undefined}, {connect: 1, close: 1, drain: 1, stop: 1, invalidated: 1, exits: [0], selected: undefined});
+    } finally {create.mock.restore(); exit.mock.restore(); await scope.closeAndDrain();}
 });

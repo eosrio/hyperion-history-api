@@ -67,6 +67,7 @@ export default class ProjectionWorker extends HyperionWorker {
                 ? new PortableProjectionSource({...sourceOptions, historicalCertificates: true}) : source;
             if (configuration) this.controller = await PortableStateController.create({chainId: this.chainId, configuration,
                 adapter: createPortableStateBackend(client, configuration), source,
+                mappingRetryEligibilityMs: 1000,
                 attempts: {run: (metadata, operation) => this.runProjectionFrameAttempt(metadata, operation, () => !this.stopped),
                     bind: fields => this.bindWorkerAttempt(fields)},
                 onProgress: data => {try {process.send?.({event: 'portable_state_progress', data});} catch {}}});
