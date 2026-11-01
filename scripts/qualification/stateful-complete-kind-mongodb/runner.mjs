@@ -6,7 +6,7 @@ import {fileURLToPath, pathToFileURL} from 'node:url';
 import {monitor, verifyReadTrace} from './trace.mjs';
 import {installCompleteKindCommandHooks} from './command-hooks.mjs';
 
-export const PLAN = Object.freeze({schemaVersion: 1, scope: 'synthetic-native-complete-kind',
+export const HISTORICAL_PLAN = Object.freeze({schemaVersion: 1, scope: 'synthetic-native-complete-kind',
     sdk: '7412889a14c84342551fd864ea3ebfcf28849385', driver: '7.2.0', mongodb: '8.0.34',
     profile: 'stateful-owner-v2-root741-native429-source-9c3db03-cleanup-trace-v2-linux-gitlf-engineering',
     budgets: {readAttempts: 12, responseRecords: 8, responseBytes: 65536},
@@ -15,6 +15,7 @@ export const PLAN = Object.freeze({schemaVersion: 1, scope: 'synthetic-native-co
         'same-snapshot-metadata', 'adaptive-retry-positive-control', 'bounded-find-failure', 'bounded-getMore-failure',
         'callback-retry-accounting', 'foreign-token-client-session', 'cancel-late-result', 'gap-takeover-fork', 'lifecycle-cleanup'],
     acceptance: {physicalMongoDB: 'pending-until-run', managedAPI: 'pending', publicHTTP: 'pending', atomicParity: 'pending'}});
+export const PLAN = Object.freeze({...HISTORICAL_PLAN, sdk: 'dc20a03f2b60ba05a3369d677222a9cf0d65d299', profile: 'stateful-sdk49-indexed-2da-linux-engineering-v1'});
 const hash = value => createHash('sha256').update(value).digest('hex');
 const hex = n => n.toString(16).padStart(64, '0');
 const plain = value => JSON.parse(JSON.stringify(value));

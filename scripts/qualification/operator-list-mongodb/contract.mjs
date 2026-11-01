@@ -1,7 +1,7 @@
 // Pure plan/admission/trace checks; no database, process, network or service operations.
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-export const PLAN = Object.freeze({schemaVersion: 1, scope: 'synthetic-native-operator-lists',
+export const HISTORICAL_PLAN = Object.freeze({schemaVersion: 1, scope: 'synthetic-native-operator-lists',
     profile: 'operator-list-mongodb-root741-native429-source-9c3db03-linux-gitlf-engineering', rootSDK: '7412889a14c84342551fd864ea3ebfcf28849385',
     sdk: '429a1bf1d3bddb746fa662de9529480890b7368f', driver: '7.2.0', server: '8.0.34',
     operationMS: 5000, snapshotMS: 60000, readMS: 10000, publicationMS: 120000,
@@ -12,6 +12,7 @@ export const PLAN = Object.freeze({schemaVersion: 1, scope: 'synthetic-native-op
         'empty-missing-and-unavailable', 'whole-read-budgets', 'missing-index-native-failure', 'partial-storage-refusal',
         'concurrent-publication-and-losing-CAS', 'cleanup-attempt-reserve', 'late-cancel-and-retirement', 'blocked-find-deadline', 'original-session-client-cleanup'],
     acceptance: {nativeMongoDB: 'pending-until-run', requestHost: 'pending', finalOnSend: 'pending', AtomicParity: 'pending', WireReplay: 'separate'}});
+export const PLAN = Object.freeze({...HISTORICAL_PLAN, profile: 'stateful-sdk49-indexed-2da-linux-engineering-v1', rootSDK: 'dc20a03f2b60ba05a3369d677222a9cf0d65d299', sdk: 'dc20a03f2b60ba05a3369d677222a9cf0d65d299'});
 export const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 export function argumentsFor(argv, environment) {
     assert.equal(argv.length, 10, 'Use --run --allow-failpoints --database NAME --output NEW_DIR --source COMMIT --compiled-sha256 SHA');
