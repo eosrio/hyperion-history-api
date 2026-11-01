@@ -1,5 +1,6 @@
 /** #282 real-ES outcome storage; broker behavior and native locators are controlled component fixtures. */
 import assert from 'node:assert/strict';
+import {isPinnedGitSource} from '../../tests/unit/pinned-git-source.mjs';
 import {createHash} from 'node:crypto';
 import {EventEmitter} from 'node:events';
 import {readFileSync} from 'node:fs';
@@ -118,10 +119,8 @@ export async function qualifyActionHandoffOutcomes({client, chain, targetIndex, 
     const receipt = readJson(join(wire, 'dist/protocol-source-receipt.json'));
     assert.equal(receipt.sourceRevision, wireRevision);
     const lock = readJson(new URL('../../package-lock.json', import.meta.url));
-    assert.equal(lock.packages['node_modules/@eosrio/hyperion-wire-plugin'].resolved,
-        `git+ssh://git@github.com/eosrio/hyperion-wire-plugin.git#${wireRevision}`);
-    assert.equal(lock.packages['node_modules/@eosrio/hyperion-sdk'].resolved,
-        `git+ssh://git@github.com/eosrio/hyperion-sdk.git#${sdkRevision}`);
+    for (const [name, revision] of [['hyperion-wire-plugin', wireRevision], ['hyperion-sdk', sdkRevision]])
+        assert.ok(isPinnedGitSource(lock.packages[`node_modules/@eosrio/${name}`].resolved, name, revision));
     const manifest = readJson(join(fixture, 'manifest.json'));
     assert.equal(manifest.originalArchiveSha256, archiveSha256);
     for (const member of manifest.members) {
