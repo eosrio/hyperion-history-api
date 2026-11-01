@@ -4525,8 +4525,8 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/sdk49-ci-routing.md",
-      "bytes": 2085,
-      "sha256": "0237be23343deada3147921cb4ef0de03e45c4745b99ea1e1f07892cfa8618bd"
+      "bytes": 2492,
+      "sha256": "adb4ff0440a4ebe1f659867d19eb8a38ea62501f742fa49cd563f21ad1d5f3a7"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/sdk49-ci-source-check.mjs",
@@ -4555,8 +4555,8 @@
     },
     {
       "path": "scripts/qualification/operator-list-mongodb/sdk49-source-profile.mjs",
-      "bytes": 2702,
-      "sha256": "1ddcf5370321c96e61b650ab30b5d63697f82adb23af036308971df3ea371aa5"
+      "bytes": 3924,
+      "sha256": "9df9ba5a1600f77203d82f04a1d4136f14debcab7ea6bd224c02d0527e203ae8"
     },
     {
       "path": "scripts/qualification/stateful-complete-kind-mongodb/runner.mjs",
@@ -4580,8 +4580,8 @@
     },
     {
       "path": "tests/native/stateful-complete-kind-codec-profile.test.mjs",
-      "bytes": 4799,
-      "sha256": "9a0eb2fd0fe739b45e8d9105b113baf29ca79428d6091abdef2be70966949b58"
+      "bytes": 7829,
+      "sha256": "47dad5b57fd498e7360b484d71b6a7354e047f94f490dd3f1ad451fa08d807b3"
     },
     {
       "path": "tests/unit/protocol-abi-history-native.mjs",
@@ -4609,5 +4609,9 @@
     "gitBlob": "684ca0debe6853d95a0147579f07b6aca3d696b1",
     "bytes": 2955,
     "sha256": "8ac734718171ff01c21251e447302a806788d0ccf49d13a1e5d3dd9fe9b35ba2"
+  },
+  "underlyingProductSource": {
+    "commit": "2da0d8fa44b447134261128d75d3ada100e9a59b",
+    "tree": "8c1a70472744749ef3fe6d2c4da3f8a238f246cf"
   }
 }

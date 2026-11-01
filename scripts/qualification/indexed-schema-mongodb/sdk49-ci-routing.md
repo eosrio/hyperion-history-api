@@ -19,6 +19,12 @@ and clean, and emits the actual identity as evidence. Wire snapshot capture
 also records the raw static helper/data closure. No source normalization or
 caller-selected expected hash grants admission.
 
+Operator-list metadata derives its source rows, current pins and all four whole
+emission-tree counts/digests from this selected assembly. Only fixture bounds and
+runtime policy are reused from the historical descriptor. `underlyingProductSource`
+identifies the reviewed 2da product beneath routing-only children; actual CI checkout
+identity is recorded separately by the controller and Git source receipt.
+
 Linux/x64 Node 24.22.1 and 26.4.0 are pinned to their reviewed executable bytes;
 26.13.0 is explicitly recorded as an engineering runtime candidate with its
 actual hash, without inheriting a runtime pass. The previous profiles and their

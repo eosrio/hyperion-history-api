@@ -1,6 +1,8 @@
 // Pure installed-source admission checks: no child process, temporary copy or service.
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {admitNativeApiSourceOptions,admitCoordinatedNativeSourceOptions,STATEFUL_SDK49_SOURCE_PROFILE as profile,
  STATEFUL_NATIVE_CLEANUP_TRACE_API_SOURCE_PROFILE as priorTrace,STATEFUL_NATIVE_CLEANUP_API_SOURCE_PROFILE as priorCleanup,
  STATEFUL_NATIVE_SNAPSHOT_API_SOURCE_PROFILE as priorSnapshot,STATEFUL_CURRENT_NATIVE_API_SOURCE_PROFILE as priorCurrent,
@@ -9,6 +11,26 @@ import {admitNativeApiSourceOptions,admitCoordinatedNativeSourceOptions,STATEFUL
  STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE as executor} from '../unit/stateful-engineering-source-admission.mjs';
 import {ASSEMBLY} from '../../scripts/qualification/indexed-schema-mongodb/assembly.mjs';
 import {assertSdk49Options,assertSdk49Dependencies,assertSdk49Runtime,observeSdk49SourceOptions} from '../unit/sdk49-indexed-source-admission.mjs';
+import {OPERATOR_LIST_ASSEMBLY as operatorAssembly} from '../../scripts/qualification/operator-list-mongodb/sdk49-source-profile.mjs';
+import {OPERATOR_LIST_ASSEMBLY as historicalOperatorAssembly} from '../../scripts/qualification/operator-list-mongodb/linux-cleanup-source-profile.mjs';
+
+test('current operator-list metadata agrees with actual SDK49 inventories and separates underlying product from CI checkout',()=>{
+ const actual=observeSdk49SourceOptions({engineeringSourceProfile:profile}),manifest=JSON.parse(readFileSync(new URL('../fixtures/engineering-profiles/sdk49-indexed-linux.json',import.meta.url))),
+  sha=bytes=>createHash('sha256').update(bytes).digest('hex'),paths={rootBuild:'build',nativeBuild:'packages/backend-mongodb/dist',rootSDK:'node_modules/@eosrio/hyperion-sdk/dist',nativeSDK:'packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist'};
+ assert.equal(operatorAssembly.profile,actual.profile);assert.deepEqual(operatorAssembly.pins,actual.observation.pins);
+ assert.deepEqual(Object.keys(operatorAssembly.trees),Object.keys(actual.observation.trees));
+ for(const [name,rows]of Object.entries(actual.observation.trees))assert.deepEqual(operatorAssembly.trees[name],{path:paths[name],files:rows.length,sha256:sha(JSON.stringify(rows)),textLF:false});
+ assert.deepEqual(Object.fromEntries(Object.entries(operatorAssembly.trees).map(([name,value])=>[name,value.files])),{rootBuild:552,nativeBuild:63,rootSDK:37,nativeSDK:37});
+ const expectedPaths=[...new Set([...ASSEMBLY.sources,...manifest.routeSources].map(row=>row.path))].sort();assert.deepEqual(operatorAssembly.sourceFiles.map(row=>row.path),expectedPaths);
+ for(const row of operatorAssembly.sourceFiles){const bytes=readFileSync(new URL('../../'+row.path,import.meta.url));assert.equal(bytes.length,row.bytes);assert.equal(sha(bytes),row.sha256);}
+ assert.deepEqual(operatorAssembly.underlyingProductSource,{commit:'2da0d8fa44b447134261128d75d3ada100e9a59b',tree:'8c1a70472744749ef3fe6d2c4da3f8a238f246cf'});
+ for(const field of ['productSource','checkout','sourceHead','assemblyEvidence'])assert.equal(field in operatorAssembly,false);
+ assert.deepEqual(operatorAssembly.ciIdentitySourcePaths,['tests/unit/sdk49-indexed-source-admission.mjs','tests/fixtures/engineering-profiles/sdk49-indexed-linux.json']);
+ assert.deepEqual(operatorAssembly.dependencies,actual.dependencies);assert.deepEqual(operatorAssembly.sdkPackage,manifest.sdkPackage);
+ assert.equal(operatorAssembly.wire.commit,actual.wireRevision);assert.equal(operatorAssembly.wire.sdkRevision,actual.wireSdkRevision);assert.deepEqual(operatorAssembly.wire.sdkFiles,actual.wireSdkFiles);
+ for(const field of ['fixture','platform','runtimeEvidence','engineeringCandidate'])assert.deepEqual(operatorAssembly[field],historicalOperatorAssembly[field]);
+ assert(Object.isFrozen(operatorAssembly)&&Object.isFrozen(operatorAssembly.trees.nativeBuild)&&Object.isFrozen(operatorAssembly.sourceFiles));
+});
 
 test('SDK49 captures complete pinned source, SDK, native, Wire and dependency inventories before platform admission',()=>{
  const options={engineeringSourceProfile:profile},observed=observeSdk49SourceOptions(options);

@@ -9,9 +9,11 @@ import {sha} from '../../scripts/qualification/operator-list-mongodb/contract.mj
 
 const root=fileURLToPath(new URL('../../',import.meta.url));
 const expectedRaw=readFileSync(new URL('../fixtures/engineering-profiles/sdk49-indexed-linux.json',import.meta.url));
-assert.equal(sha(expectedRaw),'6c0698e2866ab3c98ef625044caaf209f9e666756485b7dfd5e263b4e85f7743','Exact SDK49 manifest required');
+assert.equal(sha(expectedRaw),'6c21e0786b54f5337870865fb51878457a610816519d5b9915ba64fad464b8d9','Exact SDK49 manifest required');
 const expected=JSON.parse(expectedRaw);
 const freeze=value=>{if(value&&typeof value==='object'&&!Object.isFrozen(value)){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
+// Declarative metadata only; native/runtime admission still performs the independent observation below.
+export const SDK49_SOURCE_MANIFEST=freeze(expected);
 export const STATEFUL_SDK49_SOURCE_PROFILE='stateful-sdk49-indexed-2da-linux-engineering-v1';
 const exact=(value,pin,label)=>assert.deepEqual(value,pin,'Unqualified SDK49 '+label);
 const read=path=>{const stat=lstatSync(path);assert(stat.isFile()&&!stat.isSymbolicLink()&&stat.size<=4*1024*1024);const data=readFileSync(path);assert.equal(data.length,stat.size);return data;};
