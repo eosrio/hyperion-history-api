@@ -15,12 +15,14 @@
     },
     "./stateful": {"types": "./dist/stateful.d.ts", "import": "./dist/stateful.js"},
     "./stateful-owner-v2": {"types": "./dist/stateful-owner-v2.d.ts", "import": "./dist/stateful-owner-v2.js"},
-    "./stateful-owner-complete-kind-v1": {"types": "./dist/stateful-complete-kind-v1.d.ts", "import": "./dist/stateful-complete-kind-v1.js"}
+    "./stateful-owner-complete-kind-v1": {"types": "./dist/stateful-complete-kind-v1.d.ts", "import": "./dist/stateful-complete-kind-v1.js"},
+    "./operator-lists": {"types": "./dist/operator-lists.d.ts", "import": "./dist/operator-lists.js"}
   },
   "files": [
     "dist/",
     "README.md",
-    "STATEFUL.md"
+    "STATEFUL.md",
+    "OPERATOR-LISTS.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",

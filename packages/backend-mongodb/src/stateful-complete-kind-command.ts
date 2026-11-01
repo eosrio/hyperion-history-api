@@ -7,7 +7,7 @@ import type {ClientSession, Document, MongoClient} from 'mongodb';
 import {requireState} from './stateful-contract.js';
 
 interface NativeNamespace {withCollection(name: string): NativeNamespace}
-interface NativeOptions {session: ClientSession; signal: AbortSignal; promoteLongs?: boolean; omitMaxTimeMS: true}
+interface NativeOptions {session: ClientSession; signal: AbortSignal; promoteLongs?: boolean; timeoutMS?: number; omitMaxTimeMS: true}
 const load = createRequire(import.meta.url), packagePath = realpathSync(load.resolve('mongodb/package.json'));
 const packageRoot = dirname(packagePath), pkg = JSON.parse(readFileSync(packagePath, 'utf8')) as {version?: unknown};
 requireState(pkg.version === '7.2.0', 'Complete-kind command executor requires pinned MongoDB driver 7.2.0', 'stateful.capability-unavailable');
@@ -33,10 +33,11 @@ requireState(typeof executeOperation === 'function' && typeof RunCommandOperatio
     'Complete-kind internal driver interface is unavailable', 'stateful.capability-unavailable');
 
 export function executeCompleteKindCommand(client: MongoClient, database: string, command: Document,
-    options: {session: ClientSession; signal: AbortSignal; promoteLongs?: boolean}): Promise<Document> {
+    options: {session: ClientSession; signal: AbortSignal; promoteLongs?: boolean; timeoutMS?: number}): Promise<Document> {
     // Public Db.command reconstructs an option allowlist and strips omitMaxTimeMS.
     // Use the same pinned operation/session/selection engine without that lossy facade.
     // Its real execution still consumes the client's actual transaction CSOT and signal.
     return executeOperation(client, new RunCommandOperation(new MongoDBNamespace(database), command,
-        {session: options.session, signal: options.signal, promoteLongs: options.promoteLongs, omitMaxTimeMS: true}));
+        {session: options.session, signal: options.signal, promoteLongs: options.promoteLongs, omitMaxTimeMS: true,
+            ...(options.timeoutMS === undefined ? {} : {timeoutMS: options.timeoutMS})}));
 }

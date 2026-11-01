@@ -168,3 +168,7 @@ The integration fixture under `scripts/qualification/projection-rollback*` tests
 the portable runtime/adapter seam against real MongoDB with native process
 termination; it does not establish live SHiP fork/reconnect, complete state-route
 migration, irreversible-only behavior or release qualification.
+
+## Operator-owned lists
+
+The additive [`./operator-lists`](OPERATOR-LISTS.md) entry point provides bounded request-local SDK list reads and partitioned immutable operator publications. It grants no chain/projection readiness. Native MongoDB, HTTP/onSend and Atomic parity qualification remain separate gates.
