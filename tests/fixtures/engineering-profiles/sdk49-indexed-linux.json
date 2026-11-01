@@ -4515,13 +4515,18 @@
   "routeSources": [
     {
       "path": ".github/workflows/build.yml",
-      "bytes": 22360,
-      "sha256": "5b649922e1ce2c008ca99100371f1fd7a82a6b60a2831ec45e53830ea460dead"
+      "bytes": 22417,
+      "sha256": "60368ea5bbf10bf4b98cdfcc9ded61faedb1811e18f57ff11424a510fa848aad"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/assembly.json",
       "bytes": 179972,
       "sha256": "fb19c2d5d43d0ccfd889ccb9d650dc44ca48b29a3711b170f7060b21eac9e496"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/retained-wire-diagnostics.md",
+      "bytes": 3304,
+      "sha256": "b177c1b0309380a269a9436bd3ff83a66d93f78c66974037490bddd4e74d6883"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/sdk49-ci-routing.md",
@@ -4565,8 +4570,8 @@
     },
     {
       "path": "scripts/qualification/wire-source-snapshot.mjs",
-      "bytes": 5107,
-      "sha256": "49e1e599f743fefc88e529c5dc7cd989cb8d0a824ce6c53c4b9afcfcd6dc477a"
+      "bytes": 5438,
+      "sha256": "1bc5fe1c89da3e214d885ea7cbeba65aa375a20ad820eff33aaeda4c40ad4792"
     },
     {
       "path": "scripts/qualification/wire-source-snapshot.test.mjs",
@@ -4575,13 +4580,33 @@
     },
     {
       "path": "tests/native/current-stateful-source-profile.test.mjs",
-      "bytes": 11223,
-      "sha256": "44eb46b67a245650ba039bccb60eb125aa078da4b15ec24ef4873ff6cabc01d2"
+      "bytes": 11644,
+      "sha256": "f11e6862a1b416f05f5667f63f69f02c23e1a136f3da7f8b4d03f4d24550aef6"
+    },
+    {
+      "path": "tests/native/retained-workload-progress.mjs",
+      "bytes": 8577,
+      "sha256": "3d8241c58e89af766ee964392be3d71a3682a4002b7eea8a18057017e5649eb0"
+    },
+    {
+      "path": "tests/native/retained-workload-progress.test.mjs",
+      "bytes": 8449,
+      "sha256": "68a58b810c1f7412a337eb347653ca966b8f709c6e6dc025f09bd9a30de34228"
+    },
+    {
+      "path": "tests/native/retained-workload-test.mjs",
+      "bytes": 4710,
+      "sha256": "d34d94bf9f573420ed757b4da2f9a94dc2b7c9c676a3415b052ae00174defd39"
     },
     {
       "path": "tests/native/stateful-complete-kind-codec-profile.test.mjs",
       "bytes": 7829,
       "sha256": "47dad5b57fd498e7360b484d71b6a7354e047f94f490dd3f1ad451fa08d807b3"
+    },
+    {
+      "path": "tests/unit/portable-state-source-fixture.mjs",
+      "bytes": 12760,
+      "sha256": "aa41f953c45fc1c37c9e4516f4a52c8200b3e7488d1aa8316947764ac31c0f7d"
     },
     {
       "path": "tests/unit/protocol-abi-history-native.mjs",
@@ -4599,9 +4624,14 @@
       "sha256": "c8ecd945f564f3cafbde89aad75508926b93f07c58cab6561819a742e08ccca8"
     },
     {
+      "path": "tests/unit/stateful-host-fixture.mjs",
+      "bytes": 12376,
+      "sha256": "3cb7e96e4589789f01c004940bf89f03f69fb8f03c9e91b8d38efe1f14da1095"
+    },
+    {
       "path": "tests/unit/wire-managed-state-v2-native.mjs",
-      "bytes": 8329,
-      "sha256": "fb63ee72728f456cf00165aeae33cf80c02f34eb8a9367a49baa501c605cd664"
+      "bytes": 8356,
+      "sha256": "8f396f9f6d38d5b155762039e55247807d638dd8ffed9ffdb5332638f7e731fc"
     }
   ],
   "sdkPackage": {

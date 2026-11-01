@@ -142,6 +142,7 @@ jobs:
           path: |
             current-native-source-${{ matrix.node-version }}.json
             current-native-git-${{ matrix.node-version }}.json
+            out/wire-managed-diagnostic-*/progress.jsonl
           if-no-files-found: error
       - name: Verify action source admission evidence checksums
         working-directory: docs/performance/evidence/action-source-admission-20261020
