@@ -30,7 +30,7 @@
     "@eosrio/hyperion-backend-mongodb": "file:packages/backend-mongodb",
     "@eosrio/hyperion-plugin-core": "^0.1.0",
     "@eosrio/hyperion-sdk": "git+https://github.com/eosrio/hyperion-sdk.git#7412889a14c84342551fd864ea3ebfcf28849385",
-    "@eosrio/hyperion-wire-plugin": "git+https://github.com/eosrio/hyperion-wire-plugin.git#18d235e34a9b7ab8c3e9f9a322874444d90eed8a",
+    "@eosrio/hyperion-wire-plugin": "git+https://github.com/eosrio/hyperion-wire-plugin.git#69a66064c077a405341f5aaf15e84b88b8d86ccb",
     "@eosrio/node-abieos": "4.2.0-f7d5b45",
     "@fastify/autoload": "6.3.1",
     "@fastify/cors": "11.2.0",

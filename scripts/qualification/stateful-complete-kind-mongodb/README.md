@@ -66,7 +66,7 @@ command path, exact initial bound, getMore omission, transaction callback retrie
 shared attempt refusal and foreign-client refusal. Those controls have no socket
 or database and cannot replace this physical replica-set run.
 
-The current `stateful-owner-v2-7412889-18d235e-complete-kind-metadata-engineering`
+The `stateful-owner-v2-7412889-18d235e-complete-kind-metadata-engineering`
 profile combines the reviewed canonical JSON and native metadata changes. Its
 new native and caller inventories are pinned separately from every older
 profile. The qualification gates use the bounded client's selected server
@@ -76,3 +76,11 @@ no-socket cases cover these gates, fault-triggered callback retry, cancellation
 and argument/result identity. They supplement the six existing execution
 controls and two pure source-profile checks; physical MongoDB remains a
 separate CI requirement.
+
+The current `stateful-owner-v2-7412889-69a6606-complete-kind-engineering` profile
+pins the merged Wire hexadecimal codec source and exact installed Node/Rust
+descriptor members. The SDK, MongoDB adapter and caller output inventories
+remain unchanged; a separate caller package pin records the updated dependency.
+All earlier profiles and outcomes retain their original source and artifact
+pins. The same physical MongoDB cases and original replay/deadline/resource
+gates remain required.

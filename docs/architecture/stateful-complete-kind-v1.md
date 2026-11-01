@@ -116,3 +116,18 @@ This combined assembly must pass the existing 1,480-block workload within its
 source-admission subprocess suite also retains all original controls and adds
 refusal of the earlier executor assembly, for 41 cases. These workload and
 subprocess gates run in CI; the no-socket controls remain separate evidence.
+
+The next additive profile,
+`stateful-owner-v2-7412889-69a6606-complete-kind-engineering`, pins the merged
+Wire codec source `69a66064c077a405341f5aaf15e84b88b8d86ccb` and tree
+`97adfecdfd02d881493f950b2cf5a9a32d2a030b`. It verifies the installed package,
+prepared lock, provider descriptor and every Node/Rust manifest member. The
+Rust manifest remains a source-only engineering component. Native MongoDB,
+caller JavaScript and SDK output inventories remain unchanged; the caller
+package pin changes to record the new Wire dependency.
+
+The earlier combined profile and its failed replay outcome remain immutable.
+All original workload, deadline, resource and freshness gates remain required.
+The source-admission subprocess suite adds refusal of the previous combined
+Wire source for 42 prospective CI cases. Captured record and no-socket controls
+do not establish a full replay performance result.
