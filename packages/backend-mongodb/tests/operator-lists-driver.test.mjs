@@ -10,7 +10,7 @@ const {RunCommandOperation} = require('mongodb/lib/operations/run_command.js'), 
 const {CSOTTimeoutContext} = require('mongodb/lib/timeout.js'), {MongoDBResponse} = require('mongodb/lib/cmap/wire_protocol/responses.js');
 const {updateSessionFromResponse} = require('mongodb/lib/sessions.js');
 
-test('pinned snapshot session fixes atClusterTime for finds, aggregates, getMore and cleanup without a transaction', async () => {
+test('pinned generic preparation preserves snapshot reads and exposes unsupported cleanup decoration', async () => {
     const client = new MongoClient('mongodb://127.0.0.1:37017', {retryReads: false, retryWrites: false, maxAdaptiveRetries: 0});
     const session = client.startSession({snapshot: true, causalConsistency: false});
     const connection = {description: {type: 'RSPrimary'}, hasSessionSupport: true, supportsOpMsg: true};
@@ -28,11 +28,16 @@ test('pinned snapshot session fixes atClusterTime for finds, aggregates, getMore
         updateSessionFromResponse(session, MongoDBResponse.make(BSON.serialize({ok: 1, cursor: {id: BSON.Long.ZERO,
             ns: 'fixture.rows', atClusterTime: stamp, firstBatch: []}})));
         for (const command of [{find: 'rows', filter: {}, maxTimeMS: 1000}, {aggregate: 'rows', pipeline: [], cursor: {}, maxTimeMS: 1000},
-            {getMore: BSON.Long.fromNumber(10), collection: 'rows'}, {killCursors: 'rows', cursors: [BSON.Long.fromNumber(10)]}]) {
+            {getMore: BSON.Long.fromNumber(10), collection: 'rows'}]) {
             const value = prepare(command); assert.equal(value.readConcern.level, 'snapshot'); assert.ok(value.readConcern.atClusterTime.equals(stamp));
             assert.deepEqual(value.lsid, first.lsid); assert.equal(value.txnNumber, undefined); assert.equal(value.autocommit, undefined);
             if (value.getMore || value.killCursors) assert.equal(value.maxTimeMS, undefined);
         }
+        // Retain the generic driver's source behavior as evidence. The qualified
+        // executor uses its narrow cleanup seam instead of sending this invalid form.
+        const unsupported = prepare({killCursors: 'rows', cursors: [BSON.Long.fromNumber(10)]});
+        assert.equal(unsupported.readConcern.level, 'snapshot'); assert.ok(unsupported.readConcern.atClusterTime.equals(stamp));
+        assert.equal(unsupported.maxTimeMS, undefined);
         assert.equal(session.inTransaction(), false); let aborted = false; session.abortTransaction = async () => {aborted = true;};
         await session.endSession(); assert.equal(aborted, false); assert.equal(session.hasEnded, true);
         assert.equal(client.topology, undefined, 'No native connection/topology was created');

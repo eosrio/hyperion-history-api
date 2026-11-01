@@ -76,7 +76,8 @@ export function fixture() {
         db(database) {return {command: (command, options) => native(database, command, options)};},
         startSession(options) {
             assert.deepEqual(options, {snapshot: true, causalConsistency: false});
-            const session = {client, hasEnded: false, snapshotEnabled: true, snapshotTime: Timestamp.fromNumber(f.version + 1),
+            const id = {id: Buffer.alloc(16, f.sessions.length + 1)};
+            const session = {client, id, hasEnded: false, snapshotEnabled: true, snapshotTime: Timestamp.fromNumber(f.version + 1),
                 storage: structuredClone(f.storage), transaction: {options: {}}, inTransaction() {return false;},
                 withTransaction() {assert.fail('Snapshot provider must not enter a transaction/retry loop');},
                 commitTransaction() {assert.fail('Snapshot provider must not issue transaction commits');},
@@ -88,7 +89,8 @@ export function fixture() {
             f.sessions.push(session); return session;
         }};
     const server = {async command(operation, timeout) {
-        const answer = await native(operation.ns.db, operation.buildCommand(), operation.buildOptions(timeout), 'executor');
+        const command = operation.buildCommand(undefined, operation.session), options = operation.buildOptions(timeout);
+        const answer = await native(operation.ns.db, command, options, 'executor');
         return {toObject: () => answer};
     }};
     client.topology = {lastHello: () => ({maxWireVersion: 25}), description: {type: 'ReplicaSetWithPrimary'}, s: {options: client.options}, selectServer: async () => server};

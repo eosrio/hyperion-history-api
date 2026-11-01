@@ -14,7 +14,7 @@ const {MongoDBResponse} = rootRequire('mongodb/lib/cmap/wire_protocol/responses.
 export async function nativeSnapshotFixture(changes = {}) {
     const f = fixture(), storageClient = f.client, storageServer = await storageClient.topology.selectServer();
     const client = new rootDriver.MongoClient('mongodb://127.0.0.1:1', {retryReads: false, retryWrites: false, maxAdaptiveRetries: 0});
-    const start = client.startSession.bind(client), commands = [], replies = [], sessions = [];
+    const start = client.startSession.bind(client), commands = [], replies = [], sessions = [], operations = [];
     client.startSession = input => {
         const session = start(input); session.storage = structuredClone(f.storage);
         assert.equal(session.snapshotTime, undefined, 'No modeled snapshot timestamp may be seeded');
@@ -29,11 +29,21 @@ export async function nativeSnapshotFixture(changes = {}) {
         const command = message.command, database = message.databaseName;
         if (command.endSessions) {yield Response.make(rootDriver.BSON.serialize({ok: 1})); return;}
         const collection = command.find ?? command.aggregate ?? command.collection ?? command.killCursors;
-        const store = commandOptions.session.storage;
+        // Cleanup must retain the original logical session on the wire, even when the
+        // connection decorator is omitted for a command that cannot accept readConcern.
+        const session = commandOptions.session ?? sessions.findLast(value => !value.hasEnded && command.lsid
+            && rootDriver.BSON.serialize(command.lsid).equals(rootDriver.BSON.serialize(value.id)));
+        assert.ok(session && sessions.includes(session), 'Wire request must bind a genuine original session');
+        const store = session.storage;
         const exists = store.has(database + '.' + collection);
-        commands.push({command, options: commandOptions, namespaceExisted: exists});
+        commands.push({command, options: commandOptions, session, namespaceExisted: exists});
+        if (command.killCursors && command.readConcern !== undefined) {
+            // MongoDB8.0.34 KillCursorsCmd::supportsReadConcern is false.
+            yield Response.make(rootDriver.BSON.serialize({ok: 0, code: 72,
+                errmsg: 'Command killCursors does not support readConcern'})); return;
+        }
         const result = await storageServer.command({ns: {db: database}, buildCommand: () => command,
-            buildOptions: () => commandOptions}, commandOptions.timeoutContext);
+            buildOptions: () => ({...commandOptions, session})}, commandOptions.timeoutContext);
         const answer = result.toObject();
         // MongoDB8.0.34 find_cmd.cpp770-783 omits atClusterTime for a missing namespace.
         // Existing (even empty) collections follow791-795 and return the selected snapshot time.
@@ -50,9 +60,14 @@ export async function nativeSnapshotFixture(changes = {}) {
     Object.assign(server, {s: {state: 'connected', operationCount: 0,
         description: {address: '127.0.0.1:1', type: 'RSPrimary', maxWireVersion: 25, iscryptd: false}},
         topology, pool: {generation: 0, checkOut: async () => connection, checkIn() {}}, monitor: null});
+    server.command = async (operation, timeoutContext) => {
+        operations.push({operation, session: operation.session, timeoutContext});
+        return Server.prototype.command.call(server, operation, timeoutContext);
+    };
     client.topology = topology;
     const source = createMongoDbOperatorListSourceV1(options(f, {client, ...changes}));
-    return {f, source, client, commands, replies, sessions, rootDriver, nativeDriver,
+    return {f, source, client, commands, replies, sessions, operations, rootDriver, nativeDriver,
+        freshSource: () => createMongoDbOperatorListSourceV1(options(f, {client, ...changes})),
         publish: (ctx = context()) => source.publish({revision: 'data-one', expectedRevision: null,
             entries: [{name: 'schemas', items: ['one', 'two', 'three']}]}, ctx),
         async close() {source.retire(); for (const session of sessions) await session.endSession(); await client.close();}};
