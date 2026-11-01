@@ -4,6 +4,7 @@ import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {resolve, join} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {monitor, verifyReadTrace} from './trace.mjs';
+import {installCompleteKindCommandHooks} from './command-hooks.mjs';
 
 export const PLAN = Object.freeze({schemaVersion: 1, scope: 'synthetic-native-complete-kind',
     sdk: '7412889a14c84342551fd864ea3ebfcf28849385', driver: '7.2.0', mongodb: '8.0.34',
@@ -86,31 +87,17 @@ export async function run(options) {
     assert.equal(JSON.parse(readFileSync(new URL('../../../node_modules/mongodb/package.json', import.meta.url))).version, PLAN.driver);
     assert.ok(!existsSync(options.output), 'Evidence directory must be new'); mkdirSync(options.output, {recursive: true});
     const trace = [], cases = [], sessions = [], closes = [], ownedMarker = randomBytes(24).toString('hex');
-    let phase = {name: 'preflight'}, gate, afterData, owned = false, bounded, stopMonitor, failpointGranted = false;
+    let phase = {name: 'preflight'}, gate, afterData, owned = false, bounded, stopMonitor, stopCommandHooks, failpointGranted = false;
     const admin = new MongoClient(options.uri, {retryReads: false, retryWrites: false, maxAdaptiveRetries: 0,
         maxPoolSize: 2, minPoolSize: 0, serverSelectionTimeoutMS: PLAN.operationMS, connectTimeoutMS: PLAN.operationMS});
     const boundedName = options.database + '_bounded', retryName = options.database + '_retry';
     const pool = new managed.StatefulCompleteKindMongoClient(() => ({uri: options.uri,
         options: {monitorCommands: true, appName: boundedName}}), (uri, config) => {
-        const client = new MongoClient(uri, config), start = client.startSession.bind(client), db = client.db.bind(client), close = client.close.bind(client);
+        const client = new MongoClient(uri, config), start = client.startSession.bind(client), close = client.close.bind(client);
         client.startSession = config => {
             const session = start(config), end = session.endSession.bind(session), item = {ended: false}; sessions.push(item);
             session.endSession = async (...args) => {try {return await end(...args);} finally {item.ended = session.hasEnded;}};
             return session;
-        };
-        // Fault-injection gate only. All replies/errors and all command events come from the actual pinned driver/server.
-        client.db = (...args) => {
-            const selected = db(...args), command = selected.command.bind(selected);
-            return new Proxy(selected, {get(target, name) {
-                if (name === 'command') return async (input, config) => {
-                    if (input.comment?.hyperion === 'stateful-complete-kind-v1') {
-                        const before = gate; if (before) await before(input);
-                        const reply = await command(input, config); if (afterData) await afterData(input, reply); return reply;
-                    }
-                    return command(input, config);
-                };
-                const value = Reflect.get(target, name); return typeof value === 'function' ? value.bind(target) : value;
-            }});
         };
         client.close = async (...args) => {try {return await close(...args);} finally {closes.push('bounded');}};
         stopMonitor = monitor(client, options.database, 'bounded', () => phase, trace); return client;
@@ -146,6 +133,11 @@ export async function run(options) {
         assert.deepEqual(await admin.db(options.database).listCollections().toArray(), [], 'Refuse a nonempty database');
         await admin.db(options.database).collection('_qualification_owner').insertOne({_id: ownedMarker, scope: PLAN.scope}, {writeConcern: {w: 'majority', j: true}});
         owned = true; bounded = await pool.get(PLAN.operationMS); assert.equal(await pool.get(PLAN.operationMS), bounded);
+        // Gates run at the actual selected server boundary, including the private native executor.
+        // Metadata, cleanup, admin and the separate retry-positive client never consume a gate.
+        stopCommandHooks = installCompleteKindCommandHooks(bounded, options.database, {
+            beforeData: async input => {const before = gate; if (before) await before(input);},
+            afterData: async (input, response) => {const after = afterData; if (after) await after(input, response);}});
         assert.equal(closes.length, 0);
         const projection = await logical.captureStatefulDeclaration(definition(logical, options.database), limits());
         const draft = await sdk.captureStatefulOwnerDeclarationV2(projection, 2);
@@ -341,7 +333,7 @@ export async function run(options) {
             assert.deepEqual(await admin.db(options.database).listCollections().toArray(), []); cleanup.databaseDropped = true;
         }} catch (error) {reportError ??= error; cleanup.databaseError = failure(error);}
         try {await admin.close();} catch (error) {reportError ??= error; cleanup.adminClientError = failure(error);}
-        stopMonitor?.(); stopRetry();
+        stopCommandHooks?.(); stopMonitor?.(); stopRetry();
         report.status = reportError ? 'failed' : 'passed-native-only'; report.traceEvents = trace.length;
         json(join(options.output, 'trace.json'), trace); json(join(options.output, 'report.json'), report);
         json(join(options.output, 'sha256.json'), ['trace.json', 'report.json'].map(path => ({path, sha256: hash(readFileSync(join(options.output, path)))})));
