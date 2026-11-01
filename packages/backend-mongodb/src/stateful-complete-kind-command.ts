@@ -7,7 +7,12 @@ import type {ClientSession, Document, MongoClient} from 'mongodb';
 import {requireState} from './stateful-contract.js';
 
 interface NativeNamespace {withCollection(name: string): NativeNamespace}
-interface NativeOptions {session: ClientSession; signal: AbortSignal; promoteLongs?: boolean; omitMaxTimeMS: true}
+interface NativeOptions {session: ClientSession; signal: AbortSignal; promoteLongs?: boolean; timeoutMS?: number; omitMaxTimeMS: true}
+interface NativeOperation {
+    session: ClientSession;
+    buildCommand(connection?: unknown, session?: ClientSession): Document;
+    buildOptions(timeoutContext: unknown): {session?: ClientSession; [key: string]: unknown};
+}
 const load = createRequire(import.meta.url), packagePath = realpathSync(load.resolve('mongodb/package.json'));
 const packageRoot = dirname(packagePath), pkg = JSON.parse(readFileSync(packagePath, 'utf8')) as {version?: unknown};
 requireState(pkg.version === '7.2.0', 'Complete-kind command executor requires pinned MongoDB driver 7.2.0', 'stateful.capability-unavailable');
@@ -26,17 +31,38 @@ const {executeOperation} = load(entrypoints[0][0]) as {
     executeOperation(client: MongoClient, operation: object): Promise<Document>;
 };
 const {RunCommandOperation} = load(entrypoints[1][0]) as {
-    RunCommandOperation: new(namespace: NativeNamespace, command: Document, options: NativeOptions) => object;
+    RunCommandOperation: new(namespace: NativeNamespace, command: Document, options: NativeOptions) => NativeOperation;
 };
 const {MongoDBNamespace} = load(entrypoints[2][0]) as {MongoDBNamespace: new(database: string) => NativeNamespace};
 requireState(typeof executeOperation === 'function' && typeof RunCommandOperation === 'function' && typeof MongoDBNamespace === 'function',
     'Complete-kind internal driver interface is unavailable', 'stateful.capability-unavailable');
 
+class SnapshotCursorCleanupOperation extends RunCommandOperation {
+    override buildCommand(connection?: unknown, session?: ClientSession): Document {
+        requireState(session === this.session && !session.hasEnded && session.snapshotEnabled && !session.inTransaction()
+            && session.id !== undefined, 'Snapshot cursor cleanup requires its original live session', 'stateful.unavailable');
+        const command = super.buildCommand(connection, session);
+        requireState(Object.keys(command)[0] === 'killCursors', 'Snapshot cursor cleanup must remain a killCursors command', 'stateful.unavailable');
+        requireState(command.readConcern === undefined, 'Cursor cleanup cannot carry read concern', 'stateful.unavailable');
+        return {...command, lsid: session.id};
+    }
+    override buildOptions(timeoutContext: unknown): {session?: ClientSession; [key: string]: unknown} {
+        // Driver7.2 applySession adds snapshot readConcern even to killCursors, which
+        // MongoDB8.0 rejects. Keep the genuine operation session for selection/expiry,
+        // but decorate this non-read command only with that session's original lsid.
+        const {session: _session, ...options} = super.buildOptions(timeoutContext);
+        return options;
+    }
+}
+
 export function executeCompleteKindCommand(client: MongoClient, database: string, command: Document,
-    options: {session: ClientSession; signal: AbortSignal; promoteLongs?: boolean}): Promise<Document> {
+    options: {session: ClientSession; signal: AbortSignal; promoteLongs?: boolean; timeoutMS?: number}): Promise<Document> {
     // Public Db.command reconstructs an option allowlist and strips omitMaxTimeMS.
     // Use the same pinned operation/session/selection engine without that lossy facade.
     // Its real execution still consumes the client's actual transaction CSOT and signal.
-    return executeOperation(client, new RunCommandOperation(new MongoDBNamespace(database), command,
-        {session: options.session, signal: options.signal, promoteLongs: options.promoteLongs, omitMaxTimeMS: true}));
+    const Operation = Object.keys(command)[0] === 'killCursors' && options.session.snapshotEnabled && !options.session.inTransaction()
+        ? SnapshotCursorCleanupOperation : RunCommandOperation;
+    return executeOperation(client, new Operation(new MongoDBNamespace(database), command,
+        {session: options.session, signal: options.signal, promoteLongs: options.promoteLongs, omitMaxTimeMS: true,
+            ...(options.timeoutMS === undefined ? {} : {timeoutMS: options.timeoutMS})}));
 }

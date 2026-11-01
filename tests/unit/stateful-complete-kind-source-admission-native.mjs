@@ -4,11 +4,19 @@ import {copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, readd
 import {basename, dirname, join, resolve} from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath, pathToFileURL} from 'node:url';
-import {admitNativeApiSourceOptions, admitNativeSourceEnvironment, STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE as profile, STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE as priorMetadataProfile, STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE as priorExecutorProfile, STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE as priorCommandsProfile, STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE as priorCompleteKindProfile, STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE as priorProfile, STATEFUL_COMPLETE_KIND_METADATA_NATIVE_SOURCE as nativeSource, STATEFUL_COMPLETE_KIND_CODEC_CALLER_SOURCE as callerSource, STATEFUL_METADATA_FIELDS_API_SOURCE_PROFILE as fieldsProfile, STATEFUL_ENGINEERING_API_SOURCE_PROFILE as oldProfile, STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE as legacyProfile} from './stateful-engineering-source-admission.mjs';
+import {admitNativeApiSourceOptions, admitNativeSourceEnvironment, STATEFUL_NATIVE_CLEANUP_TRACE_API_SOURCE_PROFILE as profile, STATEFUL_NATIVE_CLEANUP_API_SOURCE_PROFILE as priorCleanupProfile, STATEFUL_NATIVE_SNAPSHOT_API_SOURCE_PROFILE as priorSnapshotProfile, STATEFUL_CURRENT_NATIVE_API_SOURCE_PROFILE as priorCurrentProfile, STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE as priorCodecProfile, STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE as priorMetadataProfile, STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE as priorExecutorProfile, STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE as priorCommandsProfile, STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE as priorCompleteKindProfile, STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE as priorProfile, STATEFUL_METADATA_FIELDS_API_SOURCE_PROFILE as fieldsProfile, STATEFUL_ENGINEERING_API_SOURCE_PROFILE as oldProfile, STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE as legacyProfile} from './stateful-engineering-source-admission.mjs';
+import {NATIVE_CLEANUP_TRACE_ASSEMBLY as CURRENT_NATIVE_ASSEMBLY} from './native-cleanup-trace-source-admission.mjs';
+import {OPERATOR_LIST_ASSEMBLY} from '../../scripts/qualification/operator-list-mongodb/linux-cleanup-source-profile.mjs';
+import {findPackageJSON} from 'node:module';
+const nativeSource = CURRENT_NATIVE_ASSEMBLY.productSource;
 
 assert.equal(process.versions.bun, undefined); assert.match(process.version, /^v(?:24|26)\./);
 let cases = 0, accessorCalls = 0;
 const actual = admitNativeApiSourceOptions({engineeringSourceProfile: profile}); assert.equal(actual.qualificationOnly, true); assert.equal(actual.nativeSourceCommit, nativeSource.commit); assert.equal(actual.nativeTree, nativeSource.tree); cases++;
+assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: priorCleanupProfile}), /Git-LF helper|complete byte inventories/);
+assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: priorSnapshotProfile}), /Git-LF helper|complete byte inventories/);
+assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: priorCurrentProfile}), /Git-LF helper|complete byte inventories/); cases++;
+assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: priorCodecProfile}), /complete-kind native Git-LF package/); cases++;
 assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: priorMetadataProfile}), /Wire source revision/); cases++;
 assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: priorExecutorProfile}), /Wire source revision/); cases++;
 assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: priorCommandsProfile}), /Wire source revision/); cases++;
@@ -28,24 +36,27 @@ const codeTree = (from, to) => {for (const entry of readdirSync(from, {withFileT
     else {assert(entry.isFile()); copy(join(from, entry.name), join(to, entry.name));}
 }};
 try {
-    copy(fileURLToPath(new URL('../../package.json', import.meta.url)), join(directory, 'package.json'));
-    codeTree(fileURLToPath(new URL('../../build', import.meta.url)), join(directory, 'build'));
-    for (const [path] of callerSource.sources) copy(fileURLToPath(new URL('../../' + path, import.meta.url)), join(directory, path));
-    copy(fileURLToPath(new URL('../../package-lock.json', import.meta.url)), join(directory, 'package-lock.json'));
+    // Copy the complete newly admitted source/native/SDK/driver/BSON graph, never infer receiving SDK parity.
+    for (const file of OPERATOR_LIST_ASSEMBLY.sourceFiles) copy(fileURLToPath(new URL('../../' + file.path, import.meta.url)), join(directory, file.path));
+    for (const tree of Object.values(OPERATOR_LIST_ASSEMBLY.trees)) codeTree(fileURLToPath(new URL('../../' + tree.path, import.meta.url)), join(directory, tree.path));
+    for (const path of ['node_modules/typescript/package.json', 'packages/backend-mongodb/node_modules/typescript/package.json'])
+        copy(fileURLToPath(new URL('../../' + path, import.meta.url)), join(directory, path));
     const gate = join(directory, 'tests/unit/stateful-engineering-source-admission.mjs');
-    copy(fileURLToPath(new URL('./stateful-engineering-source-admission.mjs', import.meta.url)), gate);
+    for (const path of Object.keys(CURRENT_NATIVE_ASSEMBLY.helperSources)) copy(fileURLToPath(new URL('../../' + path, import.meta.url)), join(directory, path));
+    copy(fileURLToPath(new URL('../fixtures/engineering-profiles/native-cleanup-trace-linux.json', import.meta.url)), join(directory, 'tests/fixtures/engineering-profiles/native-cleanup-trace-linux.json'));
+    copy(fileURLToPath(new URL('../fixtures/engineering-profiles/native-cleanup-linux.json', import.meta.url)), join(directory, 'tests/fixtures/engineering-profiles/native-cleanup-linux.json'));
+    copy(fileURLToPath(new URL('../fixtures/engineering-profiles/native-snapshot-linux.json', import.meta.url)), join(directory, 'tests/fixtures/engineering-profiles/native-snapshot-linux.json'));
+    copy(fileURLToPath(new URL('../fixtures/engineering-profiles/current-native45-linux.json', import.meta.url)), join(directory, 'tests/fixtures/engineering-profiles/current-native45-linux.json'));
+    codeTree(fileURLToPath(new URL('../../scripts/qualification/operator-list-mongodb', import.meta.url)), join(directory, 'scripts/qualification/operator-list-mongodb'));
     const packageRoot = specifier => resolve(dirname(fileURLToPath(import.meta.resolve(specifier))), '..');
     const wire = packageRoot('@eosrio/hyperion-wire-plugin/protocol-provider.json');
     const destination = join(directory, 'node_modules/@eosrio/hyperion-wire-plugin');
     for (const path of ['package.json', 'dist/protocol-provider.json', 'dist/protocol-node-artifact.json', 'dist/protocol-rust-artifact.json']) copy(join(wire, path), join(destination, path));
     for (const name of ['protocol-node-artifact.json', 'protocol-rust-artifact.json'])
         for (const file of JSON.parse(readFileSync(join(wire, 'dist', name))).files) copy(join(wire, file.path), join(destination, file.path));
-    for (const [name, specifier] of [['hyperion-sdk', '@eosrio/hyperion-sdk/projection-stateful-owner-v2'],
-        ['hyperion-backend-mongodb', '@eosrio/hyperion-backend-mongodb/stateful-owner-v2']]) {
-        const source = packageRoot(specifier), target = join(directory, 'node_modules/@eosrio', name);
-        copy(join(source, 'package.json'), join(target, 'package.json'));
-        codeTree(join(source, 'dist'), join(target, 'dist'));
-    }
+    const wireSDK = findPackageJSON('@eosrio/hyperion-sdk', pathToFileURL(join(wire, 'package.json'))); assert(wireSDK);
+    copy(wireSDK, join(destination, 'node_modules/@eosrio/hyperion-sdk/package.json'));
+    codeTree(join(dirname(wireSDK), 'dist'), join(destination, 'node_modules/@eosrio/hyperion-sdk/dist'));
     const isolated = await import(pathToFileURL(gate).href);
     assert.deepEqual(isolated.admitNativeApiSourceOptions({engineeringSourceProfile: profile}), actual); cases++;
     const alter = (path, change, expected) => {
@@ -59,13 +70,13 @@ try {
     alter(join(destination, 'dist/protocol-node-artifact.json'), json(value => ({...value, sourceRevision: 'd'.repeat(40)})), /Wire source revision/);
     alter(join(destination, 'dist/protocol-node-artifact.json'), json(value => ({...value, files: [{...value.files[0], sha256: 'd'.repeat(64)}, ...value.files.slice(1)]})), /Wire Node artifact/);
     alter(join(destination, 'dist/provider.js'), bytes => Buffer.concat([bytes, Buffer.from('\n// wrong installed artifact\n')]), /artifact member/);
-    alter(join(directory, 'node_modules/@eosrio/hyperion-sdk/dist/projection-stateful-owner-v2.js'), bytes => Buffer.concat([bytes, Buffer.from('\n// wrong SDK tree\n')]), /SDK emissions/);
-    alter(join(directory, 'node_modules/@eosrio/hyperion-backend-mongodb/dist/stateful-owner-v2.js'), bytes => Buffer.concat([bytes, Buffer.from('\n// wrong native tree\n')]), /native emissions/);
-    alter(join(directory, 'build/api/helpers/stateful-owner.js'), bytes => Buffer.concat([bytes, Buffer.from('\n// wrong host artifact\n')]), /caller emissions/);
+    alter(join(directory, 'node_modules/@eosrio/hyperion-sdk/dist/projection-stateful-owner-v2.js'), bytes => Buffer.concat([bytes, Buffer.from('\n// wrong SDK tree\n')]), /complete byte inventories/);
+    alter(join(directory, 'packages/backend-mongodb/dist/stateful-owner-v2.js'), bytes => Buffer.concat([bytes, Buffer.from('\n// wrong native tree\n')]), /complete byte inventories/);
+    alter(join(directory, 'build/api/helpers/stateful-owner.js'), bytes => Buffer.concat([bytes, Buffer.from('\n// wrong host artifact\n')]), /complete byte inventories/);
     alter(join(directory, 'src/api/helpers/stateful-owner.ts'), bytes => Buffer.from(bytes.toString().replace(/\n/g, '\r\n')), /Git-LF caller/);
     alter(join(directory, 'package-lock.json'), json(value => {
         value.packages['node_modules/@eosrio/hyperion-sdk'].resolved = 'git+https://other.invalid/eosrio/hyperion-sdk.git#' + 'd'.repeat(40); return value;
-    }), /coordinated lock source/);
+    }), /installed source pin|source\/manifest\/dependency text/);
     // The actual helper must reject before creating/extracting temporary input or importing its runtime.
     const empty = join(directory, 'before-effects'); mkdirSync(empty);
     const previous = {TEMP: process.env.TEMP, TMP: process.env.TMP, TMPDIR: process.env.TMPDIR};

@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "main", "dev", "release/4.5" ]
   pull_request:
-    branches: ["main", "dev", "release/4.5", "codex/fix-action-abi-epochs", "codex/wire-protocol-host", "codex/protocol-abi-observations", "codex/protocol-abi-coverage", "codex/protocol-abi-frontier", "codex/protocol-abi-consumers", "codex/exact-sequence-history-adapter", "codex/action-source-journal", "codex/portable-state-production", "feat/protocol-action-occurrence-proof", "fix/protocol-source-read-cancellation", "build/native-action-dependencies", "feat/native-observation-prepare", "feat/native-action-authorization", "feat/native-action-consumers", "build/native-wire-profile-pin", "build/bun-1.4.4", "fix/native-wire-worker-proofs", "fix/live-reader-ship-credits", "feat/source-handoff-outcomes", "feat/action-attempt-dispositions", "fix/worker-attempt-quiescence", "fix/stream-client-compatibility-45", "codex/wire-full-worker-replay", "feat/source-bound-attempt-adjudication", "perf/native-wire-worker-profiles", "codex/wire-storage-recovery", "codex/native-source-proof-pair", "feat/original-action-authorization-397", "fix/portable-mapping-retry-eligibility-403", "feat/mongodb-complete-kind-402", "test/wire-mongodb-combined-profile-408"]
+    branches: ["main", "dev", "release/4.5", "codex/fix-action-abi-epochs", "codex/wire-protocol-host", "codex/protocol-abi-observations", "codex/protocol-abi-coverage", "codex/protocol-abi-frontier", "codex/protocol-abi-consumers", "codex/exact-sequence-history-adapter", "codex/action-source-journal", "codex/portable-state-production", "feat/protocol-action-occurrence-proof", "fix/protocol-source-read-cancellation", "build/native-action-dependencies", "feat/native-observation-prepare", "feat/native-action-authorization", "feat/native-action-consumers", "build/native-wire-profile-pin", "build/bun-1.4.4", "fix/native-wire-worker-proofs", "fix/live-reader-ship-credits", "feat/source-handoff-outcomes", "feat/action-attempt-dispositions", "fix/worker-attempt-quiescence", "fix/stream-client-compatibility-45", "codex/wire-full-worker-replay", "feat/source-bound-attempt-adjudication", "perf/native-wire-worker-profiles", "codex/wire-storage-recovery", "codex/native-source-proof-pair", "feat/original-action-authorization-397", "fix/portable-mapping-retry-eligibility-403", "feat/mongodb-complete-kind-402", "test/wire-mongodb-combined-profile-408", "feat/mongodb-operator-lists-414", "build/wire-mongodb-codec-profile-410"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
@@ -14,7 +14,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-69a6606-complete-kind-engineering
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-root741-native429-source-9c3db03-cleanup-trace-v2-linux-gitlf-engineering
     strategy:
       matrix:
         node-version: [24.x, 26.x]
@@ -26,6 +26,8 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
       - run: npm ci --allow-git=all
+      - name: Install the independently pinned native429 assembly
+        run: npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -36,6 +38,10 @@ jobs:
           test "$(bun -p process.versions.typescript)" = "$(node -p 'require("./package.json").dependencies.typescript')"
       - run: npm run typecheck
       - run: npm run build
+      - name: Record the explicit current Linux assembly and actual runtime candidate
+        run: node tests/unit/native-cleanup-trace-source-admission.mjs --admit-native-cleanup-trace > current-native-source-${{ matrix.node-version }}.json
+      - name: Check explicit current profile, frozen historical predicates and workload boundaries
+        run: node --test tests/native/current-stateful-source-profile.test.mjs scripts/qualification/operator-list-mongodb/cleanup-source-profile.test.mjs scripts/qualification/wire-source-snapshot.test.mjs
       - name: Check bounded canonical JSON and authentic protocol records on Node ${{ matrix.node-version }}
         run: node --test tests/unit/bounded-json.test.mjs tests/native/bounded-json-protocol-records.test.mjs
       - name: Check mixed stateful source and final publication on Node ${{ matrix.node-version }}
@@ -126,6 +132,13 @@ jobs:
       - name: Verify guarded contract replay evidence checksums
         working-directory: docs/performance/evidence/guarded-replay-20261019
         run: sha256sum -c SHA256SUMS
+      - name: Retain current assembly and actual Node runtime admission
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: current-native-source-${{ matrix.node-version }}
+          path: current-native-source-${{ matrix.node-version }}.json
+          if-no-files-found: error
       - name: Verify action source admission evidence checksums
         working-directory: docs/performance/evidence/action-source-admission-20261020
         run: sha256sum -c SHA256SUMS
@@ -224,6 +237,63 @@ jobs:
           path: projection-report.json
           if-no-files-found: warn
 
+  operator-lists-mongodb:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["24.22.1", "26.4.0"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            packages/backend-mongodb/package-lock.json
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - name: Install the exact root741 and receiving native429 sources
+        run: |
+          npm ci --allow-git=all --ignore-scripts=false
+          npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false
+      - name: Check and build the new operator-list assembly
+        run: |
+          test "$(bun --version)" = "$(cat .bun-version)"
+          test "$(bun -p process.versions.typescript)" = "$(node -p 'require("./package.json").dependencies.typescript')"
+          bun check -p tsconfig.json
+          bun check -p packages/backend-mongodb/tsconfig.json
+          npm run build
+      - name: Check operator-list contracts, native driver preparation and distinct profile guards
+        run: >-
+          node --test
+          packages/backend-mongodb/tests/operator-lists.test.mjs
+          packages/backend-mongodb/tests/operator-lists-driver.test.mjs
+          packages/backend-mongodb/tests/operator-list-native-snapshot.test.mjs
+          packages/backend-mongodb/tests/operator-list-native-cleanup.test.mjs
+          scripts/qualification/operator-list-mongodb/offline.test.mjs
+          scripts/qualification/operator-list-mongodb/cleanup-trace.test.mjs
+          scripts/qualification/operator-list-mongodb/source-profile.test.mjs
+          scripts/qualification/operator-list-mongodb/cleanup-source-profile.test.mjs
+          scripts/qualification/operator-list-mongodb/assembly-diagnostics.test.mjs
+      - name: Retain exact new source and compiled assembly admission
+        run: node scripts/qualification/operator-list-mongodb/linux-cleanup-source-profile.mjs --diagnostics operator-list-assembly-${{ matrix.node-version }} > operator-list-source-${{ matrix.node-version }}.json
+      - name: Exercise operator lists against a separately owned MongoDB 8.0.34
+        run: node scripts/qualification/operator-list-mongodb/ci.mjs operator-list-mongodb-${{ matrix.node-version }}
+      - name: Retain original list results, traces, terminal logs and owned-fixture cleanup
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: operator-list-mongodb-${{ matrix.node-version }}
+          path: |
+            operator-list-source-${{ matrix.node-version }}.json
+            operator-list-assembly-${{ matrix.node-version }}/
+            operator-list-mongodb-${{ matrix.node-version }}/
+          if-no-files-found: error
+
   action-sequences-design:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -252,7 +322,7 @@ jobs:
   action-source-journal:
     runs-on: ubuntu-24.04
     env:
-      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-69a6606-complete-kind-engineering
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-root741-native429-source-9c3db03-cleanup-trace-v2-linux-gitlf-engineering
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -265,6 +335,12 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci --allow-git=all
+      - name: Install and build the independently pinned native429 assembly
+        run: |
+          npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false
+          npm run build
+      - name: Record explicit current source and actual Node runtime metadata
+        run: node tests/unit/native-cleanup-trace-source-admission.mjs --admit-native-cleanup-trace > journal-native-source-${{ matrix.node }}.json
       - name: Qualify source journal records and two-copy recovery on owned Elasticsearch 9.5.5
         run: node scripts/qualification/check-action-source-journal.mjs action-source-journal-${{ matrix.node }}.json
       - name: Retain source journal evidence and cleanup result
@@ -273,6 +349,13 @@ jobs:
         with:
           name: action-source-journal-${{ matrix.node }}
           path: action-source-journal-${{ matrix.node }}.json
+          if-no-files-found: error
+      - name: Retain journal assembly and runtime admission
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: journal-native-source-${{ matrix.node }}
+          path: journal-native-source-${{ matrix.node }}.json
           if-no-files-found: error
 
   es955-fixture:
