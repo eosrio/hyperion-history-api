@@ -37,7 +37,7 @@ const gitPin = (value, name, commit) => assert.ok(['git+https://github.com/eosri
     .some(prefix => value === prefix + name + '.git#' + commit), 'Unqualified operator-list installed source pin');
 
 /** Exact new profile only: no default source override and no old profile acceptance. */
-function observeOperatorListAssembly(profile, root) {
+export function observeOperatorListAssembly(profile, root) {
     equal(profile, OPERATOR_LIST_PROFILE, 'profile selection'); root = realpathSync(root);
     const path = name => {
         assert.ok(typeof name === 'string' && !isAbsolute(name) && !name.includes('\\'));

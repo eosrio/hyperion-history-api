@@ -1,0 +1,171 @@
+{
+  "scope": "actual reviewed Linux observation; no physical/runtime acceptance grant",
+  "sourceRun": 41284043699,
+  "artifact": 13074383518,
+  "archiveSha256": "921e8a185ff892a37af9536089c91a7151a98eeb82a2a4072a75aba21663e02a",
+  "observed": {
+    "profile": "operator-list-mongodb-root741-native429-47d5c2c-linux-gitlf-engineering",
+    "sourceFiles": [
+      {
+        "path": "package.json",
+        "bytes": 2694,
+        "sha256": "10c3f0f8bff8d69aeaaaea9bda8aa45cdf39058ffbba53943f5eb95b0a278b09",
+        "textLF": true
+      },
+      {
+        "path": "package-lock.json",
+        "bytes": 127667,
+        "sha256": "8b9f643d9dd360c8630453c17134b5ccf647b5fc2a6e72abb0a35896aecdcd65",
+        "textLF": true
+      },
+      {
+        "path": "tsconfig.json",
+        "bytes": 695,
+        "sha256": "c7939d35277d076914b5ddc44ed8efa2f811344326a78007e6cecabde4894c65",
+        "textLF": true
+      },
+      {
+        "path": ".bun-version",
+        "bytes": 6,
+        "sha256": "d03d8b268b4171328ac2458ce8ca82d69a1fde38469d4e4faae4f8fa8d8a5e35",
+        "textLF": true
+      },
+      {
+        "path": "packages/backend-mongodb/package.json",
+        "bytes": 1589,
+        "sha256": "c2b5bbdec58bba723a0b586b2ad5bb50e1774b9a87afffacb25bfba7479419af",
+        "textLF": true
+      },
+      {
+        "path": "packages/backend-mongodb/package-lock.json",
+        "bytes": 22117,
+        "sha256": "3f896cb869751ce76d00a2bf2855a01d30ff7a3e1d17a51c3e6c8af922ce02bd",
+        "textLF": true
+      },
+      {
+        "path": "packages/backend-mongodb/tsconfig.json",
+        "bytes": 334,
+        "sha256": "1917ba1aec8b2e9f69e07239e32e40e2a8ad65f4f48b4c74b5f20d6bbf049bc7",
+        "textLF": true
+      },
+      {
+        "path": "node_modules/@eosrio/hyperion-sdk/package.json",
+        "bytes": 2319,
+        "sha256": "d2d92cb7a7f2d8b939391910372d8e551103939cce488244cf657f3ae301d680",
+        "textLF": true
+      },
+      {
+        "path": "packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/package.json",
+        "bytes": 2642,
+        "sha256": "f22c024ffa116dcb1b3074ce5d19ca163e4583b003254f37c5417eab5a9078b1",
+        "textLF": true
+      },
+      {
+        "path": "node_modules/mongodb/package.json",
+        "bytes": 7754,
+        "sha256": "d4217328703c0b0c73af27c82b1dce5db71d9fd5f019e2e0b5cab074ab69cc6a",
+        "textLF": true
+      },
+      {
+        "path": "packages/backend-mongodb/node_modules/mongodb/package.json",
+        "bytes": 7754,
+        "sha256": "d4217328703c0b0c73af27c82b1dce5db71d9fd5f019e2e0b5cab074ab69cc6a",
+        "textLF": true
+      },
+      {
+        "path": "node_modules/bson/package.json",
+        "bytes": 3856,
+        "sha256": "72bf581580fc2635011172f004746ee75cc4c0dab6d87ac225c642c09493a48e",
+        "textLF": true
+      },
+      {
+        "path": "packages/backend-mongodb/node_modules/bson/package.json",
+        "bytes": 3856,
+        "sha256": "96e4335f4f2810e6afcc9e5535926b4b91c95ebec19582a3f740c60e1b970ad6",
+        "textLF": true
+      }
+    ],
+    "trees": {
+      "rootSource": {
+        "path": "src",
+        "files": 287,
+        "sha256": "2b4932d5a20984b1bbfceccdd489fa0dc6f0e004549d5f2d84d496b21d65a653",
+        "textLF": true
+      },
+      "nativeSource": {
+        "path": "packages/backend-mongodb/src",
+        "files": 15,
+        "sha256": "01c9286e6cf27f3d77c1860bbd8628707fba9b52d0e4ecf25750e886747c9eea",
+        "textLF": true
+      },
+      "rootBuild": {
+        "path": "build",
+        "files": 550,
+        "sha256": "362a4ef3d8c1ce3afcfa7a22c0eab5efa7bfcb4047a64d82005e38cf20a8d2fe",
+        "textLF": false
+      },
+      "nativeBuild": {
+        "path": "packages/backend-mongodb/dist",
+        "files": 45,
+        "sha256": "c135801fe2126534fe3e2ec451e7e917f671413c7a461802ea428b92d6ef87b4",
+        "textLF": false
+      },
+      "rootSDK": {
+        "path": "node_modules/@eosrio/hyperion-sdk/dist",
+        "files": 31,
+        "sha256": "e24e9e59b7922200ee34103209f39b2cdf406c9753e9c52befc0573d516e62c2",
+        "textLF": false
+      },
+      "nativeSDK": {
+        "path": "packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist",
+        "files": 33,
+        "sha256": "e13d6734b7eecf4eba2ef02652b84b6ee4acdc684623f685c2c9c0e128a0eada",
+        "textLF": false
+      },
+      "rootDriver": {
+        "path": "node_modules/mongodb/lib",
+        "files": 262,
+        "sha256": "b238708abdedf82b5cd3a885b5c26f84526b63593d50d604d819977cda1fa039",
+        "textLF": false
+      },
+      "nativeDriver": {
+        "path": "packages/backend-mongodb/node_modules/mongodb/lib",
+        "files": 262,
+        "sha256": "b238708abdedf82b5cd3a885b5c26f84526b63593d50d604d819977cda1fa039",
+        "textLF": false
+      },
+      "rootBSON": {
+        "path": "node_modules/bson/lib",
+        "files": 10,
+        "sha256": "eb8199a33e3d58ca528661d258ec6ca7ec9479471ee1204e415a8ec59d7cd7c8",
+        "textLF": false
+      },
+      "nativeBSON": {
+        "path": "packages/backend-mongodb/node_modules/bson/lib",
+        "files": 10,
+        "sha256": "61535a4f6a2a5ce32f922db081e24a3502749986bd31477b99f1ca9939667238",
+        "textLF": false
+      }
+    },
+    "runtime": {
+      "node": "v24.22.1",
+      "executable": "/opt/hostedtoolcache/node/24.22.1/x64/bin/node",
+      "executableSha256": "e32e2d16081cf644f88392934288086e7662529d0d43277c34f7aad2207cfafb",
+      "platform": "linux",
+      "arch": "x64"
+    },
+    "pins": {
+      "rootSDK": "7412889a14c84342551fd864ea3ebfcf28849385",
+      "nativeSDK": "429a1bf1d3bddb746fa662de9529480890b7368f",
+      "Wire": "69a66064c077a405341f5aaf15e84b88b8d86ccb",
+      "bun": "1.4.4",
+      "rootCompiler": "7.0.2",
+      "nativeCompiler": "7.0.2",
+      "rootDriver": "7.2.0",
+      "nativeDriver": "7.2.0"
+    }
+  },
+  "originalProfile": "operator-list-mongodb-root741-native429-47d5c2c-engineering",
+  "profileSelection": "Explicit new selector applied to retained observation fields; not a new execution",
+  "originalAdmission": "rejected"
+}

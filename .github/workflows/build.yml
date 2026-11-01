@@ -14,7 +14,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-69a6606-complete-kind-engineering
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-root741-native429-wire69-native45-linux-gitlf-engineering
     strategy:
       matrix:
         node-version: [24.x, 26.x]
@@ -26,6 +26,8 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
       - run: npm ci --allow-git=all
+      - name: Install the independently pinned native429 assembly
+        run: npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -36,6 +38,10 @@ jobs:
           test "$(bun -p process.versions.typescript)" = "$(node -p 'require("./package.json").dependencies.typescript')"
       - run: npm run typecheck
       - run: npm run build
+      - name: Record the explicit current Linux assembly and actual runtime candidate
+        run: node tests/unit/current-stateful-engineering-source-admission.mjs --admit-current > current-native-source-${{ matrix.node-version }}.json
+      - name: Check explicit current profile, frozen historical predicates and workload boundaries
+        run: node --test tests/native/current-stateful-source-profile.test.mjs scripts/qualification/operator-list-mongodb/linux-source-profile.test.mjs
       - name: Check bounded canonical JSON and authentic protocol records on Node ${{ matrix.node-version }}
         run: node --test tests/unit/bounded-json.test.mjs tests/native/bounded-json-protocol-records.test.mjs
       - name: Check mixed stateful source and final publication on Node ${{ matrix.node-version }}
@@ -126,6 +132,13 @@ jobs:
       - name: Verify guarded contract replay evidence checksums
         working-directory: docs/performance/evidence/guarded-replay-20261019
         run: sha256sum -c SHA256SUMS
+      - name: Retain current assembly and actual Node runtime admission
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: current-native-source-${{ matrix.node-version }}
+          path: current-native-source-${{ matrix.node-version }}.json
+          if-no-files-found: error
       - name: Verify action source admission evidence checksums
         working-directory: docs/performance/evidence/action-source-admission-20261020
         run: sha256sum -c SHA256SUMS
@@ -261,9 +274,10 @@ jobs:
           packages/backend-mongodb/tests/operator-lists-driver.test.mjs
           scripts/qualification/operator-list-mongodb/offline.test.mjs
           scripts/qualification/operator-list-mongodb/source-profile.test.mjs
+          scripts/qualification/operator-list-mongodb/linux-source-profile.test.mjs
           scripts/qualification/operator-list-mongodb/assembly-diagnostics.test.mjs
       - name: Retain exact new source and compiled assembly admission
-        run: node scripts/qualification/operator-list-mongodb/source-profile.mjs --diagnostics operator-list-assembly-${{ matrix.node-version }} > operator-list-source-${{ matrix.node-version }}.json
+        run: node scripts/qualification/operator-list-mongodb/linux-source-profile.mjs --diagnostics operator-list-assembly-${{ matrix.node-version }} > operator-list-source-${{ matrix.node-version }}.json
       - name: Exercise operator lists against a separately owned MongoDB 8.0.34
         run: node scripts/qualification/operator-list-mongodb/ci.mjs operator-list-mongodb-${{ matrix.node-version }}
       - name: Retain original list results, traces, terminal logs and owned-fixture cleanup
@@ -305,7 +319,7 @@ jobs:
   action-source-journal:
     runs-on: ubuntu-24.04
     env:
-      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-69a6606-complete-kind-engineering
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-root741-native429-wire69-native45-linux-gitlf-engineering
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -318,6 +332,12 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci --allow-git=all
+      - name: Install and build the independently pinned native429 assembly
+        run: |
+          npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false
+          npm run build
+      - name: Record explicit current source and actual Node runtime metadata
+        run: node tests/unit/current-stateful-engineering-source-admission.mjs --admit-current > journal-native-source-${{ matrix.node }}.json
       - name: Qualify source journal records and two-copy recovery on owned Elasticsearch 9.5.5
         run: node scripts/qualification/check-action-source-journal.mjs action-source-journal-${{ matrix.node }}.json
       - name: Retain source journal evidence and cleanup result
@@ -326,6 +346,13 @@ jobs:
         with:
           name: action-source-journal-${{ matrix.node }}
           path: action-source-journal-${{ matrix.node }}.json
+          if-no-files-found: error
+      - name: Retain journal assembly and runtime admission
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: journal-native-source-${{ matrix.node }}
+          path: journal-native-source-${{ matrix.node }}.json
           if-no-files-found: error
 
   es955-fixture:

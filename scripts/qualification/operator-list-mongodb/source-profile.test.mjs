@@ -28,6 +28,6 @@ test('new source selection cannot override or silently reuse the frozen complete
     assert.throws(() => admitOperatorListAssembly(undefined), /profile selection/);
     assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: OPERATOR_LIST_PROFILE}), /Unknown engineering source profile/);
     // The old gate remains an immutable source record, not an alias accepting native45.
-    const old = readFileSync(new URL('../../../tests/unit/stateful-engineering-source-admission.mjs', import.meta.url));
+    const old = readFileSync(new URL('../../../tests/fixtures/engineering-profiles/historical-native39-9c4dd228/stateful-engineering-source-admission.mjs.txt', import.meta.url));
     assert.equal(sha(old.toString('utf8').replaceAll('\r\n', '\n')), '9c4dd22874e2a6610a4aa07dc6ec64f219ec42e539eba2e240abfc7c85e621ed');
 });

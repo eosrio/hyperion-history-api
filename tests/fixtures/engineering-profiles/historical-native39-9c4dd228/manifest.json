@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "identity": "historical-native39-9c4dd228",
+  "sourceCommit": "8e753246b7690ea1a98e9e47bde8d1f4ace56035",
+  "readOnlyHistoricalEvidence": true,
+  "executable": false,
+  "files": [
+    {
+      "source": "tests/unit/stateful-engineering-source-admission.mjs",
+      "snapshot": "tests/fixtures/engineering-profiles/historical-native39-9c4dd228/stateful-engineering-source-admission.mjs.txt",
+      "bytes": 23323,
+      "sha256": "9c4dd22874e2a6610a4aa07dc6ec64f219ec42e539eba2e240abfc7c85e621ed"
+    },
+    {
+      "source": "tests/unit/stateful-complete-kind-source-admission-native.mjs",
+      "snapshot": "tests/fixtures/engineering-profiles/historical-native39-9c4dd228/stateful-complete-kind-source-admission-native.mjs.txt",
+      "bytes": 12862,
+      "sha256": "5b6ec7d3574d886dff5cb92c3522605084a0caafb362814b64fb2f356529e392"
+    },
+    {
+      "source": "tests/native/stateful-complete-kind-codec-profile.test.mjs",
+      "snapshot": "tests/fixtures/engineering-profiles/historical-native39-9c4dd228/stateful-complete-kind-codec-profile.test.mjs.txt",
+      "bytes": 2452,
+      "sha256": "9fe6d9b7e2c9e88e98f4a92f64898bcacf7c8840f952a87334d15cc3350c2152"
+    },
+    {
+      "source": "scripts/qualification/operator-list-mongodb/source-profile.test.mjs",
+      "snapshot": "tests/fixtures/engineering-profiles/historical-native39-9c4dd228/source-profile.test.mjs.txt",
+      "bytes": 3264,
+      "sha256": "1ecec5403f626b7d8337994ea0805bdf361b222b52a8e5004e9b6bc02e6a3463"
+    }
+  ]
+}
