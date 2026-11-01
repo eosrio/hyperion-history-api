@@ -59,8 +59,9 @@ export async function prepared(constructedEpochs = {}, initialThrough = 4, const
   async function advance(through) {
     const finishAdvance = retainedWireStages.begin('source.advance', through); let advanceFailed = true;
     let session;
+    try {session = selected.provider.createShipSession(JSON.parse(inputSchema));}
+    catch (error) {finishAdvance('failed'); throw error;}
     try {
-      session = selected.provider.createShipSession(JSON.parse(inputSchema));
       const nativeDeltas = session.decodeDeltas(Buffer.from(session.decodeResult(inputFrames[0])[1].deltas, "hex"));
       const nativeAbiHex = session.decodeRow("account", Buffer.from(nativeDeltas[0][1].rows[0].data, "hex"))[1].abi;
       const nativeAbi = selected.provider.contractCodec.decodeAbi(Buffer.from(nativeAbiHex, "hex"));
@@ -151,7 +152,7 @@ export async function prepared(constructedEpochs = {}, initialThrough = 4, const
       }
       advanceFailed = false;
     } finally {
-      try {session?.close?.();} catch (error) {advanceFailed = true; throw error;}
+      try {session.close?.();} catch (error) {advanceFailed = true; throw error;}
       finally {finishAdvance(advanceFailed ? 'failed' : 'completed');}
     }
   }
