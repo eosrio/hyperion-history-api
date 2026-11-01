@@ -4,11 +4,12 @@ import {copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, readd
 import {basename, dirname, join, resolve} from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath, pathToFileURL} from 'node:url';
-import {admitNativeApiSourceOptions, admitNativeSourceEnvironment, STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE as profile, STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE as priorProfile, STATEFUL_COMPLETE_KIND_NATIVE_SOURCE as nativeSource, STATEFUL_COMPLETE_KIND_CALLER_SOURCE as callerSource, STATEFUL_METADATA_FIELDS_API_SOURCE_PROFILE as fieldsProfile, STATEFUL_ENGINEERING_API_SOURCE_PROFILE as oldProfile, STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE as legacyProfile} from './stateful-engineering-source-admission.mjs';
+import {admitNativeApiSourceOptions, admitNativeSourceEnvironment, STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE as profile, STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE as priorCompleteKindProfile, STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE as priorProfile, STATEFUL_COMPLETE_KIND_COMMANDS_NATIVE_SOURCE as nativeSource, STATEFUL_COMPLETE_KIND_CALLER_SOURCE as callerSource, STATEFUL_METADATA_FIELDS_API_SOURCE_PROFILE as fieldsProfile, STATEFUL_ENGINEERING_API_SOURCE_PROFILE as oldProfile, STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE as legacyProfile} from './stateful-engineering-source-admission.mjs';
 
 assert.equal(process.versions.bun, undefined); assert.match(process.version, /^v(?:24|26)\./);
 let cases = 0, accessorCalls = 0;
 const actual = admitNativeApiSourceOptions({engineeringSourceProfile: profile}); assert.equal(actual.qualificationOnly, true); assert.equal(actual.nativeSourceCommit, nativeSource.commit); assert.equal(actual.nativeTree, nativeSource.tree); cases++;
+assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: priorCompleteKindProfile}), /native emissions/); cases++;
 assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: priorProfile}), /SDK package/); cases++;
 assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: fieldsProfile}), /SDK package/); cases++;
 assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: oldProfile}), /SDK package/); cases++;

@@ -6,7 +6,7 @@ import {createWriteStream, mkdtempSync, readFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {Long, Binary} from 'mongodb';
-import {argumentsFor, PLAN} from './runner.mjs';
+import {argumentsFor, PLAN, failure} from './runner.mjs';
 import {monitor, verifyReadTrace} from './trace.mjs';
 import {terminalChild} from './ci.mjs';
 
@@ -75,6 +75,26 @@ test('each callback transaction requires its own native metadata check', () => {
     const {trace} = events(); trace.push({...trace[2], seq: 4, requestId: 3, txn: '4'});
     trace.push({...trace[3], seq: 5, requestId: 3});
     assert.throws(() => verifyReadTrace(trace, 'one', {attempts: 2, maximum: 2, success: true}));
+});
+
+test('native wire traces refuse injected getMore maxTimeMS and expanded initial find bounds', () => {
+    const {trace} = events(); trace[2].maxTimeMS = PLAN.operationMS;
+    assert.equal(verifyReadTrace(trace, 'one', {attempts: 1, maximum: 1, success: true, operationTimeoutMS: PLAN.operationMS}).dataAttempts, 1);
+    trace[2].maxTimeMS = PLAN.operationMS + 1;
+    assert.throws(() => verifyReadTrace(trace, 'one', {maximum: 1, operationTimeoutMS: PLAN.operationMS}), /operation bound/);
+    trace[2].command = 'getMore'; trace[2].maxTimeMS = null;
+    assert.equal(verifyReadTrace(trace, 'one', {maximum: 1, operationTimeoutMS: PLAN.operationMS}).dataAttempts, 1);
+    trace[2].maxTimeMS = PLAN.operationMS;
+    assert.throws(() => verifyReadTrace(trace, 'one', {maximum: 1, operationTimeoutMS: PLAN.operationMS}), /getMore/);
+});
+
+test('synthetic failure diagnostics retain bounded numeric native causes without stacks or cycles', () => {
+    const native = Object.assign(new Error('x'.repeat(1024)), {code: 2}), outer = new Error('native unavailable', {cause: native});
+    outer.code = 'stateful.unavailable'; native.cause = outer;
+    const result = failure(outer);
+    assert.equal(result.code, 'stateful.unavailable'); assert.equal(result.cause.code, 2); assert.equal(result.cause.message.length, 512);
+    assert.deepEqual(result.cause.cause.cause, {truncated: 'cycle'}); assert.equal(JSON.stringify(result).includes('stack'), false);
+    assert.ok(JSON.stringify(result).length < 2048);
 });
 test('CI success waits for actual child terminal and both retained log streams', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'complete-kind-terminal-'));

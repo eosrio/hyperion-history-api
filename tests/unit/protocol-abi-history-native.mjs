@@ -9,10 +9,10 @@ import {prepared} from './portable-state-source-fixture.mjs';
 import {statefulHostFixture} from './stateful-host-fixture.mjs';
 import {limits} from '../../packages/backend-mongodb/tests/stateful-fixture.mjs';
 import {PROJECTION_ID} from '../fixtures/wire-managed-state-v2/plugin/build/index.js';
-import {admitCoordinatedNativeSourceOptions, STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE} from './stateful-engineering-source-admission.mjs';
+import {admitCoordinatedNativeSourceOptions, STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE} from './stateful-engineering-source-admission.mjs';
 
 // The historical runtime is qualified here only in this exact, independently installed SDK graph.
-admitCoordinatedNativeSourceOptions({engineeringSourceProfile: STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE});
+admitCoordinatedNativeSourceOptions({engineeringSourceProfile: STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE});
 
 const load = path => import(new URL('../../build/indexer/protocol/' + path, import.meta.url));
 const {ProtocolAbiCoordinator} = await load('abi-coordinator.js');

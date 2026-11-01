@@ -7,7 +7,7 @@ import {monitor, verifyReadTrace} from './trace.mjs';
 
 export const PLAN = Object.freeze({schemaVersion: 1, scope: 'synthetic-native-complete-kind',
     sdk: '7412889a14c84342551fd864ea3ebfcf28849385', driver: '7.2.0', mongodb: '8.0.34',
-    profile: 'stateful-owner-v2-7412889-18d235e-complete-kind-engineering',
+    profile: 'stateful-owner-v2-7412889-18d235e-complete-kind-commands-engineering',
     budgets: {readAttempts: 12, responseRecords: 8, responseBytes: 65536},
     operationMS: 5000, transactionMS: 15000,
     required: ['source-admission', 'replica-primary', 'empty-owned-database', 'true-exhaustion', 'shared-totals',
@@ -18,7 +18,18 @@ const hash = value => createHash('sha256').update(value).digest('hex');
 const hex = n => n.toString(16).padStart(64, '0');
 const plain = value => JSON.parse(JSON.stringify(value));
 const json = (path, value) => writeFileSync(path, JSON.stringify(value, null, 2) + '\n', {flag: 'wx'});
-const failure = error => ({name: error?.name ?? 'Error', code: typeof error?.code === 'string' ? error.code : null});
+// Synthetic loopback fixture diagnostics only. No stack, command payload or credentials.
+export function failure(error, depth = 0, seen = new Set()) {
+    const record = {name: String(error?.name ?? 'Error').slice(0, 64),
+        code: typeof error?.code === 'string' ? error.code.slice(0, 128) : Number.isSafeInteger(error?.code) ? error.code : null,
+        message: String(error?.message ?? 'Unknown fixture failure').slice(0, 512)};
+    if (error && typeof error === 'object') {
+        if (seen.has(error)) return {...record, cause: {truncated: 'cycle'}};
+        seen.add(error);
+        if (error.cause !== undefined) record.cause = depth < 2 ? failure(error.cause, depth + 1, seen) : {truncated: 'depth'};
+    }
+    return record;
+}
 export function argumentsFor(argv, environment) {
     if (argv.length === 0 || argv.length === 1 && argv[0] === '--validate-plan') return null;
     assert.equal(argv.length, 6, 'Use --run --allow-failpoints --database NAME --output NEW_DIRECTORY');
@@ -183,7 +194,7 @@ export async function run(options) {
         };
         await caseRun('empty-exhaustion-zero-row-budget', async () => {
             const result = await direct('empty', {...PLAN.budgets, responseRecords: 0}); assert.deepEqual(plain(result.rows), []);
-            return verifyReadTrace(trace, phase.name, {attempts: result.attempts, maximum: 1, success: true});
+            return verifyReadTrace(trace, phase.name, {operationTimeoutMS: PLAN.operationMS, attempts: result.attempts, maximum: 1, success: true});
         });
         const first = await raw(1);
         await apply(first, async port => {for (const key of ['z', 'a', 'b']) port.put('collection', key, {name: key,
@@ -192,24 +203,24 @@ export async function run(options) {
             const result = await direct('collection');
             assert.deepEqual(plain(result.rows).sort((a, b) => a.key < b.key ? -1 : 1), ['a', 'b', 'z'].map(key => ({key,
                 value: {name: key, created: key === 'z' ? '18446744073709551615' : '9007199254740993'}})));
-            return {...verifyReadTrace(trace, phase.name, {attempts: result.attempts, maximum: PLAN.budgets.readAttempts, success: true}),
+            return {...verifyReadTrace(trace, phase.name, {operationTimeoutMS: PLAN.operationMS, attempts: result.attempts, maximum: PLAN.budgets.readAttempts, success: true}),
                 observedIncidentalOrder: result.rows.map(row => row.key), successfulEnvelopeBytes: Buffer.byteLength(JSON.stringify(result))};
         });
         await caseRun('shared-key-and-kind-attempt-total', async () => {
             await assert.rejects(compose(async port => {await port.get('collection', 'a'); return {rows: await port.all('collection')};}, {...PLAN.budgets, readAttempts: 2}));
             const rows = trace.filter(row => row.phase === phase.name && row.event === 'started' && row.tagged);
             assert.equal(rows.length, 2); assert.deepEqual(rows.map(row => row.comment.operation), ['key', 'kind']);
-            verifyReadTrace(trace, phase.name, {attempts: 2, maximum: 2, operation: 'mixed'});
+            verifyReadTrace(trace, phase.name, {operationTimeoutMS: PLAN.operationMS, attempts: 2, maximum: 2, operation: 'mixed'});
             const firstPhase = phase.name; phase = {...phase, name: firstPhase + '-successful'};
             const result = await compose(async port => ({value: await port.get('collection', 'a'), rows: await port.all('collection')}));
-            assert.equal(result.value.rows.length, 3); verifyReadTrace(trace, phase.name, {maximum: PLAN.budgets.readAttempts, operation: 'mixed', success: true});
+            assert.equal(result.value.rows.length, 3); verifyReadTrace(trace, phase.name, {operationTimeoutMS: PLAN.operationMS, maximum: PLAN.budgets.readAttempts, operation: 'mixed', success: true});
             return {rejectedAttemptCount: 2, completeValueBytes: Buffer.byteLength(JSON.stringify(result.value))};
         });
         for (const [name, totals] of [['attempt-overflow', {...PLAN.budgets, readAttempts: 1}],
             ['record-overflow', {...PLAN.budgets, responseRecords: 1}], ['serialized-byte-overflow', {...PLAN.budgets, responseBytes: 2}]]) {
             await caseRun(name, async () => {
                 await assert.rejects(direct('collection', totals));
-                const evidence = verifyReadTrace(trace, phase.name, {maximum: name === 'record-overflow' ? 2 : 1});
+                const evidence = verifyReadTrace(trace, phase.name, {operationTimeoutMS: PLAN.operationMS, maximum: name === 'record-overflow' ? 2 : 1});
                 assert.equal(evidence.dataAttempts, name === 'record-overflow' ? 2 : 1); return evidence;
             });
         }
@@ -226,16 +237,16 @@ export async function run(options) {
             arm(command, 2, ['SystemOverloadedError', 'RetryableError']);
             const maximum = command === 'find' ? 1 : 2;
             await assert.rejects(direct('collection', {...PLAN.budgets, readAttempts: maximum}));
-            const evidence = verifyReadTrace(trace, phase.name, {maximum});
+            const evidence = verifyReadTrace(trace, phase.name, {operationTimeoutMS: PLAN.operationMS, maximum});
             assert.equal(evidence.dataAttempts, maximum);
             assert.equal(trace.filter(row => row.phase === phase.name && row.event === 'failed' && row.command === command).length, 1); return evidence;
         });
         for (const maximum of [1, PLAN.budgets.readAttempts]) await caseRun('callback-retry-total-' + maximum, async () => {
             arm('find', 112, ['TransientTransactionError']);
             if (maximum === 1) {await assert.rejects(direct('collection', {...PLAN.budgets, readAttempts: maximum}));
-                return verifyReadTrace(trace, phase.name, {attempts: 1, maximum});}
+                return verifyReadTrace(trace, phase.name, {operationTimeoutMS: PLAN.operationMS, attempts: 1, maximum});}
             const result = await direct('collection', {...PLAN.budgets, readAttempts: maximum}); assert.equal(result.rows.length, 3);
-            const evidence = verifyReadTrace(trace, phase.name, {attempts: result.attempts, maximum, success: true});
+            const evidence = verifyReadTrace(trace, phase.name, {operationTimeoutMS: PLAN.operationMS, attempts: result.attempts, maximum, success: true});
             assert.ok(evidence.dataAttempts >= 4); return evidence;
         });
         await caseRun('foreign-token-client-session-and-closed-read', async () => {
@@ -257,7 +268,7 @@ export async function run(options) {
                 } finally {legacy.closeRead(legacyRead);}
                 adapter.closeRead(local.read); await assert.rejects(adapter.readCompletedKind(local.read, expected, 'collection', PLAN.budgets));
             } finally {adapter.closeRead(local.read); await a.endSession(); await b.endSession();}
-            return verifyReadTrace(trace, phase.name, {attempts: 0, maximum: 0});
+            return verifyReadTrace(trace, phase.name, {operationTimeoutMS: PLAN.operationMS, attempts: 0, maximum: 0});
         });
         await caseRun('old-get-only-factory-current-sdk', async () => {
             const legacy = await ownerNative.createMongoDbStatefulOwnerAdapterV2({...config, client: admin}), expected = (await adapter.recovery()).view;
@@ -269,7 +280,7 @@ export async function run(options) {
             let cancelled = false; afterData = async () => {afterData = undefined; cancelled = true;};
             await assert.rejects(compose(async port => ({rows: await port.all('collection')}), PLAN.budgets,
                 () => {if (cancelled) throw new Error('qualification-cancelled');}));
-            return verifyReadTrace(trace, phase.name, {attempts: 1, maximum: 1});
+            return verifyReadTrace(trace, phase.name, {operationTimeoutMS: PLAN.operationMS, attempts: 1, maximum: 1});
         });
         await caseRun('closed-plugin-port-and-advanced-final-view', async () => {
             let held; const result = await compose(async port => {held = port; return {rows: await port.all('collection')};});
@@ -278,7 +289,7 @@ export async function run(options) {
             await assert.rejects(compose(async port => {
                 const rows = await port.all('collection'); const target = await raw(2);
                 await apply(target, async write => {write.put('collection', 'a', {name: 'new-at-two'});}); return {rows};
-            })); verifyReadTrace(trace, phase.name, {maximum: 2 * PLAN.budgets.readAttempts});
+            })); verifyReadTrace(trace, phase.name, {operationTimeoutMS: PLAN.operationMS, maximum: 2 * PLAN.budgets.readAttempts});
             return {closedPortRefused: true, changedFinalViewRefused: true};
         });
         await caseRun('raw-gap-restart-takeover-and-fork', async () => {
@@ -305,7 +316,7 @@ export async function run(options) {
             const replacement = await raw(2, 92); await apply(replacement, async port => {port.put('collection', 'a', {name: 'replacement-branch'});});
             phase = {name: phase.name + '-fresh-replacement'};
             const result = await direct('collection'); assert.equal(result.rows.find(row => row.key === 'a').value.name, 'replacement-branch');
-            return {...verifyReadTrace(trace, phase.name, {attempts: result.attempts, maximum: PLAN.budgets.readAttempts, success: true}),
+            return {...verifyReadTrace(trace, phase.name, {operationTimeoutMS: PLAN.operationMS, attempts: result.attempts, maximum: PLAN.budgets.readAttempts, success: true}),
                 persistedGapRefused: true, staleOwnerRefused: true, actualRollbackAndReplacement: true};
         });
         await caseRun('changed-declaration-refused', async () => {

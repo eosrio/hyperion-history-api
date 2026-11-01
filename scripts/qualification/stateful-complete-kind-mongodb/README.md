@@ -52,3 +52,9 @@ This synthetic native-engine evidence is separate from a physical managed
 worker/API source chain, real HTTP final-onSend fences, full Atomic parity and
 public serving. Those remain downstream acceptance gates even after a successful
 native run. Historical SDK/native profiles stay in their frozen assemblies.
+
+The commands engineering profile additionally retains actual wire `maxTimeMS`
+values: the initial find must equal the explicit operation bound and non-tailable
+getMore must omit the field. Failure diagnostics retain bounded names, messages,
+numeric/string codes and at most two nested causes, without stack or command
+payloads. This preserves the server reason if cursor cleanup also fails.
