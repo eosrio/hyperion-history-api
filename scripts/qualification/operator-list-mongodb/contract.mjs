@@ -36,19 +36,47 @@ export function verifyReadTrace(trace, phase, {attempts, maximum, success = fals
     if (attempts !== undefined) assert.equal(data.length, attempts, 'Reported native attempts differ from actual commands');
     for (const row of data) {
         assert.equal(row.transactional, false); assert.ok(row.lsid && row.txn === null && row.traceId);
-        const start = trace.find(item => item.event === 'started' && item.traceId === row.traceId);
+        const start = data.find(item => item.client === row.client && item.traceId === row.traceId && item.command !== 'killCursors');
         assert.ok(start && start.seq <= row.seq && start.readConcern === 'snapshot' && start.lsid === row.lsid, 'No actual snapshot start for native read');
-        if (row.seq !== start.seq) {
+        const reply = trace.find(item => item.event === 'succeeded' && item.requestId === row.requestId && item.client === row.client);
+        if (row.command === 'killCursors') {
+            // Cleanup is not a snapshot data read. The same original identity and a
+            // successful reply must instead prove closure of every original live cursor.
+            assert.equal(row.readConcern, null, 'Cursor cleanup cannot carry readConcern');
+            assert.equal(row.atClusterTime, null, 'Cursor cleanup cannot carry atClusterTime');
+            assert.ok(typeof row.collection === 'string' && row.collection.length > 0, 'Cleanup namespace is missing');
+            const owned = new Set();
+            for (const prior of data.filter(item => item.seq < row.seq && item.client === row.client && item.lsid === row.lsid
+                && item.traceId === row.traceId && item.collection === row.collection)) {
+                const response = trace.find(item => item.event === 'succeeded' && item.requestId === prior.requestId
+                    && item.client === prior.client && item.seq > prior.seq && item.seq < row.seq);
+                if (prior.command === 'getMore') assert.ok(owned.has(prior.cursor), 'Cleanup sequence lost its original cursor');
+                if (prior.command === 'killCursors') {
+                    for (const id of [...response.cursorClosure.cursorsKilled, ...response.cursorClosure.cursorsNotFound]) owned.delete(id);
+                } else if (response?.cursor === '0' && prior.command === 'getMore') owned.delete(prior.cursor);
+                else if (typeof response?.cursor === 'string' && response.cursor !== '0') owned.add(response.cursor);
+            }
+            assert.ok(owned.size > 0 && reply && reply.seq > row.seq, 'No original live cursor or successful cleanup response');
+            const terminal = new Set();
+            for (const name of ['cursorsKilled', 'cursorsNotFound', 'cursorsAlive', 'cursorsUnknown']) {
+                const ids = reply.cursorClosure?.[name];
+                assert.ok(Array.isArray(ids) && ids.length <= owned.size, 'Malformed cursor-closure response');
+                if (name === 'cursorsAlive' || name === 'cursorsUnknown') assert.deepEqual(ids, [], 'Native cursor cleanup is incomplete');
+                for (const id of ids) {
+                    assert.ok(owned.has(id) && !terminal.has(id), 'Foreign or duplicate native cursor closure'); terminal.add(id);
+                }
+            }
+            assert.equal(terminal.size, owned.size, 'Original native cursor closure is incomplete');
+        } else if (row.seq !== start.seq) {
             const established = trace.find(item => item.event === 'succeeded' && item.client === start.client && item.requestId === start.requestId);
             assert.ok(established?.snapshotTime && row.atClusterTime === established.snapshotTime && row.readConcern === 'snapshot', 'Native snapshot time changed or was not carried forward');
         }
         if (row.command !== 'killCursors') assert.equal(row.batchSize, pageSize);
         if (row.command === 'getMore' || row.command === 'killCursors') assert.equal(row.maxTimeMS, null, 'Non-tailable cursor control cannot have maxTimeMS');
         else assert.ok(row.maxTimeMS > 0 && row.maxTimeMS <= PLAN.operationMS);
-        const reply = trace.find(item => item.event === 'succeeded' && item.requestId === row.requestId && item.client === row.client);
         if (success) assert.ok(reply, 'Missing successful original command response');
         if (reply?.cursor !== undefined) assert.ok(reply.batch <= pageSize);
-        if (success && reply && reply.cursor !== '0') {
+        if (success && row.command !== 'killCursors' && reply && reply.cursor !== '0') {
             assert.ok(data.some(next => next.seq > row.seq && next.command === 'getMore' && next.cursor === reply.cursor), 'Successful read hid an unexhausted cursor');
         }
     }
@@ -56,6 +84,7 @@ export function verifyReadTrace(trace, phase, {attempts, maximum, success = fals
         'Snapshot list reads must not hide transaction completion/retry commands');
     if (success && data.length) {
         const final = data.at(-1), response = trace.find(row => row.event === 'succeeded' && row.requestId === final.requestId && row.client === final.client);
+        assert.notEqual(final.command, 'killCursors', 'Cleanup cannot substitute for complete native exhaustion');
         assert.equal(response?.cursor, '0', 'Complete result lacks native exhaustion');
     }
     return {attempts: data.length, replyBsonBytes: trace.filter(row => row.phase === phase && row.event === 'succeeded').reduce((n, row) => n + row.replyBsonBytes, 0)};
