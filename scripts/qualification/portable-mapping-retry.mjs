@@ -64,10 +64,10 @@ for (let pair = 0; pair < 5; pair++) {
     console.log(JSON.stringify({kind: 'pair', node: process.version, ...pairs.at(-1)}));
 }
 const median = values => values.toSorted((a, b) => a - b)[Math.floor(values.length / 2)];
-console.log(JSON.stringify({kind: 'summary', node: process.version, pairs: pairs.length, productionDefaultMs: 0,
+console.log(JSON.stringify({kind: 'summary', node: process.version, pairs: pairs.length, controllerDefaultMs: 0, selectedWorkerIntervalMs: 1000,
     engineeringIntervalMs: 1000, offeredMs: offered, elapsedMs: elapsed(start),
     invalidPreparations: {baseline: pairs.map(value => value.baseline.invalidPreparations.length), candidate: pairs.map(value => value.candidate.invalidPreparations.length)},
     actualDueRetryObserved: pairs.map(value => value.candidate.retryAfterMarkerMs.length > 0),
     controlledWindowMedianMs: {baseline: median(pairs.map(value => value.baseline.elapsedMs)), candidate: median(pairs.map(value => value.candidate.elapsedMs))},
-    scope: 'current emitted controller/runtime default0 versus1000 and retained Wire ABI/rows; controlled source and adapter ports; no production policy activation',
+    scope: 'component controllers default0 versus1000; worker separately selects1000 for the next qualification build; controlled ports, no physical/release qualification',
     unmeasured: ['physical ES/Mongo/HTTP replay', 'CPU samples', 'allocation/GC', 'OS/native I/O', 'integrated throughput gain']}));

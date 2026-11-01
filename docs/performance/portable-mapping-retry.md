@@ -1,9 +1,11 @@
 # Portable mapping retry eligibility engineering control
 
 Issue: [#403](https://github.com/eosrio/hyperion-history-api/issues/403).
-This is a source/component experiment. The production controller option defaults to **0 ms**;
-the worker does not select the experimental policy. Root still owns policy selection and the
-original physical Wire/MongoDB replay. Existing profiles, dependencies, source window, eight-frame
+This is a source/component experiment. The controller option defaults to **0 ms** for legacy callers.
+After accepting the source component, Root selected **1000 ms explicitly in ProjectionWorker** for
+the next qualification build. This adds no public/operator knob. The selection has not passed the
+original physical Wire/MongoDB replay or release gates, which remain Root-owned.
+Existing profiles, dependencies, source window, eight-frame
 drain budget, worker 100 ms schedule and physical deadlines are unchanged.
 
 The actual declarative mapping result can issue a private rejection only after its exact failure
@@ -29,7 +31,10 @@ The fixture verifies original retained Wire frame hashes, its on-chain ABI deplo
 row oracle. Source/proof and adapter ports are controlled; those checks do not qualify physical
 backend durability or live source authority.
 
-Native Node 24.22.1 and 26.4.0 also ran five alternating default 0/1000 ms pairs on the same independent
+The accepted component at dc7e8392, before worker selection, ran the comparisons below with directly
+constructed controllers. Its raw labels and samples remain unchanged; they are not measurements of
+the selected worker or physical replay. This wiring-only commit does not rerun the paired workload.
+Native Node 24.22.1 and 26.4.0 ran five alternating controller-default 0/1000 ms pairs on the same independent
 wall-clock offered arrivals 0/100/200/300/400/1100/2100 ms. Each of the ten pairs recorded:
 
 | Observation per pair | Default 0 | Experimental 1000 |
