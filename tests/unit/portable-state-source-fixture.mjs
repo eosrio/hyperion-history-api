@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
+import {retainedCall,retainedPosition,retainedMark} from '../native/retained-workload-progress.mjs';
 const code = process.versions.bun ? "../../src/" : "../../build/";
 const { loadChainProtocol } = await import(new URL(code + "indexer/protocol/selection.js", import.meta.url));
 const { ProtocolAbiCoordinator } = await import(new URL(code + "indexer/protocol/abi-coordinator.js", import.meta.url));
@@ -25,6 +26,7 @@ const frames = [
   return frame;
 });
 export async function prepared(constructedEpochs = {}, initialThrough = 4, construct, retained) {
+  retainedMark('before','source.prepare',{initialThrough});
   // Explicit test input only. The retained-range fixture verifies its original member hashes first;
   // normal tests keep their exact four-frame capture and construction controls.
   const inputFrames = retained?.frames ?? frames;
@@ -45,25 +47,28 @@ export async function prepared(constructedEpochs = {}, initialThrough = 4, const
     verifyNativeGenesis: selected.provider.verifyNativeGenesis?.bind(selected.provider),
     historicalCertificates: retained?.historicalCertificates
   });
-  await coordinator.start();
-  const contextId = (await bindings.prepareContext({ schemaVersion: 1, chainId: inputCapture.chainId, protocol: profile, schemaJson: inputSchema })).id;
-  const { generation } = await coordinator.openSource(contextId, "fixture-source");
+  await retainedCall('proof.coordinator-start',undefined,()=>coordinator.start());
+  const contextId = (await retainedCall('proof.context',undefined,()=>bindings.prepareContext({ schemaVersion: 1, chainId: inputCapture.chainId, protocol: profile, schemaJson: inputSchema }))).id;
+  const { generation } = await retainedCall('proof.open-source',undefined,()=>coordinator.openSource(contextId, "fixture-source"));
   const schema = JSON.parse(inputSchema);
   const positions = [], observed = [];
   async function advance(through) {
-    const session = selected.provider.createShipSession(JSON.parse(inputSchema));
+    return retainedCall('source.advance',through,async()=>{
+    retainedPosition({requestedThrough:through});
+    const session = retainedCall('source.session',undefined,()=>selected.provider.createShipSession(JSON.parse(inputSchema)));
     try {
-      const nativeDeltas = session.decodeDeltas(Buffer.from(session.decodeResult(inputFrames[0])[1].deltas, "hex"));
-      const nativeAbiHex = session.decodeRow("account", Buffer.from(nativeDeltas[0][1].rows[0].data, "hex"))[1].abi;
-      const nativeAbi = selected.provider.contractCodec.decodeAbi(Buffer.from(nativeAbiHex, "hex"));
+      const nativeDeltas = retainedCall('source.decode-native-deltas',undefined,()=>session.decodeDeltas(Buffer.from(session.decodeResult(inputFrames[0])[1].deltas, "hex")));
+      const nativeAbiHex = retainedCall('source.decode-native-account',undefined,()=>session.decodeRow("account", Buffer.from(nativeDeltas[0][1].rows[0].data, "hex")))[1].abi;
+      const nativeAbi = retainedCall('source.decode-native-abi',undefined,()=>selected.provider.contractCodec.decodeAbi(Buffer.from(nativeAbiHex, "hex")));
       for (const frame of inputFrames.slice(positions.length, through)) {
-        const decoded = session.decodeResult(frame), result = decoded[1];
+        const decoded = retainedCall('source.decode-result',positions.length+1,()=>session.decodeResult(frame)), result = decoded[1];
         const source = {
           chainId: inputCapture.chainId,
           blockNum: Number(result.this_block.block_num),
           blockId: result.this_block.block_id,
           previousBlockId: result.prev_block?.block_id ?? null
         };
+        retainedPosition({sourceHeight:source.blockNum});
         const epoch = constructedEpochs[source.blockNum];
         if (epoch) {
           const account = ["account_v0", { name: "target", creation_date: "2025-01-01T00:00:00.000", abi: epoch.abiHex }];
@@ -88,7 +93,7 @@ export async function prepared(constructedEpochs = {}, initialThrough = 4, const
         };
         const { protocolAbiCaptureDigest } = await import(new URL(code + "indexer/protocol/abi-observation-store.js", import.meta.url));
         const captureSha256 = protocolAbiCaptureDigest(source, sections);
-        const selectionId = (await bindings.prepareSelection({
+        const selectionId = (await retainedCall('proof.selection',source.blockNum,()=>bindings.prepareSelection({
           schemaVersion: 1,
           contextId,
           readerSessionId: "fixture-source",
@@ -99,7 +104,7 @@ export async function prepared(constructedEpochs = {}, initialThrough = 4, const
           captureSha256,
           head: { blockNum: Number(result.head.block_num), blockId: result.head.block_id },
           irreversible: { blockNum: Number(result.last_irreversible.block_num), blockId: result.last_irreversible.block_id }
-        })).id;
+        }))).id;
         let observation;
         if (source.blockNum === 1)
           observation = { status: "native-genesis", facts: selected.provider.verifyNativeGenesis({
@@ -109,7 +114,7 @@ export async function prepared(constructedEpochs = {}, initialThrough = 4, const
             deltas: Buffer.from(result.deltas, "hex")
           }, source) };
         else {
-          const deltas = session.decodeDeltas(Buffer.from(result.deltas, "hex")), rows = [];
+          const deltas = retainedCall('source.decode-deltas',source.blockNum,()=>session.decodeDeltas(Buffer.from(result.deltas, "hex"))), rows = [];
           let ordinal = 0;
           for (const [, delta] of deltas)
             for (const row of delta.rows) {
@@ -120,28 +125,31 @@ export async function prepared(constructedEpochs = {}, initialThrough = 4, const
               ordinal++;
             }
           observation = { status: "observed", facts: selected.provider.observeBlockAbi({
-            traces: session.decodeTraces(Buffer.from(result.traces, "hex")),
+            traces: retainedCall('source.decode-traces',source.blockNum,()=>session.decodeTraces(Buffer.from(result.traces, "hex"))),
             accountRows: rows
           }, source) };
         }
-        const receipt = await observations.prepare({
+        const receipt = await retainedCall('proof.observation',source.blockNum,()=>observations.prepare({
           schemaVersion: 1,
           protocol: profile,
           source: { ...source, inputSha256: captureSha256 },
           capture: sections,
           observation
-        });
-        await bindings.prepareObservationLink({ schemaVersion: 1, selectionId, observationId: receipt.id, observationDigest: receipt.digest });
-        await coordinator.admit(selectionId, generation);
-        await coordinator.drain();
+        }));
+        await retainedCall('proof.link',source.blockNum,()=>bindings.prepareObservationLink({ schemaVersion: 1, selectionId, observationId: receipt.id, observationDigest: receipt.digest }));
+        await retainedCall('proof.admit',source.blockNum,()=>coordinator.admit(selectionId, generation));
+        await retainedCall('proof.drain',source.blockNum,()=>coordinator.drain());
         positions.push(source);
         observed.push(receipt.id);
+        retainedPosition({readerThrough:source.blockNum});
       }
     } finally {
       session.close?.();
     }
+    });
   }
   await advance(initialThrough);
+  retainedMark('after','source.prepare',{initialThrough});
   const options = { client: memory.client, chain, chainId: inputCapture.chainId, profile, provider: selected.provider,
     maxAncestryBlocks: retained?.maxAncestryBlocks, historicalCertificates: retained?.historicalCertificates !== undefined };
   memory.calls.length = 0;

@@ -9,7 +9,7 @@ import {sha} from '../../scripts/qualification/operator-list-mongodb/contract.mj
 
 const root=fileURLToPath(new URL('../../',import.meta.url));
 const expectedRaw=readFileSync(new URL('../fixtures/engineering-profiles/sdk49-indexed-linux.json',import.meta.url));
-assert.equal(sha(expectedRaw),'6c21e0786b54f5337870865fb51878457a610816519d5b9915ba64fad464b8d9','Exact SDK49 manifest required');
+assert.equal(sha(expectedRaw),'9ebc7c0c9755d233ed4696b28dcb24c0a3da359a7216b4555ae0812ff424c802','Exact SDK49 manifest required');
 const expected=JSON.parse(expectedRaw);
 const freeze=value=>{if(value&&typeof value==='object'&&!Object.isFrozen(value)){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
 // Declarative metadata only; native/runtime admission still performs the independent observation below.

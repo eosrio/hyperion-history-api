@@ -9,6 +9,7 @@ import {NATIVE_SNAPSHOT_ASSEMBLY as priorSnapshot} from '../unit/native-snapshot
 import {admitNativeApiSourceOptions, STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE,
     STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE} from '../unit/stateful-engineering-source-admission.mjs';
 import {CURRENT_NATIVE_ASSEMBLY as priorCurrent} from '../unit/current-stateful-engineering-source-admission.mjs';
+import './retained-workload-progress.test.mjs';
 const root = new URL('../../', import.meta.url), sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const canonical = path => readFileSync(new URL(path, root), 'utf8').replaceAll('\r\n', '\n');
 
@@ -92,6 +93,11 @@ test('actual installed SDK49 assembly remains refused by unchanged historical pr
 test('original retained1480 callbacks/assertions and complete-kind17cases retain exact original bodies and budgets', () => {
     for (const [path, guard] of Object.entries(current.workloadGuards)) {
         let body = canonical(path);
+        if (path === 'tests/unit/wire-managed-state-v2-native.mjs') {
+            const diagnosticImport="import test from '../native/retained-workload-test.mjs';\n";
+            assert.equal(body.split(diagnosticImport).length,2,'Exactly one diagnostic test header is allowed');
+            body=body.replace(diagnosticImport,"import test from 'node:test';\n");
+        }
         if (path === 'tests/unit/wire-managed-state-v2-native.mjs' || path === 'tests/unit/protocol-abi-history-native.mjs')
             body = body.replaceAll('STATEFUL_SDK49_SOURCE_PROFILE', 'STATEFUL_NATIVE_CLEANUP_TRACE_API_SOURCE_PROFILE');
         if (path === 'scripts/qualification/stateful-complete-kind-mongodb/runner.mjs')

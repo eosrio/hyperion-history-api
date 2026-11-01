@@ -8,6 +8,7 @@ import {preparedStatefulInputs, capture} from './portable-state-source-fixture.m
 import {definition, limits} from '../../packages/backend-mongodb/tests/stateful-fixture.mjs';
 import {ownerFixture} from '../../packages/backend-mongodb/tests/stateful-owner-v2-fixture.mjs';
 import {completeFixture, totals, offer} from '../../packages/backend-mongodb/tests/stateful-complete-kind-fixture.mjs';
+import {retainedCall,retainedMark,retainedCounter,observeRetainedMethod} from '../native/retained-workload-progress.mjs';
 
 const code = process.versions.bun ? '../../src/' : '../../build/';
 const load = path => import(new URL(code + path, import.meta.url));
@@ -26,6 +27,12 @@ const {resolveStatefulOwnerConfigurationV2} = await load('indexer/projection/sta
 export async function statefulHostFixture({timeoutMs = 1000, hooks = {}, requiredSourceCapabilities = [], preparedSource,
     pluginDirectory, pluginConfiguration, projectionId, through = 3, completeKind = false} = {}) {
     const {p} = preparedSource ? {p: preparedSource} : await preparedStatefulInputs();
+    retainedMark('before','host.initialize',{through});
+    observeRetainedMethod(p.source,'statefulBlock','source.stateful-block',args=>args[0]);
+    observeRetainedMethod(p.source,'open','proof.open',args=>args[0]?.blockNum);
+    observeRetainedMethod(p.source,'revalidate','proof.revalidate');
+    observeRetainedMethod(p.source,'assertStatefulView','proof.stateful-view');
+    retainedCounter('fixture.frontier.calls',()=>p.memory.calls.length);
     const rawConfiguration = {interfaceVersion: 2, sourceInputVersion: 2,
         backend: {kind: 'mongodb', id: 'stateful-fixture', database: 'stateful_fixture'}, recovery: {bytes: 8 * 1024 * 1024},
         api: {timeoutMs, maximumPendingProbes: 8}};
@@ -59,13 +66,14 @@ export async function statefulHostFixture({timeoutMs = 1000, hooks = {}, require
             delta_blacklist: new Set(), delta_whitelist: new Set()}};
     const previousConfig = process.env.CONFIG_JSON;
     process.env.CONFIG_JSON = join(pluginRoot, 'chain.json'); writeFileSync(process.env.CONFIG_JSON, JSON.stringify(cm.config));
-    const loader = new HyperionModuleLoader(cm, pluginRoot); await loader.init();
+    const loader = new HyperionModuleLoader(cm, pluginRoot); await retainedCall('host.loader',undefined,()=>loader.init());
     assert.equal(loader.statefulPluginsV2().length, 1);
     const storage = completeKind ? completeFixture() : ownerFixture();
-    const registry = await StatefulProjectionRegistryV2.create({chainId: capture.chainId, configuration, mongo: storage.client,
+    retainedCounter('fixture.native.commands',()=>storage.native.length);
+    const registry = await retainedCall('host.registry-create',undefined,()=>StatefulProjectionRegistryV2.create({chainId: capture.chainId, configuration, mongo: storage.client,
         ...(completeKind ? {completeKindMongo: async () => storage.client} : {}),
-        client: p.options.client, source: p.source, profile: p.options.profile, onError: (_id, error) => {throw error;}}, loader);
-    await registry.initializeMissing();
+        client: p.options.client, source: p.source, profile: p.options.profile, onError: (_id, error) => {throw error;}}, loader));
+    await retainedCall('host.materialize-initialize',undefined,()=>registry.initializeMissing());
     const entry = registry.entries.get(selected.id); assert(entry, 'actual host registry must resolve and capture the loaded template');
     const {declaration, adapter} = entry, native = {adapter, storage};
     const parent = new EventEmitter(), child = new EventEmitter(), ends = [];
@@ -86,9 +94,10 @@ export async function statefulHostFixture({timeoutMs = 1000, hooks = {}, require
         assertActive: () => worker.assertWorkerAttemptActive(),
         run: (metadata, operation) => worker.runProjectionFrameAttempt(metadata, operation, () => !worker.stopped),
         maximumFramesPerDrain: 1, custody: createStatefulCandidateCustodyV2(p.options.client, p.options.chain, 0, declaration),
-        sourceMetadata: entry.sourceMetadata, reduce: async port => {await hooks.source?.(port); await entry.reduce(port);},
+        sourceMetadata: entry.sourceMetadata, reduce: async port => {await hooks.source?.(port); await retainedCall('owner.reduce',port.source.block.blockNum,()=>entry.reduce(port));},
         onError: error => ownerErrors.push(error)});
     worker.statefulControllers.set(selected.id, controller);
+    observeRetainedMethod(controller,'drain','owner.drain');
     for (let i = 0; i < through && ownerErrors.length === 0; i++) await controller.drain();
     const broker = new StatefulWorkerProbeBroker(8, timeoutMs, physical => physical === parent && supervisor.ownsActiveWorker(physical, 'projection'));
     parent.on('message', message => {if (message.event === 'stateful_owner_probe_reply') broker.accept(parent, message.data);});
@@ -126,15 +135,19 @@ export async function statefulHostFixture({timeoutMs = 1000, hooks = {}, require
         });
         return result.value;
     });
+    observeRetainedMethod(app,'inject','api.inject');
+    retainedMark('after','host.initialize',{through});
     return {app, native, p, declaration, controller, supervisor, parent, worker, registry, client, broker, socket, ends, ownerErrors, context,
         get probes() {return probeCount;}, replaceSocket() {currentSocket = {...socket};},
         disconnect() {socket.readyState = 3; client.disconnected(socket);},
         async close() {
+            retainedMark('before','host.close');
             await app.close(); worker.stopped = true; await controller.stop(); await Promise.allSettled([...worker.probes]);
             supervisor.observeExit(parent); lifecycle.dispose();
             if (originalSend === undefined) delete process.send; else process.send = originalSend;
             if (previousConfig === undefined) delete process.env.CONFIG_JSON; else process.env.CONFIG_JSON = previousConfig;
             assert.equal(dirname(pluginRoot), tempParent); assert(basename(pluginRoot).startsWith('hapi-stateful-plugin-'));
             rmSync(pluginRoot, {recursive: true, force: true});
+            retainedMark('after','host.close');
         }};
 }

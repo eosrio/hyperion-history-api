@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test from '../native/retained-workload-test.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync, mkdirSync, mkdtempSync, rmSync, realpathSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
