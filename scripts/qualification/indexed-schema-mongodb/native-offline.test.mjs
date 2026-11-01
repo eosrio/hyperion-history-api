@@ -58,6 +58,7 @@ function after(input){return {view:structuredClone(input.sealedView),catalog:str
 test('genesis coverage compares the complete BSON document against a null-prototype view checkpoint',()=>{
  const view={generation:'generation',revision:3,checkpoint:Object.assign(Object.create(null),{blockNum:0,blockId:'0'.repeat(64)})},model='model',owner='owner';
  const coverage={_id:model,representation:'h45-owner-indexed-materialization-v1',owner,model,generation:view.generation,revision:view.revision,checkpoint:{blockNum:0,blockId:'0'.repeat(64)},ready:true,reason:null};
+ assert.throws(()=>assert.deepEqual(coverage,{...coverage,checkpoint:view.checkpoint}));
  assertGenesisCoverage(coverage,model,owner,view);const ordinary={...view,checkpoint:{...view.checkpoint}};assertGenesisCoverage(coverage,model,owner,ordinary);
  for(const checkpoint of [{...view.checkpoint,extra:true},{blockNum:0}])assert.throws(()=>assertGenesisCoverage(coverage,model,owner,{...view,checkpoint}));
  for(const change of [x=>x.checkpoint.blockNum=1,x=>x.checkpoint.blockId='1'.repeat(64),x=>delete x.checkpoint.blockId,x=>x.checkpoint.extra=true,x=>x.extra=true,x=>delete x.ready,x=>x.owner='foreign',x=>x.reason='gap']){const altered=structuredClone(coverage);change(altered);assert.throws(()=>assertGenesisCoverage(altered,model,owner,view));}
