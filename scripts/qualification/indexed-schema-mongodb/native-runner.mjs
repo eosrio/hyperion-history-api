@@ -149,9 +149,14 @@ export async function run(options){
     assert.equal((await direct(count())).result.value,'6');const bbb=await apply([{...original,value:{...original.value,created_at_time:'9007199254740999'}}]);assert.equal((await direct(page())).result.rows[0].key,'s:a');
     await rollback(ancestor);const ccc=await apply([{...original,value:{...original.value,created_at_time:'9007199254740990'}}]);assert.notEqual(bbb.target.block.blockId,ccc.target.block.blockId);assert.equal((await direct(page())).result.rows[0].key,'s:d');
     // Original retention is four blocks: old history refuses, without a reconstructed kind scan.
+    const genesis=await make(state.client,'covered-genesis','covered-genesis-generation');genesis.lease=await genesis.adapter.acquireOwner({expected:null,nextOwner:genesis.identity},noCancel);
+    const coveredZero=(await genesis.adapter.recovery()).view.checkpoint;await apply(corpus(),genesis);assert.equal((await direct(count(),PLAN.limits,0,genesis)).result.value,'6');
+    await rollback(coveredZero,genesis);assert.equal((await direct(count(),PLAN.limits,0,genesis)).result.value,'0');
     const retention=await make(state.client,'retention','retention-generation');retention.lease=await retention.adapter.acquireOwner({expected:null,nextOwner:retention.identity},noCancel);
-    const oldAncestor=(await retention.adapter.recovery()).view.checkpoint;for(let i=0;i<5;i++)await apply([],retention);
-    samples.push({case:phase.name,retained:await retention.adapter.retainedCheckpoints(retention.lease)});await assert.rejects(rollback(oldAncestor,retention));return {actualRollbackAndReplacement:true,oldHistoryRefused:true};
+    const oldAncestor=(await retention.adapter.recovery()).view.checkpoint,targets=[];for(let i=0;i<5;i++)targets.push(await apply([],retention));
+    const undo=[];for(const [index,target]of targets.entries())for(const entry of retention.entries){const image=await admin.db(options.database).collection(entry.undo).findOne({_id:sha(target.target.block.blockId)});
+     assert.equal(image!==null,index>0);undo.push({model:entry.declaration.digest,block:target.target.block,imagePresent:image!==null});}
+    samples.push({case:phase.name,retained:await retention.adapter.retainedCheckpoints(retention.lease),undo});await assert.rejects(rollback(oldAncestor,retention));return {actualRollbackAndReplacement:true,coveredGenesisRollback:true,versionedUndoPruned:true,oldHistoryRefused:true};
    },
    'reopen-and-generation-refusal':async()=>{
     const old=await open(),previous=state;closeRead(old.adapter,old.read);await previous.pool.close();await assert.rejects(previous.pool.get(PLAN.operationMS));

@@ -228,13 +228,13 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-offline.test.mjs",
-      "bytes": 15699,
-      "sha256": "43e4d7ecd03d5a995c244467c52c9ff611fb875adf2888f8f06725d9b3f817f2"
+      "bytes": 16112,
+      "sha256": "246193f60a6d1a53b9d3f58488dfe709dd0ee3c144c459cfb9d5e0479e7302d0"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-runner.mjs",
-      "bytes": 36941,
-      "sha256": "00654cc3ac7349e764e56cd2e8d2da828ac244192775bcfd7e486eb1a29092ed"
+      "bytes": 37872,
+      "sha256": "c33a23685e131feee60ec062eca33770f517f30ca8cdf41be2b0f264b6cdd4e9"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-trace.mjs",

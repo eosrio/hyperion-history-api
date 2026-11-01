@@ -99,11 +99,14 @@ test('explain checks semantic index use and refuses scans, sort, spill or missin
 });
 test('command gates act only on the original owned client/session/model and restore without process or timer handles',async()=>{
  const seen=[],client={},session={client},collection='bounded_ix1_'+hex(4)+'_r',namespaces=new Map([[collection,hex(4)]]),server={async command(){return {ok:1};}},topology={async selectServer(){return server;}};client.topology=topology;server.topology=topology;
- const old=server.command,restore=installIndexedCommandHooks(client,'owned',namespaces,{beforeData:async()=>seen.push('before'),afterData:async()=>seen.push('after'),afterTransaction:async()=>seen.push('commit'),beforeSidecarInsert:async()=>seen.push('insert')});
+ const old=server.command,restore=installIndexedCommandHooks(client,'owned',namespaces,{beforeData:async()=>seen.push('before'),afterData:async()=>seen.push('after'),afterTransaction:async()=>seen.push('commit'),beforeSidecarInsert:async()=>seen.push('insert'),beforeSnapshot:async()=>seen.push('snapshot')});
  const selected=await topology.selectServer(),operation={commandName:'runCommand',ns:{db:'owned'},session,command:{aggregate:collection,comment:{hyperion:'stateful-indexed-v1',model:hex(4)}}};
  await selected.command(operation);await selected.command({...operation,command:{commitTransaction:1}});assert.deepEqual(seen,['before','after','commit']);
  for(const change of [{session:{client:{}}},{ns:{db:'foreign'}},{command:{aggregate:collection,comment:{hyperion:'stateful-indexed-v1',model:hex(99)}}}])await selected.command({...operation,...change});assert.equal(seen.length,3);
- await selected.command({commandName:'insert',ns:{db:'owned',collection},session});assert.equal(seen.at(-1),'insert');restore();restore();assert.equal(server.command,old);
+ await selected.command({commandName:'insert',ns:{db:'owned',collection},session});assert.equal(seen.at(-1),'insert');
+ await selected.command({commandName:'find',ns:{db:'owned',collection:'bounded_stateful_v2_metadata'},session:{client,inTransaction:()=>true}});assert.equal(seen.at(-1),'snapshot');
+ await selected.command({commandName:'find',ns:{db:'owned',collection:'bounded_stateful_v2_metadata'},session:{client,inTransaction:()=>false}});assert.equal(seen.at(-1),'snapshot');
+ restore();restore();assert.equal(server.command,old);
 });
 test('native completion rejects missing cases, expanded acceptance and incomplete cleanup/terminal evidence',()=>{
  const terminal={code:0,signal:null,timedOut:false,terminal:true,streamsClosed:true},report={status:'passed-native-indexed-only',plan:PLAN,source:{observationSha256:hex(1)},cases:PLAN.cases.map(name=>({name,status:'pass'})),
