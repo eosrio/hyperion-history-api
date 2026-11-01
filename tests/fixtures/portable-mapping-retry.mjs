@@ -30,7 +30,7 @@ export async function originalWireRows() {
         const source = join(owned, 'capture/source'), receipt = JSON.parse(readFileSync(join(source, 'receipt.json')));
         const sourceReads = [], profileId = 'wire-sysio-6508c9e8-native-engineering-v1';
         const selected = await loadChainProtocol({provider: 'extension', package: '@eosrio/hyperion-wire-plugin', profileId});
-        assert(selected.components.every(value => value.sourceRevision === '18d235e34a9b7ab8c3e9f9a322874444d90eed8a'));
+        assert(selected.components.every(value => value.sourceRevision === '69a66064c077a405341f5aaf15e84b88b8d86ccb'));
         const schemaJson = readFileSync(join(source, 'schema.json'), 'utf8');
         assert.equal(hash(schemaJson), '94c5661306467f8c49f22180213e390db10d290be9ebf512fb63314f440ef6f9');
         const codec = createWireShipCodec(JSON.parse(schemaJson), resolveCodecProfile(profileId));
