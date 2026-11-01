@@ -83,3 +83,4 @@ export function corpus(){
 export const ORACLE=freeze({joinedCount:'6',controlCount:'7',schemaAscending:['s:a','s:f','s:c','s:b','s:d','s:e'],
  createdGroups:[['s:d'],['s:b','s:c'],['s:a'],['s:e'],['s:f']],firstJoined:'s:d',firstControl:'s:orphan'});
 export function assertCreatedPeers(rows){let position=0;for(const peers of ORACLE.createdGroups){assert.deepEqual(new Set(rows.slice(position,position+peers.length).map(row=>row.key)),new Set(peers));position+=peers.length;}assert.equal(rows.length,position);}
+export function assertCoveredAbsence(result,keys){assert.equal(result.results.length,keys);assert(result.results.every(row=>row.status==='covered-absent'),'Canonical key is not covered-absent');}

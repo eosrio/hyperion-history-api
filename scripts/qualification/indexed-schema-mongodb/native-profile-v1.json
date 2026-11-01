@@ -223,18 +223,18 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-contract.mjs",
-      "bytes": 10279,
-      "sha256": "fa1dbb54b397481c255e66f3ee6ee2f71cb18cfef4f7e0e45acfda6f177e1fde"
+      "bytes": 10475,
+      "sha256": "c925068c6164efd2c7577c724172de44ff09b43e9844b200e6c96bf2b2d3fc51"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-offline.test.mjs",
-      "bytes": 17173,
-      "sha256": "ae52050a2707f28e20939df0e639650eac4889eaddcb8f74ee6569d9de2946e9"
+      "bytes": 17618,
+      "sha256": "63c0900ce1a4776a3f1d15986e8326956edb04e31e99b415435c86351f7e7019"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-runner.mjs",
-      "bytes": 41088,
-      "sha256": "e94dc9ca5cbfbd5775e8a0c245e4ae9699afede9f7f74c79eef9c6254784eb08"
+      "bytes": 41045,
+      "sha256": "c9277d42d56270e78ff88da4c45bf24fd471595a3b783627b92a7a69f2ce3258"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-trace.mjs",

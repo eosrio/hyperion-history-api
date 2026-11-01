@@ -4,7 +4,7 @@ import {randomBytes} from 'node:crypto';
 import {existsSync,mkdirSync,readFileSync,writeFileSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {PLAN,ORACLE,argumentsFor,dispatchCases,projectionDefinition,projectionLimits,schemaModel,corpus,page,count,assertCreatedPeers,plain,hex,sha,failure} from './native-contract.mjs';
+import {PLAN,ORACLE,argumentsFor,dispatchCases,projectionDefinition,projectionLimits,schemaModel,corpus,page,count,assertCreatedPeers,assertCoveredAbsence,plain,hex,sha,failure} from './native-contract.mjs';
 import {admitNativeAssembly} from './native-assembly.mjs';
 import {installIndexedCommandHooks} from './native-command-hooks.mjs';
 import {monitorIndexed,verifyIndexedTrace,verifyCursorClosure,verifyExplain,bsonCopy,bsonEvidence} from './native-trace.mjs';
@@ -160,7 +160,7 @@ export async function run(options){
     const coveredZero=(await genesis.adapter.recovery()).view.checkpoint;await apply(corpus(),genesis);assert.equal((await direct(count(),PLAN.limits,0,genesis)).result.value,'6');
     await rollback(coveredZero,genesis);assert.equal((await direct(count(),PLAN.limits,0,genesis)).result.value,'0');assert.deepEqual((await direct(page(),PLAN.limits,0,genesis)).result.rows,[]);
     const zero=await setExpected(genesis),zeroRead=await genesis.adapter.completedRead(genesis.identity,zero.view,noCancel);reads.add(zeroRead);
-    try{const keyed=await genesis.adapter.readCompleted(zeroRead,zero.view,corpus().map(row=>({kind:row.kind,key:row.key})));assert.equal(keyed.results.length,corpus().length);assert(keyed.results.every(row=>row.status==='missing'));}
+    try{const keyed=await genesis.adapter.readCompleted(zeroRead,zero.view,corpus().map(row=>({kind:row.kind,key:row.key})));assertCoveredAbsence(keyed,corpus().length);}
     finally{closeRead(genesis.adapter,zeroRead);}
     const cleared=[];for(const entry of genesis.entries){let checked=0;for(const row of corpus())for(const alias of [entry.declaration.model.base,...entry.declaration.model.joins].filter(alias=>alias.kind===row.kind)){
      const present=await rowCollection(entry).findOne({_id:modelNative.indexedRowIdV1(entry.declaration.digest,alias.alias,row.key)},{projection:{_id:1}});assert.equal(present,null);checked++;}

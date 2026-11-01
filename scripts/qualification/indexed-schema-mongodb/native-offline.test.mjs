@@ -10,7 +10,7 @@ import * as ownerSdk from '@eosrio/hyperion-sdk/projection-stateful-owner-v2';
 import * as indexed from '@eosrio/hyperion-sdk/projection-stateful-indexed-query-v1';
 import * as nativeOwnerSdk from '../../../packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist/projection-stateful-owner-v2.js';
 import {receiveMongoIndexedModelV1,planMongoIndexedQueryV1,mongoIndexedIndexesV1} from '../../../packages/backend-mongodb/dist/stateful-indexed-model-v1.js';
-import {PLAN,ORACLE,argumentsFor,dispatchCases,assertNativeCompletion,projectionDefinition,projectionLimits,schemaModel,corpus,page,count,assertCreatedPeers,hex} from './native-contract.mjs';
+import {PLAN,ORACLE,argumentsFor,dispatchCases,assertNativeCompletion,projectionDefinition,projectionLimits,schemaModel,corpus,page,count,assertCreatedPeers,assertCoveredAbsence,hex} from './native-contract.mjs';
 import {NATIVE_PROFILE,observeNativeInputs,assertNativeInputs,assertNativeRuntime} from './native-assembly.mjs';
 import {installIndexedCommandHooks} from './native-command-hooks.mjs';
 import {verifyIndexedTrace,verifyCursorClosure,verifyExplain,bsonCopy} from './native-trace.mjs';
@@ -122,4 +122,8 @@ test('native completion rejects missing cases, expanded acceptance and incomplet
  cleanup:Object.fromEntries(['managedClientsClosed','sessionsEnded','readsClosed','cursorsClosed','failpointDisabled','databaseDropped','adminClosed'].map(name=>[name,true])),acceptance:{AtomicSQL:'pending',managedHTTP:'pending',productionOffers:'empty'}};
  assertNativeCompletion(terminal,report,hex(1));for(const mutate of [x=>x.cases.pop(),x=>x.cleanup.cursorsClosed=false,x=>x.acceptance.AtomicSQL='passed']){const value=structuredClone(report);mutate(value);assert.throws(()=>assertNativeCompletion(terminal,value,hex(1)));}
  assert.throws(()=>assertNativeCompletion({...terminal,timedOut:true},report,hex(1)));assert.throws(()=>assertNativeCompletion({...terminal,streamsClosed:false},report,hex(1)));
+});
+test('canonical genesis absence oracle uses the actual covered-absent protocol and rejects present or invented statuses',()=>{
+ assertCoveredAbsence({results:[{status:'covered-absent'},{status:'covered-absent'}]},2);
+ for(const result of [{results:[]},{results:[{status:'missing'},{status:'missing'}]},{results:[{status:'covered-absent'},{status:'present',value:{}}]}])assert.throws(()=>assertCoveredAbsence(result,2));
 });
