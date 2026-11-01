@@ -20,7 +20,9 @@ export function boundedCanonicalJson(input: unknown, options: BoundedJsonOptions
         if (bytes + value.length > maximumBytes) take(value.length);
         if (!/["\\\x00-\x1f\x7f-\uffff]/.test(value)) {
             take(value.length);
-            return JSON.stringify(value);
+            // The guard proves no escaping is needed. Preserve the preceding UTF-16
+            // and minimum-byte checks, then avoid re-encoding large retained hex.
+            return '"' + value + '"';
         }
         for (let index = 0; index < value.length; index++) {
             const code = value.charCodeAt(index);
@@ -45,17 +47,32 @@ export function boundedCanonicalJson(input: unknown, options: BoundedJsonOptions
         if ((array && prototype !== Array.prototype) || (!array && prototype !== Object.prototype && prototype !== null)
             || Object.getOwnPropertySymbols(value).length) throw new Error(errorPrefix + ' contains a native value');
         const descriptors = Object.getOwnPropertyDescriptors(value);
-        const entries = Object.entries(descriptors).filter(([key]) => !array || key !== 'length');
-        if (entries.some(([, descriptor]) => !descriptor.enumerable || !Object.hasOwn(descriptor, 'value'))
-            || (array && (entries.length !== descriptors.length.value
-                || entries.some(([key], index) => key !== String(index))))) {
-            throw new Error(errorPrefix + ' contains accessors or sparse data');
+        // Reflect the source once, in the same order as before. Walk the resulting plain
+        // descriptor record without allocating entry pairs, filtered pairs or map closures.
+        const keys = Object.keys(descriptors);
+        if (array) {
+            if (keys[keys.length - 1] !== 'length' || keys.length - 1 !== descriptors.length.value)
+                throw new Error(errorPrefix + ' contains accessors or sparse data');
+            keys.pop();
         }
-        ancestors.add(value); take(2 + Math.max(0, entries.length - 1));
+        for (let index = 0; index < keys.length; index++) {
+            const key = keys[index], descriptor = descriptors[key];
+            if (!descriptor.enumerable || !Object.hasOwn(descriptor, 'value') || (array && key !== String(index)))
+                throw new Error(errorPrefix + ' contains accessors or sparse data');
+        }
+        ancestors.add(value); take(2 + Math.max(0, keys.length - 1));
         try {
-            if (array) return '[' + entries.map(([, descriptor]) => visit(descriptor.value, depth + 1)).join(',') + ']';
-            return '{' + entries.sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
-                .map(([key, descriptor]) => {const encodedKey = string(key); take(1); return encodedKey + ':' + visit(descriptor.value, depth + 1);}).join(',') + '}';
+            const parts = new Array<string>(keys.length);
+            if (array) {
+                for (let index = 0; index < keys.length; index++) parts[index] = visit(descriptors[keys[index]].value, depth + 1);
+                return '[' + parts.join(',') + ']';
+            }
+            keys.sort();
+            for (let index = 0; index < keys.length; index++) {
+                const key = keys[index], encodedKey = string(key); take(1);
+                parts[index] = encodedKey + ':' + visit(descriptors[key].value, depth + 1);
+            }
+            return '{' + parts.join(',') + '}';
         } finally {ancestors.delete(value);}
     };
     return visit(input, 0);

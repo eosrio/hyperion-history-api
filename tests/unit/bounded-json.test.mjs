@@ -2,6 +2,31 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {boundedCanonicalJson} from '../../src/indexer/helpers/bounded-json.ts';
 
+test('descriptor traversal preserves proxy reflection order for records and dense arrays', () => {
+    for (const [input, expected, names] of [[{b: 2, a: 1}, '{"a":1,"b":2}', ['b','a']], [[1,2], '[1,2]', ['0','1','length']]]) {
+        const calls = [];
+        const proxy = new Proxy(input, {
+            getPrototypeOf(value) {calls.push('prototype'); return Reflect.getPrototypeOf(value);},
+            ownKeys(value) {calls.push('keys'); return Reflect.ownKeys(value);},
+            getOwnPropertyDescriptor(value, key) {calls.push('descriptor:' + key); return Reflect.getOwnPropertyDescriptor(value,key);},
+        });
+        assert.equal(boundedCanonicalJson(proxy), expected);
+        assert.deepEqual(calls, ['prototype','keys','keys', ...names.map(key=>'descriptor:' + key)]);
+    }
+});
+
+test('each call captures fresh descriptors and refuses hidden or extra array data', () => {
+    const value = {a: 1};
+    assert.equal(boundedCanonicalJson(value), '{"a":1}');
+    value.a = 2;
+    assert.equal(boundedCanonicalJson(value), '{"a":2}');
+    const hidden = Object.defineProperty([1], '0', {enumerable: false, value: 1});
+    const extra = Object.assign([], {extra: 1});
+    for (const array of [hidden, extra]) assert.throws(() => boundedCanonicalJson(array), /accessors or sparse data/);
+    assert.equal(boundedCanonicalJson([], {maximumBytes: 2}), '[]');
+    assert.throws(() => boundedCanonicalJson([], {maximumBytes: 1}), /byte budget/);
+});
+
 const byteError = 'fixture exceeds bounded JSON byte budget';
 const options = maximumBytes => ({maximumBytes, errorPrefix: 'fixture'});
 function exactString(value) {
