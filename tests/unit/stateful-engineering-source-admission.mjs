@@ -13,6 +13,11 @@ export const STATEFUL_METADATA_FIELDS_API_SOURCE_PROFILE = 'stateful-owner-v2-dd
 export const STATEFUL_METADATA_FIELDS_LEGACY_SOURCE_PROFILE = 'stateful-owner-v2-dd85ee5-7167659-fields-engineering';
 export const STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE = 'stateful-owner-v2-7412889-18d235e-complete-kind-engineering';
 export const STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE = 'stateful-owner-v2-7412889-18d235e-complete-kind-commands-engineering';
+export const STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE = 'stateful-owner-v2-7412889-18d235e-complete-kind-executor-engineering';
+export const STATEFUL_COMPLETE_KIND_EXECUTOR_NATIVE_SOURCE = Object.freeze({
+    commit: '66d3a6b4152ba1ee6766b6ee3a22ccfe89b08224', tree: 'f21644e0642b67863524058dc62c574ee33d0061',
+    files: 39, sha256: '8455fe288d51a02d39a143c9f152dd7ee6e3c3f098616d957c072b8aa8817d4a',
+});
 export const STATEFUL_COMPLETE_KIND_COMMANDS_NATIVE_SOURCE = Object.freeze({
     commit: '05c60d93f4d35d1d17edf5cba8ca3caddc8ee481', tree: '4d15a2043667b072261ba90dd7f0eef760a9272f',
     files: 36, sha256: '31c606437a5f65282eff845ca1653e6bfa8941d3ccfea4b87a2544a5ef54c3b1',
@@ -44,9 +49,10 @@ const oldWire = '7167659e9c043cb3351074fcacb40200cc57f3a3', wire = '18d235e34a9b
 const sdk = '58d68c5cea81490bbb1c9a7736d633d465bab3ef';
 const metadataSdk = 'dd85ee590dcd1e359509c6c41ee99b541706b1f6';
 const completeKindSdk = '7412889a14c84342551fd864ea3ebfcf28849385';
-const completeKindProfile = profile => profile === STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE || profile === STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE;
-const completeKindNativeSource = profile => profile === STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE
-    ? STATEFUL_COMPLETE_KIND_COMMANDS_NATIVE_SOURCE : STATEFUL_COMPLETE_KIND_NATIVE_SOURCE;
+const completeKindProfile = profile => profile === STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE || profile === STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE
+    || profile === STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE;
+const completeKindNativeSource = profile => profile === STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE ? STATEFUL_COMPLETE_KIND_EXECUTOR_NATIVE_SOURCE
+    : profile === STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE ? STATEFUL_COMPLETE_KIND_COMMANDS_NATIVE_SOURCE : STATEFUL_COMPLETE_KIND_NATIVE_SOURCE;
 const fieldsProfile = profile => profile === STATEFUL_METADATA_FIELDS_API_SOURCE_PROFILE || profile === STATEFUL_METADATA_FIELDS_LEGACY_SOURCE_PROFILE;
 const metadataProfile = profile => profile === STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE || profile === STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE || fieldsProfile(profile);
 const legacyProfile = profile => profile === 'default-716' || profile === STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE || profile === STATEFUL_METADATA_FIELDS_LEGACY_SOURCE_PROFILE;

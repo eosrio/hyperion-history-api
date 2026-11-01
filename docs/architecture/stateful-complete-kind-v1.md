@@ -86,3 +86,18 @@ totals and metadata validation inside every snapshot callback remain mandatory.
 The correction also preserves primary data errors across cursor/session cleanup.
 Actual MongoDB command traces must confirm these boundaries; command-preparation
 and controlled storage tests alone cannot establish physical acceptance.
+
+That commands profile failed its first actual run at the empty-kind find: public
+`Db.command` strips the private option while rebuilding its argument allowlist.
+The original failed profile and trace assertions are retained.
+
+The separate `stateful-owner-v2-7412889-18d235e-complete-kind-executor-engineering`
+profile pins native source `66d3a6b4152ba1ee6766b6ee3a22ccfe89b08224` and backend
+tree `f21644e0642b67863524058dc62c574ee33d0061`. A private native executor bypasses
+only that public option allowlist, using the same pinned driver's
+`executeOperation`, `RunCommandOperation`, and `MongoDBNamespace`. Version 7.2.0
+and all three internal module hashes are checked at load; there is no facade
+fallback. A root-managed client/session from the separately installed root driver
+must pass full no-socket execution controls through actual server-command and
+wire preparation, in addition to physical MongoDB CI. Transaction CSOT, abort
+signals, snapshot validation and shared attempt accounting remain unchanged.

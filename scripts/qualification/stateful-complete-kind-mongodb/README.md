@@ -58,3 +58,10 @@ values: the initial find must equal the explicit operation bound and non-tailabl
 getMore must omit the field. Failure diagnostics retain bounded names, messages,
 numeric/string codes and at most two nested causes, without stack or command
 payloads. This preserves the server reason if cursor cleanup also fails.
+
+The current executor profile additionally requires a controlled full-driver
+test using the actual root-managed client/session and the separately installed
+adapter driver. It covers the public option allowlist, real execution/server
+command path, exact initial bound, getMore omission, transaction callback retries,
+shared attempt refusal and foreign-client refusal. Those controls have no socket
+or database and cannot replace this physical replica-set run.
