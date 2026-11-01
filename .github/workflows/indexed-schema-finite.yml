@@ -36,7 +36,7 @@ jobs:
           bun check -p packages/backend-mongodb/tsconfig.json
           npm run build
       - run: node scripts/qualification/indexed-schema-mongodb/assembly.mjs --profile indexed-schema-sdk49-native2bf-engineering-v1 > indexed-source.json
-      - run: node --test scripts/qualification/indexed-schema-mongodb/assembly.test.mjs
+      - run: node --test scripts/qualification/indexed-schema-mongodb/assembly.test.mjs scripts/qualification/indexed-schema-mongodb/assembly-cli.test.mjs
       - run: npm run test:indexed:finite
       - run: npm run test:indexed:package
       - uses: actions/upload-artifact@v4

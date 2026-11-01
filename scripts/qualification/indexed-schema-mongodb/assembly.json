@@ -151,8 +151,8 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/assembly.mjs",
-      "bytes": 4157,
-      "sha256": "71abad0a73ae38a67dd52762bc3c98b6dd816d07a4cf87f23924b82c4e1bd750"
+      "bytes": 4942,
+      "sha256": "cb713e4341ddd19b21a88f35ae4eee9795b94bf06239cf0b6e3872f67de606ee"
     },
     {
       "path": "src/api/config/open_api.ts",
@@ -1544,8 +1544,8 @@
     "rootBuild": [
       {
         "path": "api/config/open_api.js",
-        "bytes": 2086,
-        "sha256": "98f4655795508ee687cc81b450d3f42ac9ae87664ecd40d1db4e803551932cd5"
+        "bytes": 2079,
+        "sha256": "fb19242789d8caab41ab8f11e30abb34b234a67cc789c69c485f52aa06a11d59"
       },
       {
         "path": "api/config/open_api.js.map",
@@ -2824,8 +2824,8 @@
       },
       {
         "path": "cli/repair-cli/repair.js",
-        "bytes": 25581,
-        "sha256": "f378fb237834a4ceccc3543231f328233550df5e062fa61941804e65845dec70"
+        "bytes": 25577,
+        "sha256": "a0638816d1d75bdcc9c445706a60257efe6b97676c9b2207a7f537b14e5616f2"
       },
       {
         "path": "cli/repair-cli/repair.js.map",
@@ -2844,8 +2844,8 @@
       },
       {
         "path": "cli/repair-cli/utils.js",
-        "bytes": 3996,
-        "sha256": "60f7a1cede97bc7c42b82306ad3d4deefdc1ccc03d508b165e4925b17a01b174"
+        "bytes": 3990,
+        "sha256": "4b3eb138cd5a0bfc50db35315cdec0ae71e8a68d739bd46ba9108b44b40b7fee"
       },
       {
         "path": "cli/repair-cli/utils.js.map",
@@ -3024,8 +3024,8 @@
       },
       {
         "path": "indexer/definitions/updateByBlock.painless.js",
-        "bytes": 1037,
-        "sha256": "f3f033ff5c6f38ef474329ff13c943fab57fe315ad5db057b8299941c6d02cef"
+        "bytes": 1016,
+        "sha256": "53a4d47cd38fc6606ed53e150c08022d9e4926c560e07853827f55f30dc07c48"
       },
       {
         "path": "indexer/definitions/updateByBlock.painless.js.map",
@@ -3304,8 +3304,8 @@
       },
       {
         "path": "indexer/history/action-sequence-query-plan.js",
-        "bytes": 29232,
-        "sha256": "b4a6e2d36e1e14f4f42e2ab6742db272c000c24113393f63ded3b668cbce5610"
+        "bytes": 29195,
+        "sha256": "ff87359bc1b4203a3414488abd43fe133eac0b54750efad0d2a39d97bb181937"
       },
       {
         "path": "indexer/history/action-sequence-query-plan.js.map",
@@ -3534,8 +3534,8 @@
       },
       {
         "path": "indexer/modules/indexerMonitor.js",
-        "bytes": 10155,
-        "sha256": "d34bfecad7dc339b92c90fc3c0257a4ad43338638d3547006e1771845b871ea5"
+        "bytes": 10147,
+        "sha256": "24f5584b702c77d14cd7856cd04ca0da8ad8373bf8b31d565901901e5b92905d"
       },
       {
         "path": "indexer/modules/indexerMonitor.js.map",

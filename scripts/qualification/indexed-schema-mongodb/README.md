@@ -41,3 +41,43 @@ Frozen native45/current103/Wire/BCA/f163/private profile definitions, deadlines 
 predicates are unchanged. They intentionally reject SDK49/new emission bytes.
 The parent release coordinator must explicitly select and qualify this new assembly
 for native/paired execution rather than relax those older admission predicates.
+
+## Actual CLI admission and raw Git-LF emissions
+
+This source-only profile observes raw Git-LF application/native source, exact
+dependency declarations and the whole root/native build and SDK inventories.
+Use the committed npm locks, build both packages, then run on Node 24 and 26:
+
+```sh
+node scripts/qualification/indexed-schema-mongodb/assembly.mjs --profile indexed-schema-sdk49-native2bf-engineering-v1
+node --test scripts/qualification/indexed-schema-mongodb/assembly.test.mjs scripts/qualification/indexed-schema-mongodb/assembly-cli.test.mjs
+```
+
+Check out raw Git-LF source before building. On Windows this requires a checkout
+created with `git -c core.autocrlf=false worktree add ...`; an existing converted
+checkout is refused. Admission never normalizes source or emitted bytes.
+
+The root and independent native package must each have their own scoped npm SDK
+installation. Observation uses Node's [package-root lookup](https://nodejs.org/api/module.html#modulefindpackagejsonspecifier-base)
+with an explicit containing package, checks that the result is that package's
+local `node_modules/@eosrio/hyperion-sdk`, and refuses ancestor fallback. It checks
+the SDK's import export without requiring or executing it. The SDK49 root export
+has an import condition and no CommonJS require condition; the original
+`createRequire(...).resolve()` observation failed before admission could run.
+The actual CLI control now exercises observation and admission, in addition to
+the existing supplied-observation rejection controls. Distinct sentinel SDKs
+exercise root/native scope selection and missing-native fallback refusal.
+
+The original 28f31a21 assembly manifest also contained six root JavaScript
+emission hashes produced from a physical CRLF checkout. Template literals kept
+those CRLF bytes even though the manifest's source hashes required raw Git LF.
+The repair changes exactly those six expected root-build rows and the observer's
+changed source row. All source maps, native and SDK emissions, dependency pins,
+profile identity and strict comparison rules remain exact. Original failed CLI
+and compiled-capsule evidence is retained separately; the new admitted LF outputs
+do not change that historical failure.
+
+Successful admission establishes this engineering assembly only. Native
+MongoDB 8.0.34, the Atomic SQL comparison profile, managed HTTP and release
+qualification remain pending. The default production comparison offers remain
+empty; no capability is enabled by running this CLI.
