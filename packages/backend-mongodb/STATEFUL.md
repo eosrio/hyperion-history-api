@@ -156,3 +156,13 @@ deadlines still apply. Real-driver command-preparation regressions guard this
 version-specific seam; the [MongoDB 8.0 command contract](https://www.mongodb.com/docs/v8.0/reference/command/getmore/)
 explains the server restriction. Cursor and session cleanup failures never
 replace an existing data failure; cleanup-only failure still refuses success.
+
+`Db.command` in that version strips the private option before operation creation.
+The complete-kind factory therefore uses a private native command executor that
+retains the original driver operation/session/selection pipeline while bypassing
+that option allowlist. It checks driver 7.2.0 and the exact `execute_operation.js`,
+`run_command.js`, and `utils.js` entrypoint hashes before use; there is no fallback
+to the public facade. The managed root client and its real session can come from
+a separate copy of the same driver. No-socket execution controls exercise those
+two module instances through the factory, actual root `Server.command` and final
+wire preparation. Physical replica-set traces remain mandatory.

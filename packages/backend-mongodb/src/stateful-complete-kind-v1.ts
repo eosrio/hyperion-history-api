@@ -9,6 +9,7 @@ import {assertStatefulOwnerViewV2, captureStatefulOwnerViewV2, receiveStatefulOw
 import {createMongoDbStatefulOwnerAdapterV2, type MongoDbStatefulOwnerAdapterOptionsV2} from './stateful-owner-v2.js';
 import {decodeRow, fields, keyId, logicalKey, requireState} from './stateful-contract.js';
 import {assertStatefulOwnerCompletedSnapshotV2, createStatefulOwnerCompletedSessionV2} from './stateful-owner-v2-internal.js';
+import {executeCompleteKindCommand} from './stateful-complete-kind-command.js';
 
 const indexName = 'h45_complete_kind_v1';
 const methods = ['recovery', 'admitRaw', 'markRawFailure', 'markSourceFailure', 'bindSource', 'reductionRead',
@@ -90,11 +91,11 @@ export async function createMongoDbStatefulCompleteKindAdapterV1(options: MongoD
                     // Pinned driver CSOT otherwise adds maxTimeMS even to non-tailable getMore,
                     // which MongoDB rejects, and overwrites the explicit find limit. Keep CSOT
                     // and the per-command signal; control only server-side maxTimeMS ourselves.
-                    // omitMaxTimeMS is a pinned 7.2.0 internal option, stripped from its
-                    // public .d.ts; real-driver command-preparation tests guard this seam.
-                    const execution = {session, promoteLongs: false, omitMaxTimeMS: true,
+                    // The private executor preserves this option through actual operation
+                    // execution; public Db.command strips it before reaching the driver.
+                    const execution = {session, promoteLongs: false,
                         signal: AbortSignal.timeout(options.operationTimeoutMS)};
-                    const answer = await db.command({...value, comment}, execution);
+                    const answer = await executeCompleteKindCommand(options.client, options.databaseName, {...value, comment}, execution);
                     // Cleanup bookkeeping must survive a cancellation detected immediately after this await.
                     if (answer.cursor && Long.isLong(answer.cursor.id)) cursorId = answer.cursor.id;
                     guard(); return answer;
@@ -141,8 +142,8 @@ export async function createMongoDbStatefulCompleteKindAdapterV1(options: MongoD
                 finally {
                     if (!cursorId.isZero()) {
                         try {
-                            const cleanup = {session, omitMaxTimeMS: true, signal: AbortSignal.timeout(options.operationTimeoutMS)};
-                            await db.command({killCursors: rows.collectionName, cursors: [cursorId]}, cleanup);
+                            const cleanup = {session, signal: AbortSignal.timeout(options.operationTimeoutMS)};
+                            await executeCompleteKindCommand(options.client, options.databaseName, {killCursors: rows.collectionName, cursors: [cursorId]}, cleanup);
                         }
                         // An aborted transaction's cleanup error must not replace the data
                         // failure or cause withTransaction to retry a different failure.

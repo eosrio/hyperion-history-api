@@ -15,7 +15,8 @@ export function completeFixture() {
     fixture.cursorIds = []; fixture.snapshotOverride = undefined;
     fixture.client.startSession = (...args) => {
         const session = start(...args), transaction = session.withTransaction.bind(session);
-        session.client = fixture.client; session.inTransaction = () => session.storage !== null && !session.hasEnded;
+        session.client = fixture.client; session.transaction = {options: {}};
+        session.inTransaction = () => session.storage !== null && !session.hasEnded;
         session.withTransaction = (work, options) => transaction(async (...values) => {
             const snapshot = typeof fixture.snapshotOverride === 'function' ? fixture.snapshotOverride() : fixture.snapshotOverride;
             if (snapshot) session.storage = structuredClone(snapshot);
@@ -63,6 +64,16 @@ export function completeFixture() {
             }
         };
     };
+    // The command executor uses the actual pinned executeOperation engine. This
+    // fixture supplies only controlled selection/transport/storage, never a server.
+    const selectedDb = fixture.client.db.bind(fixture.client);
+    fixture.client.s = {options: {serverSelectionTimeoutMS: 1000, waitQueueTimeoutMS: 1000}};
+    const server = {async command(operation, timeout) {
+        const response = await selectedDb(operation.ns.db).command(operation.buildCommand(), operation.buildOptions(timeout));
+        return {toObject: () => response};
+    }};
+    fixture.client.topology = {description: {type: 'ReplicaSetWithPrimary'}, s: {options: fixture.client.options},
+        selectServer: async () => server};
     return fixture;
 }
 
