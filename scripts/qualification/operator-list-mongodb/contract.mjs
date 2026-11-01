@@ -70,6 +70,10 @@ export function assertOriginalTerminal(terminal) {
     assert.equal(terminal.timedOut, false, 'Timeout/grace cannot become a native pass');
     assert.equal(terminal.code, 0); assert.equal(terminal.signal, null); assert.equal(terminal.terminal, true); assert.equal(terminal.streamsClosed, true);
 }
+/** Pure readiness fence; a recorded interruption cannot authorize the next effect. */
+export async function afterReadiness(check, ready, continueWork) {
+    check(); await ready(); check(); return continueWork();
+}
 /** Pure CI verdict check; artifact collection/cleanup cannot replace the original child result. */
 export function assertNativeCompletion(terminal, native, compiledSha256) {
     assertOriginalTerminal(terminal);
