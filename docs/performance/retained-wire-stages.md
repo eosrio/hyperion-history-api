@@ -27,6 +27,14 @@ input identity and report generated-corpus differences rather than inventing a
 byte-identical paired performance result. Node 24.22.1 and 26.13.0 are the observed
 failing/passing runtime versions; 26.13 remains an engineering candidate, not runtime acceptance.
 
+The existing Linux Node 24.x/26.x build matrix runs the nine pure observer controls
+alongside the existing source/profile/snapshot controls. Only the retained test
+command receives the inline observation flag; the following ABI-history command
+and other fixtures keep it unset. CI uses the unchanged admitted source/profile
+graph and normal full Git checkout, which includes the observer and its existing
+`portable-state-worker-proof-metrics.mjs` import. No admission predicate or snapshot
+source closure is bypassed or weakened.
+
 `retained-wire-stage-snapshot/v1` is one bounded JSON line per second plus initial
 and final observations: at most 300 lines, 32768 UTF8 bytes each, 500000 span starts,
 64 active spans, 256 live wrapped methods and 50000 total wrapper installations. Completed
@@ -37,6 +45,10 @@ total/minimum/maximum nanoseconds plus 64 log2 histogram buckets. The active lis
 retains stage/input block/monotonic elapsed time. `source.advance` labels its
 requested end block; `source.frame` labels the actual decoded frame. Counters or
 labels never grant source, checkpoint, test-pass or cleanup authority.
+Per-record observations only update counters/histograms; they emit no rows.
+The cap is 9,830,400 raw JSON payload bytes, excluding newlines, Node test-reporter
+framing and ordinary test output. Collectors identify the JSON `kind` inside the
+retained test log rather than assuming the whole stdout stream is bare JSONL.
 
 The two existing fixture helpers observe setup, per-frame selection/ABI observation,
 source admission/canonical publication, actual emitted source/controller/worker-frame
@@ -74,6 +86,11 @@ failures and do not replace an original method result/error. Missing final rows,
 omitted spans/wrappers, active final work, observation failures or truncated streams
 are incomplete observation coverage, not a successful collection or workload waiver.
 Root retains the original 300 s outer envelope and original test verdict independently.
+`process-before-exit` is the observer's final lifecycle boundary, not proof of test
+success or original stream closure. `snapshot-bound-censored` stops sampling and
+restores methods at the row cap even if work remains. The inert controls model
+1480 block updates plus late cleanup at 245 seconds using fewer than 300 snapshots;
+that models observation coverage and does not extend the real 180000 ms workload.
 
 Focused controls:
 

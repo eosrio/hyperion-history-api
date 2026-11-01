@@ -44,6 +44,27 @@ test('monotonic bounded stages retain active work, failures and overlapping wall
     assert.deepEqual(Object.keys(c.last().stages), retainedWireStageNames);
     assert(c.last().notExercised.includes('DSPool action publication/admission'));
     c.observer.close(); assert.deepEqual(c.state(), {unrefs: 1, cleared: 1});
+
+    // Model late observations without executing/extending the real 180000ms workload.
+    const late = control();
+    for (let height = 1; height <= 1480; height++) {
+        const finishSource = late.observer.begin('source.frame', height);
+        const finishProjection = late.observer.begin('projection.source-frame', height);
+        late.advance(125000000n); finishSource(); finishProjection();
+        if (height % 8 === 0) late.tick();
+    }
+    assert.equal(late.rows.length, 186, 'block observations aggregate rather than emit per record');
+    assert.equal(late.last().stages['source.frame'].lastBlock, 1480);
+    assert.equal(late.last().stages['projection.source-frame'].lastBlock, 1480);
+    const cleanup = late.observer.begin('cleanup.host'); late.advance(60000000000n); late.tick();
+    assert.equal(late.last().elapsedNs, '245000000000'); assert.equal(late.last().intervalDriftNs, '59000000000');
+    assert(late.last().active.some(span => span.stage === 'cleanup.host' && span.elapsedNs === '60000000000'));
+    assert.equal(late.last().stages['cleanup.host'].completed, 0);
+    cleanup(); late.lifecycle.emit('beforeExit');
+    assert.equal(late.last().boundary, 'process-before-exit'); assert.equal(late.last().stages['cleanup.host'].completed, 1);
+    assert.equal(late.last().observationOnly, true); assert.equal(Object.hasOwn(late.last(), 'testPassed'), false);
+    assert(late.rows.length < bounds.snapshots); assert.equal(late.last().omitted, 0);
+    assert(late.rows.every(row => Buffer.byteLength(JSON.stringify(row)) <= bounds.rowBytes));
 });
 
 test('audited native/worker wrappers preserve receivers, arguments, values and original errors', async () => {
@@ -146,4 +167,10 @@ test('original retained test body/profile and 180000ms deadline remain exact; so
     assert.equal(createHash('sha256').update(bytes).digest('hex'), '32bbfc3e8a698edf1a506385dc1e346de4e4cf4c63ebb6ffeec879308e172eb3');
     let reads = 0; assert.equal(sourceBlock([{get source() {reads++; return {blockNum: 1};}}]), undefined);
     assert.equal(reads, 0); assert.equal(sourceBlock([{source: {blockNum: 222}}]), 222);
+    const workflow = readFileSync(new URL('../../.github/workflows/build.yml', import.meta.url), 'utf8');
+    assert.equal(workflow.split('HYPERION_RETAINED_WIRE_STAGES').length, 2, 'Only one inline workload invocation enables observation');
+    assert(workflow.includes('HYPERION_RETAINED_WIRE_STAGES=1 node --test tests/unit/wire-managed-state-v2-native.mjs'));
+    assert(workflow.includes('          node --test tests/unit/protocol-abi-history-native.mjs'));
+    assert(workflow.includes('scripts/qualification/wire-source-snapshot.test.mjs tests/native/retained-wire-stage-observer.test.mjs'));
+    assert.match(workflow, /node-version: \[24\.x, 26\.x\]/);
 });
