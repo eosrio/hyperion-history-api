@@ -10,10 +10,77 @@ import * as ownerSdk from '@eosrio/hyperion-sdk/projection-stateful-owner-v2';
 import * as indexed from '@eosrio/hyperion-sdk/projection-stateful-indexed-query-v1';
 import * as nativeOwnerSdk from '../../../packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist/projection-stateful-owner-v2.js';
 import {receiveMongoIndexedModelV1,planMongoIndexedQueryV1,mongoIndexedIndexesV1} from '../../../packages/backend-mongodb/dist/stateful-indexed-model-v1.js';
-import {PLAN,ORACLE,argumentsFor,dispatchCases,assertNativeCompletion,projectionDefinition,projectionLimits,schemaModel,corpus,page,count,assertCreatedPeers,assertCoveredAbsence,hex} from './native-contract.mjs';
+import {createMongoDbStatefulCompleteKindAdapterV1} from '../../../packages/backend-mongodb/dist/stateful-complete-kind-v1.js';
+import {createMongoDbStatefulIndexedAdapterV1} from '../../../packages/backend-mongodb/dist/stateful-indexed-v1.js';
+import {selectMongoDbIndexedEngineeringAssemblyV1} from '../../../packages/backend-mongodb/dist/stateful-indexed-engineering-v1.js';
+import {PLAN,ORACLE,argumentsFor,dispatchCases,assertNativeCompletion,persistNativeChildIntent,projectionDefinition,projectionLimits,schemaModel,corpus,page,count,assertCreatedPeers,assertCoveredAbsence,hex} from './native-contract.mjs';
 import {NATIVE_PROFILE,observeNativeInputs,assertNativeInputs,assertNativeRuntime} from './native-assembly.mjs';
 import {installIndexedCommandHooks} from './native-command-hooks.mjs';
 import {verifyIndexedTrace,verifyCursorClosure,verifyExplain,bsonCopy} from './native-trace.mjs';
+
+function actualMakePrefixes(){
+ const source=readFileSync(new URL('./native-runner.mjs',import.meta.url),'utf8');assert(source.length<=512*1024);
+ assert.equal(typeof ts.SyntaxKind.EndOfFile,'number');assert.equal(typeof ts.SyntaxKind.StringLiteral,'number');
+ const scanner=ts.createScanner(true,ts.LanguageVariant.Standard,source);assert.equal(scanner.getText(),source);
+ const tokens=[];let exhausted=false,previousEnd=-1;
+ for(let steps=0;steps<=source.length*2;steps++){const kind=scanner.scan();if(kind===ts.SyntaxKind.EndOfFile){exhausted=true;break;}
+  assert(scanner.getTokenEnd()>previousEnd);previousEnd=scanner.getTokenEnd();tokens.push({text:scanner.getTokenText(),kind,value:kind===ts.SyntaxKind.StringLiteral?scanner.getTokenValue():undefined});}
+ assert(exhausted,'Fixture namespace scan exceeded its finite input bound');
+ const definitions=tokens.map((token,i)=>token.text==='make'&&tokens[i+1]?.text==='='&&tokens[i+2]?.text==='async'?i:-1).filter(i=>i>=0);assert.equal(definitions.length,1);
+ const start=definitions[0];assert.deepEqual(tokens.slice(start+3,start+8).map(token=>token.text),['(','client',',','prefix','=']);
+ assert.equal(tokens[start+8].kind,ts.SyntaxKind.StringLiteral);const fallback=tokens[start+8].value,prefixes=[];
+ for(let i=0;i<tokens.length;i++)if(tokens[i].text==='make'&&tokens[i-1]?.text==='await'&&tokens[i+1]?.text==='('){
+  let end=i+2;for(;end<Math.min(tokens.length,i+16)&&![',',')'].includes(tokens[end].text);end++);assert(end<i+16);
+  assert(['client','state.client'].includes(tokens.slice(i+2,end).map(token=>token.text).join('')),'Untested dynamic fixture client');
+  if(tokens[end].text===')')prefixes.push(fallback);else{assert.equal(tokens[end+1].kind,ts.SyntaxKind.StringLiteral,'Untested dynamic fixture namespace');assert([',',')'].includes(tokens[end+2].text));prefixes.push(tokens[end+1].value);}
+ }assert.equal(prefixes.length,8,'Every genuine fixture constructor callsite must be covered');return prefixes;
+}
+
+async function constructorOnly(){
+ const operations=[],client={options:{retryReads:false,retryWrites:false,maxAdaptiveRetries:0},db(){return {collection(name){return new Proxy({collectionName:name},{get(target,key){if(key in target)return target[key];return()=>{operations.push([name,key]);throw new Error('Unexpected native operation in constructor-only control');};}});}};},
+  startSession(){operations.push(['startSession']);throw new Error('Constructor control cannot open a native session');}};
+ const projection=await logical.captureStatefulDeclaration(projectionDefinition(logical,'h45_indexed_aaaaaaaaaaaa'),projectionLimits()),declaration=await ownerSdk.captureStatefulOwnerDeclarationV2(projection,2);
+ return {projection,operations,options:{client,databaseName:'h45_indexed_aaaaaaaaaaaa',backendId:'h45_indexed_aaaaaaaaaaaa',declaration,receiptRetention:4,rollbackRetentionBlocks:4,
+  rollbackRetentionBytes:4194304,rollbackMaxBlockBytes:1048576,operationTimeoutMS:PLAN.operationMS,transactionTimeoutMS:PLAN.transactionMS}};
+}
+
+test('all genuine runner namespace callsites construct through the actual owner and indexed factories without native I/O',async()=>{
+ const s=await constructorOnly(),complete={readAttempts:12,responseRecords:8,responseBytes:65536};
+ for(const collectionPrefix of actualMakePrefixes()){
+  const options={...s.options,collectionPrefix},base=await createMongoDbStatefulCompleteKindAdapterV1(options,complete),owner=await ownerSdk.negotiateStatefulOwnerV2(s.projection,
+   {family:ownerSdk.STATEFUL_OWNER_FAMILY_V2,interfaceVersion:2,sourceInputVersions:[2],supported:ownerSdk.STATEFUL_OWNER_HOST_CAPABILITIES_V2,limits:s.projection.limits},base.capabilities),
+   declaration=await indexed.captureIndexedDeclarationV1(owner,'owned-native-fixture-v1',collectionPrefix==='sql_refusal'?{...schemaModel(),textComparison:'atomicassets-sql-en-us-utf8-unqualified'}:schemaModel()),
+   adapter=await createMongoDbStatefulIndexedAdapterV1({...options,declaration:owner},[{declaration,limits:PLAN.limits}],complete,base);
+  assert.deepEqual(adapter.indexedCapabilities.comparisonProfiles,[]);assert.deepEqual(adapter.indexedCapabilities.queryDeclarationDigests,[]);
+  if(collectionPrefix==='sql_refusal'){
+   const selected=selectMongoDbIndexedEngineeringAssemblyV1(adapter,PLAN.assembly),view={declarationDigest:owner.digest,backendId:options.backendId,generation:s.projection.definition.binding.generation,revision:hex(20),checkpoint:{blockNum:0,blockId:hex(0)}};
+   await assert.rejects(selected.indexedForModel(view,declaration.digest,()=>{}),error=>error.code==='stateful.capability-unavailable'&&error.message==='This comparison profile has no native qualification');
+  }
+ }assert.deepEqual(s.operations,[]);
+});
+
+test('the unchanged actual owner constructor refuses malformed prefixes without normalization or native I/O',async()=>{
+ const s=await constructorOnly(),complete={readAttempts:12,responseRecords:8,responseBytes:65536};
+ for(const collectionPrefix of ['sql-refusal','covered-genesis','legacy-populated','new-generation','','Covered_genesis',' covered_genesis ','a'.repeat(33)]){
+  await assert.rejects(createMongoDbStatefulCompleteKindAdapterV1({...s.options,collectionPrefix},complete),error=>error.code==='stateful.invalid-contract'&&error.message==='Explicit native owner configuration differs');
+ }assert.deepEqual(s.operations,[]);
+});
+
+test('native invocation intent persists the exact immutable argv and scoped inputs before any launch can consume them',()=>{
+ const argv=['runner.mjs','--profile',PLAN.profile,'--run','--allow-failpoints','--database','h45_indexed_aaaaaaaaaaaa','--output','output/native','--source','b'.repeat(40),'--assembly-sha256','c'.repeat(64)],
+  input={executable:'/actual/node',argv,cwd:'/actual/workspace',source:'b'.repeat(40),runtime:{node:PLAN.runtimeVersions[0],platform:'linux',arch:'x64',executableSha256:'d'.repeat(64)},
+   limits:{query:PLAN.limits,operationMS:PLAN.operationMS,transactionMS:PLAN.transactionMS,fixture:PLAN.fixture},environment:{HYPERION_INDEXED_MONGO_URI:'mongodb://127.0.0.1:32777/?directConnection=true&replicaSet=h45rs_'+'a'.repeat(32)}},writes=[];
+ const intent=persistNativeChildIntent(input,value=>{writes.push(JSON.stringify(value));});assert.equal(writes.length,1);assert.equal(intent.argv,argv);
+ assert.deepEqual(JSON.parse(writes[0]),intent);assert.equal(intent.status,'intent-only');assert.equal('pid'in intent,false);assert.equal('terminal'in intent,false);
+ assert(Object.isFrozen(intent)&&Object.isFrozen(argv)&&Object.isFrozen(intent.limits.query));assert.throws(()=>argv.push('changed'));
+ let consumed=false;assert.throws(()=>{const blocked=persistNativeChildIntent({...input,argv:[...argv]},()=>{throw new Error('intent storage failed');});consumed=true;return blocked;},/intent storage failed/);assert.equal(consumed,false);
+ assert.throws(()=>persistNativeChildIntent({...input,argv:[...argv]},async()=>{}),/synchronously/);
+ const ci=readFileSync(new URL('./native-ci.mjs',import.meta.url),'utf8');
+ const written=ci.indexOf("intent=>json(join(output,'child-intent.json'),intent)"),launched=ci.indexOf('child=spawn(invocation.executable,invocation.argv'),terminal=ci.indexOf("json(join(output,'child-terminal.json'),report.child)"),admission=ci.indexOf('assertNativeCompletion(report.child');
+ assert(written>=0&&launched>written);assert(terminal>=0&&admission>terminal);
+ assert.match(ci,/child=spawn\(invocation\.executable,invocation\.argv,\{cwd:invocation\.cwd/);assert.match(ci,/Number\.isSafeInteger\(child\.pid\)&&child\.pid>0/);
+ assert.match(ci,/return terminalChild\(child,/);assert(ci.indexOf("json(join(output,'child-process.json'),report.childProcess)")>ci.indexOf('return terminalChild(child,'));
+});
 test('actual fixture input observation admits raw bytes and each complete scoped driver/BSON inventory',()=>{
  const actual=observeNativeInputs(),receipt=assertNativeInputs(actual);assert.equal(receipt.profile,PLAN.profile);
  assert.deepEqual(Object.keys(actual.dependencies),['root:mongodb','root:bson','native:mongodb','native:bson']);

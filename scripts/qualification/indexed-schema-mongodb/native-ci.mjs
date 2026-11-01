@@ -9,7 +9,7 @@ import {MongoClient,BSON} from 'mongodb';
 import {OwnedMongoFixture,MONGODB_IMAGE,MONGODB_VERSION,waitForMongo} from '../projection-fixture.mjs';
 import {terminalChild} from '../stateful-complete-kind-mongodb/ci.mjs';
 import {afterReadiness} from '../operator-list-mongodb/contract.mjs';
-import {PLAN,failure,sha,assertNativeCompletion} from './native-contract.mjs';
+import {PLAN,failure,sha,assertNativeCompletion,persistNativeChildIntent} from './native-contract.mjs';
 import {admitNativeAssembly,NATIVE_PROFILE} from './native-assembly.mjs';
 import {verifyIndexedTrace,verifyCursorClosure,verifyExplain} from './native-trace.mjs';
 const root=fileURLToPath(new URL('../../../',import.meta.url)),json=(path,value)=>writeFileSync(path,JSON.stringify(value,null,2)+'\n',{flag:'wx'});
@@ -41,11 +41,16 @@ export async function runCI(profile,output){
    assert.equal(owned.HostConfig.NanoCpus,NATIVE_PROFILE.fixture.nanoCPUs);assert.equal(owned.HostConfig.Memory,NATIVE_PROFILE.fixture.memoryBytes);
    report.container={id:owned.Id,name:owned.Name,labels:owned.Config.Labels,imageId:image.Id,repoDigests:image.RepoDigests,replicaSet:fixture.replicaSet,volume:fixture.volume.name,
     cpus:owned.HostConfig.NanoCpus,memory:owned.HostConfig.Memory,memorySwap:owned.HostConfig.MemorySwap,port:owned.NetworkSettings.Ports};
-   const runner=fileURLToPath(new URL('./native-runner.mjs',import.meta.url));check();child=spawn(process.execPath,[runner,'--profile',profile,'--run','--allow-failpoints','--database','h45_indexed_'+fixture.run.slice(0,12),
-    '--output',join(output,'native'),'--source',source,'--assembly-sha256',report.assembly.observationSha256],{stdio:['ignore','pipe','pipe'],env:{...process.env,HYPERION_INDEXED_MONGO_URI:uri+'&replicaSet='+fixture.replicaSet}});
+   const runner=fileURLToPath(new URL('./native-runner.mjs',import.meta.url)),argv=[runner,'--profile',profile,'--run','--allow-failpoints','--database','h45_indexed_'+fixture.run.slice(0,12),
+    '--output',join(output,'native'),'--source',source,'--assembly-sha256',report.assembly.observationSha256];
+   const invocation=persistNativeChildIntent({executable:process.execPath,argv,cwd:root,source,runtime:report.assembly.runtime,
+    limits:{query:PLAN.limits,operationMS:PLAN.operationMS,transactionMS:PLAN.transactionMS,fixture:NATIVE_PROFILE.fixture},
+    environment:{HYPERION_INDEXED_MONGO_URI:uri+'&replicaSet='+fixture.replicaSet}},intent=>json(join(output,'child-intent.json'),intent));
+   report.childInvocation=invocation;check();child=spawn(invocation.executable,invocation.argv,{cwd:invocation.cwd,stdio:['ignore','pipe','pipe'],env:{...process.env,...invocation.environment}});
+   if(Number.isSafeInteger(child.pid)&&child.pid>0)report.childProcess={pid:child.pid};
    return terminalChild(child,createWriteStream(join(output,'runner.stdout.log'),{flags:'wx'}),createWriteStream(join(output,'runner.stderr.log'),{flags:'wx'}),
     {deadlineMS:NATIVE_PROFILE.fixture.childDeadlineMS,graceMS:NATIVE_PROFILE.fixture.graceMS,terminalMS:NATIVE_PROFILE.fixture.terminalMS});
-  });check();
+  });if(report.childProcess)json(join(output,'child-process.json'),report.childProcess);json(join(output,'child-terminal.json'),report.child);check();
   const native=JSON.parse(readFileSync(join(output,'native/report.json'),'utf8'));assertNativeCompletion(report.child,native,report.assembly.observationSha256);
   const checksums=JSON.parse(readFileSync(join(output,'native/sha256.json'),'utf8'));assert.deepEqual(checksums.map(row=>row.path).sort(),['explain.json','report.json','samples.json','trace.json']);
   for(const row of checksums){const raw=readFileSync(join(output,'native',row.path));assert.equal(raw.length,row.bytes);assert.equal(sha(raw),row.sha256);}

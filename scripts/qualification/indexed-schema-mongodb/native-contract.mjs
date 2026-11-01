@@ -18,6 +18,15 @@ export const PLAN=freeze({schemaVersion:1,scope:'synthetic-native-indexed-schema
  acceptance:{nativeMongoDB:'pending-until-run',AtomicSQL:'pending',managedHTTP:'pending',WireAuthority:'none',productionOffers:'empty'}});
 export function failure(error,depth=0){return {name:String(error?.name??'Error').slice(0,64),code:error?.code??null,
  message:String(error?.message??error).slice(0,512),...(depth<2&&error?.cause?{cause:failure(error.cause,depth+1)}:{})};}
+/** Persist invocation data synchronously before a caller may launch it; this grants no execution/read authority. */
+export function persistNativeChildIntent(input,persist){
+ assert.deepEqual(Object.keys(input).sort(),['executable','argv','cwd','source','runtime','limits','environment'].sort());
+ assert.equal(typeof input.executable,'string');assert.equal(typeof input.cwd,'string');assert.match(input.source,/^[a-f0-9]{40}$/);
+ assert(Array.isArray(input.argv)&&input.argv.length===13&&input.argv.every(value=>typeof value==='string'&&value.length>0));
+ const intent=freeze({schemaVersion:1,status:'intent-only',executable:input.executable,argv:input.argv,cwd:input.cwd,source:input.source,
+  runtime:{...input.runtime},limits:{...input.limits},environment:{...input.environment}});
+ assert.equal(persist(intent),undefined,'Invocation intent must be written synchronously before launch');return intent;
+}
 export function argumentsFor(argv,environment){
  if(argv.length===1&&argv[0]==='--validate-plan')return null;
  assert.equal(argv.length,12);assert.deepEqual(argv.filter((_,i)=>i%2===0),['--profile','--run','--database','--output','--source','--assembly-sha256']);

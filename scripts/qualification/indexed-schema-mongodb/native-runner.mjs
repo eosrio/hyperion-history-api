@@ -92,7 +92,7 @@ export async function run(options){
     for(const changes of [{client:admin},{databaseName:options.database+'_other'},{collectionPrefix:'foreign'},{receiptRetention:3},{operationTimeoutMS:4999}]){
      const before=trace.length;await assert.rejects(nativeIndexed.createMongoDbStatefulIndexedAdapterV1({...state.config,...changes},state.entries.map(entry=>({declaration:entry.declaration,limits:PLAN.limits})),completeLimits,state.base));assert.equal(trace.length,before);
     }
-    const sql=await make(client,'sql-refusal','fresh-indexed-generation',[{...schemaModel(),textComparison:'atomicassets-sql-en-us-utf8-unqualified'}]);const before=trace.length;
+    const sql=await make(client,'sql_refusal','fresh-indexed-generation',[{...schemaModel(),textComparison:'atomicassets-sql-en-us-utf8-unqualified'}]);const before=trace.length;
     await assert.rejects(sql.engineering.indexedForModel(view,sql.entries[0].declaration.digest,noCancel));assert.equal(trace.length,before);
     for(const model of [{...schemaModel(),orders:[[{field:'assets',direction:'desc',nulls:'last'}]]},{...schemaModel(),fields:schemaModel().fields.map(field=>field.id==='authorized'?{...field,operators:['contains']}:field)},
      {...schemaModel(),fields:schemaModel().fields.map(field=>field.id==='schema'?{...field,operators:['gte']}:field)}]){
@@ -156,7 +156,7 @@ export async function run(options){
     assert.equal((await direct(count())).result.value,'6');const bbb=await apply([{...original,value:{...original.value,created_at_time:'9007199254740999'}}]);assert.equal((await direct(page())).result.rows[0].key,'s:a');
     await rollback(ancestor);const ccc=await apply([{...original,value:{...original.value,created_at_time:'9007199254740990'}}]);assert.notEqual(bbb.target.block.blockId,ccc.target.block.blockId);assert.equal((await direct(page())).result.rows[0].key,'s:d');
     // Original retention is four blocks: old history refuses, without a reconstructed kind scan.
-    const genesis=await make(state.client,'covered-genesis','covered-genesis-generation');genesis.lease=await genesis.adapter.acquireOwner({expected:null,nextOwner:genesis.identity},noCancel);
+    const genesis=await make(state.client,'covered_genesis','covered-genesis-generation');genesis.lease=await genesis.adapter.acquireOwner({expected:null,nextOwner:genesis.identity},noCancel);
     const coveredZero=(await genesis.adapter.recovery()).view.checkpoint;await apply(corpus(),genesis);assert.equal((await direct(count(),PLAN.limits,0,genesis)).result.value,'6');
     await rollback(coveredZero,genesis);assert.equal((await direct(count(),PLAN.limits,0,genesis)).result.value,'0');assert.deepEqual((await direct(page(),PLAN.limits,0,genesis)).result.rows,[]);
     const zero=await setExpected(genesis),zeroRead=await genesis.adapter.completedRead(genesis.identity,zero.view,noCancel);reads.add(zeroRead);
@@ -176,12 +176,12 @@ export async function run(options){
    'reopen-and-generation-refusal':async()=>{
     const old=await open(),previous=state;closeRead(old.adapter,old.read);await previous.pool.close();await assert.rejects(previous.pool.get(PLAN.operationMS));
     const pool=newPool(),client=await pool.get(PLAN.operationMS);state=await make(client);state.pool=pool;hookClient(state);await renew(state);assert.equal((await direct(count())).result.value,'6');await assert.rejects(state.engineering.queryCompleted(old.read,old.expected,count(),PLAN.limits,state.entries[0].declaration));
-    const legacyState=await make(client,'legacy-populated','legacy-generation');
+    const legacyState=await make(client,'legacy_populated','legacy-generation');
     // Populate through its genuine get/complete-kind base before indexed owner initialization.
     legacyState.lease=await legacyState.base.acquireOwner({expected:null,nextOwner:legacyState.identity},noCancel);
     const baseAdapter=legacyState.adapter;legacyState.adapter=legacyState.base;await apply([corpus().find(row=>row.key==='s:a')],legacyState);legacyState.adapter=baseAdapter;await renew(legacyState);
     await assert.rejects(direct(count(),PLAN.limits,0,legacyState));assert.equal((await legacy(legacyState)).rows.length,1);
-    const next=await make(client,'new-generation','explicit-new-generation');next.lease=await next.adapter.acquireOwner({expected:null,nextOwner:next.identity},noCancel);assert.equal((await direct(count(),PLAN.limits,0,next)).result.value,'0');
+    const next=await make(client,'new_generation','explicit-new-generation');next.lease=await next.adapter.acquireOwner({expected:null,nextOwner:next.identity},noCancel);assert.equal((await direct(count(),PLAN.limits,0,next)).result.value,'0');
     const changed=await make(client,'bounded','different-mapping-generation');await assert.rejects(changed.adapter.recovery());return {freshClientAndOwner:true,populatedGenerationRefused:true,newEmptyGenerationExplicit:true};
    },
    'cumulative-and-receiving-budgets':async()=>{
