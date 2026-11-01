@@ -175,6 +175,12 @@ base signed-int64 comparisons and indexed base orders. It requires a text equali
 anchor. Unsupported operators/orders refuse before data commands; it never reads a
 complete kind or compares/sorts records in JavaScript.
 
+An attached original owner must match the actual client object, database, prefix,
+backend, validated retention policy and native operation/transaction bounds retained
+by its private bridge. Equal declaration digests in two native namespaces do not
+make those owner instances interchangeable. Complete-kind and engineering facades
+retain linkage to that same original binding; no declaration DTO can create it.
+
 Canonical owner-v2 rows and before-images keep their existing closed JSON shape.
 Versioned generation/model sidecars hold typed BSON Longs, null flags and composite
 text equality keys. Canonical mutations, sidecars, model coverage, model coverage
@@ -211,6 +217,11 @@ missing optional joined aggregates stay null, distinct from an actual zero. Nati
 transaction/operation deadlines and cursor/session cleanup retain the existing
 managed nonretrying client policy. Page and count compose through one SDK completed
 view and the existing final HTTP onSend source/owner/probe/serialization guard.
+The native receiving boundary independently captures each request and checks its
+UTF-8 query bytes, predicates, order terms and set elements against the supplied
+remaining totals before native admission. Exact count also reserves one remaining
+response-record slot. The SDK supplies these totals before charging that request;
+this check validates the allowance without charging the request twice.
 
 `npm run test:indexed:finite` at the repository root exercises inert model, cursor,
 transaction and emitted HTTP composition ports. `npm run test:indexed:package`

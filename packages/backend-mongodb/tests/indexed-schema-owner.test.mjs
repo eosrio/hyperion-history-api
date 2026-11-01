@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as sdk from '@eosrio/hyperion-sdk/projection-stateful-owner-v2';
+import {captureIndexedRequestV1} from '@eosrio/hyperion-sdk/projection-stateful-indexed-query-v1';
 import {createMongoDbStatefulOwnerAdapterV2} from '../dist/stateful-owner-v2.js';
 import {createMongoDbStatefulIndexedAdapterV1} from '../dist/stateful-indexed-v1.js';
 import {selectMongoDbIndexedEngineeringAssemblyV1,MONGODB_INDEXED_ENGINEERING_PROFILE_V1} from '../dist/stateful-indexed-engineering-v1.js';
-import {prepared,totals,schema,collection,hex} from './indexed-schema-fixture.mjs';
+import {prepared,totals,schema,collection,hex,page,count,model} from './indexed-schema-fixture.mjs';
 import {ownerPort} from './indexed-schema-owner-port.mjs';
-async function setup(indexed=true,port=ownerPort()){
- const s=await prepared(),options={client:port.client,databaseName:'inert_schema',backendId:'schema-fixture',collectionPrefix:'owner_port',declaration:s.owner,
+async function setup(indexed=true,port=ownerPort(),logicalModel){
+ const s=await prepared(logicalModel?{model:logicalModel}:{}),options={client:port.client,databaseName:'inert_schema',backendId:'schema-fixture',collectionPrefix:'owner_port',declaration:s.owner,
   receiptRetention:4,rollbackRetentionBlocks:8,rollbackRetentionBytes:4194304,rollbackMaxBlockBytes:1048576,operationTimeoutMS:1000,transactionTimeoutMS:2000};
  const requirements=[{declaration:s.declaration,limits:totals()}],adapter=indexed?await createMongoDbStatefulIndexedAdapterV1(options,requirements):await createMongoDbStatefulOwnerAdapterV2(options);
  const identity={id:'inert-runtime-owner',generation:'one'},lease=await adapter.acquireOwner({expected:null,nextOwner:identity},()=>{}),entries=new Map();
@@ -52,4 +53,33 @@ test('same-generation reopen preserves model readiness and an actual invalid-val
  const read=await adapter.completedRead(s.identity,(await adapter.recovery()).view,()=>{});assert.equal((await adapter.readCompleted(read,(await adapter.recovery()).view,[{kind:'schema',key:'one'}])).results[0].status,'present');adapter.closeRead(read);
  assert(s.port.sessions.every(session=>session.hasEnded));
  const fresh=await setup();await fresh.execute(async port=>port.put('collection','bad',{...collection(),authorized_accounts:[1]}));assert.equal(coverage(fresh).ready,false);assert.equal((await fresh.adapter.recovery()).view.checkpoint.blockNum,1);
+});
+test('a genuine engineering completed read refuses exhausted or insufficient remaining syntax and count slots before native I/O',async()=>{
+ const logical=model();logical.orders.push([{field:'created',direction:'desc',nulls:'last'},{field:'schema',direction:'asc',nulls:'last'}]);
+ const s=await setup(true,ownerPort(),logical),view=(await s.adapter.recovery()).view,engineering=selected(s);
+ const admitted=await engineering.indexedForModel(view,s.declaration.digest,()=>{}),read=await admitted.completedRead(s.identity,view,()=>{});
+ const request=page({where:[{field:'contract',op:'eq',value:'atomicassets'},{field:'schema',op:'in',values:['雪','two']}],order:logical.orders.at(-1)});
+ const bytes=Buffer.byteLength(JSON.stringify(captureIndexedRequestV1(s.native.selection,request)));
+ const cases=[{request,remaining:{queryBytes:0},field:'queryBytes'},{request,remaining:{queryBytes:bytes-1},field:'queryBytes'},
+  {request,remaining:{predicates:0},field:'predicates'},{request,remaining:{predicates:1},field:'predicates'},
+  {request,remaining:{orderTerms:0},field:'orderTerms'},{request,remaining:{orderTerms:1},field:'orderTerms'},
+  {request,remaining:{setValues:0},field:'setValues'},{request,remaining:{setValues:1},field:'setValues'},
+  {request:count(),remaining:{responseRecords:0},field:'count responseRecords'}];
+ try{for(const item of cases){const before=s.port.calls.length,sessions=s.port.sessions.length;
+  await assert.rejects(admitted.queryCompleted(read,view,item.request,{...totals(),...item.remaining},s.declaration),
+   error=>error.code==='stateful.unavailable'&&error.message.includes(item.field),item.field);
+  assert.equal(s.port.calls.length,before,item.field+' must refuse before native I/O');assert.equal(s.port.sessions.length,sessions);
+ }}finally{admitted.closeRead(read);}assert(s.port.sessions.every(session=>session.hasEnded));
+});
+test('exact remaining syntax totals and count slot reach only an inert admission sentinel without double charging',async()=>{
+ const s=await setup(),view=(await s.adapter.recovery()).view,admitted=await selected(s).indexedForModel(view,s.declaration.digest,()=>{}),read=await admitted.completedRead(s.identity,view,()=>{});
+ const requests=[page({where:[{field:'contract',op:'eq',value:'atomicassets'},{field:'schema',op:'in',values:['雪','two']}]}),count(),
+  page({where:[{field:'contract',op:'eq',value:'atomicassets'},{field:'schema',op:'in',values:[]}]})];
+ s.port.faults.listIndexes=true;
+ try{for(const request of requests){const captured=captureIndexedRequestV1(s.native.selection,request),remaining={...totals(),
+  queryBytes:Buffer.byteLength(JSON.stringify(captured)),predicates:captured.where.length,orderTerms:captured.kind==='page'?captured.order.length:0,
+  setValues:captured.where.reduce((sum,p)=>sum+('values'in p?p.values.length:0),0),responseRecords:captured.kind==='count'?1:0};
+  const before=s.port.calls.length;await assert.rejects(admitted.queryCompleted(read,view,request,remaining,s.declaration),/inert index admission sentinel/);
+  assert.equal(s.port.calls.length,before+1);assert.equal(s.port.calls.at(-1).command,'listIndexes');
+ }}finally{admitted.closeRead(read);}assert(s.port.sessions.every(session=>session.hasEnded));
 });

@@ -116,8 +116,8 @@
     },
     {
       "path": "packages/backend-mongodb/src/stateful-indexed-v1.ts",
-      "bytes": 19209,
-      "sha256": "78fe77dca101adf35e1726f33a35400091d5d9f0aef8d71f734c420b446e89e2"
+      "bytes": 20150,
+      "sha256": "f82eefa8a950a284ba17aa5be33713b6d5e10089d832ece560d429f11d9c918e"
     },
     {
       "path": "packages/backend-mongodb/src/stateful-owner-v2-contract.ts",
@@ -126,13 +126,13 @@
     },
     {
       "path": "packages/backend-mongodb/src/stateful-owner-v2-internal.ts",
-      "bytes": 3768,
-      "sha256": "5346c8b252fb04bc25f9f5d711de6dcafc1f05a54d0c304e87fe8ab31652ff76"
+      "bytes": 4655,
+      "sha256": "7458642ceb81ed70f879226423bfb97c52ab98a0a877cd55b6d006fe14f91a3e"
     },
     {
       "path": "packages/backend-mongodb/src/stateful-owner-v2.ts",
-      "bytes": 41047,
-      "sha256": "3749aae1eafc1ecd2907b11a5b3ed514d594b54e179da47df30e33acb7c73d88"
+      "bytes": 41511,
+      "sha256": "f5584b1d959d6602883603b7248ef40d8b752acc73a523f0f83abc3371f786f9"
     },
     {
       "path": "packages/backend-mongodb/src/stateful.ts",
@@ -4536,13 +4536,13 @@
       },
       {
         "path": "stateful-indexed-v1.js",
-        "bytes": 19222,
-        "sha256": "51391def3d663805228f423d80eff95ae4be0d12076150e933360def731cd848"
+        "bytes": 20199,
+        "sha256": "99a2f12afdbcd34a75efd8da91b47afd5258ffb40d041df6bde1b6374b1988e0"
       },
       {
         "path": "stateful-indexed-v1.js.map",
-        "bytes": 16880,
-        "sha256": "5ee3ee812e8b0e85805616f65e49138e6ca822c72f29fef7148933ac7ce22667"
+        "bytes": 17698,
+        "sha256": "1e60c34c79a16d09a4c12438005864ed8072e63157d8dbc31017eee6420fc08a"
       },
       {
         "path": "stateful-owner-v2-contract.d.ts",
@@ -4561,18 +4561,18 @@
       },
       {
         "path": "stateful-owner-v2-internal.d.ts",
-        "bytes": 2122,
-        "sha256": "7b3aac4f41dd8874dc2b2e7978a36e6bc4b836a7873fc98cafe709c792def64c"
+        "bytes": 2370,
+        "sha256": "c6c3f2105cf28553554547d7df34899077a3abb77b298e301c7185810cb2399b"
       },
       {
         "path": "stateful-owner-v2-internal.js",
-        "bytes": 2320,
-        "sha256": "985b8689c67d24573b777704de5b09117be51efc5c15086f021126c3aa714e5e"
+        "bytes": 2965,
+        "sha256": "6826db6fcea081b033e4fc9c51d72b74e18092d0e7558a9e9d5dcc7f43f47e47"
       },
       {
         "path": "stateful-owner-v2-internal.js.map",
-        "bytes": 2147,
-        "sha256": "a2a9f5cf4d3a5612bf8b652689e84dae14f4387e2e29addf9864a641b3132475"
+        "bytes": 2550,
+        "sha256": "3e1fa8b5b061046be707c9153830df506cdebbbd64a58817fc302a615103fdf1"
       },
       {
         "path": "stateful-owner-v2.d.ts",
@@ -4581,13 +4581,13 @@
       },
       {
         "path": "stateful-owner-v2.js",
-        "bytes": 37942,
-        "sha256": "e7ade29bd3d8f5bc64312b23afe987dfb2a0ffa24e4c5040e60d2f332ea02f4b"
+        "bytes": 38426,
+        "sha256": "7c9d4af87b68cdbbe63042051c0b9e25900b03c8356cbe1f40d9a95c1aeeb283"
       },
       {
         "path": "stateful-owner-v2.js.map",
-        "bytes": 38639,
-        "sha256": "d9a7df732f10e86307b62aa7698d7584f158cbd541dc92339292baf7bfdf55f4"
+        "bytes": 39047,
+        "sha256": "d6dfeca58f90bdf4be230462abf11b993f6fb6574dc599afaebf83375e312595"
       },
       {
         "path": "stateful.d.ts",

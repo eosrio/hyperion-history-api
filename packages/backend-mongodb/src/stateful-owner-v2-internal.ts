@@ -2,6 +2,7 @@ import type {ClientSession} from 'mongodb';
 import type {StatefulView} from '@eosrio/hyperion-sdk/projection-stateful';
 import type {StatefulCompletedReadV2, StatefulOwnerAdapterV2, StatefulOwnerLeaseV2} from '@eosrio/hyperion-sdk/projection-stateful-owner-v2';
 import type {StatefulNativeSidecarsV1} from './stateful-effects.js';
+import type {MongoDbStatefulOwnerAdapterOptionsV2} from './stateful-owner-v2.js';
 import {requireState} from './stateful-contract.js';
 
 type SnapshotCheck = (read: StatefulCompletedReadV2, expected: StatefulView, session: ClientSession) => Promise<void>;
@@ -9,7 +10,8 @@ export interface StatefulOwnedNativeSnapshotV1 {
     readonly session: ClientSession; readonly view: StatefulView;
     call<T>(work: () => Promise<T>): Promise<T>;
 }
-interface SnapshotBridge {readonly declarationDigest: string; createSession(): ClientSession; check: SnapshotCheck;
+type NativeBindingV1 = Readonly<Omit<MongoDbStatefulOwnerAdapterOptionsV2,'declaration'>>;
+interface SnapshotBridge {readonly declarationDigest: string; readonly nativeBinding: NativeBindingV1; createSession(): ClientSession; check: SnapshotCheck;
     withOwner?<T>(lease: StatefulOwnerLeaseV2, work: (scope: StatefulOwnedNativeSnapshotV1) => Promise<T>): Promise<T>}
 // Native-internal bridge only: not an SDK port/export, DTO, or independently issued authority.
 const snapshots = new WeakMap<StatefulOwnerAdapterV2, SnapshotBridge>();
@@ -26,8 +28,15 @@ export function registerStatefulOwnerSidecarsV1(adapter: StatefulOwnerAdapterV2,
     sidecars.set(selected, hooks);
 }
 export function statefulOwnerSidecarsV1(adapter: StatefulOwnerAdapterV2): StatefulNativeSidecarsV1 | undefined {return sidecars.get(origin(adapter));}
-export function assertStatefulOwnerNativeDeclarationV1(adapter: StatefulOwnerAdapterV2, digest: string): void {
-    requireState(snapshots.get(origin(adapter))?.declarationDigest === digest, 'Native attachment belongs to another actual owner declaration');
+export function assertStatefulOwnerNativeBindingV1(adapter: StatefulOwnerAdapterV2, options: MongoDbStatefulOwnerAdapterOptionsV2): void {
+    const bridge=snapshots.get(origin(adapter));
+    requireState(bridge?.declarationDigest === options.declaration.digest, 'Native attachment belongs to another actual owner declaration');
+    // Client identity cannot be established by declaration/DTO equality. Namespace and policy
+    // values are the exact validated values retained by this genuine native owner instance.
+    const keys=['databaseName','backendId','collectionPrefix','receiptRetention','rollbackRetentionBlocks','rollbackRetentionBytes',
+        'rollbackMaxBlockBytes','operationTimeoutMS','transactionTimeoutMS'] as const;
+    requireState(bridge.nativeBinding.client===options.client&&keys.every(key=>bridge.nativeBinding[key]===options[key]),
+        'Native attachment differs from actual owner native binding');
 }
 export async function withStatefulOwnerNativeSnapshotV1<T>(adapter: StatefulOwnerAdapterV2, lease: StatefulOwnerLeaseV2,
     work: (scope: StatefulOwnedNativeSnapshotV1) => Promise<T>): Promise<T> {

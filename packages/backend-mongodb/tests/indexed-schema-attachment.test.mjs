@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {createMongoDbStatefulIndexedAdapterV1} from '../dist/stateful-indexed-v1.js';
+import {createMongoDbStatefulOwnerAdapterV2} from '../dist/stateful-owner-v2.js';
+import {createMongoDbStatefulCompleteKindAdapterV1} from '../dist/stateful-complete-kind-v1.js';
 import {selectMongoDbIndexedEngineeringAssemblyV1,MONGODB_INDEXED_ENGINEERING_PROFILE_V1} from '../dist/stateful-indexed-engineering-v1.js';
 import {prepared,model,totals,page} from './indexed-schema-fixture.mjs';
 async function attached(input={}){
@@ -30,6 +32,31 @@ test('copied completed-read DTOs cannot gain native indexed authority',async()=>
 test('an existing owner attachment from another instance/declaration cannot be transplanted',async()=>{
  const s=await attached();await assert.rejects(createMongoDbStatefulIndexedAdapterV1(s.options,[{declaration:s.declaration,limits:totals()}],undefined,
   {capabilities:s.adapter.capabilities}),/another actual owner/);assert.deepEqual(s.operations,[]);
+});
+test('genuine same-declaration owners reject other clients, databases, namespaces and native policies before I/O',async()=>{
+ const s=await attached(),requirements=[{declaration:s.declaration,limits:totals()}];
+ const changes=[{collectionPrefix:'other_prefix'},{databaseName:'other_database'},{client:{...s.options.client}},
+  ...['receiptRetention','rollbackRetentionBlocks','rollbackRetentionBytes','rollbackMaxBlockBytes','operationTimeoutMS','transactionTimeoutMS']
+   .map(key=>({[key]:s.options[key]+1}))];
+ for(const change of changes){
+  const original=await createMongoDbStatefulOwnerAdapterV2({...s.options,...change});
+  await assert.rejects(createMongoDbStatefulIndexedAdapterV1(s.options,requirements,undefined,original),/actual owner native binding/);
+ }
+ assert.deepEqual(s.operations,[]);
+});
+test('two genuine same-declaration namespace owners can attach only to their own exact native binding',async()=>{
+ const s=await attached(),requirements=[{declaration:s.declaration,limits:totals()}],a={...s.options,collectionPrefix:'owner_a'},b={...s.options,collectionPrefix:'owner_b'};
+ const ownerA=await createMongoDbStatefulOwnerAdapterV2(a),ownerB=await createMongoDbStatefulOwnerAdapterV2(b);
+ await assert.rejects(createMongoDbStatefulIndexedAdapterV1(a,requirements,undefined,ownerB),/actual owner native binding/);
+ const indexedA=await createMongoDbStatefulIndexedAdapterV1({...a},requirements,undefined,ownerA),indexedB=await createMongoDbStatefulIndexedAdapterV1({...b},requirements,undefined,ownerB);
+ assert.equal(indexedA.capabilities,ownerA.capabilities);assert.equal(indexedB.capabilities,ownerB.capabilities);assert.deepEqual(s.operations,[]);
+});
+test('complete-kind facades retain the same private native binding through indexed attachment',async()=>{
+ const s=await attached(),requirements=[{declaration:s.declaration,limits:totals()}],{readAttempts,responseRecords,responseBytes}=totals(),limits={readAttempts,responseRecords,responseBytes};
+ const original=await createMongoDbStatefulCompleteKindAdapterV1(s.options,limits);
+ await assert.rejects(createMongoDbStatefulIndexedAdapterV1({...s.options,collectionPrefix:'other_owner'},requirements,limits,original),/actual owner native binding/);
+ const indexed=await createMongoDbStatefulIndexedAdapterV1({...s.options},requirements,limits,original);
+ assert.equal(indexed.completeKindCapabilities,original.completeKindCapabilities);assert.deepEqual(s.operations,[]);
 });
 test('retrying clients and duplicate model identities refuse during inert construction',async()=>{
  const s=await attached();await assert.rejects(createMongoDbStatefulIndexedAdapterV1({...s.options,client:{...s.options.client,options:{retryReads:true,retryWrites:false,maxAdaptiveRetries:0}}},

@@ -78,6 +78,9 @@ class MongoDbStatefulOwnerAdapterV2 implements StatefulOwnerAdapterV2 {
         const completedSessions = new WeakSet<ClientSession>();
         registerStatefulOwnerCompletedSnapshotV2(this, Object.freeze({
             declarationDigest: declaration.digest,
+            nativeBinding:Object.freeze({client:options.client,databaseName:options.databaseName,backendId:options.backendId,collectionPrefix:options.collectionPrefix,
+                receiptRetention:this.policy.receiptRetention,rollbackRetentionBlocks:this.policy.maxBlocks,rollbackRetentionBytes:this.policy.maxBytes,
+                rollbackMaxBlockBytes:this.policy.maxBlockBytes,operationTimeoutMS:this.operationMS,transactionTimeoutMS:this.transactionMS}),
             createSession: () => {const session = this.options.client.startSession({causalConsistency: false}); completedSessions.add(session); return session;},
             withOwner: async <T>(lease: StatefulOwnerLeaseV2, work: (scope: import('./stateful-owner-v2-internal.js').StatefulOwnedNativeSnapshotV1) => Promise<T>) => {
                 const context = this.lease(lease);

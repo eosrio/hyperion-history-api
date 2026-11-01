@@ -5,13 +5,13 @@ import {assertStatefulOwnerViewV2, captureStatefulOwnerViewV2, negotiateStateful
     STATEFUL_OWNER_FAMILY_V2, STATEFUL_OWNER_HOST_CAPABILITIES_V2, type StatefulCompleteKindAdapterV1,
     type StatefulCompleteKindLimitsV1, type StatefulCompletedReadV2, type StatefulOwnerAdapterV2}
     from '@eosrio/hyperion-sdk/projection-stateful-owner-v2';
-import {STATEFUL_INDEXED_QUERY_FAMILY_V1, type IndexedDeclarationV1, type IndexedLimitsV1, type IndexedOfferV1,
+import {captureIndexedRequestV1, STATEFUL_INDEXED_QUERY_FAMILY_V1, type IndexedDeclarationV1, type IndexedLimitsV1, type IndexedOfferV1,
     type IndexedOwnerAdapterV1} from '@eosrio/hyperion-sdk/projection-stateful-indexed-query-v1';
 import {createMongoDbStatefulOwnerAdapterV2, type MongoDbStatefulOwnerAdapterOptionsV2} from './stateful-owner-v2.js';
 import {createMongoDbStatefulCompleteKindAdapterV1} from './stateful-complete-kind-v1.js';
 import {assertStatefulOwnerCompletedSnapshotV2, createStatefulOwnerCompletedSessionV2, registerStatefulOwnerNativeFacadeV1,
     registerStatefulOwnerSidecarsV1, withStatefulOwnerNativeSnapshotV1} from './stateful-owner-v2-internal.js';
-import {assertStatefulOwnerNativeDeclarationV1} from './stateful-owner-v2-internal.js';
+import {assertStatefulOwnerNativeBindingV1} from './stateful-owner-v2-internal.js';
 import {executeCompleteKindCommand} from './stateful-complete-kind-command.js';
 import {fields, requireState, type StatefulRow} from './stateful-contract.js';
 import {createMongoIndexedSidecarsV1, indexedCoverageV1, matchingIndexedCoverageV1, type MongoIndexedCoverageV1,
@@ -40,7 +40,7 @@ export async function createMongoDbStatefulIndexedAdapterV1(input: MongoDbStatef
         && options.client.options.maxAdaptiveRetries === 0, 'Indexed queries require the managed nonretrying MongoDB client', 'stateful.capability-unavailable');
     retryOptions();
     const base = original ?? (completeKind ? await createMongoDbStatefulCompleteKindAdapterV1(options, completeKind) : await createMongoDbStatefulOwnerAdapterV2(options));
-    assertStatefulOwnerNativeDeclarationV1(base,options.declaration.digest);
+    assertStatefulOwnerNativeBindingV1(base,options);
     const owner = await negotiateStatefulOwnerV2(options.declaration.projection, {family: STATEFUL_OWNER_FAMILY_V2, interfaceVersion:2,
         sourceInputVersions:[2], supported:STATEFUL_OWNER_HOST_CAPABILITIES_V2, limits:options.declaration.projection.limits}, base.capabilities);
     requireState(owner.digest === options.declaration.digest, 'Native indexed owner recapture differs');
@@ -150,7 +150,16 @@ export async function createMongoDbStatefulIndexedAdapterV1(input: MongoDbStatef
             for (const key of Object.keys(entry.model.limits) as (keyof IndexedLimitsV1)[])
                 requireState(Number.isSafeInteger(available[key]) && available[key] >= 0 && available[key] <= entry.model.limits[key], 'Expanded indexed allowance', 'stateful.unavailable');
             requireState(available.readAttempts > 0 && available.responseBytes >= 2, 'Indexed native allowance exhausted', 'stateful.unavailable');
-            const plan = planMongoIndexedQueryV1(entry.model, request, entry.rows.collectionName);
+            const captured=captureIndexedRequestV1(entry.model.selection,request);
+            // The SDK supplies its allowance from before charging this request. Measure the
+            // immutable local capture against it here, before admission or any native work.
+            const costs={queryBytes:Buffer.byteLength(JSON.stringify(captured)),predicates:captured.where.length,
+                orderTerms:captured.kind==='page'?captured.order.length:0,
+                setValues:captured.where.reduce((sum,predicate)=>sum+('values'in predicate?predicate.values.length:0),0)};
+            for(const key of Object.keys(costs) as (keyof typeof costs)[])
+                requireState(costs[key]<=available[key],'Indexed remaining '+key+' allowance exceeded','stateful.unavailable');
+            if(captured.kind==='count')requireState(available.responseRecords>=1,'Indexed count responseRecords allowance exhausted','stateful.unavailable');
+            const plan = planMongoIndexedQueryV1(entry.model, captured, entry.rows.collectionName);
             await admission(entry, guard,engineeringReads.has(read));
             assertStatefulOwnerViewV2(owner, await guarded(guard, () => base.completedView(read)), expected);
             const session = createStatefulOwnerCompletedSessionV2(base), comment = {hyperion:'stateful-indexed-v1', model:entry.model.declaration.digest, trace:randomUUID()};

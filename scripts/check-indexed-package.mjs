@@ -38,5 +38,5 @@ export type Native=MongoDbStatefulIndexedAdapterV1;
  await run('installed-finite',['--test',...['model','effects','cursor','attachment','owner'].map(x=>join(installed,'tests','indexed-schema-'+x+'.test.mjs'))],consumer);
  const receipt={node:process.version,evidence,installedFromTarball:true,tarball:{path:tarball,sha256:sha(await readFile(tarball)),integrity:packed.integrity},packedFiles:files,commands,
   scope:'Installed native model/planner/cursor/effect/attachment finite controls only. No native MongoDB/PostgreSQL, controller, physical HTTP listener or release qualification.'};
- await writeFile(join(evidence,'receipt.json'),JSON.stringify(receipt,null,2)+'\n');console.log(JSON.stringify({node:process.version,evidence,packedFiles:paths.length,installedFiniteControls:36,declarations:'passed'}));
+ await writeFile(join(evidence,'receipt.json'),JSON.stringify(receipt,null,2)+'\n');console.log(JSON.stringify({node:process.version,evidence,packedFiles:paths.length,installedFiniteControls:41,declarations:'passed'}));
 }catch(error){await writeFile(join(evidence,'failed.json'),JSON.stringify({node:process.version,error:String(error.stack??error),commands},null,2)+'\n');throw error;}
