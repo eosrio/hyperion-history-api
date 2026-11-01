@@ -46,8 +46,8 @@ jobs:
           node tests/unit/stateful-complete-kind-source-admission-native.mjs
       - name: Check retained Wire managed state and historical source authority on Node ${{ matrix.node-version }}
         run: |
-          node --test tests/unit/wire-managed-state-v2-native.mjs
           node --test tests/unit/portable-mapping-retry-native.mjs
+          node --test tests/unit/wire-managed-state-v2-native.mjs
           node --test tests/unit/protocol-abi-history-native.mjs
       - name: Check Fastify request admission and state route compatibility on Node ${{ matrix.node-version }}
         run: node --test --test-timeout=15000 tests/native/fastify-compatibility.test.mjs
