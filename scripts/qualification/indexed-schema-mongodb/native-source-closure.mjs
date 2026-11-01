@@ -22,7 +22,8 @@ export function sourceReferences(ts,source){
  }return references;
 }
 
-export function observeSourceClosure({root,ts,seeds,boundaries,selfPaths,manifestPath}){
+export function observeSourceClosure({root,ts,seeds,boundaries,selfPaths,manifestPath,manifestRouteCount}){
+ assert(Number.isSafeInteger(manifestRouteCount)&&manifestRouteCount>0&&manifestRouteCount<=64,'Explicit finite selected manifest route count required');
  const files=new Map(),edges=[],external=new Set(),queue=seeds.map(path=>({path,module:/\.[cm]?js$/.test(path)}));let total=0;
  const portable=path=>{assert(typeof path==='string'&&/^(?:[A-Za-z0-9_@.-]+\/)*[A-Za-z0-9_@.-]+$/.test(path)&&path.split('/').every(x=>x!=='.'&&x!=='..'),'Invalid closure path');return path;};
  const read=path=>{portable(path);const absolute=resolve(root,path),inner=relative(resolve(root),absolute);assert(inner&&!isAbsolute(inner)&&!inner.startsWith('..'));
@@ -45,7 +46,7 @@ export function observeSourceClosure({root,ts,seeds,boundaries,selfPaths,manifes
    if(reference.kind==='data'&&reference.specifier.endsWith('/'))continue;
    add(item.path,reference.specifier,reference.kind==='module');
   }
-  if(item.path===manifestPath){const manifest=JSON.parse(bytes);assert(Array.isArray(manifest.routeSources)&&manifest.routeSources.length===18);
+  if(item.path===manifestPath){const manifest=JSON.parse(bytes);assert(Array.isArray(manifest.routeSources)&&manifest.routeSources.length===manifestRouteCount,'Exact selected manifest route count required');
    for(const row of manifest.routeSources){portable(row.path);const data=read(row.path);assert.equal(data.length,row.bytes);assert.equal(createHash('sha256').update(data).digest('hex'),row.sha256);
     edges.push({from:item.path,path:row.path,kind:'declared-route'});queue.push({path:row.path,module:/\.[cm]?js$/.test(row.path)});}
   }

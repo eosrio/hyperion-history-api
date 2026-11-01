@@ -4515,8 +4515,8 @@
   "routeSources": [
     {
       "path": ".github/workflows/build.yml",
-      "bytes": 22417,
-      "sha256": "60368ea5bbf10bf4b98cdfcc9ded61faedb1811e18f57ff11424a510fa848aad"
+      "bytes": 22453,
+      "sha256": "0b129215697f96702297adfe17a9375a4ee6f92dfd9e8b4951d0c6434dc0dc6d"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/assembly.json",
@@ -4580,8 +4580,8 @@
     },
     {
       "path": "tests/native/current-stateful-source-profile.test.mjs",
-      "bytes": 11644,
-      "sha256": "f11e6862a1b416f05f5667f63f69f02c23e1a136f3da7f8b4d03f4d24550aef6"
+      "bytes": 12538,
+      "sha256": "cfce06a2e7bdb7805f3c6cace0060a852297c039cbc509626a9034145bb83134"
     },
     {
       "path": "tests/native/retained-workload-progress.mjs",

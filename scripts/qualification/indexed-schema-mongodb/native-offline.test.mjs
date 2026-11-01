@@ -20,14 +20,16 @@ import {sourceReferences,observeSourceClosure,assertSourceClosure} from './nativ
 import {installIndexedCommandHooks} from './native-command-hooks.mjs';
 import {verifyIndexedTrace,verifyCursorClosure,verifyExplain,bsonCopy,captureAndVerifyExplain,lookupIndexSpecs,verifyLookupCatalog} from './native-trace.mjs';
 
-test('integrated native profile closes every static import, literal data input and all 18 declared SDK49 routes without evaluating them',()=>{
+test('integrated native profile closes every static import, literal data input and all 24 declared SDK49 sources without evaluating them',()=>{
  const boundaries=new Set(ASSEMBLY.sources.map(row=>row.path));
  for(const [key,prefix]of Object.entries({rootBuild:'build',nativeBuild:'packages/backend-mongodb/dist',rootSDK:'node_modules/@eosrio/hyperion-sdk/dist',nativeSDK:'packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist'}))for(const row of ASSEMBLY.trees[key])boundaries.add(prefix+'/'+row.path);
  const closure=observeSourceClosure({root:fileURLToPath(new URL('../../../',import.meta.url)),ts,boundaries,...NATIVE_PROFILE.sourceClosure.inputs});
  assertSourceClosure(closure,NATIVE_PROFILE);
+ assert.equal(NATIVE_PROFILE.sourceClosure.algorithm,'bounded-static-import-and-literal-url-v2');
  for(const path of ['tests/unit/sdk49-indexed-source-admission.mjs','tests/fixtures/engineering-profiles/sdk49-indexed-linux.json','scripts/qualification/operator-list-mongodb/sdk49-source-profile.mjs'])assert(closure.files.some(row=>row.path===path));
- assert.equal(closure.edges.filter(row=>row.kind==='declared-route').length,18);
- for(const path of ['tests/unit/sdk49-indexed-source-admission.mjs','tests/fixtures/engineering-profiles/sdk49-indexed-linux.json']){
+ assert.equal(NATIVE_PROFILE.sourceClosure.inputs.manifestRouteCount,24);assert.equal(closure.edges.filter(row=>row.kind==='declared-route').length,24);
+ assert.throws(()=>observeSourceClosure({root:fileURLToPath(new URL('../../../',import.meta.url)),ts,boundaries,...NATIVE_PROFILE.sourceClosure.inputs,manifestRouteCount:18}),/Exact selected manifest route count/);
+ for(const path of ['tests/unit/sdk49-indexed-source-admission.mjs','tests/fixtures/engineering-profiles/sdk49-indexed-linux.json','tests/native/retained-workload-progress.mjs','tests/native/retained-workload-test.mjs']){
   const altered=structuredClone(NATIVE_PROFILE);altered.sourceFiles=altered.sourceFiles.filter(row=>row.path!==path);assert.throws(()=>assertSourceClosure(closure,altered),/transitive source\/data pin/);
  }
  const altered=structuredClone(closure);altered.edges.pop();assert.throws(()=>assertSourceClosure(altered,NATIVE_PROFILE),/complete graph/);

@@ -119,3 +119,12 @@ test('original retained1480 callbacks/assertions and complete-kind17cases retain
     assert.equal(current.originalLimits.nativeCases, 17); assert.equal(current.originalLimits.nativeComponentMS, 300000);
     assert.equal(current.acceptance.runtime, 'pending'); assert.equal(current.acceptance.physicalMongoDB, 'pending');
 });
+
+test('combined420 selects full CI through its exact419 base while every prior workflow byte stays fixed',()=>{
+    const workflow=canonical('.github/workflows/build.yml'),selected='feat/stateful-indexed-schema-415',addition=', "'+selected+'"';
+    const match=/^  pull_request:\n    branches: (\[[^\n]+\])/m.exec(workflow);assert(match,'Explicit existing PR base list required');
+    const branches=JSON.parse(match[1]);assert.equal(branches.filter(branch=>branch===selected).length,1);assert(branches.includes('feat/mongodb-operator-lists-414'));
+    assert.equal(workflow.split(addition).length,2,'Exactly one routing entry may be added');
+    assert.equal(sha(workflow.replace(addition,'')),'60368ea5bbf10bf4b98cdfcc9ded61faedb1811e18f57ff11424a510fa848aad',
+        'All prior branches, workloads, deadlines and the accepted diagnostic artifact path must remain byte-identical to2b');
+});

@@ -48,8 +48,8 @@
   "sourceFiles": [
     {
       "path": ".github/workflows/build.yml",
-      "bytes": 22360,
-      "sha256": "5b649922e1ce2c008ca99100371f1fd7a82a6b60a2831ec45e53830ea460dead"
+      "bytes": 22453,
+      "sha256": "0b129215697f96702297adfe17a9375a4ee6f92dfd9e8b4951d0c6434dc0dc6d"
     },
     {
       "path": ".github/workflows/indexed-schema-native.yml",
@@ -323,13 +323,13 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-integration-v2.md",
-      "bytes": 2424,
-      "sha256": "7ced88a79c9a9a53617a08a7550a027ede227f62594bc27b7c8e731134c121bf"
+      "bytes": 3468,
+      "sha256": "73482edd75929aaf4e17c8f6f0fe59babd67d2cfaa5bfc306db1a0158a5a2ca4"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-offline.test.mjs",
-      "bytes": 35704,
-      "sha256": "2e8c658b559a1808f1228c6cf75cd005ad8020f62902652ebdf82c2b0a69a20a"
+      "bytes": 36178,
+      "sha256": "29aa829239c499afd53da0d1d64ced18881ffc5fb15ae5682122077bdd2f47e8"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-profile-v1.json",
@@ -343,13 +343,18 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-source-closure.mjs",
-      "bytes": 5556,
-      "sha256": "dbce5c23f76a9430e18502a6c7a362b7fa855761d14550391fc2207cd6b6e367"
+      "bytes": 5792,
+      "sha256": "7562c8522f831cb44054ba763ad11dade795fddbaf91508ff45847429db3d261"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-trace.mjs",
       "bytes": 16992,
       "sha256": "50c6fe81334420ebc3d039e9c05d4732b1d11a9d674ba0392679f590c21863a9"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/retained-wire-diagnostics.md",
+      "bytes": 3870,
+      "sha256": "55822119b588c381ff373ee89db9c765596a1c03e571176edd703740082a7c87"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/sdk49-ci-routing.md",
@@ -498,8 +503,8 @@
     },
     {
       "path": "scripts/qualification/wire-source-snapshot.mjs",
-      "bytes": 5107,
-      "sha256": "49e1e599f743fefc88e529c5dc7cd989cb8d0a824ce6c53c4b9afcfcd6dc477a"
+      "bytes": 5438,
+      "sha256": "1bc5fe1c89da3e214d885ea7cbeba65aa375a20ad820eff33aaeda4c40ad4792"
     },
     {
       "path": "scripts/qualification/wire-source-snapshot.test.mjs",
@@ -538,8 +543,8 @@
     },
     {
       "path": "tests/fixtures/engineering-profiles/sdk49-indexed-linux.json",
-      "bytes": 170018,
-      "sha256": "6c21e0786b54f5337870865fb51878457a610816519d5b9915ba64fad464b8d9"
+      "bytes": 171115,
+      "sha256": "a7e0f2f6e119d70d8120e2041d5314299c96f0bc4b55ee5c10b4597b9c4b44f3"
     },
     {
       "path": "tests/fixtures/wire-managed-state-v2/plugin/build/index.js",
@@ -548,8 +553,23 @@
     },
     {
       "path": "tests/native/current-stateful-source-profile.test.mjs",
-      "bytes": 11223,
-      "sha256": "44eb46b67a245650ba039bccb60eb125aa078da4b15ec24ef4873ff6cabc01d2"
+      "bytes": 12538,
+      "sha256": "cfce06a2e7bdb7805f3c6cace0060a852297c039cbc509626a9034145bb83134"
+    },
+    {
+      "path": "tests/native/retained-workload-progress.mjs",
+      "bytes": 11195,
+      "sha256": "20939b094561a03edb6122a50f6ee3982d7a3b73d211a90921eb10ecc39b7e7e"
+    },
+    {
+      "path": "tests/native/retained-workload-progress.test.mjs",
+      "bytes": 12243,
+      "sha256": "0b5b74b06615564a07bf29ba6822d70f1c7f0133fddb53e54ffbb3dd7150f8ad"
+    },
+    {
+      "path": "tests/native/retained-workload-test.mjs",
+      "bytes": 4249,
+      "sha256": "88ff9bf17d733b8282d8f9217911057d0ee1589a816a47e75146536579976623"
     },
     {
       "path": "tests/native/stateful-complete-kind-codec-profile.test.mjs",
@@ -578,8 +598,8 @@
     },
     {
       "path": "tests/unit/portable-state-source-fixture.mjs",
-      "bytes": 11519,
-      "sha256": "bab9fb413b587b3c93fa401664c39142a2ddf775d8cab89485f6b7a5d3df4a85"
+      "bytes": 12760,
+      "sha256": "aa41f953c45fc1c37c9e4516f4a52c8200b3e7488d1aa8316947764ac31c0f7d"
     },
     {
       "path": "tests/unit/protocol-abi-history-native.mjs",
@@ -599,7 +619,7 @@
     {
       "path": "tests/unit/sdk49-indexed-source-admission.mjs",
       "bytes": 8529,
-      "sha256": "251e9697b3dbf19f2d50e1ff26529e34bbe44f52feb0867613dc724ebbbca156"
+      "sha256": "73cff053f440416e19f2a1d1bf785c9ea3cf2099da012782c9c71129eec35a6e"
     },
     {
       "path": "tests/unit/stateful-complete-kind-source-admission-native.mjs",
@@ -613,13 +633,13 @@
     },
     {
       "path": "tests/unit/stateful-host-fixture.mjs",
-      "bytes": 11252,
-      "sha256": "332e31f842286e305b279d07dfd0aed6dcdbe056e79e0c3b3268851e0c2c37bd"
+      "bytes": 12376,
+      "sha256": "3cb7e96e4589789f01c004940bf89f03f69fb8f03c9e91b8d38efe1f14da1095"
     },
     {
       "path": "tests/unit/wire-managed-state-v2-native.mjs",
-      "bytes": 8329,
-      "sha256": "fb63ee72728f456cf00165aeae33cf80c02f34eb8a9367a49baa501c605cd664"
+      "bytes": 8356,
+      "sha256": "8f396f9f6d38d5b155762039e55247807d638dd8ffed9ffdb5332638f7e731fc"
     }
   ],
   "dependencies": {
@@ -5122,8 +5142,8 @@
   },
   "integration": {
     "parents": [
-      "ff19de976ab8fce3b85a6e3332f9dee5c038fce1",
-      "9e8860c5fd8fa8d5fb84b4dd0abd3eb453ab64ad"
+      "770faa16f8bd2b02f51bb6a6296b7092224f5301",
+      "2b8055536820bb9a424a7e2be5723d780c1f4dd2"
     ],
     "underlyingProductSource": {
       "commit": "2da0d8fa44b447134261128d75d3ada100e9a59b",
@@ -5132,7 +5152,7 @@
     "actualCheckout": "Observed genuine GitHub HEAD/GITHUB_SHA at execution; no inherited physical pass"
   },
   "sourceClosure": {
-    "algorithm": "bounded-static-import-and-literal-url-v1",
+    "algorithm": "bounded-static-import-and-literal-url-v2",
     "inputs": {
       "seeds": [
         "scripts/qualification/indexed-schema-mongodb/assembly.mjs",
@@ -5169,12 +5189,20 @@
       "manifestPath": "tests/fixtures/engineering-profiles/sdk49-indexed-linux.json",
       "selfPaths": [
         "scripts/qualification/indexed-schema-mongodb/native-profile-v2.json"
-      ]
+      ],
+      "manifestRouteCount": 24
     },
     "observation": {
-      "files": 80,
-      "edges": 223,
-      "sha256": "2c8ea87b5700f76367f5a2d1d7cc35e2a22d557c25bac165fa3f475b3a1da28a"
+      "files": 84,
+      "edges": 236,
+      "sha256": "a1dc2ecaba03343d4be84a2a9dcd1ccbd8258aed5cf64481f40bbbc6012de35c"
     }
+  },
+  "previousSource": {
+    "commit": "770faa16f8bd2b02f51bb6a6296b7092224f5301",
+    "tree": "5e389429247979e18ea2861ea09b60346f10d731",
+    "descriptor": "scripts/qualification/indexed-schema-mongodb/native-profile-v2.json",
+    "sha256": "c7cf653eb07b999e3de4d5284175f6b75ceb8ff749926444470a26e653cd7fd5",
+    "scope": "prior descriptor identity only; no combined qualification inherited"
   }
 }
