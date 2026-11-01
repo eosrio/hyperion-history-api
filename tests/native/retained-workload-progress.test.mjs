@@ -118,3 +118,8 @@ test('copy observation leaves transaction isolation and rollback unchanged under
     await col.replaceOne({_id:'one'},{_id:'one',nested:{n:3}},{session});assert.equal((await col.findOne({_id:'one'},{session})).nested.n,3);throw new Error('expected rollback');}),/expected rollback/);
    await session.endSession();assert.equal((await col.findOne({_id:'one'})).nested.n,2);});}
 });
+
+test('fixture snapshot cardinality observation refuses an oversized collection map before walking it',()=>{
+ const s=setup(),storage=new Map(Array.from({length:1025},(_,i)=>[String(i),new Map()]));
+ withRetainedProgress(s.ledger,()=>{const observe=retainedFixtureCopyObserver();assert.throws(()=>observe('transaction',storage),/collection observation bound/);});
+});

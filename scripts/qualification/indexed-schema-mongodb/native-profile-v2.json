@@ -353,8 +353,8 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/retained-wire-diagnostics.md",
-      "bytes": 4562,
-      "sha256": "309665e84f9a789bd1de6408ffca82186e14636c5e8e53bb0b2ada646fd17a93"
+      "bytes": 4621,
+      "sha256": "d284457ef2e7ee659ce6dd315ce4ba7f729f813b64af0278a084b32a7675c1c5"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/sdk49-ci-routing.md",
@@ -544,7 +544,7 @@
     {
       "path": "tests/fixtures/engineering-profiles/sdk49-indexed-linux.json",
       "bytes": 171293,
-      "sha256": "5eabf871ed87cde39fa0c906e1dbebe003dca9a7d53d912549d9baae8f0c0da9"
+      "sha256": "b770196d4284b2e6daa4d41b7bbbb143962445d7c4d200a0df8dd807d2e832fe"
     },
     {
       "path": "tests/fixtures/wire-managed-state-v2/plugin/build/index.js",
@@ -558,13 +558,13 @@
     },
     {
       "path": "tests/native/retained-workload-progress.mjs",
-      "bytes": 12250,
-      "sha256": "609f8f827cb1f978229083fa61e06f4763e7f295d91799526c1eeb33ab40876e"
+      "bytes": 12325,
+      "sha256": "445beb3218d488772203bb8a6748edc3e0ef3fb8e524f8499d02cac228bd90a5"
     },
     {
       "path": "tests/native/retained-workload-progress.test.mjs",
-      "bytes": 14929,
-      "sha256": "e4b03b0621b4c55eb185a45b0f1a1db1fe6d42b795da48d52f9ff46043ef6ae0"
+      "bytes": 15297,
+      "sha256": "4cc38b2095e5abd7b79e522e3fa194cbcf07aca1c8b1a4edcbae1090d4155475"
     },
     {
       "path": "tests/native/retained-workload-test.mjs",
@@ -619,7 +619,7 @@
     {
       "path": "tests/unit/sdk49-indexed-source-admission.mjs",
       "bytes": 8529,
-      "sha256": "20cd625d2b6e142fc357021283bf6cc06216184425c6df141d64e981df350bca"
+      "sha256": "68fb347560272a124b2ce06729ea4638f30ede4ea62002c7c205d2a7024966d7"
     },
     {
       "path": "tests/unit/stateful-complete-kind-source-admission-native.mjs",
@@ -5195,7 +5195,7 @@
     "observation": {
       "files": 84,
       "edges": 238,
-      "sha256": "9a7b78d6d4c775a5176726390d2f5eedc940069a918fbddf16bf35803dce2ba2"
+      "sha256": "5c09eebe3954891c7e5b45446554f073e1caf356e23c9f4f044d560ee5944d8c"
     }
   },
   "previousSource": {

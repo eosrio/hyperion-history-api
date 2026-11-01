@@ -4530,8 +4530,8 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/retained-wire-diagnostics.md",
-      "bytes": 4562,
-      "sha256": "309665e84f9a789bd1de6408ffca82186e14636c5e8e53bb0b2ada646fd17a93"
+      "bytes": 4621,
+      "sha256": "d284457ef2e7ee659ce6dd315ce4ba7f729f813b64af0278a084b32a7675c1c5"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/sdk49-ci-routing.md",
@@ -4590,13 +4590,13 @@
     },
     {
       "path": "tests/native/retained-workload-progress.mjs",
-      "bytes": 12250,
-      "sha256": "609f8f827cb1f978229083fa61e06f4763e7f295d91799526c1eeb33ab40876e"
+      "bytes": 12325,
+      "sha256": "445beb3218d488772203bb8a6748edc3e0ef3fb8e524f8499d02cac228bd90a5"
     },
     {
       "path": "tests/native/retained-workload-progress.test.mjs",
-      "bytes": 14929,
-      "sha256": "e4b03b0621b4c55eb185a45b0f1a1db1fe6d42b795da48d52f9ff46043ef6ae0"
+      "bytes": 15297,
+      "sha256": "4cc38b2095e5abd7b79e522e3fa194cbcf07aca1c8b1a4edcbae1090d4155475"
     },
     {
       "path": "tests/native/retained-workload-test.mjs",

@@ -53,7 +53,7 @@ export function retainedFixtureCopyObserver(){
  const counters={findOne:0,update:0,transaction:0,snapshotCollections:0,snapshotDocuments:0,maxSnapshotDocuments:0};
  for(const name of Object.keys(counters))ledger.counter('fixture.copy.'+name.toLowerCase(),()=>counters[name]);
  return (origin,storage)=>{assert(Object.hasOwn(counters,origin)&&['findOne','update','transaction'].includes(origin));counters[origin]++;
-  if(origin==='transaction'){assert(storage instanceof Map);let documents=0;for(const collection of storage.values()){assert(collection instanceof Map);documents+=collection.size;}
+  if(origin==='transaction'){assert(storage instanceof Map);assert(storage.size<=1024,'Fixture snapshot collection observation bound');let documents=0;for(const collection of storage.values()){assert(collection instanceof Map);documents+=collection.size;}
    counters.snapshotCollections+=storage.size;counters.snapshotDocuments+=documents;counters.maxSnapshotDocuments=Math.max(counters.maxSnapshotDocuments,documents);}
  };
 }
