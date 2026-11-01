@@ -17,9 +17,18 @@ export interface StatefulNativeCandidate {
     readonly digest: string; readonly view: StatefulView;
     readonly observations: readonly StatefulObservation[]; readonly mutations: readonly StatefulMutation[];
 }
+/** Backend-private sidecars share the canonical transaction and its existing guard; never a plugin port. */
+export interface StatefulNativeSidecarsV1 {
+    apply(candidate: StatefulNativeCandidate, before: StatefulView, after: StatefulView, session: ClientSession,
+        call: <T>(work: () => Promise<T>) => Promise<T>): Promise<void>;
+    rollback(images: readonly StatefulImage[], blockId: string, before: StatefulView, after: StatefulView, session: ClientSession,
+        call: <T>(work: () => Promise<T>) => Promise<T>): Promise<void>;
+    prune(blockId: string, session: ClientSession, call: <T>(work: () => Promise<T>) => Promise<T>): Promise<void>;
+}
 export interface StatefulEffects<M extends StatefulNativeProgress> {
     readonly declaration: StatefulDeclaration; readonly policy: StatefulPolicy;
     readonly rows: Collection<StatefulRow>; readonly images: Collection<StatefulImage>;
+    readonly sidecars?: StatefulNativeSidecarsV1;
     /** V2 checks its actual owner/canonical guard around every native await; v1 retains its existing semantics. */
     call<T>(work: () => Promise<T>): Promise<T>;
     load(session: ClientSession): Promise<M>;
@@ -61,12 +70,14 @@ export async function commitStatefulCandidate<M extends StatefulNativeProgress>(
             if (mutation.kind === 'put') await io.call(() => io.rows.replaceOne({_id: keyId(mutation.target)}, rowOf(d, mutation.target, mutation.value), {session, upsert: true}));
             else await io.call(() => io.rows.deleteOne({_id: keyId(mutation.target)}, {session}));
         }
+        const checkpoint = {blockNum: block.blockNum, blockId: block.blockId};
+        if (io.sidecars) await io.call(() => io.sidecars!.apply(candidate, io.view(m), {...io.view(m), checkpoint}, session, work => io.call(work)));
         const retained = [...m.undo, undo]; let floor = m.floor, floorReceipt = m.floorReceipt;
         while (retained.length > io.policy.maxBlocks || retainedBytes(retained) > io.policy.maxBytes) {
             const removed = retained.shift()!; await io.call(() => io.images.deleteMany({blockId: removed.block.blockId}, {session}));
+            if (io.sidecars) await io.call(() => io.sidecars!.prune(removed.block.blockId, session, work => io.call(work)));
             floor = {blockNum: removed.block.blockNum, blockId: removed.block.blockId}; floorReceipt = {...floor, sourceDigest: removed.sourceDigest, candidateDigest: removed.digest};
         }
-        const checkpoint = {blockNum: block.blockNum, blockId: block.blockId};
         const receipts = [...m.receipts, {...checkpoint, sourceDigest: source.digest, candidateDigest: candidate.digest}].slice(-io.policy.receiptRetention);
         const next = await io.save(m, {checkpoint, receipts, pending: null, undo: retained, floor, floorReceipt}, session);
         return {status: 'applied' as const, progress: io.view(next)};
@@ -85,12 +96,16 @@ export async function rollbackStatefulStep<M extends StatefulNativeProgress>(io:
         if (!equalPoint(checkpoint, operation.ancestor)) {
             const u = undo.pop(); requireState(u && equalPoint(u.block, checkpoint), 'Missing original undo descriptor');
             const raw = await io.call(() => io.images.find({blockId: u.block.blockId}, {session}).sort({_id: 1}).limit(u.count + 1).toArray());
-            for (const image of checkedImages(d, u, raw)) {
+            const checked = checkedImages(d, u, raw);
+            for (const image of checked) {
                 if (image.before === null) await io.call(() => io.rows.deleteOne({_id: keyId(image.target)}, {session}));
                 else await io.call(() => io.rows.replaceOne({_id: keyId(image.target)}, rowOf(d, image.target, JSON.parse(image.before!)), {session, upsert: true}));
             }
+            const restored = {blockNum: u.block.blockNum - 1, blockId: u.block.previousBlockId};
+            if (io.sidecars) await io.call(() => io.sidecars!.rollback(checked, u.block.blockId, io.view(current),
+                {...io.view(current), checkpoint: restored}, session, work => io.call(work)));
             await io.call(() => io.images.deleteMany({blockId: u.block.blockId}, {session}));
-            checkpoint = {blockNum: u.block.blockNum - 1, blockId: u.block.previousBlockId}; receipts = receipts.filter(r => r.blockNum <= checkpoint.blockNum);
+            checkpoint = restored; receipts = receipts.filter(r => r.blockNum <= checkpoint.blockNum);
             if (checkpoint.blockNum > 0 && !receipts.some(r => equalPoint(r, checkpoint))) {
                 const last = undo.at(-1), receipt = last ? {...checkpoint, sourceDigest: last.sourceDigest, candidateDigest: last.digest} : current.floorReceipt;
                 requireState(receipt && equalPoint(receipt, checkpoint), 'Missing predecessor replay receipt'); receipts.push(receipt);

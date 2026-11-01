@@ -16,7 +16,7 @@ import {MAX_BSON_BYTES, ZERO, decodeRow, equalPoint, fields, hex, keyId, logical
 import {commitStatefulCandidate, rollbackStatefulStep, type StatefulEffects, type StatefulNativeCandidate} from './stateful-effects.js';
 import {matchingRaw, ownerMetadata, ownerRecovery, ownerSlot, ownerView, STATEFUL_OWNER_STORAGE_V2, type OwnerMetadataV2}
     from './stateful-owner-v2-contract.js';
-import {registerStatefulOwnerCompletedSnapshotV2} from './stateful-owner-v2-internal.js';
+import {registerStatefulOwnerCompletedSnapshotV2, statefulOwnerSidecarsV1} from './stateful-owner-v2-internal.js';
 
 export interface MongoDbStatefulOwnerAdapterOptionsV2 {
     readonly client: MongoClient; readonly databaseName: string; readonly backendId: string; readonly collectionPrefix: string;
@@ -77,7 +77,19 @@ class MongoDbStatefulOwnerAdapterV2 implements StatefulOwnerAdapterV2 {
         this.images = this.db.collection<StatefulImage>(prefix + '_u_' + declaration.digest);
         const completedSessions = new WeakSet<ClientSession>();
         registerStatefulOwnerCompletedSnapshotV2(this, Object.freeze({
+            declarationDigest: declaration.digest,
             createSession: () => {const session = this.options.client.startSession({causalConsistency: false}); completedSessions.add(session); return session;},
+            withOwner: async <T>(lease: StatefulOwnerLeaseV2, work: (scope: import('./stateful-owner-v2-internal.js').StatefulOwnedNativeSnapshotV1) => Promise<T>) => {
+                const context = this.lease(lease);
+                const result = await this.transaction(context, async session => {
+                    const current = await this.current(context, session);
+                    requireState(current.initialized,'Native sidecar namespace is not initialized','stateful.not-initialized');
+                    // An initialization callback may intentionally return void. Keep the original
+                    // transaction's missing-result fence without confusing that callback with no commit.
+                    return {value:await work(Object.freeze({session, view: ownerView(this.declaration, current),
+                        call: <R>(operation: () => Promise<R>) => this.call(context, operation)}))};
+                }); return result.value;
+            },
             check: async (input: StatefulCompletedReadV2, expected: StatefulView, session: ClientSession) => {
                 const read = this.readContext(input, 'completed');
                 requireState(completedSessions.has(session) && !session.hasEnded && session.inTransaction(),
@@ -274,7 +286,8 @@ class MongoDbStatefulOwnerAdapterV2 implements StatefulOwnerAdapterV2 {
     }
     private effects(context: OwnerContext, targetDigest?: string): StatefulEffects<OwnerMetadataV2> {
         const d = this.declaration;
-        return {declaration: d.projection, policy: this.policy, rows: this.rows, images: this.images, call: work => this.call(context, work),
+        return {declaration: d.projection, policy: this.policy, rows: this.rows, images: this.images,
+            sidecars: statefulOwnerSidecarsV1(this), call: work => this.call(context, work),
             load: session => this.current(context, session), save: (m, changes, session) => this.save(context, m, changes, session),
             transaction: work => this.transaction(context, work), assertApply: (m, candidate) => {requireState(targetDigest !== undefined, 'Missing raw apply identity'); this.bound(m, targetDigest, candidate.source.digest);},
             assertView: (m, candidate) => assertStatefulOwnerViewV2(d, ownerView(d, m), candidate.view),

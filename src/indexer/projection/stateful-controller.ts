@@ -10,6 +10,8 @@ import {ProtocolAbiProofUnavailableError} from '../protocol/abi-proof.js';
 import {currentProofConsumerScope} from '../protocol/proof-consumer-scope.js';
 import type {PortableProjectionRawTarget, PortableProjectionSource} from './source.js';
 import type {StatefulActionMetadataOptionsV2} from '@eosrio/hyperion-sdk/projection-stateful-source-v2';
+import {statefulOwnerExpectationDigest, type StatefulOwnerExpectation} from './stateful-expectation.js';
+export {statefulOwnerExpectationDigest, type StatefulOwnerExpectation} from './stateful-expectation.js';
 
 const json = protocolImmutableJson;
 const hash = (input: unknown) => createHash('sha256').update(json(input)).digest('hex');
@@ -18,13 +20,6 @@ const same = (a: unknown, b: unknown) => json(a) === json(b);
 function requireOwner(value: unknown, message: string): asserts value {
     if (!value) throw new StatefulContractError('stateful.unavailable', message);
 }
-export interface StatefulOwnerExpectation {
-    readonly declarationDigest: string;
-    readonly owner: NonNullable<StatefulOwnerRecoveryV2['owner']>;
-    readonly view: StatefulView;
-}
-export const statefulOwnerExpectationDigest = (expected: StatefulOwnerExpectation): string => hash([
-    'hyperion-stateful-owner-request-v2', expected.declarationDigest, expected.owner, expected.view]);
 interface OwnerOptions {
     readonly declaration: StatefulOwnerDeclarationV2;
     readonly adapter: StatefulOwnerAdapterV2;

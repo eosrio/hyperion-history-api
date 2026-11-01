@@ -16,12 +16,15 @@
     "./stateful": {"types": "./dist/stateful.d.ts", "import": "./dist/stateful.js"},
     "./stateful-owner-v2": {"types": "./dist/stateful-owner-v2.d.ts", "import": "./dist/stateful-owner-v2.js"},
     "./stateful-owner-complete-kind-v1": {"types": "./dist/stateful-complete-kind-v1.d.ts", "import": "./dist/stateful-complete-kind-v1.js"},
+    "./stateful-owner-indexed-query-v1": {"types": "./dist/stateful-indexed-v1.d.ts", "import": "./dist/stateful-indexed-v1.js"},
+    "./stateful-owner-indexed-query-v1/engineering": {"types": "./dist/stateful-indexed-engineering-v1.d.ts", "import": "./dist/stateful-indexed-engineering-v1.js"},
     "./operator-lists": {"types": "./dist/operator-lists.d.ts", "import": "./dist/operator-lists.js"}
   },
   "files": [
     "dist/",
     "README.md",
     "STATEFUL.md",
+    "INDEXED-ENGINEERING.json",
     "OPERATOR-LISTS.md"
   ],
   "scripts": {
@@ -42,7 +45,7 @@
     "mongodb": "7.2.0"
   },
   "devDependencies": {
-    "@eosrio/hyperion-sdk": "git+https://github.com/eosrio/hyperion-sdk.git#429a1bf1d3bddb746fa662de9529480890b7368f",
+    "@eosrio/hyperion-sdk": "git+https://github.com/eosrio/hyperion-sdk.git#dc20a03f2b60ba05a3369d677222a9cf0d65d299",
     "@types/node": "25.5.0",
     "typescript": "7.0.2"
   }

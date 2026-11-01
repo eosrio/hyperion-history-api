@@ -166,3 +166,56 @@ to the public facade. The managed root client and its real session can come from
 a separate copy of the same driver. No-socket execution controls exercise those
 two module instances through the factory, actual root `Server.command` and final
 wire preparation. Physical replica-set traces remain mandatory.
+
+The additive `./stateful-owner-indexed-query-v1` export uses SDK49
+`dc20a03f2b60ba05a3369d677222a9cf0d65d299`. Logical models remain SDK declarations:
+base/inner-one/left-one sources, typed stored fields, predicates and explicit order
+tuples. The native first tracer supports base text equality/membership/exclusion,
+base signed-int64 comparisons and indexed base orders. It requires a text equality
+anchor. Unsupported operators/orders refuse before data commands; it never reads a
+complete kind or compares/sorts records in JavaScript.
+
+Canonical owner-v2 rows and before-images keep their existing closed JSON shape.
+Versioned generation/model sidecars hold typed BSON Longs, null flags and composite
+text equality keys. Canonical mutations, sidecars, model coverage, model coverage
+before-images and checkpoint/receipt progress share the existing effect transaction.
+Undo derives typed rows from the original canonical before-images in that same
+transaction. Model value/cardinality failures make only that model unavailable;
+existing canonical keyed reads and complete-kind reads retain their contracts.
+The model's recovery descriptors prune with the original retained canonical block.
+
+An admitted index alone proves no materialization coverage. Only an empty canonical
+genesis with empty new sidecar/undo namespaces can establish initial coverage.
+Existing populated generations continue to serve existing reads and refuse indexed
+queries until an explicit new state-only generation is replayed. There is no
+automatic legacy collection adoption, complete-kind rebuild, or on-read backfill.
+
+Default native and HTTP indexed capability records offer no comparison profiles.
+The separately exported `./stateful-owner-indexed-query-v1/engineering` selector
+requires the explicit `indexed-schema-sdk49-native2bf-engineering-v1` profile and
+checks the packaged native/SDK emission inventories and pinned dependencies before
+selecting an engineering facade. It retains the very same owner, native lease and
+adapter-issued completed-read capability. It does not grant source, owner, request
+or serving authority. Only the explicitly named native semantic profile
+`mongodb-simple-utf8-v1` can proceed to actual index/coverage admission there.
+Atomic/PostgreSQL profiles remain unavailable even in this engineering assembly.
+The manifest records native MongoDB, Atomic SQL and managed HTTP qualification as
+pending. No production configuration or private Wire profile is changed.
+
+The native query reads coverage and data in the original owner-bound snapshot,
+checks its real completed view before/after, uses indexed native filters/order,
+performs required joins before offset/limit, and drains aggregate/getMore to cursor
+zero. All data attempts, rows and serialized success envelopes use the SDK's
+cumulative request totals. Counts use native signed-int64 sums and decimal strings;
+missing optional joined aggregates stay null, distinct from an actual zero. Native
+transaction/operation deadlines and cursor/session cleanup retain the existing
+managed nonretrying client policy. Page and count compose through one SDK completed
+view and the existing final HTTP onSend source/owner/probe/serialization guard.
+
+`npm run test:indexed:finite` at the repository root exercises inert model, cursor,
+transaction and emitted HTTP composition ports. `npm run test:indexed:package`
+checks an installed tarball and declarations through normal settled npm commands.
+These controls do not execute a database, mutable controller, physical HTTP listener
+or process-stop experiment. Real MongoDB8.0.34 plans/updates/restart/fork traces,
+paired original PostgreSQL semantics and managed native HTTP remain required
+qualification work under HAPI#415; existing historical profile gates remain intact.

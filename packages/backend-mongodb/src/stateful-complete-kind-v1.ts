@@ -8,7 +8,7 @@ import {assertStatefulOwnerViewV2, captureStatefulOwnerViewV2, receiveStatefulOw
     type StatefulOwnerAdapterV2} from '@eosrio/hyperion-sdk/projection-stateful-owner-v2';
 import {createMongoDbStatefulOwnerAdapterV2, type MongoDbStatefulOwnerAdapterOptionsV2} from './stateful-owner-v2.js';
 import {decodeRow, fields, keyId, logicalKey, requireState} from './stateful-contract.js';
-import {assertStatefulOwnerCompletedSnapshotV2, createStatefulOwnerCompletedSessionV2} from './stateful-owner-v2-internal.js';
+import {assertStatefulOwnerCompletedSnapshotV2, createStatefulOwnerCompletedSessionV2, registerStatefulOwnerNativeFacadeV1} from './stateful-owner-v2-internal.js';
 import {executeCompleteKindCommand} from './stateful-complete-kind-command.js';
 
 const indexName = 'h45_complete_kind_v1';
@@ -160,7 +160,7 @@ export async function createMongoDbStatefulCompleteKindAdapterV1(options: MongoD
             catch (error) {if (!operationFailed) throw unavailable(error);}
         }
     };
-    return Object.freeze({...delegated, capabilities: base.capabilities,
+    const facade = Object.freeze({...delegated, capabilities: base.capabilities,
         completeKindCapabilities: Object.freeze({family: STATEFUL_COMPLETE_KIND_FAMILY_V1, interfaceVersion: 1 as const, limits}),
         async acquireOwner(request, guard) {
             retryOptions(); const lease = await base.acquireOwner(request, guard);
@@ -189,4 +189,5 @@ export async function createMongoDbStatefulCompleteKindAdapterV1(options: MongoD
         },
         closeRead(read) {active.delete(read); base.closeRead(read);}
     } satisfies StatefulCompleteKindAdapterV1);
+    registerStatefulOwnerNativeFacadeV1(facade, base); return facade;
 }
