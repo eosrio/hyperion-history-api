@@ -312,6 +312,9 @@ export function createMongoDbOperatorListSourceV1(input: MongoDbOperatorListOpti
                 const answer = await write({insert: collection, documents, ordered: true, writeConcern}, ctx, budget);
                 requireList(answer.n === documents.length, 'Operator-list insert was incomplete');
             };
+            // A snapshot find on a missing namespace returns no atClusterTime on MongoDB8.0.
+            // Provision only its canonical index, never a source pointer, before verification.
+            await write({createIndexes: control, indexes: [{name: '_id_', key: {_id: 1}}], writeConcern}, ctx, budget);
             await write({createIndexes: headers, indexes: [{name: headerIndex, key: {slot: 1, revision: 1}, collation: {locale: 'simple'}}],
                 writeConcern}, ctx, budget);
             await write({createIndexes: rows, indexes: [{name: itemIndex, key: {slot: 1, revision: 1, list: 1, ordinal: 1}, unique: true,
