@@ -48,7 +48,7 @@ export async function run(options){
  const closeRead=(adapter,read)=>{adapter.closeRead(read);reads.delete(read);};
  const open=async(s=state,which=0,guard=noCancel)=>{const current=await setExpected(s),entry=s.entries[which],adapter=await s.engineering.indexedForModel(current.view,entry.declaration.digest,guard),read=await adapter.completedRead(s.identity,current.view,guard);reads.add(read);return {adapter,read,expected:current.view,entry};};
  const attest=(start,result,maximum)=>{const evidence=verifyIndexedTrace(trace.slice(start),phase.name,{attempts:result.attempts,maximum,success:true});assert(attestations.length<1024);
-  attestations.push({phase:phase.name,model:result.queryDeclarationDigest,view:result.view,...evidence});};
+  attestations.push({phase:phase.name,model:result.queryDeclarationDigest,view:result.view,trace:[start,trace.length],maximum,...evidence});};
  const direct=async(request,limits=PLAN.limits,which=0,s=state,guard=noCancel)=>{const active=await open(s,which,guard),start=trace.length;
   try{const result=await active.adapter.queryCompleted(active.read,active.expected,request,limits,active.entry.declaration);attest(start,result,limits.readAttempts);return result;}finally{closeRead(active.adapter,active.read);}};
  const compose=async(use,limits=PLAN.limits,which=0,s=state,guard=noCancel)=>{const current=await setExpected(s),entry=s.entries[which],adapter=await s.engineering.indexedForModel(current.view,entry.declaration.digest,guard);
@@ -75,7 +75,7 @@ export async function run(options){
  const coverageCollection=entry=>admin.db(options.database).collection(entry.coverage);
  const report={schemaVersion:1,status:'running',plan:PLAN,source:admitted,database:options.database,cases,acceptance:{...PLAN.acceptance},sourceAuthority:'Synthetic empty-input SDK/native effects only; no Antelope/Wire or managed HTTP authority',
   runtime:{node:process.version,executableSha256:sha(readFileSync(process.execPath))},metrics:{attempts:'Actual tagged indexed aggregate/getMore; authority/index/explain/cleanup recorded separately',responseBytes:'Complete UTF-8 native envelopes and SDK composition, including counts',replyBsonBytes:'Monitored BSON document estimates; not wire or compression bytes'}};
- const caseRun=async(name,work)=>{phase={name};const start=trace.length;try{const value=await work();cases.push({name,status:'pass',...value,trace:[start,trace.length]});}catch(error){cases.push({name,status:'failed',error:failure(error),trace:[start,trace.length]});throw error;}finally{gate=afterData=afterTransaction=beforeInsert=beforeSnapshot=undefined;}};
+ const caseRun=async(name,work)=>{phase={name};const start=trace.length,attested=attestations.length;try{const value=await work();cases.push({name,status:'pass',...value,trace:[start,trace.length],successfulQueries:attestations.length-attested});}catch(error){cases.push({name,status:'failed',error:failure(error),trace:[start,trace.length]});throw error;}finally{gate=afterData=afterTransaction=beforeInsert=beforeSnapshot=undefined;}};
  try{
   await admin.connect();const hello=await admin.db('admin').command({hello:1}),build=await admin.db('admin').command({buildInfo:1});assert.equal(build.version,PLAN.server);assert.equal(hello.isWritablePrimary,true);assert.equal(hello.setName,options.replicaSet);assert.equal(hello.me,options.member);assert.deepEqual(hello.hosts,[options.member]);report.server={version:build.version,replicaSet:hello.setName,member:hello.me};
   const baseline=await admin.db('admin').command({getParameter:1,'failpoint.failCommand':1});assert.equal(baseline['failpoint.failCommand'].mode,0);failpointGranted=true;
@@ -158,7 +158,15 @@ export async function run(options){
     // Original retention is four blocks: old history refuses, without a reconstructed kind scan.
     const genesis=await make(state.client,'covered-genesis','covered-genesis-generation');genesis.lease=await genesis.adapter.acquireOwner({expected:null,nextOwner:genesis.identity},noCancel);
     const coveredZero=(await genesis.adapter.recovery()).view.checkpoint;await apply(corpus(),genesis);assert.equal((await direct(count(),PLAN.limits,0,genesis)).result.value,'6');
-    await rollback(coveredZero,genesis);assert.equal((await direct(count(),PLAN.limits,0,genesis)).result.value,'0');
+    await rollback(coveredZero,genesis);assert.equal((await direct(count(),PLAN.limits,0,genesis)).result.value,'0');assert.deepEqual((await direct(page(),PLAN.limits,0,genesis)).result.rows,[]);
+    const zero=await setExpected(genesis),zeroRead=await genesis.adapter.completedRead(genesis.identity,zero.view,noCancel);reads.add(zeroRead);
+    try{const keyed=await genesis.adapter.readCompleted(zeroRead,zero.view,corpus().map(row=>({kind:row.kind,key:row.key})));assert.equal(keyed.results.length,corpus().length);assert(keyed.results.every(row=>row.status==='missing'));}
+    finally{closeRead(genesis.adapter,zeroRead);}
+    const cleared=[];for(const entry of genesis.entries){let checked=0;for(const row of corpus())for(const alias of [entry.declaration.model.base,...entry.declaration.model.joins].filter(alias=>alias.kind===row.kind)){
+     const present=await rowCollection(entry).findOne({_id:modelNative.indexedRowIdV1(entry.declaration.digest,alias.alias,row.key)},{projection:{_id:1}});assert.equal(present,null);checked++;}
+     const coverage=await coverageCollection(entry).findOne({_id:entry.declaration.digest});assert.deepEqual(coverage,{_id:entry.declaration.digest,representation:'h45-owner-indexed-materialization-v1',owner:genesis.owner.digest,
+      model:entry.declaration.digest,generation:zero.view.generation,revision:zero.view.revision,checkpoint:zero.view.checkpoint,ready:true,reason:null});cleared.push({model:entry.declaration.digest,absentTypedRows:checked,coverage});}
+    samples.push({case:phase.name,coveredGenesis:{view:zero.view,absentCanonicalKeys:corpus().length,emptyPageAndCount:true,typedModels:cleared}});
     const retention=await make(state.client,'retention','retention-generation');retention.lease=await retention.adapter.acquireOwner({expected:null,nextOwner:retention.identity},noCancel);
     const oldAncestor=(await retention.adapter.recovery()).view.checkpoint,targets=[];for(let i=0;i<5;i++)targets.push(await apply([],retention));
     const undo=[];for(const [index,target]of targets.entries())for(const entry of retention.entries){const image=await admin.db(options.database).collection(entry.undo).findOne({_id:sha(target.target.block.blockId)});

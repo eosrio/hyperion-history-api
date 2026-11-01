@@ -213,8 +213,8 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-ci.mjs",
-      "bytes": 7013,
-      "sha256": "e6afa215209e6492af3e942bcd2ae4a5ed458ddfd8ab4d402fe0e6e2ebd0ac92"
+      "bytes": 8695,
+      "sha256": "cdf64f236f240b237dd7da9e735be4391b1a6bf7e8fc2d03f69189c73861603c"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-command-hooks.mjs",
@@ -223,18 +223,18 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-contract.mjs",
-      "bytes": 9680,
-      "sha256": "5005421185ebc72f80a2891e3060e3a20f8d6130c461400480297eec869bb522"
+      "bytes": 10279,
+      "sha256": "fa1dbb54b397481c255e66f3ee6ee2f71cb18cfef4f7e0e45acfda6f177e1fde"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-offline.test.mjs",
-      "bytes": 17053,
-      "sha256": "24fe137fd589c4244a92b88e25498ce4865722ea4fcca4e976f62f4c27a81c8c"
+      "bytes": 17173,
+      "sha256": "ae52050a2707f28e20939df0e639650eac4889eaddcb8f74ee6569d9de2946e9"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-runner.mjs",
-      "bytes": 39442,
-      "sha256": "69807bb91b0a6ce746ec644fb6b62e668f67a96a77aa5bf55436c6e994503651"
+      "bytes": 41088,
+      "sha256": "e94dc9ca5cbfbd5775e8a0c245e4ae9699afede9f7f74c79eef9c6254784eb08"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-trace.mjs",

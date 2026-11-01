@@ -5,12 +5,13 @@ import {createWriteStream,existsSync,mkdirSync,readFileSync,realpathSync,writeFi
 import {release} from 'node:os';
 import {dirname,join,relative,resolve} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
-import {MongoClient} from 'mongodb';
+import {MongoClient,BSON} from 'mongodb';
 import {OwnedMongoFixture,MONGODB_IMAGE,MONGODB_VERSION,waitForMongo} from '../projection-fixture.mjs';
 import {terminalChild} from '../stateful-complete-kind-mongodb/ci.mjs';
 import {afterReadiness} from '../operator-list-mongodb/contract.mjs';
 import {PLAN,failure,sha,assertNativeCompletion} from './native-contract.mjs';
 import {admitNativeAssembly,NATIVE_PROFILE} from './native-assembly.mjs';
+import {verifyIndexedTrace,verifyCursorClosure,verifyExplain} from './native-trace.mjs';
 const root=fileURLToPath(new URL('../../../',import.meta.url)),json=(path,value)=>writeFileSync(path,JSON.stringify(value,null,2)+'\n',{flag:'wx'});
 export async function runCI(profile,output){
  assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.platform,'linux');assert.equal(process.arch,'x64');
@@ -47,7 +48,16 @@ export async function runCI(profile,output){
   });check();
   const native=JSON.parse(readFileSync(join(output,'native/report.json'),'utf8'));assertNativeCompletion(report.child,native,report.assembly.observationSha256);
   const checksums=JSON.parse(readFileSync(join(output,'native/sha256.json'),'utf8'));assert.deepEqual(checksums.map(row=>row.path).sort(),['explain.json','report.json','samples.json','trace.json']);
-  for(const row of checksums){const raw=readFileSync(join(output,'native',row.path));assert.equal(raw.length,row.bytes);assert.equal(sha(raw),row.sha256);}report.native={status:native.status,cases:native.cases.length,checksums};
+  for(const row of checksums){const raw=readFileSync(join(output,'native',row.path));assert.equal(raw.length,row.bytes);assert.equal(sha(raw),row.sha256);}
+  assert.equal(native.runtime.node,process.version);assert.equal(native.runtime.executableSha256,report.assembly.runtime.executableSha256);
+  const trace=JSON.parse(readFileSync(join(output,'native/trace.json'),'utf8'));assert.equal(trace.length,native.traceEvents);assert.deepEqual(verifyCursorClosure(trace),native.cleanup.cursors);
+  for(const query of native.successfulQueryAttestations){const [start,end]=query.trace;assert(Number.isSafeInteger(start)&&Number.isSafeInteger(end)&&start>=0&&end>start&&end<=trace.length);
+   const evidence=verifyIndexedTrace(trace.slice(start,end),query.phase,{attempts:query.actualDataAttempts,maximum:query.maximum,success:true});assert.equal(evidence.actualDataAttempts,query.actualDataAttempts);
+   for(const row of trace.slice(start,end).filter(row=>row.event==='started'&&row.model&&['aggregate','getMore'].includes(row.command))){assert.equal(row.model,query.model);assert.deepEqual(row.expected,query.view);}}
+  const explanations=JSON.parse(readFileSync(join(output,'native/explain.json'),'utf8'));assert.equal(explanations.length,3);
+  for(const row of explanations){const actual=BSON.EJSON.deserialize(row.actualCommand,{relaxed:false}),explain=BSON.EJSON.deserialize(row.explain,{relaxed:false});assert.equal(sha(BSON.serialize({pipeline:actual.pipeline})),row.pipelineSha256);
+   verifyExplain(explain,{baseHint:actual.hint,lookupIndexes:['collection','assets'].map(alias=>'h45_ix_l_'+sha(alias).slice(0,20))});}
+  report.native={status:native.status,cases:native.cases.length,independentlyVerifiedQueries:native.successfulQueryAttestations.length,independentlyVerifiedExplains:explanations.length,checksums};
  }catch(error){original??=error;report.failure=failure(original);if(error!==original)report.secondaryFailure=failure(error);}
  finally{
   if(fixture){try{report.diagnostics=fixture.diagnostics();json(join(output,'before-cleanup.json'),report);}catch(error){original??=error;report.evidenceFailure=failure(error);}

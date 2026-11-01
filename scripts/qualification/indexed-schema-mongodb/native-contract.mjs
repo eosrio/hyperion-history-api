@@ -38,6 +38,10 @@ export function assertNativeCompletion(terminal,report,assemblySha256){
  assert.deepEqual(terminal,{code:0,signal:null,timedOut:false,terminal:true,streamsClosed:true});
  assert.equal(report.status,'passed-native-indexed-only');assert.equal(report.plan.profile,PLAN.profile);assert.equal(report.source.observationSha256,assemblySha256);
  assert.deepEqual(report.cases.map(row=>row.name),PLAN.cases);assert(report.cases.every(row=>row.status==='pass'));
+ assert.equal(report.server.version,PLAN.server);assert(Number.isSafeInteger(report.traceEvents)&&report.traceEvents>0&&report.traceEvents<=PLAN.traceEvents);
+ assert(Array.isArray(report.successfulQueryAttestations)&&report.successfulQueryAttestations.length>0);
+ assert.equal(report.cases.reduce((sum,row)=>sum+row.successfulQueries,0),report.successfulQueryAttestations.length);
+ for(const row of report.cases)if(![PLAN.cases[0],PLAN.cases[9]].includes(row.name))assert(Number.isSafeInteger(row.successfulQueries)&&row.successfulQueries>0,'Missing independently attested successful case query');
  for(const name of ['managedClientsClosed','sessionsEnded','readsClosed','cursorsClosed','failpointDisabled','databaseDropped','adminClosed'])assert.equal(report.cleanup[name],true,name);
  assert.equal(report.acceptance.AtomicSQL,'pending');assert.equal(report.acceptance.managedHTTP,'pending');assert.equal(report.acceptance.productionOffers,'empty');
 }

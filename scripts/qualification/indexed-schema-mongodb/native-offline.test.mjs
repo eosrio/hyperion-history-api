@@ -117,7 +117,8 @@ test('command gates act only on the original owned client/session/model and rest
  restore();restore();assert.equal(server.command,old);
 });
 test('native completion rejects missing cases, expanded acceptance and incomplete cleanup/terminal evidence',()=>{
- const terminal={code:0,signal:null,timedOut:false,terminal:true,streamsClosed:true},report={status:'passed-native-indexed-only',plan:PLAN,source:{observationSha256:hex(1)},cases:PLAN.cases.map(name=>({name,status:'pass'})),
+ const terminal={code:0,signal:null,timedOut:false,terminal:true,streamsClosed:true},report={status:'passed-native-indexed-only',plan:PLAN,source:{observationSha256:hex(1)},server:{version:PLAN.server},traceEvents:64,
+  successfulQueryAttestations:PLAN.cases.map(()=>({})),cases:PLAN.cases.map(name=>({name,status:'pass',successfulQueries:1})),
  cleanup:Object.fromEntries(['managedClientsClosed','sessionsEnded','readsClosed','cursorsClosed','failpointDisabled','databaseDropped','adminClosed'].map(name=>[name,true])),acceptance:{AtomicSQL:'pending',managedHTTP:'pending',productionOffers:'empty'}};
  assertNativeCompletion(terminal,report,hex(1));for(const mutate of [x=>x.cases.pop(),x=>x.cleanup.cursorsClosed=false,x=>x.acceptance.AtomicSQL='passed']){const value=structuredClone(report);mutate(value);assert.throws(()=>assertNativeCompletion(terminal,value,hex(1)));}
  assert.throws(()=>assertNativeCompletion({...terminal,timedOut:true},report,hex(1)));assert.throws(()=>assertNativeCompletion({...terminal,streamsClosed:false},report,hex(1)));
