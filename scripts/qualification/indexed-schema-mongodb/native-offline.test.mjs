@@ -49,6 +49,7 @@ test('actual runner tokenized source binds generated case names to concrete hand
   if(depth===1&&token.kind===ts.SyntaxKind.StringLiteral&&tokens[i+1]?.text===':'){assert.equal(tokens[i+2].text,'async');names.push(token.value);}}
  assert.deepEqual(names,PLAN.cases);
  for(const name of PLAN.cases)assert(source.includes("'"+name+"':async()=>{"));
+ assert.match(source,/const direct=.*\n[^\n]*attest\(start,result,limits\.readAttempts\)/);assert.match(source,/async queryCompleted\(\.\.\.args\).*attest\(start,result,args\[3\]\.readAttempts\)/);
  assert.match(source,/assert\.equal\(process\.platform,'linux'\)/);assert.match(source,/admitNativeAssembly\(PLAN\.profile\)/);
  const ci=readFileSync(new URL('./native-ci.mjs',import.meta.url),'utf8');
  assert.match(ci,/terminalChild.*stateful-complete-kind-mongodb\/ci\.mjs/);assert(ci.indexOf('report.assembly=admitNativeAssembly')<ci.indexOf('fixture=new OwnedMongoFixture'));
@@ -90,6 +91,13 @@ test('cursor closure proves original identity, successful kill or transaction ab
  assert.equal(verifyCursorClosure([...rows,kill,done]).live,0);assert.throws(()=>verifyCursorClosure([...rows,{...kill,client:'foreign'},done]));
  const bad=structuredClone(done);bad.closure.cursorsAlive=['7'];assert.throws(()=>verifyCursorClosure([...rows,kill,bad]));
  const abort={...start,command:'abortTransaction'},aborted={...end,command:'abortTransaction'};assert.equal(verifyCursorClosure([...rows,abort,aborted]).live,0);
+});
+test('successful callback retry exposes its failed original command, fresh transaction and cumulative attempts',()=>{
+ const first=snapshotTrace();first[5]={...first[5],event:'failed',labels:['TransientTransactionError'],code:112};delete first[5].cursor;
+ const next=snapshotTrace().map(row=>({...row,seq:row.seq+6,requestId:row.requestId+10,...(row.event==='started'?{txn:'2'}:{})})),rows=[...first,...next];
+ assert.equal(verifyIndexedTrace(rows,'read',{attempts:2,maximum:2,success:true}).actualDataAttempts,2);
+ assert.throws(()=>verifyIndexedTrace(rows,'read',{attempts:1,maximum:2,success:true}));
+ const hidden=structuredClone(rows);hidden[5].labels=[];assert.throws(()=>verifyIndexedTrace(hidden,'read',{maximum:2,success:true}));
 });
 test('explain checks semantic index use and refuses scans, sort, spill or missing lookup access paths',()=>{
  const expected={baseHint:'base',lookupIndexes:['join-a','join-b']},explain={stages:[{$cursor:{queryPlanner:{winningPlan:{stage:'FETCH',inputStage:{stage:'IXSCAN',indexName:'base'}}}}},{$lookup:{indexesUsed:['join-a']}},{$lookup:{indexesUsed:['join-b']}}],command:{pipeline:[{$sort:{created:-1}}]}};

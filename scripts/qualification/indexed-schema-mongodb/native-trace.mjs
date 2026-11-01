@@ -48,7 +48,12 @@ export function verifyIndexedTrace(trace,phase,{maximum=PLAN.limits.readAttempts
   const cr=cover&&replyFor(all,cover);assert(cr?.coverage&&cr.seq<row.seq,'No model coverage inspection in data snapshot');const c=cr.coverage;
   assert.equal(c.owner,row.ownerDeclaration);assert.equal(c.model,row.model);assert.equal(c._id,row.model);assert.equal(c.representation,'h45-owner-indexed-materialization-v1');
   assert.equal(c.generation,row.expected.generation);assert.equal(c.revision,row.expected.revision);assert.deepEqual(c.checkpoint,row.expected.checkpoint);assert.equal(c.ready,true);assert.equal(c.reason,null);
-  const reply=replyFor(all,row);assert(reply,'Missing native terminal command event');if(success)assert.equal(reply.event,'succeeded');
+  const reply=replyFor(all,row);assert(reply,'Missing native terminal command event');
+  if(success&&reply.event==='failed'){
+   assert(reply.labels?.includes('TransientTransactionError'),'Successful read hid a nontransaction-retry failure');
+   assert(data.some(next=>next.seq>row.seq&&next.client===row.client&&next.lsid===row.lsid&&next.txn!==row.txn&&next.comment.trace===row.comment.trace&&next.command==='aggregate'),
+    'Failed callback attempt lacks an observed fresh transaction');
+  }
   if(reply.batch!==undefined)assert(reply.batch<=1);if(row.command==='aggregate'){assert.equal(row.collation.locale,'simple');assert.equal(row.allowDiskUse,false);assert.match(row.hint,/^h45_ix_b_[a-f0-9]{20}$/);}
  }
  if(success){assert(data.length>0);for(const query of new Set(data.map(row=>row.comment.trace))){const last=data.filter(row=>row.comment.trace===query).at(-1);assert.equal(replyFor(all,last)?.cursor,'0','Successful query did not genuinely exhaust');}}

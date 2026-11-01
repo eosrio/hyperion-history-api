@@ -18,7 +18,7 @@ export async function run(options){
   import('../../../packages/backend-mongodb/dist/stateful-indexed-engineering-v1.js'),import('../../../packages/backend-mongodb/dist/stateful-indexed-model-v1.js'),
   import('../../../build/indexer/connections/stateful-complete-kind-client.js'),import('../../../packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist/projection-stateful-owner-v2.js')]);
  assert(!existsSync(options.output));mkdirSync(options.output,{recursive:true});
- const trace=[],samples=[],explains=[],cases=[],ledger=[],namespaces=new Map(),sessions=[],clients=[],reads=new Set(),pools=[],stops=[],captured=[],custody=new Map();
+ const trace=[],samples=[],explains=[],cases=[],ledger=[],attestations=[],namespaces=new Map(),sessions=[],clients=[],reads=new Set(),pools=[],stops=[],captured=[],custody=new Map();
  let phase={name:'preflight'},gate,afterData,afterTransaction,beforeInsert,beforeSnapshot,state,owned=false,failpointGranted=false,primary,serial=100;
  const marker=randomBytes(24).toString('hex'),app=options.database+'_bounded',completeLimits={readAttempts:12,responseRecords:8,responseBytes:65536},noCancel=()=>{};
  const recordClient=(client,label)=>{const item={label,closed:false};clients.push(item);const start=client.startSession.bind(client),close=client.close.bind(client);
@@ -47,12 +47,15 @@ export async function run(options){
  const setExpected=async s=>{const recovery=await s.adapter.recovery();phase={...phase,expected:recovery.view,owner:s.identity,ownerClaim:recovery.owner?.claimDigest,ownerDeclaration:s.owner.digest};return recovery;};
  const closeRead=(adapter,read)=>{adapter.closeRead(read);reads.delete(read);};
  const open=async(s=state,which=0,guard=noCancel)=>{const current=await setExpected(s),entry=s.entries[which],adapter=await s.engineering.indexedForModel(current.view,entry.declaration.digest,guard),read=await adapter.completedRead(s.identity,current.view,guard);reads.add(read);return {adapter,read,expected:current.view,entry};};
- const direct=async(request,limits=PLAN.limits,which=0,s=state,guard=noCancel)=>{const active=await open(s,which,guard);try{return await active.adapter.queryCompleted(active.read,active.expected,request,limits,active.entry.declaration);}finally{closeRead(active.adapter,active.read);}};
+ const attest=(start,result,maximum)=>{const evidence=verifyIndexedTrace(trace.slice(start),phase.name,{attempts:result.attempts,maximum,success:true});assert(attestations.length<1024);
+  attestations.push({phase:phase.name,model:result.queryDeclarationDigest,view:result.view,...evidence});};
+ const direct=async(request,limits=PLAN.limits,which=0,s=state,guard=noCancel)=>{const active=await open(s,which,guard),start=trace.length;
+  try{const result=await active.adapter.queryCompleted(active.read,active.expected,request,limits,active.entry.declaration);attest(start,result,limits.readAttempts);return result;}finally{closeRead(active.adapter,active.read);}};
  const compose=async(use,limits=PLAN.limits,which=0,s=state,guard=noCancel)=>{const current=await setExpected(s),entry=s.entries[which],adapter=await s.engineering.indexedForModel(current.view,entry.declaration.digest,guard);
   const selection=indexed.negotiateIndexedQueryV1(entry.declaration,limits,{family:indexed.STATEFUL_INDEXED_QUERY_FAMILY_V1,interfaceVersion:1,queryDeclarationDigests:[entry.declaration.digest],comparisonProfiles:[PLAN.comparison],limits:PLAN.limits},adapter.indexedCapabilities);
   // Track the very same locally issued completed read without wrapping its capability or minting authority.
   const wrapped=Object.freeze({...adapter,async completedRead(...args){const read=await adapter.completedRead(...args);reads.add(read);return read;},closeRead(read){closeRead(adapter,read);},
-   async queryCompleted(...args){const result=await adapter.queryCompleted(...args);assert(ledger.length<1024);ledger.push({phase:phase.name,kind:args[2].kind,remaining:args[3],attempts:result.attempts,
+   async queryCompleted(...args){const start=trace.length,result=await adapter.queryCompleted(...args);attest(start,result,args[3].readAttempts);assert(ledger.length<1024);ledger.push({phase:phase.name,kind:args[2].kind,remaining:args[3],attempts:result.attempts,
     resultSlots:result.result.kind==='count'?1:result.result.rows.length,rawBytes:Buffer.byteLength(JSON.stringify(result)),rawCharacters:JSON.stringify(result).length});return result;}});
   return indexed.composeStatefulOwnerIndexedReadV1(selection,wrapped,s.identity,current.view,use,guard);
  };
@@ -113,10 +116,14 @@ export async function run(options){
     await apply(corpus());const entry=state.entries[0],sidecar=await rowCollection(entry).findOne({_id:modelNative.indexedRowIdV1(entry.declaration.digest,'schema','s:a')},{promoteLongs:false});
     assert(Long.isLong(sidecar.v.created));assert.equal(sidecar.v.created.toString(),'9007199254740993');const canonical=await admin.db(options.database).collection('bounded_stateful_v2_r_'+state.owner.digest).findOne({kind:'schema',key:'s:a'});assert.equal(sidecar.json,canonical.json);
     samples.push({case:phase.name,canonical,sidecar:bsonEvidence(sidecar),coverage:await coverageCollection(entry).findOne({_id:entry.declaration.digest})});
-    const before=await state.adapter.recovery(),target=await raw(),change=corpus().find(row=>row.key==='s:a');beforeInsert=async()=>{beforeInsert=undefined;await failpoint({failCommands:['insert'],errorCode:2,errorLabels:[]});};
+    const before=await state.adapter.recovery(),coverageBefore=await coverageCollection(entry).findOne({_id:entry.declaration.digest}),target=await raw(),seed=corpus().find(row=>row.key==='s:a'),change={...seed,value:{...seed.value,format:[{name:'transaction-fault-sentinel',type:'string'}]}};
+    beforeInsert=async()=>{beforeInsert=undefined;await failpoint({failCommands:['insert'],errorCode:2,errorLabels:[]});};
     await assert.rejects(apply([change],state,target));assert.equal(beforeInsert,undefined,'Actual sidecar insert failure gate not reached');assert.deepEqual((await state.adapter.recovery()).view.checkpoint,before.view.checkpoint);
-    const afterFailure=await rowCollection(entry).findOne({_id:sidecar._id},{promoteLongs:false});assert.equal(afterFailure.json,sidecar.json);assert.deepEqual((await coverageCollection(entry).findOne({_id:entry.declaration.digest})).checkpoint,before.view.checkpoint);
-    await disable();await apply([change],state,target);
+    const afterFailure=await rowCollection(entry).findOne({_id:sidecar._id},{promoteLongs:false}),canonicalAfterFailure=await admin.db(options.database).collection('bounded_stateful_v2_r_'+state.owner.digest).findOne({kind:'schema',key:'s:a'});
+    assert.equal(afterFailure.json,sidecar.json);assert.equal(canonicalAfterFailure.json,canonical.json);assert.deepEqual(await coverageCollection(entry).findOne({_id:entry.declaration.digest}),coverageBefore);
+    await disable();await apply([change],state,target);const repairedCanonical=await admin.db(options.database).collection('bounded_stateful_v2_r_'+state.owner.digest).findOne({kind:'schema',key:'s:a'}),repairedSidecar=await rowCollection(entry).findOne({_id:sidecar._id},{promoteLongs:false});
+    assert.notEqual(repairedCanonical.json,canonical.json);assert.equal(repairedSidecar.json,repairedCanonical.json);assert.match(repairedCanonical.json,/transaction-fault-sentinel/);
+    samples.push({case:phase.name,failedChangedSentinel:{canonicalBefore:canonical,canonicalAfterFailure,sidecarBefore:bsonEvidence(sidecar),sidecarAfterFailure:bsonEvidence(afterFailure),coverageBefore,repairedCanonical,repairedSidecar:bsonEvidence(repairedSidecar)}});
     for(const changes of [[{...corpus().find(row=>row.key==='c:one'),value:{...corpus().find(row=>row.key==='c:one').value,authorized_accounts:123}}],[{...corpus().find(row=>row.key==='c:one'),key:'c:duplicate'}]]){
      const ancestor=(await state.adapter.recovery()).view.checkpoint;await apply(changes);await assert.rejects(direct(count()));assert.equal((await direct(count(),PLAN.limits,1)).result.value,ORACLE.controlCount);
      assert((await legacy(state,'collection')).rows.some(row=>row.key===changes[0].key));await rollback(ancestor);assert.equal((await direct(count())).result.value,ORACLE.joinedCount);
@@ -220,7 +227,7 @@ export async function run(options){
   await clean('cursorFailure',async()=>{cleanup.cursors=verifyCursorClosure(trace);cleanup.cursorsClosed=true;});
   await clean('databaseFailure',async()=>{if(owned){const record=await admin.db(options.database).collection('_qualification_owner').findOne({_id:marker});assert.equal(record?.scope,PLAN.scope);await admin.db(options.database).dropDatabase({writeConcern:{w:'majority',j:true}});assert.deepEqual(await admin.db(options.database).listCollections().toArray(),[]);cleanup.databaseDropped=true;}});
   await clean('adminFailure',async()=>{await admin.close();cleanup.adminClosed=clients.find(row=>row.label==='admin').closed;assert(cleanup.adminClosed);});for(const stop of stops)stop();
-  report.status=primary?'failed':'passed-native-indexed-only';report.traceEvents=trace.length;report.acceptance.nativeMongoDB=primary?'failed':'passed-native-indexed-only';if(primary)report.failure??=failure(primary);
+  report.status=primary?'failed':'passed-native-indexed-only';report.traceEvents=trace.length;report.successfulQueryAttestations=attestations;report.acceptance.nativeMongoDB=primary?'failed':'passed-native-indexed-only';if(primary)report.failure??=failure(primary);
   for(const [name,value]of [['trace.json',trace],['samples.json',samples],['explain.json',explains],['report.json',report]])json(join(options.output,name),value);
   json(join(options.output,'sha256.json'),['trace.json','samples.json','explain.json','report.json'].map(path=>{const raw=readFileSync(join(options.output,path));return {path,bytes:raw.length,sha256:sha(raw)};}));
  }if(primary)throw primary;return report;

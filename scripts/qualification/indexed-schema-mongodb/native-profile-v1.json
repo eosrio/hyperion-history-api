@@ -228,18 +228,18 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-offline.test.mjs",
-      "bytes": 16112,
-      "sha256": "246193f60a6d1a53b9d3f58488dfe709dd0ee3c144c459cfb9d5e0479e7302d0"
+      "bytes": 17053,
+      "sha256": "24fe137fd589c4244a92b88e25498ce4865722ea4fcca4e976f62f4c27a81c8c"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-runner.mjs",
-      "bytes": 37872,
-      "sha256": "c33a23685e131feee60ec062eca33770f517f30ca8cdf41be2b0f264b6cdd4e9"
+      "bytes": 39442,
+      "sha256": "69807bb91b0a6ce746ec644fb6b62e668f67a96a77aa5bf55436c6e994503651"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-trace.mjs",
-      "bytes": 10049,
-      "sha256": "dd0c843251b2e710dc993104313901e91fe9b82cf0ecb436940dac6b1e1d5f7a"
+      "bytes": 10409,
+      "sha256": "a221825bd9b19e5a1923a891e8dec9b6cdfe910078bf52e38df0252ca354d7a7"
     },
     {
       "path": "scripts/qualification/operator-list-mongodb/assembly-diagnostics.mjs",
