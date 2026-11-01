@@ -17,15 +17,17 @@ export const STATEFUL_COMPLETE_KIND_NATIVE_SOURCE = Object.freeze({
     files: 36, sha256: '53e26e3d0e564bc6b02265341c139054c5d79b4924bf14eb1cdbf39dc4ef0e50',
 });
 export const STATEFUL_COMPLETE_KIND_CALLER_SOURCE = Object.freeze({
-    commit: 'cacce8fe177eab3a3b07a10c92dd5fd9a16cfef5', files: 550,
-    sha256: '44b547b566e65941dd4bcd0af0695ca93ded85a2644436634d90a62e09e10a38',
+    commit: '0f79994142add7d6c8a2c7b5491ea8a0e1d7adf2', files: 550,
+    sha256: 'cebd1a2dc8e2b8ebdc36fef361017b88593d60405824b62ff68aba01878fd3d8',
     sources: Object.freeze([
         ['src/api/helpers/stateful-owner.ts', '8bdf6914852f2d9f008adbfd81fe83c0b3f94d6a2928f5567147a9030f72cb82'],
         ['src/indexer/connections/stateful-complete-kind-client.ts', '37ee22762dda7b1a10c9adbe036e1e0b2d19b8d39b9c2cc5391fca83ba0fb906'],
         ['src/indexer/connections/manager.class.ts', 'e5949cd8f0a539439a01e032770d9891e5037c801076335c52fb7ebb8da19807'],
         ['src/indexer/projection/stateful-plugin.ts', '4b1fbd3ba70be572020f8cf4e2928c3f6894ffe9e5503aa247cb74be47960622'],
         ['src/indexer/projection/stateful-registry.ts', 'f9dad39ff1a9911cba887e75bb11fe4cfdad2896f94a6a6d2eda31cc9d6783d6'],
-        ['src/indexer/workers/projection.ts', '33dbb64d3d0a31f59f90d2084719227de40fa5feed1a91b05fdd0cacfbb575fb'],
+        ['src/indexer/workers/projection.ts', '596e0969a1e0613f817d5ec65abcadaa2ac896c682bf7b18029e45cb999d4ad1'],
+        ['src/indexer/projection/controller.ts', 'eadbbebe2b4ae7d19e372c1132174cbedc6c258ea83d17b98c2c7a9bbf8429b6'],
+        ['src/indexer/projection/runtime.ts', '697c2ed177bc51e04cb9170debf644d595bcc7bcc1f4c8f7735f1415648f6785'],
     ]),
 });
 // Production source was committed before these additive qualification profiles.
