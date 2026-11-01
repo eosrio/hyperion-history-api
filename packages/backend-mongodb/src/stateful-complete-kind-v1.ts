@@ -74,6 +74,12 @@ export async function createMongoDbStatefulCompleteKindAdapterV1(options: MongoD
         // A trace label only; this supplies no read/owner authority and never reaches plugin results.
         const comment = {hyperion: 'stateful-complete-kind-v1', declaration: d.digest, operation: key ? 'key' : 'kind', trace: randomUUID()};
         const session = createStatefulOwnerCompletedSessionV2(base);
+        const unavailable = (error: unknown): StatefulContractError => {
+            if (error instanceof StatefulContractError) return error;
+            const failure = new StatefulContractError('stateful.unavailable', 'MongoDB complete-kind read is unavailable');
+            failure.cause = error; return failure;
+        };
+        let operationFailed = false;
         try {
             const result = await guarded(guard, () => session.withTransaction(async () => {
                 await guarded(guard, () => assertStatefulOwnerCompletedSnapshotV2(base, read, expected, session));
@@ -81,12 +87,20 @@ export async function createMongoDbStatefulCompleteKindAdapterV1(options: MongoD
                 const command = async (value: Document): Promise<Document> => {
                     guard(); retryOptions();
                     requireState(attempts < available.readAttempts, 'Complete-kind data attempt total exceeded', 'stateful.unavailable'); attempts++;
-                    const answer = await db.command({...value, comment}, {session, promoteLongs: false, signal: AbortSignal.timeout(options.operationTimeoutMS)});
+                    // Pinned driver CSOT otherwise adds maxTimeMS even to non-tailable getMore,
+                    // which MongoDB rejects, and overwrites the explicit find limit. Keep CSOT
+                    // and the per-command signal; control only server-side maxTimeMS ourselves.
+                    // omitMaxTimeMS is a pinned 7.2.0 internal option, stripped from its
+                    // public .d.ts; real-driver command-preparation tests guard this seam.
+                    const execution = {session, promoteLongs: false, omitMaxTimeMS: true,
+                        signal: AbortSignal.timeout(options.operationTimeoutMS)};
+                    const answer = await db.command({...value, comment}, execution);
                     // Cleanup bookkeeping must survive a cancellation detected immediately after this await.
                     if (answer.cursor && Long.isLong(answer.cursor.id)) cursorId = answer.cursor.id;
                     guard(); return answer;
                 };
                 const captured: StatefulCompleteKindRowV1[] = [], seen = new Set<string>();
+                let dataFailed = false;
                 try {
                     let answer = await command({find: rows.collectionName, filter: key ? {_id: keyId(key)} : {kind},
                         hint: key ? '_id_' : indexName, batchSize: 1, maxTimeMS: options.operationTimeoutMS,
@@ -123,18 +137,27 @@ export async function createMongoDbStatefulCompleteKindAdapterV1(options: MongoD
                     requireState(Buffer.byteLength(JSON.stringify(value)) <= available.responseBytes,
                         'Complete-kind successful response byte total exceeded', 'stateful.unavailable');
                     return value;
-                } finally {
-                    if (!cursorId.isZero()) await db.command({killCursors: rows.collectionName, cursors: [cursorId]},
-                        {session, signal: AbortSignal.timeout(options.operationTimeoutMS)});
+                } catch (error) {dataFailed = true; throw error;}
+                finally {
+                    if (!cursorId.isZero()) {
+                        try {
+                            const cleanup = {session, omitMaxTimeMS: true, signal: AbortSignal.timeout(options.operationTimeoutMS)};
+                            await db.command({killCursors: rows.collectionName, cursors: [cursorId]}, cleanup);
+                        }
+                        // An aborted transaction's cleanup error must not replace the data
+                        // failure or cause withTransaction to retry a different failure.
+                        catch (error) {if (!dataFailed) throw error;}
+                    }
                 }
             }, {readConcern: {level: 'snapshot'}, writeConcern: new WriteConcern('majority', undefined, true),
                 readPreference: 'primary', timeoutMS: options.transactionTimeoutMS, maxCommitTimeMS: options.operationTimeoutMS}));
             requireState(result !== undefined, 'Native complete-kind transaction returned no result', 'stateful.unavailable');
             assertStatefulOwnerViewV2(d, await guarded(guard, () => base.completedView(read)), expected); return result;
-        } catch (error) {
-            if (error instanceof StatefulContractError) throw error;
-            const failure = new StatefulContractError('stateful.unavailable', 'MongoDB complete-kind read is unavailable'); failure.cause = error; throw failure;
-        } finally {await session.endSession();}
+        } catch (error) {operationFailed = true; throw unavailable(error);}
+        finally {
+            try {await session.endSession();}
+            catch (error) {if (!operationFailed) throw unavailable(error);}
+        }
     };
     return Object.freeze({...delegated, capabilities: base.capabilities,
         completeKindCapabilities: Object.freeze({family: STATEFUL_COMPLETE_KIND_FAMILY_V1, interfaceVersion: 1 as const, limits}),

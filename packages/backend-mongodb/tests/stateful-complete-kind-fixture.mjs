@@ -38,10 +38,12 @@ export function completeFixture() {
             async command(command, options) {
                 assert.ok(sessions.has(options.session), 'A session from a foreign/main client reached the counted client');
                 const name = command.find ?? command.collection ?? command.killCursors;
-                if (command.killCursors) {for (const id of command.cursors) cursors.delete(id.toString()); fixture.cleanup.push({command: 'killCursors', name}); return {ok: 1};}
+                if (command.killCursors) {fixture.cleanup.push({command: 'killCursors', name});
+                    if (fixture.beforeCleanup) await fixture.beforeCleanup({command, options});
+                    for (const id of command.cursors) cursors.delete(id.toString()); return {ok: 1};}
                 const type = command.find ? 'find' : command.getMore ? 'getMore' : 'unknown';
                 assert.ok(['find', 'getMore'].includes(type));
-                const trace = {command: type, value: command, session: options.session}; fixture.dataCommands.push(trace);
+                const trace = {command: type, value: command, session: options.session, options}; fixture.dataCommands.push(trace);
                 if (fixture.beforeData) await fixture.beforeData(trace);
                 const storage = options.session.storage;
                 let state;

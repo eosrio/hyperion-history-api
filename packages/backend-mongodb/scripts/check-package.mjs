@@ -17,7 +17,7 @@ try{
     await writeFile(join(consumer,'package.json'),JSON.stringify({name:'stateful-native-consumer',private:true,type:'module'}));
     run(['install','--ignore-scripts','--no-audit','--no-fund',...tarballs.map(n=>join(temporary,n)),'@types/node@25.5.0'],consumer);
     for(const name of ['fixture.mjs','stateful-fixture.mjs','stateful.test.mjs','stateful-owner-v2-fixture.mjs','stateful-owner-v2.test.mjs',
-        'stateful-complete-kind-fixture.mjs','stateful-complete-kind.test.mjs']){
+        'stateful-complete-kind-fixture.mjs','stateful-complete-kind.test.mjs','stateful-complete-kind-driver.test.mjs']){
         let text=await readFile(join(root,'tests',name),'utf8');
         text=text.replaceAll('../dist/index.js','@eosrio/hyperion-backend-mongodb').replaceAll('../dist/stateful.js','@eosrio/hyperion-backend-mongodb/stateful');
         text=text.replaceAll('../dist/stateful-owner-v2.js','@eosrio/hyperion-backend-mongodb/stateful-owner-v2');
@@ -30,6 +30,6 @@ try{
     execFileSync(process.execPath,[join(root,'node_modules/typescript/bin/tsc'),'--strict','--skipLibCheck','--target','ES2022','--module','NodeNext','consumer.mts','owner-v2.mts','complete-kind.mts'],{cwd:consumer,stdio:'inherit'});
     execFileSync(process.execPath,[join(consumer,'consumer.mjs')],{cwd:consumer,stdio:'inherit'});
     execFileSync(process.execPath,['--test',join(consumer,'stateful.test.mjs'),join(consumer,'stateful-owner-v2.test.mjs'),
-        join(consumer,'stateful-complete-kind.test.mjs')],{cwd:consumer,stdio:'inherit'});
+        join(consumer,'stateful-complete-kind.test.mjs'),join(consumer,'stateful-complete-kind-driver.test.mjs')],{cwd:consumer,stdio:'inherit'});
     console.log('Packed ESM/TypeScript and native-driver controls passed; physical MongoDB qualification remains pending.');
 }finally{await rm(temporary,{recursive:true,force:true});}

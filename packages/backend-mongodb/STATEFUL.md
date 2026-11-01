@@ -147,3 +147,12 @@ BSON buffers and the documented extra-row overflow probe. The host manages the
 lazy bounded client and retains final publication fencing. Existing factories,
 clients, declarations and get-only callbacks remain unchanged. Source and packed
 controls do not qualify physical MongoDB or public HTTP parity.
+
+The pinned MongoDB 7.2.0 driver normally adds transaction CSOT `maxTimeMS` to
+generic commands. This adapter uses its internal `omitMaxTimeMS` option so the
+explicit initial-find server bound survives and non-tailable `getMore` commands
+omit that prohibited field. Client-side transaction CSOT and per-command abort
+deadlines still apply. Real-driver command-preparation regressions guard this
+version-specific seam; the [MongoDB 8.0 command contract](https://www.mongodb.com/docs/v8.0/reference/command/getmore/)
+explains the server restriction. Cursor and session cleanup failures never
+replace an existing data failure; cleanup-only failure still refuses success.
