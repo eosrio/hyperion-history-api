@@ -1,10 +1,10 @@
 /** Actual emitted source boundary over the existing retained Wire/coordinator fixture; no services. */
 import assert from 'node:assert/strict';
-import {nativeApiWireSource, STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE} from './protocol-native-api-source.mjs';
+import {nativeApiWireSource, STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE} from './protocol-native-api-source.mjs';
 import {PortableProjectionSource} from '../../build/indexer/projection/source.js';
 import {ProofConsumerScope} from '../../build/indexer/protocol/proof-consumer-scope.js';
 assert.equal(process.versions.bun, undefined); assert.match(process.version, /^v(?:24|26)\./);
-const prepared = await nativeApiWireSource({nativeMarker: false, engineeringSourceProfile: STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE});
+const prepared = await nativeApiWireSource({nativeMarker: false, engineeringSourceProfile: STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE});
 try {
     await prepared.appendUntil(2);
     const source = new PortableProjectionSource({client: prepared.client, chain: prepared.chain,

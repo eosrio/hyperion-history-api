@@ -4,17 +4,18 @@ import {copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, readd
 import {basename, dirname, join, resolve} from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath, pathToFileURL} from 'node:url';
-import {admitNativeApiSourceOptions, admitNativeSourceEnvironment, STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE as profile, STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE as priorExecutorProfile, STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE as priorCommandsProfile, STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE as priorCompleteKindProfile, STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE as priorProfile, STATEFUL_COMPLETE_KIND_METADATA_NATIVE_SOURCE as nativeSource, STATEFUL_COMPLETE_KIND_METADATA_CALLER_SOURCE as callerSource, STATEFUL_METADATA_FIELDS_API_SOURCE_PROFILE as fieldsProfile, STATEFUL_ENGINEERING_API_SOURCE_PROFILE as oldProfile, STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE as legacyProfile} from './stateful-engineering-source-admission.mjs';
+import {admitNativeApiSourceOptions, admitNativeSourceEnvironment, STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE as profile, STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE as priorMetadataProfile, STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE as priorExecutorProfile, STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE as priorCommandsProfile, STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE as priorCompleteKindProfile, STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE as priorProfile, STATEFUL_COMPLETE_KIND_METADATA_NATIVE_SOURCE as nativeSource, STATEFUL_COMPLETE_KIND_CODEC_CALLER_SOURCE as callerSource, STATEFUL_METADATA_FIELDS_API_SOURCE_PROFILE as fieldsProfile, STATEFUL_ENGINEERING_API_SOURCE_PROFILE as oldProfile, STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE as legacyProfile} from './stateful-engineering-source-admission.mjs';
 
 assert.equal(process.versions.bun, undefined); assert.match(process.version, /^v(?:24|26)\./);
 let cases = 0, accessorCalls = 0;
 const actual = admitNativeApiSourceOptions({engineeringSourceProfile: profile}); assert.equal(actual.qualificationOnly, true); assert.equal(actual.nativeSourceCommit, nativeSource.commit); assert.equal(actual.nativeTree, nativeSource.tree); cases++;
-assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: priorExecutorProfile}), /native emissions|native count/); cases++;
-assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: priorCommandsProfile}), /native emissions|native count/); cases++;
-assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: priorCompleteKindProfile}), /native emissions|native count/); cases++;
-assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: priorProfile}), /SDK package/); cases++;
-assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: fieldsProfile}), /SDK package/); cases++;
-assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: oldProfile}), /SDK package/); cases++;
+assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: priorMetadataProfile}), /Wire source revision/); cases++;
+assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: priorExecutorProfile}), /Wire source revision/); cases++;
+assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: priorCommandsProfile}), /Wire source revision/); cases++;
+assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: priorCompleteKindProfile}), /Wire source revision/); cases++;
+assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: priorProfile}), /Wire source revision/); cases++;
+assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: fieldsProfile}), /Wire source revision/); cases++;
+assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: oldProfile}), /Wire source revision/); cases++;
 assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: legacyProfile}), /Wire source revision/); cases++;
 for (const options of [{engineeringSourceProfile: 'unknown'}, {expectedWireRevision: actual.wireRevision},
     {get engineeringSourceProfile() {accessorCalls++; return profile;}}]) {assert.throws(() => admitNativeApiSourceOptions(options)); cases++;}

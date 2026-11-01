@@ -8,7 +8,7 @@ import {installCompleteKindCommandHooks} from './command-hooks.mjs';
 
 export const PLAN = Object.freeze({schemaVersion: 1, scope: 'synthetic-native-complete-kind',
     sdk: '7412889a14c84342551fd864ea3ebfcf28849385', driver: '7.2.0', mongodb: '8.0.34',
-    profile: 'stateful-owner-v2-7412889-18d235e-complete-kind-metadata-engineering',
+    profile: 'stateful-owner-v2-7412889-69a6606-complete-kind-engineering',
     budgets: {readAttempts: 12, responseRecords: 8, responseBytes: 65536},
     operationMS: 5000, transactionMS: 15000,
     required: ['source-admission', 'replica-primary', 'empty-owned-database', 'true-exhaustion', 'shared-totals',
