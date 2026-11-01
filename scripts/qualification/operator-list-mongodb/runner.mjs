@@ -1,4 +1,5 @@
-// Explicitly invoked qualification only. This file never starts/stops a server or process.
+// Explicit qualification only. Server/service management and process stops belong to the CI controller.
+// Source admission uses read-only Git children; it creates no background worker/service.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';
@@ -9,11 +10,13 @@ import {randomBytes} from 'node:crypto';
 import {argumentsFor, failure, PLAN, sha, verifyReadTrace} from './contract.mjs';
 import {installPublicationBarrier} from './cas-barrier.mjs';
 import {inventory} from './inventory.mjs';
+import {admitOperatorListAssembly} from './source-profile.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..'), adapter = join(root, 'packages/backend-mongodb');
 const require = createRequire(join(adapter, 'package.json'));
 const rootRequire = createRequire(join(root, 'package.json'));
 const json = (path, value) => writeFileSync(path, JSON.stringify(value, null, 2) + '\n', {flag: 'wx'});
 function sourceAdmission(options) {
+    const assembly = admitOperatorListAssembly(PLAN.profile);
     const git = args => execFileSync('git', args, {cwd: root, encoding: 'utf8'}).trim();
     assert.equal(git(['rev-parse', 'HEAD']), options.source);
     const scope = ['packages/backend-mongodb/src', 'packages/backend-mongodb/package.json', 'packages/backend-mongodb/package-lock.json',
@@ -30,7 +33,7 @@ function sourceAdmission(options) {
     const compiled = inventory(join(adapter, 'dist')), compiledSha256 = sha(JSON.stringify(compiled));
     assert.equal(compiledSha256, options.compiledSha256, 'Compiled artifact differs from the executor-reviewed fresh build');
     assert.match(process.version, /^v(?:24|26)\./);
-    return {commit: options.source, tree: git(['rev-parse', 'HEAD^{tree}']), nativeSources: inventory(join(adapter, 'src')),
+    return {profile: PLAN.profile, assembly, commit: options.source, tree: git(['rev-parse', 'HEAD^{tree}']), nativeSources: inventory(join(adapter, 'src')),
         compiled, compiledSha256, sdkOperatorListSha256: sha(readFileSync(join(adapter, 'node_modules/@eosrio/hyperion-sdk/dist/operator-lists.js'))),
         sdk: PLAN.sdk, driver: PLAN.driver, runtime: {node: process.version, executable: process.execPath, executableSha256: sha(readFileSync(process.execPath))},
         compiler: '7.0.2', buildAdmission: 'Executor supplies the reviewed fresh-build inventory SHA; the hash alone is not compilation provenance'};

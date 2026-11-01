@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {argumentsFor, PLAN, verifyReadTrace} from './contract.mjs';
+import {argumentsFor, PLAN, verifyReadTrace, assertNativeCompletion} from './contract.mjs';
 import {installPublicationBarrier} from './cas-barrier.mjs';
 const argv = () => ['--run', '--allow-failpoints', '--database', 'h45_lists_012345abcdef', '--output', '/owned/new', '--source', 'a'.repeat(40), '--compiled-sha256', 'b'.repeat(64)];
 const environment = () => ({HYPERION_OPERATOR_LIST_MONGO_URI: 'mongodb://127.0.0.1:37017/?directConnection=true&replicaSet=h45_operator_lists'});
@@ -45,4 +45,18 @@ test('qualification CAS scheduling retains original commands/signals and restore
     const blocked = installPublicationBarrier(client, 'owned', 'two', ['left', 'right']), abort = new AbortController();
     const again = await topology.selectServer(), pending = again.command(operation('left', abort.signal)); abort.abort(new Error('original deadline'));
     await assert.rejects(pending, /original deadline/); blocked.close(); assert.equal(commands.length, 2);
+});
+test('native CI verdict retains timeout/failed terminal/open-stream and incomplete original workload failures', () => {
+    const expected = 'b'.repeat(64), make = () => ({terminal: {timedOut: false, code: 0, signal: null, terminal: true, streamsClosed: true},
+        native: {status: 'passed-native-only', source: {profile: PLAN.profile, compiledSha256: expected},
+            cases: PLAN.cases.filter(name => name !== 'original-session-client-cleanup').map(name => ({name, status: 'passed'})),
+            cleanup: {ownedDatabaseDropped: true, failpointDisabled: true, sessionsEnded: true, boundedClosed: true, adminClosed: true, noHiddenTransactionControls: true}}});
+    const success = make(); assertNativeCompletion(success.terminal, success.native, expected);
+    for (const mutate of [v => {v.terminal.timedOut = true;}, v => {v.terminal.code = 1;}, v => {v.terminal.signal = 'SIGKILL';},
+        v => {v.terminal.terminal = false;}, v => {v.terminal.streamsClosed = false;}, v => {v.native.status = 'failed';},
+        v => {v.native.source.profile = 'old-profile';}, v => {v.native.source.compiledSha256 = '0'.repeat(64);},
+        v => {v.native.cases.pop();}, v => {v.native.cases[0].status = 'failed';}, v => {v.native.cleanup.failpointDisabled = false;},
+        v => {v.native.cleanup.sessionsEnded = false;}, v => {v.native.cleanup.noHiddenTransactionControls = false;}]) {
+        const value = make(); mutate(value); assert.throws(() => assertNativeCompletion(value.terminal, value.native, expected));
+    }
 });

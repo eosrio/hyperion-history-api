@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "main", "dev", "release/4.5" ]
   pull_request:
-    branches: ["main", "dev", "release/4.5", "codex/fix-action-abi-epochs", "codex/wire-protocol-host", "codex/protocol-abi-observations", "codex/protocol-abi-coverage", "codex/protocol-abi-frontier", "codex/protocol-abi-consumers", "codex/exact-sequence-history-adapter", "codex/action-source-journal", "codex/portable-state-production", "feat/protocol-action-occurrence-proof", "fix/protocol-source-read-cancellation", "build/native-action-dependencies", "feat/native-observation-prepare", "feat/native-action-authorization", "feat/native-action-consumers", "build/native-wire-profile-pin", "build/bun-1.4.4", "fix/native-wire-worker-proofs", "fix/live-reader-ship-credits", "feat/source-handoff-outcomes", "feat/action-attempt-dispositions", "fix/worker-attempt-quiescence", "fix/stream-client-compatibility-45", "codex/wire-full-worker-replay", "feat/source-bound-attempt-adjudication", "perf/native-wire-worker-profiles", "codex/wire-storage-recovery", "codex/native-source-proof-pair", "feat/original-action-authorization-397", "fix/portable-mapping-retry-eligibility-403", "feat/mongodb-complete-kind-402", "test/wire-mongodb-combined-profile-408"]
+    branches: ["main", "dev", "release/4.5", "codex/fix-action-abi-epochs", "codex/wire-protocol-host", "codex/protocol-abi-observations", "codex/protocol-abi-coverage", "codex/protocol-abi-frontier", "codex/protocol-abi-consumers", "codex/exact-sequence-history-adapter", "codex/action-source-journal", "codex/portable-state-production", "feat/protocol-action-occurrence-proof", "fix/protocol-source-read-cancellation", "build/native-action-dependencies", "feat/native-observation-prepare", "feat/native-action-authorization", "feat/native-action-consumers", "build/native-wire-profile-pin", "build/bun-1.4.4", "fix/native-wire-worker-proofs", "fix/live-reader-ship-credits", "feat/source-handoff-outcomes", "feat/action-attempt-dispositions", "fix/worker-attempt-quiescence", "fix/stream-client-compatibility-45", "codex/wire-full-worker-replay", "feat/source-bound-attempt-adjudication", "perf/native-wire-worker-profiles", "codex/wire-storage-recovery", "codex/native-source-proof-pair", "feat/original-action-authorization-397", "fix/portable-mapping-retry-eligibility-403", "feat/mongodb-complete-kind-402", "test/wire-mongodb-combined-profile-408", "feat/mongodb-operator-lists-414"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
@@ -223,6 +223,57 @@ jobs:
           name: projection-mongodb-${{ matrix.node-version }}
           path: projection-report.json
           if-no-files-found: warn
+
+  operator-lists-mongodb:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["24.22.1", "26.4.0"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            packages/backend-mongodb/package-lock.json
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - name: Install the exact root741 and receiving native429 sources
+        run: |
+          npm ci --allow-git=all --ignore-scripts=false
+          npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false
+      - name: Check and build the new operator-list assembly
+        run: |
+          test "$(bun --version)" = "$(cat .bun-version)"
+          test "$(bun -p process.versions.typescript)" = "$(node -p 'require("./package.json").dependencies.typescript')"
+          bun check -p tsconfig.json
+          bun check -p packages/backend-mongodb/tsconfig.json
+          npm run build
+      - name: Check operator-list contracts, native driver preparation and distinct profile guards
+        run: >-
+          node --test
+          packages/backend-mongodb/tests/operator-lists.test.mjs
+          packages/backend-mongodb/tests/operator-lists-driver.test.mjs
+          scripts/qualification/operator-list-mongodb/offline.test.mjs
+          scripts/qualification/operator-list-mongodb/source-profile.test.mjs
+      - name: Retain exact new source and compiled assembly admission
+        run: node scripts/qualification/operator-list-mongodb/source-profile.mjs > operator-list-source-${{ matrix.node-version }}.json
+      - name: Exercise operator lists against a separately owned MongoDB 8.0.34
+        run: node scripts/qualification/operator-list-mongodb/ci.mjs operator-list-mongodb-${{ matrix.node-version }}
+      - name: Retain original list results, traces, terminal logs and owned-fixture cleanup
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: operator-list-mongodb-${{ matrix.node-version }}
+          path: |
+            operator-list-source-${{ matrix.node-version }}.json
+            operator-list-mongodb-${{ matrix.node-version }}/
+          if-no-files-found: error
 
   action-sequences-design:
     runs-on: ubuntu-24.04

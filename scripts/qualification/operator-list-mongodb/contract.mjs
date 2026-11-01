@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 export const PLAN = Object.freeze({schemaVersion: 1, scope: 'synthetic-native-operator-lists',
+    profile: 'operator-list-mongodb-root741-native429-47d5c2c-engineering', rootSDK: '7412889a14c84342551fd864ea3ebfcf28849385',
     sdk: '429a1bf1d3bddb746fa662de9529480890b7368f', driver: '7.2.0', server: '8.0.34',
     operationMS: 5000, snapshotMS: 60000, readMS: 10000, publicationMS: 120000,
     read: {names: 8, items: 2048, bytes: 2 * 1024 * 1024, attempts: 256},
@@ -64,4 +65,17 @@ export function failure(error, depth = 0) {
         message: String(error?.message ?? 'Unknown fixture failure').slice(0, 512),
         ...(error?.cause && depth < 2 ? {cause: failure(error.cause, depth + 1)} : {}),
         ...(Array.isArray(error?.suppressed) && depth < 2 ? {suppressed: error.suppressed.slice(0, 4).map(item => failure(item, depth + 1))} : {})};
+}
+export function assertOriginalTerminal(terminal) {
+    assert.equal(terminal.timedOut, false, 'Timeout/grace cannot become a native pass');
+    assert.equal(terminal.code, 0); assert.equal(terminal.signal, null); assert.equal(terminal.terminal, true); assert.equal(terminal.streamsClosed, true);
+}
+/** Pure CI verdict check; artifact collection/cleanup cannot replace the original child result. */
+export function assertNativeCompletion(terminal, native, compiledSha256) {
+    assertOriginalTerminal(terminal);
+    assert.equal(native.status, 'passed-native-only'); assert.equal(native.source.profile, PLAN.profile); assert.equal(native.source.compiledSha256, compiledSha256);
+    assert.deepEqual(native.cases.map(row => row.name).sort(), PLAN.cases.filter(name => name !== 'original-session-client-cleanup').sort());
+    assert.ok(native.cases.every(row => row.status === 'passed'));
+    for (const key of ['ownedDatabaseDropped', 'failpointDisabled', 'sessionsEnded', 'boundedClosed', 'adminClosed', 'noHiddenTransactionControls'])
+        assert.equal(native.cleanup[key], true, 'Original native cleanup is incomplete: ' + key);
 }
