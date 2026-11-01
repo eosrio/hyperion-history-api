@@ -302,7 +302,7 @@ test('actual projection worker lifecycle handlers discard timing on owner/fork/c
 
 test('actual emitted worker run selects the bounded interval and stops through its original lifecycle', async () => {
     const {default: ProjectionWorker} = await import('../../build/indexer/workers/projection.js');
-    const scope = new ProofConsumerScope('actual-worker-policy-selection'), observed = {connect: 0, close: 0, drain: 0, stop: 0, invalidated: 0, exits: []};
+    const scope = new ProofConsumerScope('actual-worker-policy-selection'), observed = {connect: 0, close: 0, optionalClose: 0, drain: 0, stop: 0, invalidated: 0, exits: []};
     const mongo = {async connect() {observed.connect++;}, async close() {observed.close++;},
         db() {return {collection() {return {};}};}};
     const worker = Object.create(ProjectionWorker.prototype);
@@ -311,7 +311,9 @@ test('actual emitted worker run selects the bounded interval and stops through i
         protocol: {profileId: 'controlled-policy-v1', verifyNativeGenesis() {}}, protocolReady: Promise.resolve(), client: {},
         conf: {settings: {chain: 'mapping-retry-selection'}, indexer: {live_reader: true}, features: {portable_state: {
             backend: {kind: 'mongodb', id: 'controlled', database: 'controlled'}, projections: [first]}}},
-        manager: {conn: {mongodb: {}}, mongodbClient: mongo}, stopped: false, statefulControllers: new Map(), probes: new Set(),
+        manager: {conn: {mongodb: {}}, mongodbClient: mongo,
+            statefulCompleteKindMongoClient() {throw new Error('The portable-only worker must not allocate the optional client');},
+            async closeStatefulCompleteKindMongoClient() {observed.optionalClose++;}}, stopped: false, statefulControllers: new Map(), probes: new Set(),
         profiler: {stopReporting() {}}, async runProjectionAttempt(kind, _metadata, operation) {
             assert.equal(kind, 'projection-initialization'); return scope.run(operation);
         }});
@@ -324,6 +326,6 @@ test('actual emitted worker run selects the bounded interval and stops through i
     try {
         await worker.run();
         assert.equal(observed.selected, 1000, 'the actual worker constructor call must select the reviewed capped policy');
-        assert.deepEqual({...observed, selected: undefined}, {connect: 1, close: 1, drain: 1, stop: 1, invalidated: 1, exits: [0], selected: undefined});
+        assert.deepEqual({...observed, selected: undefined}, {connect: 1, close: 1, optionalClose: 1, drain: 1, stop: 1, invalidated: 1, exits: [0], selected: undefined});
     } finally {create.mock.restore(); exit.mock.restore(); await scope.closeAndDrain();}
 });
