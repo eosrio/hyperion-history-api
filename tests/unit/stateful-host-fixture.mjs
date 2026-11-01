@@ -8,6 +8,7 @@ import {preparedStatefulInputs, capture} from './portable-state-source-fixture.m
 import {definition, limits} from '../../packages/backend-mongodb/tests/stateful-fixture.mjs';
 import {ownerFixture} from '../../packages/backend-mongodb/tests/stateful-owner-v2-fixture.mjs';
 import {completeFixture, totals, offer} from '../../packages/backend-mongodb/tests/stateful-complete-kind-fixture.mjs';
+import {retainedWireStages, observeRetainedWireNativeFixture} from './retained-wire-stage-observer.mjs';
 
 const code = process.versions.bun ? '../../src/' : '../../build/';
 const load = path => import(new URL(code + path, import.meta.url));
@@ -25,6 +26,8 @@ const {resolveStatefulOwnerConfigurationV2} = await load('indexer/projection/sta
 /** Actual emitted/source host and worker methods, with explicit native-command and transport fixtures. */
 export async function statefulHostFixture({timeoutMs = 1000, hooks = {}, requiredSourceCapabilities = [], preparedSource,
     pluginDirectory, pluginConfiguration, projectionId, through = 3, completeKind = false} = {}) {
+    const finishSetup = retainedWireStages.begin('fixture.host-setup'); let setupFailed = true;
+    try {
     const {p} = preparedSource ? {p: preparedSource} : await preparedStatefulInputs();
     const rawConfiguration = {interfaceVersion: 2, sourceInputVersion: 2,
         backend: {kind: 'mongodb', id: 'stateful-fixture', database: 'stateful_fixture'}, recovery: {bytes: 8 * 1024 * 1024},
@@ -62,12 +65,15 @@ export async function statefulHostFixture({timeoutMs = 1000, hooks = {}, require
     const loader = new HyperionModuleLoader(cm, pluginRoot); await loader.init();
     assert.equal(loader.statefulPluginsV2().length, 1);
     const storage = completeKind ? completeFixture() : ownerFixture();
+    observeRetainedWireNativeFixture(storage.client);
     const registry = await StatefulProjectionRegistryV2.create({chainId: capture.chainId, configuration, mongo: storage.client,
         ...(completeKind ? {completeKindMongo: async () => storage.client} : {}),
         client: p.options.client, source: p.source, profile: p.options.profile, onError: (_id, error) => {throw error;}}, loader);
     await registry.initializeMissing();
     const entry = registry.entries.get(selected.id); assert(entry, 'actual host registry must resolve and capture the loaded template');
     const {declaration, adapter} = entry, native = {adapter, storage};
+    retainedWireStages.watch(adapter, [['recovery', 'projection.recovery'], ['admitRaw', 'projection.raw-admission'],
+        ['applyOwned', 'projection.apply'], ['retireRaw', 'projection.retire']]);
     const parent = new EventEmitter(), child = new EventEmitter(), ends = [];
     const supervisor = new WorkerAttemptSupervisor({onEnd: end => ends.push(describeWorkerAttemptEnd(supervisor, end))});
     parent.isConnected = () => true;
@@ -78,6 +84,7 @@ export async function statefulHostFixture({timeoutMs = 1000, hooks = {}, require
     const lifecycle = new WorkerAttemptClient({mode: 'managed', role: 'projection', transport: child, timeoutMs: 100, retries: 0});
     worker = Object.create(ProjectionWorker.prototype);
     Object.assign(worker, {workerAttemptClient: lifecycle, stopped: false, probes: new Set(), statefulControllers: new Map()});
+    retainedWireStages.watch(worker, [['runProjectionFrameAttempt', 'projection.worker-frame']]);
     const originalSend = process.send;
     process.send = message => {parent.emit('message', structuredClone(message)); return true;};
     const ownerErrors = [];
@@ -86,8 +93,13 @@ export async function statefulHostFixture({timeoutMs = 1000, hooks = {}, require
         assertActive: () => worker.assertWorkerAttemptActive(),
         run: (metadata, operation) => worker.runProjectionFrameAttempt(metadata, operation, () => !worker.stopped),
         maximumFramesPerDrain: 1, custody: createStatefulCandidateCustodyV2(p.options.client, p.options.chain, 0, declaration),
-        sourceMetadata: entry.sourceMetadata, reduce: async port => {await hooks.source?.(port); await entry.reduce(port);},
+        sourceMetadata: entry.sourceMetadata, reduce: async port => {
+            const finish = retainedWireStages.begin('projection.reduce'); let failed = true;
+            try {await hooks.source?.(port); await entry.reduce(port); failed = false;}
+            finally {finish(failed ? 'failed' : 'completed');}
+        },
         onError: error => ownerErrors.push(error)});
+    retainedWireStages.watch(controller, [['drain', 'projection.drain']]);
     worker.statefulControllers.set(selected.id, controller);
     for (let i = 0; i < through && ownerErrors.length === 0; i++) await controller.drain();
     const broker = new StatefulWorkerProbeBroker(8, timeoutMs, physical => physical === parent && supervisor.ownsActiveWorker(physical, 'projection'));
@@ -126,15 +138,21 @@ export async function statefulHostFixture({timeoutMs = 1000, hooks = {}, require
         });
         return result.value;
     });
+    setupFailed = false;
     return {app, native, p, declaration, controller, supervisor, parent, worker, registry, client, broker, socket, ends, ownerErrors, context,
         get probes() {return probeCount;}, replaceSocket() {currentSocket = {...socket};},
         disconnect() {socket.readyState = 3; client.disconnected(socket);},
         async close() {
+            const finish = retainedWireStages.begin('cleanup.host'); let failed = true;
+            try {
             await app.close(); worker.stopped = true; await controller.stop(); await Promise.allSettled([...worker.probes]);
             supervisor.observeExit(parent); lifecycle.dispose();
             if (originalSend === undefined) delete process.send; else process.send = originalSend;
             if (previousConfig === undefined) delete process.env.CONFIG_JSON; else process.env.CONFIG_JSON = previousConfig;
             assert.equal(dirname(pluginRoot), tempParent); assert(basename(pluginRoot).startsWith('hapi-stateful-plugin-'));
             rmSync(pluginRoot, {recursive: true, force: true});
+            failed = false;
+            } finally {finish(failed ? 'failed' : 'completed');}
         }};
+    } finally {finishSetup(setupFailed ? 'failed' : 'completed');}
 }
