@@ -80,6 +80,9 @@ export function createMongoDbOperatorListSourceV1(input: MongoDbOperatorListOpti
         const signal = v.signal, deadline = v.deadlineMS, authority = v.guard as () => void;
         const guard = () => {
             requireList(active, 'Operator-list source configuration is retired'); extra(); authority();
+            // The host callback is an external boundary: it may synchronously retire
+            // the source or close this provider even when it returns normally.
+            requireList(active, 'Operator-list source configuration is retired'); extra();
             requireList(!signal.aborted && performance.now() < deadline, 'Operator-list request is cancelled or expired'); retryOptions();
         };
         const cleanupRemaining = () => {requireList(performance.now() < deadline, 'Operator-list cleanup deadline expired'); return Math.max(1, Math.ceil(deadline - performance.now()));};

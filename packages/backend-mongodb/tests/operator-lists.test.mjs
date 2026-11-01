@@ -105,6 +105,16 @@ test('retirement and request closure fence before reads, after awaits and after 
     assert.throws(reader.assertCurrent, failed); await assert.rejects(reader.read(['schemas'], readLimits()), failed);
 });
 
+test('host guard callbacks cannot retire or close a provider while their publication check still succeeds', async () => {
+    for (const target of ['source', 'provider']) {
+        const {source} = await setup(lists); let onGuard = () => {};
+        const provider = source.createProvider(context({guard: () => onGuard()}));
+        onGuard = () => {if (target === 'source') source.retire(); else provider.close();};
+        assert.throws(provider.assertCurrent, failed);
+        await assert.rejects(provider.read(['schemas'], readLimits()), failed);
+    }
+});
+
 test('aborted or expired lifetimes fail before effects and late cancellation cannot publish a cache result', async () => {
     const {source, f} = await setup(lists), abort = new AbortController(); abort.abort();
     assert.throws(() => source.createProvider(context({signal: abort.signal})), failed);
