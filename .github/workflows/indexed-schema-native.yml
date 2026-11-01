@@ -1,0 +1,53 @@
+name: Indexed schema native MongoDB engineering
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/indexed-schema-native.yml'
+      - 'scripts/qualification/indexed-schema-mongodb/**'
+      - 'src/api/helpers/stateful-owner.ts'
+      - 'src/indexer/projection/stateful-*.ts'
+      - 'packages/backend-mongodb/**'
+      - 'package.json'
+      - 'package-lock.json'
+jobs:
+  indexed-native:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['24.22.1', '26.4.0']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: |
+          npm ci --allow-git=all --ignore-scripts=false
+          npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false
+          test "$(bun --version)" = "$(cat .bun-version)"
+          test "$(bun -p process.versions.typescript)" = "7.0.2"
+          bun check -p tsconfig.json
+          bun check -p packages/backend-mongodb/tsconfig.json
+          npm run build
+      - run: node scripts/qualification/indexed-schema-mongodb/assembly.mjs --profile indexed-schema-sdk49-native2bf-engineering-v1 > indexed-native-source-${{ matrix.node }}.json
+      - run: node --test scripts/qualification/indexed-schema-mongodb/assembly.test.mjs scripts/qualification/indexed-schema-mongodb/assembly-cli.test.mjs scripts/qualification/indexed-schema-mongodb/native-offline.test.mjs
+      - run: npm run test:indexed:finite
+      - run: npm run test:indexed:package
+      - run: node scripts/qualification/indexed-schema-mongodb/native-ci.mjs --profile indexed-schema-mongodb-sdk49-2da-linux-gha-v1 indexed-native-${{ matrix.node }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: indexed-native-${{ matrix.node }}
+          path: |
+            indexed-native-source-${{ matrix.node }}.json
+            indexed-native-${{ matrix.node }}/
+            out/indexed-packed-*/receipt.json
+            out/indexed-packed-*/*.stdout
+            out/indexed-packed-*/*.stderr
+            out/indexed-packed-*/failed.json
+          if-no-files-found: error
