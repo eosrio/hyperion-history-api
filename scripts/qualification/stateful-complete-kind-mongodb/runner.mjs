@@ -323,12 +323,14 @@ export async function run(options) {
         try {await pool.close(); cleanup.managedClientClosed = closes.length === 1; assert.ok(cleanup.managedClientClosed);
             await assert.rejects(pool.get(PLAN.operationMS)); assert.ok(sessions.every(session => session.ended)); cleanup.sessions = sessions.length; cleanup.sessionsEnded = true;}
         catch (error) {reportError ??= error; cleanup.clientError = failure(error);}
-        try {await retry.close(); if (owned) {
+        try {await retry.close();} catch (error) {reportError ??= error; cleanup.retryClientError = failure(error);}
+        try {if (owned) {
             const marker = await admin.db(options.database).collection('_qualification_owner').findOne({_id: ownedMarker}); assert.equal(marker?.scope, PLAN.scope);
             await admin.db(options.database).dropDatabase({writeConcern: {w: 'majority', j: true}});
             assert.deepEqual(await admin.db(options.database).listCollections().toArray(), []); cleanup.databaseDropped = true;
         }} catch (error) {reportError ??= error; cleanup.databaseError = failure(error);}
-        await admin.close(); stopMonitor?.(); stopRetry();
+        try {await admin.close();} catch (error) {reportError ??= error; cleanup.adminClientError = failure(error);}
+        stopMonitor?.(); stopRetry();
         report.status = reportError ? 'failed' : 'passed-native-only'; report.traceEvents = trace.length;
         json(join(options.output, 'trace.json'), trace); json(join(options.output, 'report.json'), report);
         json(join(options.output, 'sha256.json'), ['trace.json', 'report.json'].map(path => ({path, sha256: hash(readFileSync(join(options.output, path)))})));

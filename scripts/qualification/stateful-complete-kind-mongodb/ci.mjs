@@ -79,7 +79,8 @@ export async function runCI(output) {
     } catch (error) {failure ??= error; report.failure = {name: error.name, message: String(error.message).slice(0, 1024)};}
     finally {
         // Retain failed traces/stdout/stderr and owned diagnostics BEFORE removing only verified owned resources.
-        report.diagnostics = fixture.diagnostics(); json(join(output, 'before-cleanup.json'), report);
+        try {report.diagnostics = fixture.diagnostics(); json(join(output, 'before-cleanup.json'), report);}
+        catch (error) {failure ??= error; report.evidenceFailure = String(error.message).slice(0, 1024);}
         try {await fixture.cleanup();} catch (error) {failure ??= error; report.cleanupFailure = String(error.message).slice(0, 1024);}
         process.off('SIGINT', stop); process.off('SIGTERM', stop);
         report.status = failure ? 'failed' : 'passed-native-engine-only';
