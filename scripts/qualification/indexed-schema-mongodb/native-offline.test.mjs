@@ -13,7 +13,7 @@ import {receiveMongoIndexedModelV1,planMongoIndexedQueryV1,mongoIndexedIndexesV1
 import {createMongoDbStatefulCompleteKindAdapterV1} from '../../../packages/backend-mongodb/dist/stateful-complete-kind-v1.js';
 import {createMongoDbStatefulIndexedAdapterV1} from '../../../packages/backend-mongodb/dist/stateful-indexed-v1.js';
 import {selectMongoDbIndexedEngineeringAssemblyV1} from '../../../packages/backend-mongodb/dist/stateful-indexed-engineering-v1.js';
-import {PLAN,ORACLE,argumentsFor,dispatchCases,assertNativeCompletion,persistNativeChildIntent,projectionDefinition,projectionLimits,schemaModel,corpus,page,count,assertCreatedPeers,assertCoveredAbsence,hex,sha} from './native-contract.mjs';
+import {PLAN,ORACLE,argumentsFor,dispatchCases,assertNativeCompletion,persistNativeChildIntent,projectionDefinition,projectionLimits,schemaModel,corpus,page,count,assertCreatedPeers,assertCoveredAbsence,assertGenesisCoverage,hex,sha} from './native-contract.mjs';
 import {NATIVE_PROFILE,observeNativeInputs,assertNativeInputs,assertNativeRuntime} from './native-assembly.mjs';
 import {ASSEMBLY} from './assembly.mjs';
 import {sourceReferences,observeSourceClosure,assertSourceClosure} from './native-source-closure.mjs';
@@ -55,6 +55,14 @@ function observedPlan(major){
 function verifyObserved(input){return verifyExplain(input.explanation,{...input,catalog:input.catalogBefore});}
 function catalogControl(input){return catalog=>verifyLookupCatalog(catalog,lookupIndexSpecs(input.aliases));}
 function after(input){return {view:structuredClone(input.sealedView),catalog:structuredClone(input.catalogBefore)};}
+test('genesis coverage compares the complete BSON document against a null-prototype view checkpoint',()=>{
+ const view={generation:'generation',revision:3,checkpoint:Object.assign(Object.create(null),{blockNum:0,blockId:'0'.repeat(64)})},model='model',owner='owner';
+ const coverage={_id:model,representation:'h45-owner-indexed-materialization-v1',owner,model,generation:view.generation,revision:view.revision,checkpoint:{blockNum:0,blockId:'0'.repeat(64)},ready:true,reason:null};
+ assertGenesisCoverage(coverage,model,owner,view);const ordinary={...view,checkpoint:{...view.checkpoint}};assertGenesisCoverage(coverage,model,owner,ordinary);
+ for(const checkpoint of [{...view.checkpoint,extra:true},{blockNum:0}])assert.throws(()=>assertGenesisCoverage(coverage,model,owner,{...view,checkpoint}));
+ for(const change of [x=>x.checkpoint.blockNum=1,x=>x.checkpoint.blockId='1'.repeat(64),x=>delete x.checkpoint.blockId,x=>x.checkpoint.extra=true,x=>x.extra=true,x=>delete x.ready,x=>x.owner='foreign',x=>x.reason='gap']){const altered=structuredClone(coverage);change(altered);assert.throws(()=>assertGenesisCoverage(altered,model,owner,view));}
+});
+
 test('retained replay inputs match their official extraction provenance',()=>{
  const dir='./fixtures/9d8-explain/', provenance=JSON.parse(readFileSync(new URL(dir+'PROVENANCE.json',import.meta.url),'utf8'));
  assert.equal(provenance.run,41333567862);assert.equal(provenance.head,'9d8c11f57bceb6c9df297de60d86005a96022033');
