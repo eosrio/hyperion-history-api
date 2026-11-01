@@ -4,8 +4,8 @@ import {copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, readd
 import {basename, dirname, join, resolve} from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath, pathToFileURL} from 'node:url';
-import {admitNativeApiSourceOptions, admitNativeSourceEnvironment, STATEFUL_NATIVE_CLEANUP_API_SOURCE_PROFILE as profile, STATEFUL_NATIVE_SNAPSHOT_API_SOURCE_PROFILE as priorSnapshotProfile, STATEFUL_CURRENT_NATIVE_API_SOURCE_PROFILE as priorCurrentProfile, STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE as priorCodecProfile, STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE as priorMetadataProfile, STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE as priorExecutorProfile, STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE as priorCommandsProfile, STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE as priorCompleteKindProfile, STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE as priorProfile, STATEFUL_METADATA_FIELDS_API_SOURCE_PROFILE as fieldsProfile, STATEFUL_ENGINEERING_API_SOURCE_PROFILE as oldProfile, STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE as legacyProfile} from './stateful-engineering-source-admission.mjs';
-import {NATIVE_CLEANUP_ASSEMBLY as CURRENT_NATIVE_ASSEMBLY} from './native-cleanup-source-admission.mjs';
+import {admitNativeApiSourceOptions, admitNativeSourceEnvironment, STATEFUL_NATIVE_CLEANUP_TRACE_API_SOURCE_PROFILE as profile, STATEFUL_NATIVE_CLEANUP_API_SOURCE_PROFILE as priorCleanupProfile, STATEFUL_NATIVE_SNAPSHOT_API_SOURCE_PROFILE as priorSnapshotProfile, STATEFUL_CURRENT_NATIVE_API_SOURCE_PROFILE as priorCurrentProfile, STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE as priorCodecProfile, STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE as priorMetadataProfile, STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE as priorExecutorProfile, STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE as priorCommandsProfile, STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE as priorCompleteKindProfile, STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE as priorProfile, STATEFUL_METADATA_FIELDS_API_SOURCE_PROFILE as fieldsProfile, STATEFUL_ENGINEERING_API_SOURCE_PROFILE as oldProfile, STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE as legacyProfile} from './stateful-engineering-source-admission.mjs';
+import {NATIVE_CLEANUP_TRACE_ASSEMBLY as CURRENT_NATIVE_ASSEMBLY} from './native-cleanup-trace-source-admission.mjs';
 import {OPERATOR_LIST_ASSEMBLY} from '../../scripts/qualification/operator-list-mongodb/linux-cleanup-source-profile.mjs';
 import {findPackageJSON} from 'node:module';
 const nativeSource = CURRENT_NATIVE_ASSEMBLY.productSource;
@@ -13,6 +13,7 @@ const nativeSource = CURRENT_NATIVE_ASSEMBLY.productSource;
 assert.equal(process.versions.bun, undefined); assert.match(process.version, /^v(?:24|26)\./);
 let cases = 0, accessorCalls = 0;
 const actual = admitNativeApiSourceOptions({engineeringSourceProfile: profile}); assert.equal(actual.qualificationOnly, true); assert.equal(actual.nativeSourceCommit, nativeSource.commit); assert.equal(actual.nativeTree, nativeSource.tree); cases++;
+assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: priorCleanupProfile}), /Git-LF helper|complete byte inventories/);
 assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: priorSnapshotProfile}), /Git-LF helper|complete byte inventories/);
 assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: priorCurrentProfile}), /Git-LF helper|complete byte inventories/); cases++;
 assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: priorCodecProfile}), /complete-kind native Git-LF package/); cases++;
@@ -42,6 +43,7 @@ try {
         copy(fileURLToPath(new URL('../../' + path, import.meta.url)), join(directory, path));
     const gate = join(directory, 'tests/unit/stateful-engineering-source-admission.mjs');
     for (const path of Object.keys(CURRENT_NATIVE_ASSEMBLY.helperSources)) copy(fileURLToPath(new URL('../../' + path, import.meta.url)), join(directory, path));
+    copy(fileURLToPath(new URL('../fixtures/engineering-profiles/native-cleanup-trace-linux.json', import.meta.url)), join(directory, 'tests/fixtures/engineering-profiles/native-cleanup-trace-linux.json'));
     copy(fileURLToPath(new URL('../fixtures/engineering-profiles/native-cleanup-linux.json', import.meta.url)), join(directory, 'tests/fixtures/engineering-profiles/native-cleanup-linux.json'));
     copy(fileURLToPath(new URL('../fixtures/engineering-profiles/native-snapshot-linux.json', import.meta.url)), join(directory, 'tests/fixtures/engineering-profiles/native-snapshot-linux.json'));
     copy(fileURLToPath(new URL('../fixtures/engineering-profiles/current-native45-linux.json', import.meta.url)), join(directory, 'tests/fixtures/engineering-profiles/current-native45-linux.json'));

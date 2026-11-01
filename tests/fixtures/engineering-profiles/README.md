@@ -1,3 +1,5 @@
+`native-cleanup-trace-linux.json` is the explicitly selected cleanup-trace-v2 helper-graph successor. Product source9c/native45 and the list assembly profile remain fixed. The corrected verifier43c preserves snapshot data checks and requires original non-read cursor closure; old f0 verifier and failed actual run41295200550 remain retained. The contract has an explicit versioned-verifier guard with identical PLAN prefix, rather than being labeled an unchanged workload body. Full20-file dispatcher closure is retained for every selector; actual new CI acceptance remains pending.
+
 `native-cleanup-linux.json` and `operator-list-cleanup-observation.json` describe the separately selected source9c3db03 cursor-cleanup candidate. Actual81db Linux evidence passes two bounded list cases then fails killCursors readConcern; new native Linux/physical qualification remains pending. Windows/e6/81db profile data and modules stay frozen; historical-81db-snapshot45 retains exact previous positive-test source. Every selected dispatcher snapshot now carries the full18-file transitive helper/data closure.
 
 # Explicit engineering assembly evidence
