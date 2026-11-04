@@ -61,7 +61,7 @@ export async function receiveMongoIndexedModelV1(owner: StatefulOwnerDeclaration
 export function assertMongoIndexedTracerModelV1(model: MongoIndexedModelV1): void {
     const m = model.declaration.model;
     const supported = (field: typeof m.fields[number], op: string) => field.alias === m.base.alias && !field.nullable
-        && (field.type === 'text' ? ['eq','in','not-in'].includes(op) : field.type === 'int64' && ['eq','gte','gt','lt'].includes(op));
+        && (field.type === 'text' ? ['eq','in','not-in'].includes(op) : field.type === 'int64' && ['eq','in','gte','gt','lt'].includes(op));
     requireState(m.fields.every(field => field.operators.every(op => supported(field, op))),
         'This indexed tracer does not implement a declared predicate', 'stateful.capability-unavailable');
     requireState(m.orders.every(order => order.every(term => m.fields.find(field => field.id === term.field)?.alias === m.base.alias)),
@@ -147,7 +147,7 @@ export function planMongoIndexedQueryV1(model: MongoIndexedModelV1, requestInput
     const filters: Document[] = [{alias: m.base.alias}];
     for (const predicate of request.where) {
         const field = m.fields.find(field => field.id === predicate.field)!;
-        if ('values' in predicate) filters.push({['v.' + field.id]: {[predicate.op === 'in' ? '$in' : '$nin']: [...predicate.values]}});
+        if ('values' in predicate) filters.push({['v.' + field.id]: {[predicate.op === 'in' ? '$in' : '$nin']: predicate.values.map(value => typed(value, field))}});
         else {const value = typed(predicate.value, field), operator = ({eq:'$eq',gte:'$gte',gt:'$gt',lt:'$lt'} as Record<string,string>)[predicate.op];
             requireState(operator, 'Predicate has no indexed native implementation', 'stateful.capability-unavailable'); filters.push({['v.' + field.id]: {[operator]: value}});}
     }

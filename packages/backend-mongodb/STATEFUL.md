@@ -230,3 +230,10 @@ These controls do not execute a database, mutable controller, physical HTTP list
 or process-stop experiment. Real MongoDB8.0.34 plans/updates/restart/fork traces,
 paired original PostgreSQL semantics and managed native HTTP remain required
 qualification work under HAPI#415; existing historical profile gates remain intact.
+
+A separately scoped int64-membership planner precursor accepts SDK `in` values for
+non-null int64 fields and encodes each canonical value as BSON Long. This remains
+source-only under HAPI #429: the previous SDK49 engineering assembly and its exact
+source/SDK hashes do not admit this successor, and no MongoDB comparison or managed
+HTTP capability is offered by these changes. Fresh assembly custody, real MongoDB
+execution and same-input original PostgreSQL/Fastify comparison remain required.
