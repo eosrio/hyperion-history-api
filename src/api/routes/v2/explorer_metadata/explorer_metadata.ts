@@ -7,6 +7,7 @@ async function getExplorerMetadata(fastify: FastifyInstance) {
         provider_url: fastify.manager.config.api.provider_url,
         chain_name: fastify.manager.config.api.chain_name,
         chain_id: fastify.manager.conn.chains[fastify.manager.chain].chain_id,
+        system_contract: fastify.manager.config.settings.system_contract ?? fastify.manager.config.settings.eosio_alias ?? 'eosio',
         custom_core_token: fastify.manager.config.api.custom_core_token,
         theme: fastify.explorerTheme ?? {},
         oracle: fastify.manager.config.api.explorer?.oracle || {},
