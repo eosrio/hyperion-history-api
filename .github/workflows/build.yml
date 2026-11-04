@@ -48,8 +48,29 @@ jobs:
       - name: Check retained Wire managed state and historical source authority on Node ${{ matrix.node-version }}
         run: |
           node --test tests/unit/portable-mapping-retry-native.mjs
-          node --test tests/unit/wire-managed-state-v2-native.mjs
+          mkdir "$RUNNER_TEMP/retained-wire-cpu"
+          node --input-type=module -e '
+            import {execFileSync} from "node:child_process";
+            import {writeFileSync} from "node:fs";
+            import {admitNativeSourceEnvironment} from "./tests/unit/stateful-engineering-source-admission.mjs";
+            const evidence = {runId: process.env.GITHUB_RUN_ID, runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+              githubSha: process.env.GITHUB_SHA, headSha: process.env.PR_HEAD_SHA,
+              checkoutSha: execFileSync("git", ["rev-parse", "HEAD"], {encoding: "utf8"}).trim(),
+              node: process.version, sourceProfile: process.env.HYPERION_NATIVE_SOURCE_PROFILE,
+              admission: admitNativeSourceEnvironment()};
+            writeFileSync(process.env.RUNNER_TEMP + "/retained-wire-cpu/source.json", JSON.stringify(evidence, null, 2) + "\n");
+          '
+          node --cpu-prof --cpu-prof-dir="$RUNNER_TEMP/retained-wire-cpu" --test tests/unit/wire-managed-state-v2-native.mjs
           node --test tests/unit/protocol-abi-history-native.mjs
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      - name: Retain retained Wire CPU and source evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: retained-wire-cpu-source-${{ matrix.node-version }}
+          path: ${{ runner.temp }}/retained-wire-cpu/
+          if-no-files-found: warn
       - name: Check Fastify request admission and state route compatibility on Node ${{ matrix.node-version }}
         run: node --test --test-timeout=15000 tests/native/fastify-compatibility.test.mjs
       - name: Check complete-kind query/client and final-publication controls
