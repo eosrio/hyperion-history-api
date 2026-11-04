@@ -4,6 +4,7 @@ import {createPortableStateBackend} from '../../indexer/projection/backend.js';
 import {createPortableStateQueryService, PortableStateQueryError, type PortableStateQueryHost} from '../../indexer/projection/query-service.js';
 import {loadChainProtocol} from '../../indexer/protocol/selection.js';
 import {PortableProjectionSource} from '../../indexer/projection/source.js';
+import {protocolSourceNamespace} from '../../indexer/protocol/source-namespace.js';
 import {createPortableStateReadGate} from '../../indexer/projection/production.js';
 
 /** API startup attaches read-only consumers; the existing projection worker owns initialization and durable progress. */
@@ -17,7 +18,7 @@ export async function createPortableStateApiService(fastify: FastifyInstance): P
     }
     const selected = await loadChainProtocol(manager.config.settings.protocol);
     const adapter = createPortableStateBackend(manager.mongodbClient, configuration);
-    const source = new PortableProjectionSource({client: manager.elasticsearchClient, chain: manager.chain, chainId,
+    const source = new PortableProjectionSource({client: manager.elasticsearchClient, chain: protocolSourceNamespace(manager.chain,manager.config.settings.protocol_abi_coordination?.source_namespace), chainId,
         profile: {id: selected.id, profileId: selected.provider.profileId, components: selected.components ?? []}, provider: selected.provider,
         maxAncestryBlocks: manager.config.settings.protocol_abi_coordination?.recovery_window_blocks,
         replicas: manager.config.settings.es_replicas ?? 0});

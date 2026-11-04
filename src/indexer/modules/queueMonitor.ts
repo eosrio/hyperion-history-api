@@ -12,7 +12,8 @@ export class HyperionQueueMonitor {
 
 
     private queueMonitoringInterval?: Timeout;
-    private readingPaused = false;
+    private readonly readingPaused = {reader: true, continuous_reader: true};
+    private checking = false;
     chain: string;
 
     constructor(master: HyperionMaster) {
@@ -22,130 +23,72 @@ export class HyperionQueueMonitor {
         this.manager = this.master.manager;
     }
 
-    private pauseReaders() {
-        if (!this.readingPaused) {
-            this.master.sendToRole('reader', { event: 'pause' });
-            this.master.sendToRole('continuous_reader', { event: 'pause' });
-            this.readingPaused = true;
-        }
+    isReaderPaused(role: 'reader' | 'continuous_reader'): boolean {
+        return this.readingPaused[role];
     }
 
-    private resumeReaders() {
-        if (this.readingPaused) {
-            this.master.sendToRole('reader', { event: 'resume' });
-            this.master.sendToRole('continuous_reader', { event: 'resume' });
-            this.readingPaused = false;
+    private updateReader(role: 'reader' | 'continuous_reader', aboveLimit: boolean, canResume: boolean) {
+        if (aboveLimit && !this.readingPaused[role]) {
+            this.master.sendToRole(role, {event: 'pause', source: 'queue-pressure'});
+            this.readingPaused[role] = true;
+        } else if (!aboveLimit && canResume && this.readingPaused[role]) {
+            this.master.sendToRole(role, {event: 'resume', source: 'queue-pressure'});
+            this.readingPaused[role] = false;
         }
     }
 
     private async checkQueues(autoscaleConsumers: Record<string, number>, limit: number) {
-        const testedQueues = new Set();
-        let aboveLimit = false;
-        let canResume = true;
-        let queuedMessages = 0;
-        for (const worker of this.master.workerMap) {
-            let queue = worker.queue;
-            if (!queue) {
-                queue = worker.worker_queue;
+        if (this.checking) return;
+        this.checking = true;
+        try {
+            type Scope = 'bulk' | 'live' | 'shared';
+            const queues = new Map<string, {scope: Scope; limit: number; ingestor?: HyperionMaster['workerMap'][number]}>();
+            for (const worker of this.master.workerMap) {
+                let queue = worker.queue || worker.worker_queue;
+                if (worker.worker_role === 'ds_pool_worker') queue = `${this.chain}:ds_pool:${worker.local_id}`;
+                if (!queue) continue;
+                const input = worker.worker_role === 'deserializer';
+                const bulkPrefix = `${this.chain}:blocks:`;
+                const scope: Scope = input && queue === `${this.chain}:live_blocks` && (worker.live_mode === undefined || worker.live_mode === 'true') ? 'live'
+                    : input && queue.startsWith(bulkPrefix) && /^[1-9][0-9]*$/.test(queue.slice(bulkPrefix.length)) && (worker.live_mode === undefined || worker.live_mode === 'false') ? 'bulk' : 'shared';
+                const qlimit = input ? this.conf.scaling.block_queue_limit : this.conf.scaling.max_queue_limit;
+                const previous = queues.get(queue);
+                queues.set(queue, {scope: previous && previous.scope !== scope ? 'shared' : scope,
+                    limit: previous ? Math.min(previous.limit, qlimit) : qlimit,
+                    ingestor: previous?.ingestor ?? (worker.worker_role === 'ingestor' ? worker : undefined)});
             }
-
-            if (worker.worker_role === 'ds_pool_worker') {
-                queue = `${this.chain}:ds_pool:${worker.local_id}`;
+            const hasBulk = [...queues.values()].some(item => item.scope === 'bulk');
+            const hasLive = [...queues.values()].some(item => item.scope === 'live');
+            if ((!hasBulk && this.master.workerMap.some(worker => worker.worker_role === 'reader'))
+                || (!hasLive && this.master.workerMap.some(worker => worker.worker_role === 'continuous_reader'))) {
+                throw new Error('Active reader input queue is not observed');
             }
-
-            if (queue && !testedQueues.has(queue)) {
+            const pressure = {bulk: {above: !hasBulk, resume: hasBulk}, live: {above: !hasLive, resume: hasLive}, shared: {above: false, resume: true}};
+            for (const [queue, item] of queues) {
                 const size = await this.manager.checkQueueSize(queue);
-                queuedMessages += size;
-                let qlimit = this.conf.scaling.max_queue_limit;
-                if (worker.worker_role === 'deserializer') {
-                    qlimit = this.conf.scaling.block_queue_limit;
-                }
-
-                // if (size / qlimit > 0.5) {
-                // 	hLog(queue, size, ((size / qlimit) * 100).toFixed(2) + "%");
-                // }
-
-                // pause readers if queues are above the max_limit
-                if (size >= qlimit) {
-                    aboveLimit = true;
-                }
-
-                // check if any queue is above resume point
-                if (size >= this.conf.scaling.resume_trigger) {
-                    canResume = false;
-                }
-
-                // check indexing queues
-                if (worker.worker_role === 'ingestor') {
-                    if (size > limit) {
-                        if (!autoscaleConsumers[queue]) {
-                            autoscaleConsumers[queue] = 0;
-                        }
-                        if (autoscaleConsumers[queue] < this.conf.scaling.max_autoscale) {
-                            hLog(`${queue} is above the limit (${size}/${limit}). Launching consumer...`);
-                            this.master.addWorker({
-                                queue: queue,
-                                type: worker.type,
-                                worker_role: 'ingestor'
-                            });
-                            this.master.launchWorkers();
-                            autoscaleConsumers[queue]++;
-                        }
+                if (!Number.isSafeInteger(size) || size < 0) throw new Error(`Invalid queue size for ${queue}`);
+                const state = pressure[item.scope];
+                if (size >= item.limit) state.above = true;
+                if (size >= this.conf.scaling.resume_trigger) state.resume = false;
+                if (item.ingestor && size > limit) {
+                    if (!autoscaleConsumers[queue]) autoscaleConsumers[queue] = 0;
+                    if (autoscaleConsumers[queue] < this.conf.scaling.max_autoscale) {
+                        hLog(`${queue} is above the limit (${size}/${limit}). Launching consumer...`);
+                        this.master.addWorker({queue, type: item.ingestor.type, worker_role: 'ingestor'});
+                        this.master.launchWorkers();
+                        autoscaleConsumers[queue]++;
                     }
                 }
-
-                // // resume readers if the queues are below the trigger point
-                // if (size <= this.conf.scaling.resume_trigger) {
-                //
-                // 	// remove flow limiter
-                // 	if (this.readingLimited) {
-                // 		this.readingLimited = false;
-                // 		hLog('removing flow limiters');
-                // 		for (const worker of this.workerMap) {
-                // 			if (worker.worker_role === 'reader') {
-                // 				worker.wref.send({event: 'set_delay', data: {state: false, delay: 0}});
-                // 			}
-                // 		}
-                // 	}
-                //
-                // 	// fully unpause
-                // 	if (this.readingPaused) {
-                // 		canResume = true;
-                // 		this.readingPaused = false;
-                // 		hLog('resuming readers');
-                // 		for (const worker of this.workerMap) {
-                // 			if (worker.worker_role === 'reader') {
-                // 				worker.wref.send({event: 'pause'});
-                // 			}
-                // 		}
-                // 	}
-                // }
-                //
-                // // apply block processing delay on 80% usage
-                // if (size >= this.conf.scaling.max_queue_limit * 0.8) {
-                // 	this.readingLimited = true;
-                // 	hLog('applying flow limiters');
-                // 	for (const worker of this.workerMap) {
-                // 		if (worker.worker_role === 'reader') {
-                // 			worker.wref.send({event: 'set_delay', data: {state: true, delay: 250}});
-                // 		}
-                // 	}
-                // }
-
-                testedQueues.add(queue);
             }
-        }
-
-        if (aboveLimit) {
-
-            this.pauseReaders();
-
-        } else {
-
-            if (canResume) {
-                this.resumeReaders();
-            }
-
+            this.updateReader('reader', pressure.shared.above || pressure.bulk.above, pressure.shared.resume && pressure.bulk.resume);
+            this.updateReader('continuous_reader', pressure.shared.above || pressure.live.above, pressure.shared.resume && pressure.live.resume);
+        } catch (error) {
+            // Unknown queue pressure must not release either reader.
+            this.updateReader('reader', true, false);
+            this.updateReader('continuous_reader', true, false);
+            hLog('Queue monitoring failed; readers paused:', error);
+        } finally {
+            this.checking = false;
         }
     }
 

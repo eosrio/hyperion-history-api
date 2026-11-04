@@ -25,6 +25,7 @@ import {assertCompleteProtocolSearch} from '../protocol/search.js';
 import {ProtocolAbiObservationStore, type ProtocolAbiObservationRecord} from '../protocol/abi-observation-store.js';
 import {assertProtocolAbiObservationFacts} from '../protocol/abi-observation-facts.js';
 import {ProtocolSourceBindingStore, ProtocolSourceBindingReadError, protocolSourceSelectionHeader} from '../protocol/source-bindings.js';
+import {protocolSourceNamespace} from '../protocol/source-namespace.js';
 import {protocolImmutableJson} from '../protocol/immutable-bundle-store.js';
 import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, type ProtocolAbiProofView} from '../protocol/abi-proof.js';
 import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
@@ -472,7 +473,7 @@ export default class MainDSWorker extends HyperionWorker {
         const claimed = snapshot ? snapshot.selectionId : message.properties?.headers?.[protocolSourceSelectionHeader];
         await this.protocolReady;
         this.assertWorkerAttemptActive();
-        this.protocolSourceBindingStore ??= new ProtocolSourceBindingStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0);
+        this.protocolSourceBindingStore ??= new ProtocolSourceBindingStore(this.client, protocolSourceNamespace(this.chain,this.conf.settings.protocol_abi_coordination?.source_namespace), this.conf.settings.es_replicas ?? 0);
         const store = this.protocolSourceBindingStore;
         const claimedSelectionId = typeof claimed === 'string' && claimed.length <= 4096 ? claimed : null;
         const quarantine = async (code: string, error: unknown) => {
@@ -633,7 +634,7 @@ export default class MainDSWorker extends HyperionWorker {
             observation = {status: 'incomplete', error: {code: 'protocol_abi_observation_incomplete',
                 message: String(error?.message ?? error).slice(0, 4096).toWellFormed()}};
         }
-        this.protocolAbiObservationStore ??= new ProtocolAbiObservationStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0);
+        this.protocolAbiObservationStore ??= new ProtocolAbiObservationStore(this.client, protocolSourceNamespace(this.chain,this.conf.settings.protocol_abi_coordination?.source_namespace), this.conf.settings.es_replicas ?? 0);
         const abiRecord: ProtocolAbiObservationRecord = {schemaVersion: 1,
             protocol: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
             source, capture, observation};
@@ -720,7 +721,7 @@ export default class MainDSWorker extends HyperionWorker {
         } finally { stopExtract(); }
         this.assertWorkerAttemptActive();
         if (!current()) throw new Error('Native observation source channel changed during extraction');
-        this.protocolNativeObservationStore ??= new ProtocolNativeObservationStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0);
+        this.protocolNativeObservationStore ??= new ProtocolNativeObservationStore(this.client, protocolSourceNamespace(this.chain,this.conf.settings.protocol_abi_coordination?.source_namespace), this.conf.settings.es_replicas ?? 0);
         const stopPrepare = this.profiler.start('protocol_native_prepare');
         try { await this.protocolNativeObservationStore.prepare(selectionId, record); }
         finally { stopPrepare(); }
@@ -731,7 +732,7 @@ export default class MainDSWorker extends HyperionWorker {
     private getProtocolAbiProofReader(): ProtocolAbiProofReader {
         return this.protocolAbiProofReader ??= new ProtocolAbiProofReader({chainId: this.chainId,
             profile: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
-            store: new ProtocolAbiFrontierStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0, {readOnly: true}),
+            store: new ProtocolAbiFrontierStore(this.client, protocolSourceNamespace(this.chain,this.conf.settings.protocol_abi_coordination?.source_namespace), this.conf.settings.es_replicas ?? 0, {readOnly: true}),
             requireAttemptScope: this.workerAttemptScopeRequired,
             maxAncestryBlocks: this.conf.settings.protocol_abi_coordination?.recovery_window_blocks});
     }

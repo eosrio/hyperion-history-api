@@ -44,6 +44,7 @@ import { HyperionModuleLoader } from './loader.js';
 import { HyperionQueueMonitor } from './queueMonitor.js';
 import {loadChainProtocol} from '../protocol/selection.js';
 import {ProtocolAbiCoordinator} from '../protocol/abi-coordinator.js';
+import {protocolSourceNamespace} from '../protocol/source-namespace.js';
 import {verifyRetainedGenesisInput} from '../protocol/retained-genesis-input.js';
 import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
 import {ProtocolSourceBindingStore, type ProtocolSourcePosition} from '../protocol/source-bindings.js';
@@ -144,7 +145,7 @@ export class HyperionMaster {
         const canonicalChecks = new WeakMap<CurrentAttemptCanonicalBlock, () => void>();
         return this.actionAttemptAdjudicator = new ActionAttemptAdjudicator(supervisor,
             new ActionSourceAdmissionStore(this.esClient, this.chain, this.conf.settings.es_replicas ?? 0),
-            new ProtocolSourceBindingStore(this.esClient, this.chain, this.conf.settings.es_replicas ?? 0, {readOnly: true}), {
+            new ProtocolSourceBindingStore(this.esClient, protocolSourceNamespace(this.chain,this.conf.settings.protocol_abi_coordination?.source_namespace), this.conf.settings.es_replicas ?? 0, {readOnly: true}), {
                 configurationSha256: () => createHash('sha256').update(actionConfigurationSnapshot(this.conf, this.cm.filters,
                     this.mLoader.snapshotActionHandlers())).digest('hex'),
                 canonicalBlock: async blockNum => {
@@ -425,6 +426,7 @@ export class HyperionMaster {
 
     initHandlerMap() {
         this.msgHandlerMap = {
+            reader_pressure_ready: (worker: Worker) => { this.syncReaderPressure(worker); },
             protocol_abi_coordinator_request: async (worker: Worker, msg: WorkerMessage) => {
                 await this.handleProtocolAbiCoordinatorRequest(worker, msg);
             },
@@ -782,11 +784,13 @@ export class HyperionMaster {
             const selected = await loadChainProtocol(this.conf.settings.protocol, {sourceEvidence: true});
             const replicas = this.conf.settings.es_replicas ?? 0;
             const options = this.conf.settings.protocol_abi_coordination;
+            const sourceNamespace=protocolSourceNamespace(this.chain,options?.source_namespace);
+            hLog(`Protocol source namespace: ${sourceNamespace}`);
             const coordinator = new ProtocolAbiCoordinator({chainId: this.manager.conn.chains[this.chain].chain_id,
                 profile: {id: selected.id, profileId: selected.provider.profileId, components: selected.components ?? []},
-                ownerId: randomUUID(), bindings: new ProtocolSourceBindingStore(this.esClient, this.chain, replicas),
-                observations: new ProtocolAbiObservationStore(this.esClient, this.chain, replicas),
-                store: new ProtocolAbiFrontierStore(this.esClient, this.chain, replicas),
+                ownerId: randomUUID(), bindings: new ProtocolSourceBindingStore(this.esClient, sourceNamespace, replicas),
+                observations: new ProtocolAbiObservationStore(this.esClient, sourceNamespace, replicas),
+                store: new ProtocolAbiFrontierStore(this.esClient, sourceNamespace, replicas),
                 verifyNativeGenesis: selected.provider.verifyNativeGenesis?.bind(selected.provider),
                 capturedGenesisEnabled: !!options?.retained_genesis,
                 nativeActionInterfaceVersion: selected.provider.nativeActions?.interfaceVersion,
@@ -1500,7 +1504,8 @@ export class HyperionMaster {
         let launchedCount = 0;
         this.workerMap.forEach((wrk: HyperionWorkerDef) => {
             if (!wrk.wref && wrk.worker_id && !wrk.reader_incomplete) {
-                const worker = cluster.fork(wrk);
+                const reader = wrk.worker_role === 'reader' || wrk.worker_role === 'continuous_reader';
+                const worker = cluster.fork(reader ? {...wrk, reader_pressure_sync: 'true'} : wrk);
                 wrk.wref = worker;
                 worker.id = wrk.worker_id;
                 if (wrk.worker_role && ['deserializer', 'ds_pool_worker', 'projection'].includes(wrk.worker_role))
@@ -1629,6 +1634,18 @@ export class HyperionMaster {
                 this.globalUsageMap[code][2] = propWorkerMap[code];
             }
         }
+    }
+
+    /** A newly forked reader stays closed until its current pressure state arrives. */
+    syncReaderPressure(worker: Worker): void {
+        const definition = this.workerMap.find(value => value.wref === worker);
+        const role = definition?.worker_role;
+        if (role !== 'reader' && role !== 'continuous_reader') return;
+        try {
+            worker.send({event: 'reader_pressure_state', paused: this.queueMonitor.isReaderPaused(role)}, error => {
+                if (error) hLog('Reader pressure synchronization failed:', error);
+            });
+        } catch (error) { hLog('Reader pressure synchronization failed:', error); }
     }
 
     sendToRole(role: string, payload: any) {
