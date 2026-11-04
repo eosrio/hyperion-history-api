@@ -1,7 +1,7 @@
 // Pure cbfb fixture controls: never import or run the native process lifecycle.
 import test from 'node:test';import assert from 'node:assert/strict';import {fileURLToPath} from 'node:url';import * as ts from 'typescript/unstable/ast';
 import {PLAN as historical} from './native-contract.mjs';
-import {PLAN} from './all-cbfb-native-contract.mjs';
+import {PLAN,sha} from './all-cbfb-native-contract.mjs';
 import {DESCRIPTOR} from './all-cbfb-assembly.mjs';
 import {NATIVE_PROFILE,observeNativeInputs,assertNativeInputs,assertNativeRuntime} from './all-cbfb-native-assembly.mjs';
 import {observeSourceClosure,assertSourceClosure} from './native-source-closure.mjs';
@@ -10,6 +10,7 @@ import {runInNewContext} from 'node:vm';
 import {verifyIndexedTrace} from './all-cbfb-native-trace.mjs';
 import {page as nativePage,count as nativeCount} from './all-cbfb-native-contract.mjs';
 
+const cleanupRouting=JSON.parse(readFileSync(new URL('./all-cbfb-native-cleanup-routing.json',import.meta.url)));
 const recorded=JSON.parse(readFileSync(new URL('../../../tests/fixtures/engineering-profiles/failed-native-membership-41884653731.json',import.meta.url)));
 for(const capture of recorded.captures)test('recorded Node '+capture.node+' membership requests keep exact per-request accounting in the real runner handler',async()=>{
  const source=readFileSync(new URL('./all-cbfb-native-runner.mjs',import.meta.url),'utf8'),
@@ -62,10 +63,11 @@ test('real mixed root/native SDK captures bounded signed-int64 set as BSON Long'
  assert.deepEqual(set.map(v=>v.toString()),where[1].values);assert(set.every(v=>v._bsontype==='Long'));assert.equal(planned.allowDiskUse,false);
 });
 
+function restoreNativeCleanup(path,source){const row=cleanupRouting.files.find(row=>row.path===path);if(!row)return source;assert.equal(sha(source),row.currentSha256,'Native cleanup source differs from reviewed boundary edits: '+path);for(const change of [...row.changes].reverse()){assert.equal(source.split(change.current).length-1,change.count);source=source.split(change.current).join(change.historical);}assert.equal(sha(source),row.historicalSha256);return source;}
 test('all-CBFB successor preserves exact original native workload, controller, trace and accepted capability selection',()=>{
  const read=path=>readFileSync(new URL(path,import.meta.url),'utf8');
  for(const name of ['runner','ci','trace','contract']){
-  let actual=read('./all-cbfb-native-'+name+'.mjs').replaceAll('./all-cbfb-native-','./cbfb-native-');
+  const path='scripts/qualification/indexed-schema-mongodb/all-cbfb-native-'+name+'.mjs',current=read('./all-cbfb-native-'+name+'.mjs');let actual=restoreNativeCleanup(path,current).replaceAll('./all-cbfb-native-','./cbfb-native-');if(['runner','ci'].includes(name))assert.throws(()=>restoreNativeCleanup(path,current+'\n'),/reviewed boundary/);
   if(name==='runner')actual=actual.replace("rootSdk:'cbfb'","rootSdk:'dc20'");
   if(name==='contract')actual=actual.replace('indexed-schema-mongodb-all-cbfb-linux-gha-v1','indexed-schema-mongodb-cbfb-49dfe-linux-gha-v1');
   assert.equal(actual,read('./cbfb-native-'+name+'.mjs'),'Only explicit profile imports/identity and correct SDK metadata may differ: '+name);

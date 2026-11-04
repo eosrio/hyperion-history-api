@@ -9,6 +9,8 @@ import {admitNativeAssembly} from './all-cbfb-native-assembly.mjs';
 import {installIndexedCommandHooks} from './native-command-hooks.mjs';
 import {monitorIndexed,verifyIndexedTrace,verifyCursorClosure,captureAndVerifyExplain,lookupIndexSpecs,bsonCopy,bsonEvidence} from './all-cbfb-native-trace.mjs';
 const json=(path,value)=>{const raw=Buffer.from(JSON.stringify(value,null,2)+'\n');assert(raw.length<=PLAN.evidenceBytes);writeFileSync(path,raw,{flag:'wx'});};
+const safeFailure=(error,depth=0)=>{try{const code=error?.code,cause=error?.cause;return{name:String(error?.name??'Error').slice(0,64),code:typeof code==='string'?code.slice(0,128):Number.isSafeInteger(code)?code:null,message:String(error?.message??error).slice(0,512),...(depth<2&&cause?{cause:safeFailure(cause,depth+1)}:{})};}catch{return{name:'Error',code:null,message:'Failure details unavailable'};}};
+class NativeReadLedger extends Set{#opened=0;#closed=0;get opened(){return this.#opened;}get closed(){return this.#closed;}add(read){const present=this.has(read),result=super.add(read);if(!present)this.#opened++;return result;}delete(read){const result=super.delete(read);if(result)this.#closed++;return result;}}
 export async function run(options){
  assert.equal(process.platform,'linux');assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(options.source,process.env.GITHUB_SHA);
  const admitted=admitNativeAssembly(PLAN.profile);assert.equal(admitted.observationSha256,options.assemblySha256);
@@ -18,8 +20,9 @@ export async function run(options){
   import('../../../packages/backend-mongodb/dist/stateful-indexed-royalty-engineering-v1.js'),import('../../../packages/backend-mongodb/dist/stateful-indexed-model-v1.js'),
   import('../../../build/indexer/connections/stateful-complete-kind-client.js'),import('../../../packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist/projection-stateful-owner-v2.js')]);
  assert(!existsSync(options.output));mkdirSync(options.output,{recursive:true});
- const trace=[],samples=[],explains=[],cases=[],ledger=[],attestations=[],namespaces=new Map(),sessions=[],clients=[],reads=new Set(),pools=[],stops=[],captured=[],custody=new Map();
- let phase={name:'preflight'},gate,afterData,afterTransaction,beforeInsert,beforeSnapshot,state,owned=false,failpointGranted=false,primary,serial=100;
+ const trace=[],samples=[],explains=[],cases=[],ledger=[],attestations=[],namespaces=new Map(),sessions=[],clients=[],reads=new NativeReadLedger(),pools=[],stops=[],captured=[],custody=new Map();
+ let phase={name:'preflight'},gate,afterData,afterTransaction,beforeInsert,beforeSnapshot,state,owned=false,failpointGranted=false,primary,hasPrimary=false,serial=100;
+ const retainPrimary=error=>{if(!hasPrimary){hasPrimary=true;primary=error;}};
  const marker=randomBytes(24).toString('hex'),app=options.database+'_bounded',completeLimits={readAttempts:12,responseRecords:8,responseBytes:65536},noCancel=()=>{};
  const recordClient=(client,label)=>{const item={label,closed:false};clients.push(item);const start=client.startSession.bind(client),close=client.close.bind(client);
   client.startSession=(...args)=>{const session=start(...args),end=session.endSession.bind(session),record={label,ended:false};sessions.push(record);session.endSession=async(...args)=>{try{return await end(...args);}finally{record.ended=session.hasEnded;}};return session;};
@@ -75,7 +78,7 @@ export async function run(options){
  const coverageCollection=entry=>admin.db(options.database).collection(entry.coverage);
  const report={schemaVersion:1,status:'running',plan:PLAN,source:admitted,database:options.database,cases,acceptance:{...PLAN.acceptance},sourceAuthority:'Synthetic empty-input SDK/native effects only; no Antelope/Wire or managed HTTP authority',
   runtime:{node:process.version,executableSha256:sha(readFileSync(process.execPath))},metrics:{attempts:'Actual tagged indexed aggregate/getMore; authority/index/explain/cleanup recorded separately',responseBytes:'Complete UTF-8 native envelopes and SDK composition, including counts',replyBsonBytes:'Monitored BSON document estimates; not wire or compression bytes'}};
- const caseRun=async(name,work)=>{phase={name};const start=trace.length,attested=attestations.length;try{const value=await work();cases.push({name,status:'pass',...value,trace:[start,trace.length],successfulQueries:attestations.length-attested});}catch(error){cases.push({name,status:'failed',error:failure(error),trace:[start,trace.length]});throw error;}finally{gate=afterData=afterTransaction=beforeInsert=beforeSnapshot=undefined;}};
+ const caseRun=async(name,work)=>{phase={name};const start=trace.length,attested=attestations.length;try{const value=await work();cases.push({name,status:'pass',...value,trace:[start,trace.length],successfulQueries:attestations.length-attested});}catch(error){cases.push({name,status:'failed',error:safeFailure(error),trace:[start,trace.length]});throw error;}finally{gate=afterData=afterTransaction=beforeInsert=beforeSnapshot=undefined;}};
  try{
   await admin.connect();const hello=await admin.db('admin').command({hello:1}),build=await admin.db('admin').command({buildInfo:1});assert.equal(build.version,PLAN.server);assert.equal(hello.isWritablePrimary,true);assert.equal(hello.setName,options.replicaSet);assert.equal(hello.me,options.member);assert.deepEqual(hello.hosts,[options.member]);report.server={version:build.version,replicaSet:hello.setName,member:hello.me};
   const baseline=await admin.db('admin').command({getParameter:1,'failpoint.failCommand':1});assert.equal(baseline['failpoint.failCommand'].mode,0);failpointGranted=true;
@@ -237,19 +240,27 @@ export async function run(options){
     return {actualOwnerSourceFences:true,nativePublicationRevocation:true,actualManagedHTTP:'pending'};
    }
   },caseRun);
- }catch(error){primary=error;report.failure=failure(error);}
+ }catch(error){retainPrimary(error);report.failure=safeFailure(primary);}
  finally{
-  phase={name:'cleanup'};const cleanup={managedClientsClosed:false,sessionsEnded:false,readsClosed:reads.size===0,cursorsClosed:false,failpointDisabled:false,databaseDropped:false,adminClosed:false};report.cleanup=cleanup;
-  const clean=async(name,work)=>{try{await work();}catch(error){primary??=error;cleanup[name]=failure(error);}};
+  phase={name:'cleanup'};const cleanup={managedClientsClosed:false,sessionsEnded:false,readsClosed:false,cursorsClosed:false,failpointDisabled:false,databaseDropped:false,adminClosed:false};report.cleanup=cleanup;
+  const clean=async(name,work)=>{try{await work();return true;}catch(error){retainPrimary(error);cleanup[name]=safeFailure(error);return false;}};
+  const resourceClosure={managedClients:pools.length?'unproved':'not-created',sessions:sessions.length?'unproved':'not-opened',reads:reads.opened?'unproved':'not-opened',cursors:'unproved'};
   await clean('failpointFailure',async()=>{if(failpointGranted){await disable();cleanup.failpointDisabled=true;}});
-  await clean('managedClientFailure',async()=>{for(const pool of pools)await pool.close();cleanup.managedClientsClosed=clients.filter(row=>row.label.startsWith('managed-')).every(row=>row.closed);assert(cleanup.managedClientsClosed);});
-  await clean('sessionFailure',async()=>{cleanup.sessionsEnded=sessions.every(row=>row.ended);assert(cleanup.sessionsEnded);assert(cleanup.readsClosed);cleanup.sessionCount=sessions.length;});
-  await clean('cursorFailure',async()=>{cleanup.cursors=verifyCursorClosure(trace);cleanup.cursorsClosed=true;});
-  await clean('databaseFailure',async()=>{if(owned){const record=await admin.db(options.database).collection('_qualification_owner').findOne({_id:marker});assert.equal(record?.scope,PLAN.scope);await admin.db(options.database).dropDatabase({writeConcern:{w:'majority',j:true}});assert.deepEqual(await admin.db(options.database).listCollections().toArray(),[]);cleanup.databaseDropped=true;}});
-  await clean('adminFailure',async()=>{await admin.close();cleanup.adminClosed=clients.find(row=>row.label==='admin').closed;assert(cleanup.adminClosed);});for(const stop of stops)stop();
-  report.status=primary?'failed':'passed-native-indexed-only';report.traceEvents=trace.length;report.successfulQueryAttestations=attestations;report.acceptance.nativeMongoDB=primary?'failed':'passed-native-indexed-only';if(primary)report.failure??=failure(primary);
-  for(const [name,value]of [['trace.json',trace],['samples.json',samples],['explain.json',explains],['report.json',report]])json(join(options.output,name),value);
-  json(join(options.output,'sha256.json'),['trace.json','samples.json','explain.json','report.json'].map(path=>{const raw=readFileSync(join(options.output,path));return {path,bytes:raw.length,sha256:sha(raw)};}));
- }if(primary)throw primary;return report;
+  let poolsClosed=true;for(const [index,pool]of pools.entries())if(!await clean('managedClientFailure:'+index,async()=>{await pool.close();}))poolsClosed=false;
+  await clean('managedClientFailure',async()=>{const managed=clients.filter(row=>row.label.startsWith('managed-'));if(pools.length&&managed.length){assert(poolsClosed,'An actual pool close failed');assert(managed.every(row=>row.closed));cleanup.managedClientsClosed=true;resourceClosure.managedClients='closed';}});
+  await clean('sessionFailure',async()=>{cleanup.sessionCount=sessions.length;if(sessions.length){assert(sessions.every(row=>row.ended));cleanup.sessionsEnded=true;resourceClosure.sessions='closed';}});
+  await clean('readFailure',async()=>{cleanup.reads={opened:reads.opened,closed:reads.closed,live:reads.size};if(reads.opened){assert.equal(reads.size,0);assert.equal(reads.opened,reads.closed);cleanup.readsClosed=true;resourceClosure.reads='closed';}});
+  await clean('cursorFailure',async()=>{cleanup.cursors=verifyCursorClosure(trace);if(cleanup.cursors.opened){cleanup.cursorsClosed=true;resourceClosure.cursors='closed';}else resourceClosure.cursors='not-opened';});
+  report.resourceClosure=resourceClosure;
+  if(!owned)report.databaseCleanupSkipped={reason:'owned-database-not-created'};
+  else{const missing=['managedClientsClosed','sessionsEnded','readsClosed','cursorsClosed'].filter(key=>cleanup[key]!==true);
+   if(missing.length){report.databaseCleanupSkipped={reason:'closure-not-proved',missing,resourceClosure:{...resourceClosure}};retainPrimary(new Error('Owned database retained because native resource closure is unproved'));}
+   else await clean('databaseFailure',async()=>{const record=await admin.db(options.database).collection('_qualification_owner').findOne({_id:marker});assert.equal(record?.scope,PLAN.scope);await admin.db(options.database).dropDatabase({writeConcern:{w:'majority',j:true}});assert.deepEqual(await admin.db(options.database).listCollections().toArray(),[]);cleanup.databaseDropped=true;});}
+  await clean('adminFailure',async()=>{await admin.close();cleanup.adminClosed=clients.find(row=>row.label==='admin').closed;assert(cleanup.adminClosed);});for(const [index,stop]of stops.entries())await clean('traceDetachFailure:'+index,async()=>{stop();});
+  const refresh=()=>{report.status=hasPrimary?'failed':'passed-native-indexed-only';report.acceptance.nativeMongoDB=hasPrimary?'failed':'passed-native-indexed-only';if(hasPrimary)report.failure??=safeFailure(primary);};
+  refresh();report.traceEvents=trace.length;report.successfulQueryAttestations=attestations;
+  for(const [name,value]of [['trace.json',trace],['samples.json',samples],['explain.json',explains],['report.json',report]])await clean('evidenceFailure:'+name,async()=>{if(name==='report.json')refresh();json(join(options.output,name),value);});
+  await clean('checksumEvidenceFailure',async()=>{json(join(options.output,'sha256.json'),['trace.json','samples.json','explain.json','report.json'].map(path=>{const raw=readFileSync(join(options.output,path));return {path,bytes:raw.length,sha256:sha(raw)};}));});refresh();
+ }if(hasPrimary)throw primary;return report;
 }
-if(process.argv[1]&&pathToFileURL(resolve(process.argv[1])).href===import.meta.url){try{const options=argumentsFor(process.argv.slice(2),process.env);if(options===null)console.log(JSON.stringify({status:'inert-plan-only',plan:PLAN}));else{const report=await run(options);console.log(JSON.stringify({status:report.status,output:options.output}));}}catch(error){console.error(JSON.stringify({status:'failed',error:failure(error)}));process.exitCode=1;}}
+if(process.argv[1]&&pathToFileURL(resolve(process.argv[1])).href===import.meta.url){try{const options=argumentsFor(process.argv.slice(2),process.env);if(options===null)console.log(JSON.stringify({status:'inert-plan-only',plan:PLAN}));else{const report=await run(options);console.log(JSON.stringify({status:report.status,output:options.output}));}}catch(error){try{console.error(JSON.stringify({status:'failed',error:safeFailure(error)}));}catch{}process.exitCode=1;}}

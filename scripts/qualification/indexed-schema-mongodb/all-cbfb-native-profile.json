@@ -48,8 +48,8 @@
   "sourceFiles": [
     {
       "path": ".github/workflows/build.yml",
-      "bytes": 27092,
-      "sha256": "744873c761eaa0f93ff010ff00a1ef9586c87bce9a0b51f8f408e25acc70ffbe"
+      "bytes": 27171,
+      "sha256": "cc728ab8d932e10cf6e8600e6c3feea476b026018c38809a89dcf5cff7958314"
     },
     {
       "path": ".github/workflows/indexed-schema-finite.yml",
@@ -58,8 +58,8 @@
     },
     {
       "path": ".github/workflows/indexed-schema-native.yml",
-      "bytes": 2427,
-      "sha256": "eed08a51ad4356f6ff7767d47c82ef47ac6d3d431947ee6862ff2ca854053af7"
+      "bytes": 2506,
+      "sha256": "2bc6a70db1c73e4e4befef7b0ac76c485a8ed3bdeec06e1685d33afbbfd966a4"
     },
     {
       "path": ".github/workflows/indexed-sdk49-finite-historical.yml",
@@ -328,8 +328,13 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-native-ci.mjs",
-      "bytes": 9629,
-      "sha256": "b6e8eb1248c68211efb5bfd27a697ad1681ce34935198174ddfb5cedccb2bec5"
+      "bytes": 10433,
+      "sha256": "fb08e765349e8fa91e43e0ed67ea1c28e612f7179981aa6c98bc6d5eacad3d01"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-native-cleanup-routing.json",
+      "bytes": 11989,
+      "sha256": "17368dcac96f225168e06bb70bf37568a35cdccd3914d5340faa02e82c1ad3d6"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-native-contract.mjs",
@@ -338,13 +343,18 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-native-offline.test.mjs",
-      "bytes": 7980,
-      "sha256": "f4ceee0e12dd539b663c732927b7e589a4bafab9af950ed576ecefe40c17888c"
+      "bytes": 8813,
+      "sha256": "cfca9c777a123e73f22b37f079fd9bd5f8abfdff6166ee32b3d4bb11221dc979"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-native-runner.mjs",
-      "bytes": 42395,
-      "sha256": "a5834f4a3a51e4eea6251ba679fadcfc9dcdc9ba67f6da825f25733cd778aa93"
+      "bytes": 44817,
+      "sha256": "ca9b73f331af289af121ce47f75d6000a2faab2157b7b39a410151478c0680be"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-native-teardown.test.mjs",
+      "bytes": 17117,
+      "sha256": "ccda6901c274f9243e805ddc6f6f4b363958cc2af1e9d28cc4c06acd0533cb8e"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-native-trace.mjs",
@@ -353,8 +363,8 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-routing.json",
-      "bytes": 274713,
-      "sha256": "6ded34229565a4fa74b7dc6c8a7a41b55832107ba5cfd6b4377db868a60cc24b"
+      "bytes": 275357,
+      "sha256": "615c6a16e4985e4b08e5609d8a86e9ec3af95fba9231070cc1f944afdcea0156"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/assembly.json",
@@ -729,7 +739,7 @@
     {
       "path": "tests/fixtures/engineering-profiles/all-cbfb-linux.json",
       "bytes": 13953,
-      "sha256": "3634d710e5dddb8aa2fa198ccc967826481ae599676ec80d6ec7739bedfbc32b"
+      "sha256": "03c2f06a4e53647f2424c2c8012e0d15391a031f8f5daab0df17d6c9ae6e73db"
     },
     {
       "path": "tests/fixtures/engineering-profiles/current-cbfb-linux.json",
@@ -849,7 +859,7 @@
     {
       "path": "tests/unit/all-cbfb-source-admission.mjs",
       "bytes": 7902,
-      "sha256": "5703633e9bf6cc9fe0b563175c91a9f3e99dfb8e687ee42cefc9bdda0697672d"
+      "sha256": "59784c754d91a96bac1da0a3192d0e8a280e9616fb2ab56d6bc3a539695eb113"
     },
     {
       "path": "tests/unit/current-cbfb-source-admission-native.mjs",
@@ -5542,7 +5552,9 @@
         "tests/unit/all-cbfb-source-admission.mjs",
         "tests/fixtures/engineering-profiles/all-cbfb-linux.json",
         "scripts/qualification/indexed-schema-mongodb/all-cbfb-contract.test.mjs",
-        "scripts/qualification/indexed-schema-mongodb/all-cbfb-ci-source-check.mjs"
+        "scripts/qualification/indexed-schema-mongodb/all-cbfb-ci-source-check.mjs",
+        "scripts/qualification/indexed-schema-mongodb/all-cbfb-native-teardown.test.mjs",
+        "scripts/qualification/indexed-schema-mongodb/all-cbfb-native-cleanup-routing.json"
       ],
       "manifestPath": "tests/fixtures/engineering-profiles/all-cbfb-linux.json",
       "selfPaths": [
@@ -5553,9 +5565,9 @@
       "manifestRouteCount": 57
     },
     "observation": {
-      "files": 133,
-      "edges": 446,
-      "sha256": "2cfb994da8ffb2ac4c46bf8b6aa4c2ffdbcff8f7f95709f00ae922fe3b839e81"
+      "files": 135,
+      "edges": 450,
+      "sha256": "5913d97310e44be6da05d2feb21db9dadb64e1863884114ead358165cb34f085"
     }
   },
   "provenance": {

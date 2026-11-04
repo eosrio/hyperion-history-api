@@ -66,9 +66,14 @@
           "historical": "Check mixed stateful source and final publication",
           "current": "Check all-CBFB stateful source and final publication",
           "count": 1
+        },
+        {
+          "historical": "scripts/qualification/indexed-schema-mongodb/all-cbfb-contract.test.mjs",
+          "current": "scripts/qualification/indexed-schema-mongodb/all-cbfb-contract.test.mjs scripts/qualification/indexed-schema-mongodb/all-cbfb-native-teardown.test.mjs",
+          "count": 1
         }
       ],
-      "currentSha256": "744873c761eaa0f93ff010ff00a1ef9586c87bce9a0b51f8f408e25acc70ffbe"
+      "currentSha256": "cc728ab8d932e10cf6e8600e6c3feea476b026018c38809a89dcf5cff7958314"
     },
     {
       "path": ".github/workflows/indexed-schema-finite.yml",
@@ -117,9 +122,14 @@
           "historical": "/cbfb-native-ci.mjs --profile indexed-schema-mongodb-cbfb-49dfe-linux-gha-v1",
           "current": "/all-cbfb-native-ci.mjs --profile indexed-schema-mongodb-all-cbfb-linux-gha-v1",
           "count": 1
+        },
+        {
+          "historical": "scripts/qualification/indexed-schema-mongodb/all-cbfb-native-offline.test.mjs",
+          "current": "scripts/qualification/indexed-schema-mongodb/all-cbfb-native-offline.test.mjs scripts/qualification/indexed-schema-mongodb/all-cbfb-native-teardown.test.mjs",
+          "count": 1
         }
       ],
-      "currentSha256": "eed08a51ad4356f6ff7767d47c82ef47ac6d3d431947ee6862ff2ca854053af7"
+      "currentSha256": "2bc6a70db1c73e4e4befef7b0ac76c485a8ed3bdeec06e1685d33afbbfd966a4"
     },
     {
       "path": "scripts/qualification/operator-list-mongodb/assembly-diagnostics.test.mjs",

@@ -13,12 +13,15 @@ import {PLAN,failure,sha,assertNativeCompletion,persistNativeChildIntent} from '
 import {admitNativeAssembly,NATIVE_PROFILE,NATIVE_PROFILE_PATH} from './all-cbfb-native-assembly.mjs';
 import {verifyIndexedTrace,verifyCursorClosure,verifyExplain} from './all-cbfb-native-trace.mjs';
 const root=fileURLToPath(new URL('../../../',import.meta.url)),json=(path,value)=>writeFileSync(path,JSON.stringify(value,null,2)+'\n',{flag:'wx'});
+const safeFailure=(error,depth=0)=>{try{const code=error?.code,cause=error?.cause;return{name:String(error?.name??'Error').slice(0,64),code:typeof code==='string'?code.slice(0,128):Number.isSafeInteger(code)?code:null,message:String(error?.message??error).slice(0,512),...(depth<2&&cause?{cause:safeFailure(cause,depth+1)}:{})};}catch{return{name:'Error',code:null,message:'Failure details unavailable'};}};
 export async function runCI(profile,output){
  assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.platform,'linux');assert.equal(process.arch,'x64');
  assert.equal(realpathSync(process.env.GITHUB_WORKSPACE),realpathSync(root));assert.equal(profile,PLAN.profile);
  output=resolve(output);assert(!relative(root,output).startsWith('..')&&output!==resolve(root));assert(!existsSync(output));mkdirSync(output,{recursive:true});
  const report={schemaVersion:1,status:'running',profile,plan:PLAN,kernel:release(),AtomicSQL:'pending',managedHTTP:'pending',productionOffers:'empty'};
- let fixture,child,original;const stop=()=>{original??=new Error('Indexed native CI controller interrupted');child?.kill('SIGTERM');};const check=()=>{if(original)throw original;};
+ let fixture,child,original,hasPrimary=false;
+ const retainPrimary=error=>{if(!hasPrimary){hasPrimary=true;original=error;}};
+ const stop=()=>{retainPrimary(new Error('Indexed native CI controller interrupted'));try{child?.kill('SIGTERM');}catch(error){report.interruptFailure=safeFailure(error);}};const check=()=>{if(hasPrimary)throw original;};
  process.once('SIGINT',stop);process.once('SIGTERM',stop);
  try{
   check();report.assembly=admitNativeAssembly(profile);
@@ -64,12 +67,12 @@ export async function runCI(profile,output){
    assert.equal(row.status,'verified');assert.deepEqual(row.afterView,row.sealedView);assert.deepEqual(row.expected,{baseHint:actual.hint,aliases:['collection','assets']});
    for(const raw of [row.catalogBefore,row.catalogAfter])verifyExplain(explain,{baseHint:actual.hint,command:actual,aliases:['collection','assets'],catalog:BSON.EJSON.deserialize(raw,{relaxed:false})});}
   report.native={status:native.status,cases:native.cases.length,independentlyVerifiedQueries:native.successfulQueryAttestations.length,independentlyVerifiedExplains:explanations.length,checksums};
- }catch(error){original??=error;report.failure=failure(original);if(error!==original)report.secondaryFailure=failure(error);}
+ }catch(error){retainPrimary(error);report.failure=safeFailure(original);if(error!==original)report.secondaryFailure=safeFailure(error);}
  finally{
-  if(fixture){try{report.diagnostics=fixture.diagnostics();json(join(output,'before-cleanup.json'),report);}catch(error){original??=error;report.evidenceFailure=failure(error);}
-   try{await fixture.cleanup();assert.equal(fixture.cleanupResult.verified,true);}catch(error){original??=error;report.cleanupFailure=failure(error);}}
-  process.off('SIGINT',stop);process.off('SIGTERM',stop);if(original)report.failure??=failure(original);
-  report.status=original?'failed':'passed-native-indexed-only';json(join(output,'controller.json'),report);
- }if(original)throw original;return report;
+  const clean=async(name,work)=>{try{await work();}catch(error){retainPrimary(error);report[name]=safeFailure(error);}};
+  if(fixture){await clean('evidenceFailure',async()=>{report.diagnostics=fixture.diagnostics();json(join(output,'before-cleanup.json'),report);});await clean('cleanupFailure',async()=>{await fixture.cleanup();assert.equal(fixture.cleanupResult.verified,true);});}
+  for(const name of ['SIGINT','SIGTERM'])await clean('listenerCleanupFailure:'+name,async()=>{process.off(name,stop);});
+  const refresh=()=>{if(hasPrimary)report.failure??=safeFailure(original);report.status=hasPrimary?'failed':'passed-native-indexed-only';};refresh();await clean('finalEvidenceFailure',async()=>{json(join(output,'controller.json'),report);});refresh();
+ }if(hasPrimary)throw original;return report;
 }
 if(process.argv[1]&&pathToFileURL(resolve(process.argv[1])).href===import.meta.url){assert.deepEqual(process.argv.slice(2,4),['--profile',PLAN.profile]);assert.equal(process.argv.length,5);const report=await runCI(PLAN.profile,process.argv[4]);console.log(JSON.stringify({status:report.status,run:report.run}));}
