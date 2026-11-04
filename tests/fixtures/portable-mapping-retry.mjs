@@ -9,6 +9,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {loadChainProtocol} from '../../build/indexer/protocol/selection.js';
 import {protocolDeployment} from '../../build/indexer/protocol/deployments.js';
 import {createWireShipCodec, resolveCodecProfile} from '@eosrio/hyperion-wire-plugin';
+import {admitNativeSourceEnvironment, assertMappingRetryWireSource} from '../unit/stateful-engineering-source-admission.mjs';
 
 export const hash = value => createHash('sha256').update(value).digest('hex');
 export const gate = () => {let release; const promise = new Promise(done => {release = done;}); return {promise, release};};
@@ -30,7 +31,7 @@ export async function originalWireRows() {
         const source = join(owned, 'capture/source'), receipt = JSON.parse(readFileSync(join(source, 'receipt.json')));
         const sourceReads = [], profileId = 'wire-sysio-6508c9e8-native-engineering-v1';
         const selected = await loadChainProtocol({provider: 'extension', package: '@eosrio/hyperion-wire-plugin', profileId});
-        assert(selected.components.every(value => value.sourceRevision === '69a66064c077a405341f5aaf15e84b88b8d86ccb'));
+        assertMappingRetryWireSource(admitNativeSourceEnvironment(), selected.components);
         const schemaJson = readFileSync(join(source, 'schema.json'), 'utf8');
         assert.equal(hash(schemaJson), '94c5661306467f8c49f22180213e390db10d290be9ebf512fb63314f440ef6f9');
         const codec = createWireShipCodec(JSON.parse(schemaJson), resolveCodecProfile(profileId));

@@ -34,6 +34,15 @@ export const STATEFUL_COMPLETE_KIND_CODEC_WIRE_SOURCE = Object.freeze({
     rustSha256: 'c8815e5ece1d6f8dbd662ea96ba277d00c077231659bf0d029f6a7120a4db838',
     npmLockSha256: 'a7bbbb10d86a698d23c44b0ec73774a72a3ec915d11ff5d51c0892dfc9553943',
 });
+/** The retained mapping fixture accepts only explicitly named, fully admitted sources. */
+export function assertMappingRetryWireSource(admission,components) {
+    const expected=admission.profile===STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE?STATEFUL_COMPLETE_KIND_CODEC_WIRE_SOURCE.commit:
+        admission.profile===STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE?STATEFUL_GENESIS_PREVIEW_WIRE_SOURCE.commit:undefined;
+    assert(expected,'Mapping retry source profile not admitted');
+    assert.equal(admission.wireRevision,expected,'Mapping retry admission source revision');
+    assert(Array.isArray(components)&&components.length>0&&components.every(value=>value.sourceRevision===expected),
+        'Mapping retry selected component source revision');
+}
 export const STATEFUL_COMPLETE_KIND_METADATA_NATIVE_SOURCE = Object.freeze({
     commit: '056c7c4d03be81bd1f0353a165b9aa3c9c6735ec', tree: 'ee94a480a8aede39ec7fe1b707c87efaa7164868',
     files: 39, sha256: 'be3705434fc5c9ec4a7a0a604247303c57515ee28a23b111b62512920c1894c9',
