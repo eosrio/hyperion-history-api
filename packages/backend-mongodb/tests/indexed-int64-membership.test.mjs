@@ -30,3 +30,13 @@ test('new SDK and code do not inherit the old pinned native engineering authorit
  const adapter=await createMongoDbStatefulIndexedAdapterV1(options,[{declaration:state.declaration,limits:state.native.limits}]);
  assert.deepEqual(adapter.indexedCapabilities.comparisonProfiles,[]);assert.throws(()=>selectMongoDbIndexedEngineeringAssemblyV1(adapter,MONGODB_INDEXED_ENGINEERING_PROFILE_V1),/source pins differ/);assert.equal(io,0);
 });
+import {selectMongoDbRoyaltyEngineeringAssemblyV1,MONGODB_ROYALTY_ENGINEERING_PROFILE_V1} from '../dist/stateful-indexed-royalty-engineering-v1.js';
+test('separately pinned royalty assembly selects only a locally created native adapter',async()=>{
+ const definition=model();definition.fields.find(f=>f.id==='created').operators.push('in');const state=await prepared({model:definition});let io=0;
+ const client={options:{retryReads:false,retryWrites:false,maxAdaptiveRetries:0},db(){return {collection(name){return new Proxy({collectionName:name},{get(target,key){if(key in target)return target[key];return()=>{io++;throw Error('unexpected I/O');};}});}};}};
+ const options={client,databaseName:'inert',backendId:'schema-fixture',collectionPrefix:'fixture',declaration:state.owner,receiptRetention:4,rollbackRetentionBlocks:8,rollbackRetentionBytes:4194304,rollbackMaxBlockBytes:1048576,operationTimeoutMS:1000,transactionTimeoutMS:2000};
+ const adapter=await createMongoDbStatefulIndexedAdapterV1(options,[{declaration:state.declaration,limits:state.native.limits}]);
+ assert.throws(()=>selectMongoDbRoyaltyEngineeringAssemblyV1(adapter,'unrelated-profile'),/Explicit royalty engineering assembly/);
+ assert.throws(()=>selectMongoDbRoyaltyEngineeringAssemblyV1({},MONGODB_ROYALTY_ENGINEERING_PROFILE_V1),/actual locally created/);
+ assert.ok(selectMongoDbRoyaltyEngineeringAssemblyV1(adapter,MONGODB_ROYALTY_ENGINEERING_PROFILE_V1));assert.equal(io,0);
+});
