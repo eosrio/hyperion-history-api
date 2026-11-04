@@ -33,14 +33,24 @@ export function loadRetainedGenesisInput(config:RetainedGenesisConfig):{schemaJs
 
 /** Master-side verification; the RPC supplies independent chain and irreversible block identity. */
 export async function verifyRetainedGenesisInput(config:RetainedGenesisConfig,chainId:string,provider:ProtocolProvider,
-    rpc:{v1:{chain:{get_info():Promise<{chain_id:unknown;last_irreversible_block_num:unknown}>;
-        get_block(n:number):Promise<{id:unknown;previous:unknown}>}}}) {
+    rpc:{v1:{chain:{get_info():Promise<{chain_id:unknown;last_irreversible_block_num:unknown}>}};
+        call(args:{path:string;params:unknown}):Promise<unknown>}) {
     const input=loadRetainedGenesisInput(config);
     const before=await rpc.v1.chain.get_info();
     const irreversible=(value:unknown)=>{const n=Number(String(value));return Number.isSafeInteger(n)&&n>=2&&n<=0xffffffff;};
     if(String(before.chain_id).toLowerCase()!==chainId||!irreversible(before.last_irreversible_block_num))
         throw new Error('Retained genesis RPC chain or irreversible boundary differs');
-    const first=await rpc.v1.chain.get_block(1), second=await rpc.v1.chain.get_block(2);
+    const readIdentity=async(height:1|2)=>{
+        const value=await rpc.call({path:'/v1/chain/get_block',params:{block_num_or_id:height}});
+        if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Invalid retained genesis RPC block');
+        const block=value as {id?:unknown;previous?:unknown;block_num?:unknown};
+        if(typeof block.id!=='string'||typeof block.previous!=='string'||! /^[0-9a-f]{64}$/.test(block.id)
+            ||! /^[0-9a-f]{64}$/.test(block.previous)||block.block_num!==height||parseInt(block.id.slice(0,8),16)!==height)
+            throw new Error('Invalid retained genesis RPC block identity');
+        if(height===1&&block.previous!=='0'.repeat(64))throw new Error('Invalid genesis RPC parent');
+        return {id:block.id,previous:block.previous};
+    };
+    const first=await readIdentity(1), second=await readIdentity(2);
     const after=await rpc.v1.chain.get_info();
     if(String(after.chain_id).toLowerCase()!==chainId||!irreversible(after.last_irreversible_block_num))
         throw new Error('Retained genesis RPC identity changed');
