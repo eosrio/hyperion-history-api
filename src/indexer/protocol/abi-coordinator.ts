@@ -551,17 +551,19 @@ export class ProtocolAbiCoordinator {
         const generation=json([current.ownerId,current.generation]);
         if(generation!==this.historicalQueueGeneration)return;
         const entries=[...this.historicalQueue.entries()];
+        for(const [,address] of entries) {
+            const certificate=await this.options.store.readCertificate(address.certificateId);
+            await this.assertHistoricalAuthority(control,epoch,current.historical?.addressRootId??null);
+            if(performance.now()>=deadline)return;
+            await this.options.store.prepareHistoricalCertificateAddress(certificate as ReturnType<typeof protocolAbiCertificateForControl>);
+            await this.assertHistoricalAuthority(control,epoch,current.historical?.addressRootId??null);
+            if(performance.now()>=deadline)return;
+        }
         const checkpoint=async()=>{
             if(performance.now()>=deadline)throw new HistoricalWorkYield();
             await this.assertHistoricalAuthority(control,epoch,current.historical?.addressRootId??null);
             if(performance.now()>=deadline)throw new HistoricalWorkYield();
         };
-        const certificates:ReturnType<typeof protocolAbiCertificateForControl>[]=[];
-        for(const [,address] of entries){
-            const certificate=await this.options.store.readCertificate(address.certificateId);
-            await checkpoint();certificates.push(certificate as ReturnType<typeof protocolAbiCertificateForControl>);
-        }
-        await this.options.store.prepareHistoricalCertificateAddresses(certificates,checkpoint);
         const root=await this.options.store.prepareHistoricalAddressRoot(current.historical?.addressRootId??null,entries.map(([,value])=>value),checkpoint);
         await this.assertHistoricalAuthority(control,epoch,current.historical?.addressRootId??null);
         if(performance.now()>=deadline)return;
