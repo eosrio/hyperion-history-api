@@ -7,6 +7,11 @@ import {dirname, join} from 'node:path';
 
 export const engineeringAdmissionSourcePaths = Object.freeze([
     'tests/unit/stateful-engineering-source-admission.mjs',
+    'tests/native/projection-manager-lifecycle.test.mjs',
+    'tests/unit/projection-manager-fixture.mjs',
+    'tests/unit/projection-startup-fencing.mjs',
+    'tests/unit/projection-controller-startup.mjs',
+    'tests/unit/worker-attempt-quiescence-worker.mjs',
     'tests/native/current-cbfb-source-tamper.test.mjs',
     'tests/unit/stateful-engineering-source-admission.test.ts',
     'scripts/qualification/indexed-schema-mongodb/current-cbfb-ci.md',

@@ -52,7 +52,7 @@ jobs:
             copyFileSync(`current-native-${kind}-${exact}.json`,`current-native-${kind}-${major}.x.json`);
           NODE
       - name: Check explicit current profile, frozen historical predicates and workload boundaries
-        run: node --test tests/native/current-stateful-source-profile.test.mjs scripts/qualification/indexed-schema-mongodb/current-cbfb-contract.test.mjs tests/native/current-cbfb-codec-profile.test.mjs tests/native/current-cbfb-source-tamper.test.mjs scripts/qualification/operator-list-mongodb/cleanup-source-profile.test.mjs scripts/qualification/wire-source-snapshot.test.mjs
+        run: node --test tests/native/current-stateful-source-profile.test.mjs scripts/qualification/indexed-schema-mongodb/current-cbfb-contract.test.mjs tests/native/current-cbfb-codec-profile.test.mjs tests/native/current-cbfb-source-tamper.test.mjs tests/native/projection-manager-lifecycle.test.mjs scripts/qualification/operator-list-mongodb/cleanup-source-profile.test.mjs scripts/qualification/wire-source-snapshot.test.mjs
       - name: Check bounded canonical JSON and authentic protocol records on Node ${{ matrix.node-version }}
         run: node --test tests/unit/bounded-json.test.mjs tests/native/bounded-json-protocol-records.test.mjs
       - name: Check mixed stateful source and final publication on Node ${{ matrix.node-version }}

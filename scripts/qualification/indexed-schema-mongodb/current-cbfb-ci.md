@@ -53,6 +53,17 @@ Page, count and empty-set requests now use the existing isolated phase helper;
 their assertions, limits, deadlines and cleanup rules are unchanged. The original
 failed artifacts remain failed; this correction requires a fresh native CI run.
 
+That correction passed genuine Linux run `41890815958` at PR head `d7351bcb`,
+executed merge source `3d57cacefa9ee0e96cf669569fdb792f37aab359`, tree `ab28171c`.
+Each Node major completed all 12 native groups, 57 independently verified query
+attestations, three explains and closure of all 48 cursors, with owned fixture
+cleanup verified. This is a recorded synthetic indexed-MongoDB result for that
+exact source; it grants no managed HTTP or full Atomic parity acceptance.
+
+Portable worker fixtures also model the manager's optional-client cleanup port
+using the real lazy pool class. They reject unexpected optional-client allocation
+and retain their original lifecycle assertions and time budgets.
+
 Source admission leaves physical MongoDB, AtomicAssets/AtomicMarket SQL parity,
 managed HTTP, full Wire replay and release qualification pending. The separate
 CBFB native fixture still grants no Wire authority and retains its original

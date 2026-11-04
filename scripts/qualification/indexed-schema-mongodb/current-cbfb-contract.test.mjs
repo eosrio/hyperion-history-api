@@ -108,7 +108,7 @@ for(const version of ['24.22.1','26.4.0'])test('actual CI receipt producers sati
 
 test('all current routing changes reverse to exact baseline workloads and deadlines',()=>{
  assert.equal(ROUTING.base,'2f636372bd8fe82c86ebd46179cc96fbe9d81241');assert.equal(ROUTING.historicalSdk49,HISTORICAL_SDK49_SOURCE);
- assert.equal(ROUTING.files.length,15);
+ assert.equal(ROUTING.files.length,18);
  for(const row of ROUTING.files){const original=restoreSdk49Routing(row.path,raw(row.path));assert.equal(sha(original),row.historicalSha256);assert.throws(()=>restoreSdk49Routing(row.path,raw(row.path)+'\n'),/routing source differs/);}
  for(const path of ['tests/unit/wire-managed-state-v2-native.mjs','tests/unit/protocol-abi-history-native.mjs']){
   const source=raw(path);assert(source.includes('STATEFUL_CURRENT_CBFB_SOURCE_PROFILE'));assert(!source.includes('STATEFUL_SDK49_SOURCE_PROFILE'));
@@ -153,5 +153,5 @@ test('unknown/default/accessor options cannot become an admission or select expe
   {engineeringSourceProfile:CURRENT_CBFB_PROFILE,nativeMarker:'true'},{get engineeringSourceProfile(){calls++;return CURRENT_CBFB_PROFILE;}},
   {engineeringSourceProfile:CURRENT_CBFB_PROFILE,expectedSha256:'0'.repeat(64)}])assert.throws(()=>assertCurrentCbfbOptions(input));
  assert.equal(calls,0);assert.deepEqual(assertCurrentCbfbOptions({engineeringSourceProfile:CURRENT_CBFB_PROFILE,nativeMarker:false}),{nativeMarker:false});
- assert.equal(CURRENT_CBFB_MANIFEST.routeSources.length,41);
+ assert.equal(CURRENT_CBFB_MANIFEST.routeSources.length,46);
 });
