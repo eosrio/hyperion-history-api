@@ -31,6 +31,25 @@ describe('bounded immutable prepareMany',()=>{
   await expect(store.prepareMany(items,undefined,async()=>{if(revoked)throw Error('owner revoked')})).rejects.toThrow('owner revoked');
   const manifests=memory.calls.filter((c:any)=>c.method==='create'&&c.request.document?.kind==='manifest').map((c:any)=>c.request.document.bundle_id);expect(manifests).toEqual(['first']);
  });
+ it('uses one bounded bulk request for a two-chunk wave with unchanged durability',async()=>{
+  const {memory,store}=setup();await store.prepareMany(items);const calls=memory.calls.filter((c:any)=>c.method==='bulk');expect(calls).toHaveLength(1);expect(calls[0].request.operations).toHaveLength(4);expect(calls[0].request.wait_for_active_shards).toBe('all');expect(calls[0].request.refresh).toBe(false);expect(calls[0].request.pipeline).toBe('_none');
+ });
+ it('rejects malformed, reordered, short and partial per-item bulk receipts before any manifest',async()=>{
+  const variants=[(r:any)=>({...r,items:r.items.slice(0,1)}),(r:any)=>({...r,items:[...r.items].reverse()}),
+   (r:any)=>({...r,items:r.items.map((v:any,i:number)=>i?v:{create:{...v.create,_shards:{...v.create._shards,successful:0,failed:1}}})}),
+   (r:any)=>({...r,items:r.items.map((v:any,i:number)=>i?v:{create:{...v.create,_primary_term:0}})}),
+   (r:any)=>({...r,items:r.items.map((v:any,i:number)=>i?v:{create:{...v.create,_id:'wrong'}})}),
+   (r:any)=>({...r,items:r.items.map((v:any,i:number)=>i?v:{create:{...v.create,_index:'wrong'}})}),
+   (r:any)=>({...r,items:r.items.map((v:any,i:number)=>i?v:{create:{...v.create,status:409,error:{type:'wrong-conflict'}}}),errors:true}),
+   (r:any)=>({...r,errors:true})];
+  for(const variant of variants){const {memory,store}=setup();memory.faults.bulkReceipt=variant;await expect(store.prepareMany(items)).rejects.toThrow();expect(memory.calls.filter((c:any)=>c.method==='create'&&c.request.document?.kind==='manifest')).toHaveLength(0)}
+ });
+ it('reasserts each bulk conflict with fresh CAS receipt and rejects partial reassertion',async()=>{
+  const {memory,store}=setup();await store.prepareMany(items);const start=memory.calls.length;await store.prepareMany(items);
+  const writes=memory.calls.slice(start);expect(writes.filter((c:any)=>c.method==='bulk')).toHaveLength(1);expect(writes.filter((c:any)=>c.method==='index'&&c.request.document?.kind==='chunk')).toHaveLength(2);
+  memory.faults.receipt=(receipt:any,req:any)=>req.document.kind==='chunk'?{...receipt,_shards:{...receipt._shards,successful:0,failed:1}}:receipt;
+  const before=memory.calls.length;await expect(store.prepareMany(items)).rejects.toThrow();expect(memory.calls.slice(before).filter((c:any)=>c.method==='create'&&c.request.document?.kind==='manifest')).toHaveLength(0);
+ });
  it('rejects invalid dependency order and a pre-aborted operation before writes',async()=>{
   const {memory,store}=setup();await expect(store.prepareMany([{id:'second',record:{},after:['missing']}])).rejects.toThrow();const controller=new AbortController();controller.abort(Error('cancelled'));await expect(store.prepareMany(items,controller.signal)).rejects.toThrow('cancelled');expect(memory.calls.filter((c:any)=>['create','index'].includes(c.method))).toHaveLength(0);
  });

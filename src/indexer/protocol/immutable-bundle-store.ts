@@ -247,7 +247,22 @@ export class ImmutableProtocolBundleStore {
         }
         for(let offset=0;offset<chunks.length;offset+=4){
             signal?.throwIfAborted();scope?.assertActive();if(checkpoint)await checkpoint();
-            const results=await Promise.allSettled(chunks.slice(offset,offset+4).map(chunk=>this.createImmutable(chunk.id,chunk.document,signal)));
+            const wave=chunks.slice(offset,offset+4),operations=wave.flatMap(chunk=>[{create:{_index:this.index,_id:chunk.id}},chunk.document]);
+            const response:any=await checkedIo(signal,()=>this.client.bulk({operations,refresh:false,wait_for_active_shards:'all',pipeline:'_none'},{signal}));
+            if(!response||!Array.isArray(response.items)||response.items.length!==wave.length||typeof response.errors!=='boolean')
+                throw new Error('Incomplete immutable bulk receipt');
+            const conflicts:typeof wave=[];
+            for(let index=0;index<wave.length;index++){
+                const wrapper=response.items[index],item=wrapper?.create,chunk=wave[index];
+                if(!wrapper||Object.keys(wrapper).length!==1||!item||item._index!==this.index||item._id!==chunk.id)
+                    throw new Error('Immutable bulk receipt order or identity differs');
+                if(item.status===201&&!item.error)this.assertWrite(item,chunk.id,'created');
+                else if(item.status===409&&item.error?.type==='version_conflict_engine_exception')conflicts.push(chunk);
+                else throw new Error('Immutable bulk item failed or has incomplete receipt');
+            }
+            if(response.errors!==(conflicts.length>0))throw new Error('Immutable bulk error summary differs');
+            // A conflict does not establish durability. Reuse the exact bounded GET/CAS reassertion path.
+            const results=await Promise.allSettled(conflicts.map(chunk=>this.createImmutable(chunk.id,chunk.document,signal)));
             const failed=results.find(result=>result.status==='rejected');if(failed?.status==='rejected')throw failed.reason;
             signal?.throwIfAborted();scope?.assertActive();if(checkpoint)await checkpoint();
         }
