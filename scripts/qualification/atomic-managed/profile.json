@@ -12982,8 +12982,8 @@
       },
       {
         "path": "runner.mjs",
-        "bytes": 13098,
-        "sha256": "503d663c9e38c213da34823c6f2b7bc23a6ef05ca3a672b3719823b1087355ee"
+        "bytes": 13222,
+        "sha256": "b361e4c03244931a9a2813e3a0d6659a86a370b642276b11091f970a691aadbe"
       }
     ],
     "controls": [
@@ -12994,8 +12994,8 @@
       },
       {
         "path": "tests/native/atomic-managed-sdk-boundary.test.mjs",
-        "bytes": 11338,
-        "sha256": "729c7c7236102dbde8bab578d015eac553061af03132f747c7d781c1d4abc63f"
+        "bytes": 14756,
+        "sha256": "d988cebdfff14b9f8df1cc975da6d79a8dd5179e3128eb5bbfcad3a36fea2c6b"
       },
       {
         "path": "tests/native/atomic-managed-host-publication.test.mjs",
@@ -13058,8 +13058,8 @@
         },
         {
           "path": "scripts/qualification/atomic-managed/runner.mjs",
-          "bytes": 13098,
-          "sha256": "503d663c9e38c213da34823c6f2b7bc23a6ef05ca3a672b3719823b1087355ee",
+          "bytes": 13222,
+          "sha256": "b361e4c03244931a9a2813e3a0d6659a86a370b642276b11091f970a691aadbe",
           "module": true
         },
         {
@@ -13789,7 +13789,7 @@
         "node:url",
         "typescript/unstable/ast"
       ],
-      "totalBytes": 1533783
+      "totalBytes": 1533907
     }
   }
 }

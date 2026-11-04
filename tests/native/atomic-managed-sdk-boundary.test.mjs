@@ -102,3 +102,33 @@ test('actual managed royalty initializer uses the frozen source-input clock whil
   assert.equal((await probe(aa,false,serial)).block.timeMs,String(1700000000000+(serial+1)*1000),'AA source chronology remains unchanged');
  }
 });
+
+
+test('actual late-coverage retirement compares BSON checkpoints with captured SDK values before exact restore',async()=>{
+ const {BSON}=await import('mongodb'),{indexedCoverageV1}=await import('../../packages/backend-mongodb/dist/stateful-indexed-materialization-v1.js');
+ const runner=readFileSync(new URL('../../scripts/qualification/atomic-managed/runner.mjs',import.meta.url),'utf8'),body=/const retireCoverage=async\(entry,modelId,view\)=>\{[\s\S]+?\n  \};/.exec(runner);assert(body,'Actual controlled retirement boundary must be extracted');
+ const modelId='atomicmarket-royalty-templates',digest=hex(31),prefix='controlled',bsonCopy=value=>BSON.deserialize(BSON.serialize(value),{promoteLongs:false});
+ for(const sdk of [root,native]){
+  const declaration=await capture(sdk),view=sdk.owner.captureStatefulOwnerViewV2(declaration,{declarationDigest:declaration.digest,backendId:declaration.projection.definition.binding.backendId,generation:declaration.projection.definition.binding.generation,revision:hex(32),checkpoint:{blockNum:1,blockId:hex(33)}});
+  assert.equal(Object.getPrototypeOf(view.checkpoint),null,'Real SDK view capture must retain its inert prototype');
+  const original=bsonCopy(indexedCoverageV1({model:{declaration:{digest},owner:declaration}},view,true,null));assert.equal(Object.getPrototypeOf(original.checkpoint),Object.prototype);
+  const entry={indexed:{models:new Map([[modelId,{declaration:{digest}}]])}};
+  for(const boundary of ['same','height','block-id','extra-field','height-type','not-ready','revision-write']){
+   const stored=bsonCopy(original),operations=[];let current=stored;
+   if(boundary==='height')stored.checkpoint.blockNum++;
+   if(boundary==='block-id')stored.checkpoint.blockId=hex(34);
+   if(boundary==='extra-field')stored.checkpoint.extra=true;
+   if(boundary==='height-type')stored.checkpoint.blockNum='1';
+   if(boundary==='not-ready')stored.ready=false;
+   const collection={async findOne(filter){operations.push('find');assert.deepEqual(filter,{_id:digest});return bsonCopy(current);},
+    async updateOne(filter,update,options){operations.push('retire');assert.deepEqual(filter,{_id:digest,revision:view.revision});assert.deepEqual(update,{$set:{ready:false,reason:'controlled-late-managed-coverage-retirement'}});assert.deepEqual(options,{writeConcern:{w:'majority',j:true}});if(boundary==='revision-write')return{matchedCount:0};Object.assign(current,update.$set);return{matchedCount:1};},
+    async replaceOne(filter,saved,options){operations.push('restore');assert.deepEqual(filter,{_id:digest});assert.deepEqual(saved,original);assert.deepEqual(options,{writeConcern:{w:'majority',j:true}});current=bsonCopy(saved);return{matchedCount:1};}};
+   const db={collection(name){assert.equal(name,prefix+'_ix1_'+digest+'_c');return collection;}},retire=new Function('db','prefix','BSON','assert',body[0]+'\nreturn retireCoverage;')(db,prefix,BSON,assert);
+   if(boundary==='same'){
+    const restore=await retire(entry,modelId,view);assert.deepEqual(operations,['find','retire']);assert.equal(current.ready,false);await restore();assert.deepEqual(operations,['find','retire','restore','find']);assert.deepEqual(current,original);
+   }else{
+    await assert.rejects(retire(entry,modelId,view),{code:'ERR_ASSERTION'});assert.deepEqual(operations,boundary==='revision-write'?['find','retire']:['find']);assert(!operations.includes('restore'));
+   }
+  }
+ }
+});

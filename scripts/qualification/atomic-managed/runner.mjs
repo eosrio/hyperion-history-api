@@ -50,7 +50,8 @@ export async function run(options){
   const publishSource=async row=>{guard();assert.deepEqual((await host.registry.entries.get(row.projection).adapter.recovery()).view,row.view);published.set(row.declaration.digest+':'+row.view.checkpoint.blockNum+':'+row.view.checkpoint.blockId,row);};
   const retireCoverage=async(entry,modelId,view)=>{
    const digest=entry.indexed.models.get(modelId).declaration.digest,collection=db.collection(prefix+'_ix1_'+digest+'_c'),original=await collection.findOne({_id:digest});
-   assert(original?.ready);assert.deepEqual(original.checkpoint,view.checkpoint);const saved=BSON.deserialize(BSON.serialize(original),{promoteLongs:false});
+   // BSON records use Object.prototype; preserve exact checkpoint fields/values across the captured SDK DTO boundary.
+   assert(original?.ready);assert.deepEqual(original.checkpoint,{...view.checkpoint});const saved=BSON.deserialize(BSON.serialize(original),{promoteLongs:false});
    const changed=await collection.updateOne({_id:digest,revision:view.revision},{$set:{ready:false,reason:'controlled-late-managed-coverage-retirement'}},{writeConcern:{w:'majority',j:true}});assert.equal(changed.matchedCount,1);
    return async()=>{const restored=await collection.replaceOne({_id:digest},saved,{writeConcern:{w:'majority',j:true}});assert.equal(restored.matchedCount,1);assert.deepEqual(await collection.findOne({_id:digest}),saved);};
   };
