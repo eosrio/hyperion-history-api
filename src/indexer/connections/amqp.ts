@@ -87,9 +87,9 @@ export async function checkQueueSize(q_name: string, config: AmqpConfig) {
         const headers = new Headers();
         const auth = Buffer.from(opts.username + ":" + opts.password).toString('base64')
         headers.set('Authorization', 'Basic ' + auth);
-        const data = await (await fetch(apiUrl, {
-            headers
-        })).json() as any;
+        const response = await fetch(apiUrl, {headers});
+        if (!response.ok) throw new Error(`Queue management returned HTTP ${response.status}`);
+        const data = await response.json() as any;
 
         // GOT
         // const data = await got.get(apiUrl, opts).json() as any;

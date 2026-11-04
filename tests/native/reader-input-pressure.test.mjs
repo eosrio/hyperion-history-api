@@ -55,7 +55,7 @@ test('conflicting live-mode metadata is shared pressure',async()=>{
 
 test('queue HTTP failures do not masquerade as an empty queue',async()=>{
  const {checkQueueSize}=await import('../../build/indexer/connections/amqp.js');const previous=globalThis.fetch;
- try {globalThis.fetch=async()=>{throw Error('network unavailable');};await assert.rejects(checkQueueSize('wire:blocks:1',{protocol:'http',api:'localhost:15672',vhost:'/',user:'test',pass:'test'}),/network unavailable/);}
+ try {const config={protocol:'http',api:'localhost:15672',vhost:'/',user:'test',pass:'test'};globalThis.fetch=async()=>{throw Error('network unavailable');};await assert.rejects(checkQueueSize('wire:blocks:1',config),/network unavailable/);globalThis.fetch=async()=>({ok:false,status:503,json:async()=>({messages:0})});await assert.rejects(checkQueueSize('wire:blocks:1',config),/HTTP 503/);}
  finally {globalThis.fetch=previous;}
 });
 
