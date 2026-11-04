@@ -28,6 +28,9 @@ bodies, assertions, cases, limits, deadlines, failure accounting and cleanup.
 Native installation precedes root postinstall so initial emission resolves the
 configured receiving SDK. Main CI selects the CBFB indexed engineering tests and
 the exact reviewed Linux Node 24.22.1/26.4.0 executable profiles.
+CI retains the exact-version receipts and bit-identical `24.x`/`26.x` aliases
+consumed by the unchanged retained-workload provenance reader. These copies
+preserve the actual checkout, run, job and executable identities.
 
 Portable controls exercise actual isolated file mutations across SDK metadata,
 all emitted trees, Wire descriptors/member bytes/prepared lock/nested SDK,

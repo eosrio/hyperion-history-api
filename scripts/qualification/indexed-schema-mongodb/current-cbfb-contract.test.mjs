@@ -2,12 +2,57 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {posix} from 'node:path';
+import {runInNewContext} from 'node:vm';
+import {assertRetainedProvenance} from '../../../tests/native/retained-workload-progress.mjs';
 import {CURRENT_CBFB_PROFILE,HISTORICAL_SDK49_SOURCE,ROUTING,restoreSdk49Routing,sha} from './current-cbfb-contract.mjs';
 import {DESCRIPTOR,assertCbfbAssembly} from './cbfb-assembly.mjs';
 import {CURRENT_CBFB_MANIFEST,observeCurrentCbfbSourceOptions,assertCurrentCbfbOptions,assertCurrentCbfbDependencies} from '../../../tests/unit/current-cbfb-source-admission.mjs';
 import {STATEFUL_SDK49_SOURCE_PROFILE,observeSdk49SourceOptions} from '../../../tests/unit/sdk49-indexed-source-admission.mjs';
 import {admitNativeApiSourceOptions} from '../../../tests/unit/stateful-engineering-source-admission.mjs';
 const root=new URL('../../../',import.meta.url),raw=path=>readFileSync(new URL(path,root),'utf8');
+
+for(const version of ['24.22.1','26.4.0'])test('actual CI receipt producers satisfy the unchanged retained consumer on Node '+version,()=>{
+ // Model receipt inputs only. Never generate a source-admission receipt, invoke
+ // the node:test workload wrapper, or set the real process's GitHub environment.
+ const workflow=raw('.github/workflows/build.yml'),start=workflow.indexOf('      - name: Record the explicit current Linux assembly and actual runtime candidate\n'),
+  end=workflow.indexOf('      - name: Check explicit current profile',start),producer=workflow.slice(start,end);
+ assert(start>0&&end>start);assert(workflow.includes('node-version: ["24.22.1", "26.4.0"]'));
+ const names=[...producer.matchAll(/ > (current-native-(git|source)-\$\{\{ matrix\.node-version \}\}\.json)$/gm)];assert.equal(names.length,2);
+ const marker="          node --input-type=module <<'NODE'\n";assert.equal(producer.split(marker).length,2);
+ const block=producer.split(marker)[1].split('\n          NODE\n');assert.equal(block.length,2);
+ const aliasCode=block[0].split('\n').map(line=>{assert(line.startsWith('          '));return line.slice(10);}).join('\n'),
+  importLine="import {copyFileSync} from 'node:fs';\n";assert.equal(aliasCode.split(importLine).length,2);
+ const files=new Map(),copies=[],major=version.split('.')[0],directory='/modeled-ci',executable='/modeled/node',
+  github={sha:'a'.repeat(40),runId:'modeled-run',attempt:'1',job:'build'},
+  values={git:{schemaVersion:1,source:github.sha,runId:github.runId,runAttempt:github.attempt,job:github.job,trackedAndClean:true,tree:'b'.repeat(40)},
+   source:{profile:CURRENT_CBFB_PROFILE,runtime:{node:'v'+version,platform:'linux',arch:'x64',executable},runtimeAcceptance:'pending'}};
+ for(const [,template,kind] of names)files.set(posix.join(directory,template.replace('${{ matrix.node-version }}',version)),Buffer.from(JSON.stringify(values[kind])+'\n'));
+ const wrapper=raw('tests/native/retained-workload-test.mjs'),receiptStart=wrapper.indexOf('function receipt(name){'),receiptEnd=wrapper.indexOf('export default function test(',receiptStart);
+ assert(receiptStart>0&&receiptEnd>receiptStart);const readNames=[];
+ const consumer=()=>runInNewContext(wrapper.slice(receiptStart,receiptEnd)+'\nprovenance();',{
+  root:directory,join:posix.join,assert,sha,assertRetainedProvenance,
+  lstatSync:path=>{readNames.push(path);const bytes=files.get(path);if(!bytes)throw Object.assign(new Error('Missing receipt '+path),{code:'ENOENT'});return{isFile:()=>true,isSymbolicLink:()=>false,size:bytes.length};},
+  readFileSync:path=>files.get(path),
+  process:{versions:{node:version},version:'v'+version,platform:'linux',arch:'x64',execPath:executable,pid:123,ppid:120,execArgv:[],
+   env:{GITHUB_ACTIONS:'true',GITHUB_SHA:github.sha,GITHUB_RUN_ID:github.runId,GITHUB_RUN_ATTEMPT:github.attempt,GITHUB_JOB:github.job}}
+ });
+ assert.throws(consumer,error=>error.code==='ENOENT');
+ runInNewContext(aliasCode.replace(importLine,''),{process:{versions:{node:version}},copyFileSync:(from,to)=>{
+  const bytes=files.get(posix.join(directory,from));assert(bytes,'Producer source must be an existing exact-version receipt');
+  files.set(posix.join(directory,to),Buffer.from(bytes));copies.push({from,to});
+ }});
+ assert.equal(copies.length,2);
+ for(const kind of ['git','source']){
+  const exact=`current-native-${kind}-${version}.json`,alias=`current-native-${kind}-${major}.x.json`;
+  assert(copies.some(row=>row.from===exact&&row.to===alias));assert(files.get(posix.join(directory,exact)).equals(files.get(posix.join(directory,alias))));
+  assert(workflow.includes(`            current-native-${kind}-*.x.json\n`));
+ }
+ const result=consumer();assert.equal(result.sourceReceipt.value.source,github.sha);assert.equal(result.sourceReceipt.value.runId,github.runId);
+ assert.equal(result.assemblyReceipt.runtime.node,'v'+version);assert(readNames.every(path=>path.endsWith('-'+major+'.x.json')));
+ const alias=posix.join(directory,`current-native-git-${major}.x.json`),original=files.get(alias);
+ files.set(alias,Buffer.from(JSON.stringify({...values.git,source:'c'.repeat(40)})));assert.throws(consumer,/Expected values to be strictly equal/);files.set(alias,original);
+});
 
 test('all current routing changes reverse to exact baseline workloads and deadlines',()=>{
  assert.equal(ROUTING.base,'2f636372bd8fe82c86ebd46179cc96fbe9d81241');assert.equal(ROUTING.historicalSdk49,HISTORICAL_SDK49_SOURCE);

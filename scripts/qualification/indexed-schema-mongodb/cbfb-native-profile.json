@@ -48,8 +48,8 @@
   "sourceFiles": [
     {
       "path": ".github/workflows/build.yml",
-      "bytes": 24706,
-      "sha256": "14f20ed41854aefb662da22b3944c15b30cec3244149d329faf34ac44fe2c726"
+      "bytes": 25120,
+      "sha256": "82eb09806a3152c0a78982ee533c9c4ba80c085a2651c34beefceb959c44ef7b"
     },
     {
       "path": ".github/workflows/indexed-schema-finite.yml",
@@ -358,8 +358,8 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-ci.md",
-      "bytes": 2754,
-      "sha256": "bcf9e52445459264d012e3073b5aab7a89e7821afc077d4b15f30ae6cd33c8fc"
+      "bytes": 2974,
+      "sha256": "06ee5c8a028d5ae47b0716cb5194212e0bd1dd99795a4bdd7025aa4e57d5d7ab"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-contract.mjs",
@@ -368,13 +368,13 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-contract.test.mjs",
-      "bytes": 5699,
-      "sha256": "37ad001abd5c809aa7b272561a30b41e9859c5ed01b237e903bc42dc6ca55570"
+      "bytes": 10078,
+      "sha256": "e6f9ca2f34fe2f59e9ede42d51d0e56d209a9bc40b9c6e6a6e667a02d34644d2"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-routing.json",
-      "bytes": 216016,
-      "sha256": "35a43fda56c114e0c3292a5faa219efbcbdb54c6bc25b024be6b0053a7294fdf"
+      "bytes": 217148,
+      "sha256": "48116b5e73ef7bb64091b78e70b9ed61bcfbf22ba616f739d98121db09042cc6"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/fixtures/9d8-explain/PROVENANCE.json",
@@ -633,8 +633,8 @@
     },
     {
       "path": "tests/fixtures/engineering-profiles/current-cbfb-linux.json",
-      "bytes": 9914,
-      "sha256": "1c1c9795951b657a9b6ffb2c39cc312d975e5e396e5b985f2797410a96c411a0"
+      "bytes": 9915,
+      "sha256": "b991a4839ec355f56a08fe5dacb463e20a12d925d2e71f51a0205a99678db56f"
     },
     {
       "path": "tests/fixtures/engineering-profiles/current-native45-linux.json",
@@ -709,7 +709,7 @@
     {
       "path": "tests/unit/current-cbfb-source-admission.mjs",
       "bytes": 7971,
-      "sha256": "62f2e085be76ee8e84c72527057fcc3a1aa5b1583c7030c8b21a07c4eb448446"
+      "sha256": "f97350e2a4223b36ed85068bb1dcf79cef668d7c251e1be43ddbd79c7491ba0e"
     },
     {
       "path": "tests/unit/current-stateful-engineering-source-admission.mjs",
@@ -5343,8 +5343,8 @@
     },
     "observation": {
       "files": 106,
-      "edges": 337,
-      "sha256": "4298b83dbd7a752c602626799fa2dfd9e8e758de824ebd734fe0da87103bed5a"
+      "edges": 338,
+      "sha256": "d39f7cca247d99c8ad1d62cdbb62389eb1915fd5f0c8c22773e8bd220c4f6352"
     }
   },
   "provenance": {

@@ -45,6 +45,12 @@ jobs:
         run: |
           node scripts/qualification/indexed-schema-mongodb/current-cbfb-ci-source-check.mjs > current-native-git-${{ matrix.node-version }}.json
           node tests/unit/current-cbfb-source-admission.mjs --admit-current-cbfb > current-native-source-${{ matrix.node-version }}.json
+          node --input-type=module <<'NODE'
+          import {copyFileSync} from 'node:fs';
+          const exact=process.versions.node,major=exact.split('.')[0];
+          for(const kind of ['git','source'])
+            copyFileSync(`current-native-${kind}-${exact}.json`,`current-native-${kind}-${major}.x.json`);
+          NODE
       - name: Check explicit current profile, frozen historical predicates and workload boundaries
         run: node --test tests/native/current-stateful-source-profile.test.mjs scripts/qualification/indexed-schema-mongodb/current-cbfb-contract.test.mjs tests/native/current-cbfb-codec-profile.test.mjs tests/native/current-cbfb-source-tamper.test.mjs scripts/qualification/operator-list-mongodb/cleanup-source-profile.test.mjs scripts/qualification/wire-source-snapshot.test.mjs
       - name: Check bounded canonical JSON and authentic protocol records on Node ${{ matrix.node-version }}
@@ -153,6 +159,8 @@ jobs:
           path: |
             current-native-source-${{ matrix.node-version }}.json
             current-native-git-${{ matrix.node-version }}.json
+            current-native-git-*.x.json
+            current-native-source-*.x.json
             out/wire-managed-diagnostic-*/progress.jsonl
           if-no-files-found: error
       - name: Verify action source admission evidence checksums
