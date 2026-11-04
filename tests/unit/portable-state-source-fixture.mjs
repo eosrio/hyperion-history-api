@@ -32,7 +32,7 @@ export async function prepared(constructedEpochs = {}, initialThrough = 4, const
   const inputCapture = retained?.capture ?? capture;
   const selected = await loadChainProtocol({ provider: "extension", package: "@eosrio/hyperion-wire-plugin", profileId: inputCapture.profileId });
   const profile = { id: selected.id, profileId: selected.provider.profileId, components: selected.components };
-  const memory = frontierMemoryClient(), chain = "portable-source-fixture";
+  const memory = frontierMemoryClient(), chain = retained?.namespace ?? "portable-source-fixture";
   const store = new ProtocolAbiFrontierStore(memory.client, chain), bindings = new ProtocolSourceBindingStore(memory.client, chain);
   const observations = new ProtocolAbiObservationStore(memory.client, chain);
   const coordinator = new ProtocolAbiCoordinator({

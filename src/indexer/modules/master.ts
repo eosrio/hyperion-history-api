@@ -44,6 +44,7 @@ import { HyperionModuleLoader } from './loader.js';
 import { HyperionQueueMonitor } from './queueMonitor.js';
 import {loadChainProtocol} from '../protocol/selection.js';
 import {ProtocolAbiCoordinator} from '../protocol/abi-coordinator.js';
+import {protocolSourceNamespace} from '../protocol/source-namespace.js';
 import {verifyRetainedGenesisInput} from '../protocol/retained-genesis-input.js';
 import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
 import {ProtocolSourceBindingStore, type ProtocolSourcePosition} from '../protocol/source-bindings.js';
@@ -144,7 +145,7 @@ export class HyperionMaster {
         const canonicalChecks = new WeakMap<CurrentAttemptCanonicalBlock, () => void>();
         return this.actionAttemptAdjudicator = new ActionAttemptAdjudicator(supervisor,
             new ActionSourceAdmissionStore(this.esClient, this.chain, this.conf.settings.es_replicas ?? 0),
-            new ProtocolSourceBindingStore(this.esClient, this.chain, this.conf.settings.es_replicas ?? 0, {readOnly: true}), {
+            new ProtocolSourceBindingStore(this.esClient, protocolSourceNamespace(this.chain,this.conf.settings.protocol_abi_coordination?.source_namespace), this.conf.settings.es_replicas ?? 0, {readOnly: true}), {
                 configurationSha256: () => createHash('sha256').update(actionConfigurationSnapshot(this.conf, this.cm.filters,
                     this.mLoader.snapshotActionHandlers())).digest('hex'),
                 canonicalBlock: async blockNum => {
@@ -783,11 +784,13 @@ export class HyperionMaster {
             const selected = await loadChainProtocol(this.conf.settings.protocol, {sourceEvidence: true});
             const replicas = this.conf.settings.es_replicas ?? 0;
             const options = this.conf.settings.protocol_abi_coordination;
+            const sourceNamespace=protocolSourceNamespace(this.chain,options?.source_namespace);
+            hLog(`Protocol source namespace: ${sourceNamespace}`);
             const coordinator = new ProtocolAbiCoordinator({chainId: this.manager.conn.chains[this.chain].chain_id,
                 profile: {id: selected.id, profileId: selected.provider.profileId, components: selected.components ?? []},
-                ownerId: randomUUID(), bindings: new ProtocolSourceBindingStore(this.esClient, this.chain, replicas),
-                observations: new ProtocolAbiObservationStore(this.esClient, this.chain, replicas),
-                store: new ProtocolAbiFrontierStore(this.esClient, this.chain, replicas),
+                ownerId: randomUUID(), bindings: new ProtocolSourceBindingStore(this.esClient, sourceNamespace, replicas),
+                observations: new ProtocolAbiObservationStore(this.esClient, sourceNamespace, replicas),
+                store: new ProtocolAbiFrontierStore(this.esClient, sourceNamespace, replicas),
                 verifyNativeGenesis: selected.provider.verifyNativeGenesis?.bind(selected.provider),
                 capturedGenesisEnabled: !!options?.retained_genesis,
                 nativeActionInterfaceVersion: selected.provider.nativeActions?.interfaceVersion,

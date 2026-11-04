@@ -6,6 +6,7 @@ import type {HyperionModuleLoader} from '../../indexer/modules/loader.js';
 import {loadChainProtocol} from '../../indexer/protocol/selection.js';
 import {protocolImmutableJson} from '../../indexer/protocol/immutable-bundle-store.js';
 import {PortableProjectionSource} from '../../indexer/projection/source.js';
+import {protocolSourceNamespace} from '../../indexer/protocol/source-namespace.js';
 import {StatefulProjectionRegistryV2, type RegisteredStatefulProjectionV2} from '../../indexer/projection/stateful-registry.js';
 import {statefulOwnerExpectationDigest, type StatefulOwnerExpectation} from '../../indexer/projection/stateful-controller.js';
 import type {ResolvedStatefulOwnerConfigurationV2} from '../../indexer/projection/stateful-config.js';
@@ -151,7 +152,7 @@ export function statefulApiRegistryFactory(fastify: FastifyInstance, loader: Hyp
             const manager = fastify.manager; requireReady(manager.mongodbClient);
             const selected = await loadChainProtocol(manager.config.settings.protocol), chainId = manager.conn.chains[manager.chain].chain_id;
             const profile = {id: selected.id, profileId: selected.provider.profileId, components: selected.components ?? []};
-            const source = new PortableProjectionSource({client: manager.elasticsearchClient, chain: manager.chain, chainId, profile, provider: selected.provider,
+            const source = new PortableProjectionSource({client: manager.elasticsearchClient, chain: protocolSourceNamespace(manager.chain,manager.config.settings.protocol_abi_coordination?.source_namespace), chainId, profile, provider: selected.provider,
                 maxAncestryBlocks: manager.config.settings.protocol_abi_coordination?.recovery_window_blocks,
                 historicalCertificates: manager.config.settings.protocol_abi_coordination?.historical_certificates !== undefined,
                 replicas: manager.config.settings.es_replicas ?? 0});

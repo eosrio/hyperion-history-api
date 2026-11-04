@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import type {FastifyInstance, FastifyRequest} from 'fastify';
 import {loadChainProtocol} from '../../indexer/protocol/selection.js';
 import {ProtocolAbiFrontierStore} from '../../indexer/protocol/abi-frontier-store.js';
+import {protocolSourceNamespace} from '../../indexer/protocol/source-namespace.js';
 import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError,
     type ProtocolActionProofMetadata, type ProtocolAbiProofView} from '../../indexer/protocol/abi-proof.js';
 import {ProtocolNativeActionReader, ProtocolNativeActionUnavailableError,
@@ -44,15 +45,16 @@ export class ProtocolActionConsumer {
     readonly nativeReader?: ProtocolNativeActionReader;
     constructor(private readonly host: FastifyInstance, readonly selected: SelectedProtocol) {
         const chain = host.manager.chain, chainId = host.manager.conn?.chains[chain]?.chain_id;
+        const sourceNamespace=protocolSourceNamespace(chain,host.manager.config.settings.protocol_abi_coordination?.source_namespace);
         if (!chainId) throw unavailable('Configured chain identity is unavailable');
         const profile = {id: selected.id, profileId: selected.provider.profileId, components: selected.components ?? []};
         this.reader = new ProtocolAbiProofReader({chainId, profile,
             maxAncestryBlocks: host.manager.config.settings.protocol_abi_coordination?.recovery_window_blocks,
             historicalCertificates: host.manager.config.settings.protocol_abi_coordination?.historical_certificates !== undefined,
-            store: new ProtocolAbiFrontierStore(host.elastic, chain, host.manager.config.settings.es_replicas ?? 0, {readOnly: true})});
+            store: new ProtocolAbiFrontierStore(host.elastic, sourceNamespace, host.manager.config.settings.es_replicas ?? 0, {readOnly: true})});
         this.nativeReader = selected.provider.nativeActions ? new ProtocolNativeActionReader({chainId, profile,
             provider: selected.provider, proofReader: this.reader,
-            store: new ProtocolNativeObservationStore(host.elastic, chain,
+            store: new ProtocolNativeObservationStore(host.elastic, sourceNamespace,
                 host.manager.config.settings.es_replicas ?? 0, undefined, {readOnly: true})}) : undefined;
     }
     belongsTo(host: FastifyInstance): boolean {

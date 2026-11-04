@@ -3,6 +3,7 @@ import {HyperionWorker} from './hyperionWorker.js';
 import {resolvePortableStateConfiguration} from '../projection/config.js';
 import {createPortableStateBackend} from '../projection/backend.js';
 import {PortableProjectionSource} from '../projection/source.js';
+import {protocolSourceNamespace} from '../protocol/source-namespace.js';
 import {PortableStateController} from '../projection/controller.js';
 import {hLog} from '../helpers/common_functions.js';
 import {randomUUID} from 'node:crypto';
@@ -57,7 +58,7 @@ export default class ProjectionWorker extends HyperionWorker {
             const client = this.manager.mongodbClient!;
             await client.connect();
             this.assertWorkerAttemptActive();
-            const sourceOptions = {client: this.client, chain: this.chain, chainId: this.chainId,
+            const sourceOptions = {client: this.client, chain: protocolSourceNamespace(this.chain,this.conf.settings.protocol_abi_coordination?.source_namespace), chainId: this.chainId,
                 profile: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
                 provider: this.protocol, replicas: this.conf.settings.es_replicas ?? 0,
                 requireAttemptScope: this.workerAttemptScopeRequired,

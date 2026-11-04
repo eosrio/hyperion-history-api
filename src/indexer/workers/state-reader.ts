@@ -7,6 +7,7 @@ import {protocolNumber} from '../protocol/contract-cache.js';
 import {HyperionWorker, protocolSourceCapture} from './hyperionWorker.js';
 import {createHash, randomUUID} from 'node:crypto';
 import {ProtocolSourceBindingStore, protocolSourceSelectionHeader, type ProtocolSourcePosition} from '../protocol/source-bindings.js';
+import {protocolSourceNamespace} from '../protocol/source-namespace.js';
 import {loadRetainedGenesisInput} from '../protocol/retained-genesis-input.js';
 import {ProtocolAbiCoordinatorRpc} from '../protocol/abi-coordinator-rpc.js';
 import {debugLog, hLog} from '../helpers/common_functions.js';
@@ -1117,7 +1118,7 @@ export default class StateReader extends HyperionWorker {
         if (this.usesProtocolSourceBindings) {
             const stop = this.profiler.start('protocol_source_prepare_context');
             try {
-                this.protocolSourceBindingStore ??= new ProtocolSourceBindingStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0);
+                this.protocolSourceBindingStore ??= new ProtocolSourceBindingStore(this.client, protocolSourceNamespace(this.chain,this.conf.settings.protocol_abi_coordination?.source_namespace), this.conf.settings.es_replicas ?? 0);
                 const context = await this.protocolSourceBindingStore.prepareContext({schemaVersion: 1, chainId: this.chainId,
                     protocol: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []}, schemaJson: abiString});
                 this.assertCurrentIngress(generation);
@@ -1303,7 +1304,7 @@ export default class StateReader extends HyperionWorker {
             process.send?.({event: 'ds_error', data: {type: 'action_source_incomplete', code, capsuleId: id}});
             return;
         }
-        this.protocolSourceBindingStore ??= new ProtocolSourceBindingStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0);
+        this.protocolSourceBindingStore ??= new ProtocolSourceBindingStore(this.client, protocolSourceNamespace(this.chain,this.conf.settings.protocol_abi_coordination?.source_namespace), this.conf.settings.es_replicas ?? 0);
         const stop = this.profiler.start('protocol_source_quarantine');
         try {
             const capsule = await this.protocolSourceBindingStore.quarantine({schemaVersion: 1, chainId: this.chainId,
