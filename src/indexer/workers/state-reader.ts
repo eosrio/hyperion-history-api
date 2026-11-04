@@ -60,8 +60,12 @@ export default class StateReader extends HyperionWorker {
     private coordinatorResumeFromBlock?: number | null;
 
     private recovery = false;
-    private allowRequests = true;
-    private backpressurePaused = false;
+    private queuePressurePending = process.env.reader_pressure_sync === 'true';
+    private queuePressurePaused = false;
+    private manualReaderPaused = false;
+    private allowRequests = !this.queuePressurePending;
+    private backpressurePaused = this.queuePressurePending;
+    private pendingInitialRequest?: number;
     private shipCreditEpoch: object = {};
     private withheldShipCredits?: {owner: ShipCreditOwner; count: number};
     private legacyCreditGenerations = new WeakMap<object, number>();
@@ -166,7 +170,7 @@ export default class StateReader extends HyperionWorker {
             fetch_deltas: this.conf.indexer.fetch_deltas
         };
 
-
+        if (this.queuePressurePending) process.send?.({event: 'reader_pressure_ready'});
     }
 
     distribute(data: any[], cb: () => void) {
@@ -427,18 +431,22 @@ export default class StateReader extends HyperionWorker {
                 break;
             }
             case 'pause': {
-                this.backpressurePaused = true;
-                this.allowRequests = false;
+                if (msg.source === 'queue-pressure') this.queuePressurePaused = true;
+                else this.manualReaderPaused = true;
+                this.updateReaderPressure();
                 break;
             }
             case 'resume': {
-                if (this.finishing || this.publisherFailure) break;
-                this.backpressurePaused = false;
-                this.allowRequests = true;
-                this.flushShipCredits();
-                if (this.pendingRequest) {
-                    this.processPending();
-                }
+                if (msg.source === 'queue-pressure') this.queuePressurePaused = false;
+                else this.manualReaderPaused = false;
+                this.updateReaderPressure();
+                break;
+            }
+            case 'reader_pressure_state': {
+                if (typeof msg.paused !== 'boolean') break;
+                this.queuePressurePaused = msg.paused;
+                this.queuePressurePending = false;
+                this.updateReaderPressure();
                 break;
             }
             case 'set_delay': {
@@ -1305,7 +1313,24 @@ export default class StateReader extends HyperionWorker {
         } finally { stop(); }
     }
 
+    private updateReaderPressure(): void {
+        this.backpressurePaused = this.queuePressurePending || this.queuePressurePaused || this.manualReaderPaused;
+        this.allowRequests = !this.backpressurePaused && !this.finishing && !this.publisherFailure;
+        if (!this.allowRequests) return;
+        this.flushShipCredits();
+        if (this.pendingRequest) {
+            // An explicit assigned range supersedes the deferred startup request.
+            this.pendingInitialRequest = undefined;
+            this.processPending();
+        } else if (this.pendingInitialRequest !== undefined) {
+            const start = this.pendingInitialRequest;
+            this.pendingInitialRequest = undefined;
+            this.requestBlocks(start);
+        }
+    }
+
     private requestBlocks(start: number) {
+        if (this.backpressurePaused) { this.pendingInitialRequest = start; return; }
         if (this.usesProtocolSourceBindings && this.isLiveReader) {
             if (!this.coordinatorSource?.generation) return;
             if (this.coordinatorResumeFromBlock !== null && this.coordinatorResumeFromBlock !== undefined) start = this.coordinatorResumeFromBlock;
@@ -1353,6 +1378,7 @@ export default class StateReader extends HyperionWorker {
     }
 
     private requestBlockRange(first: any, last: any) {
+        if (this.backpressurePaused) { this.pendingRequest = [Number(first), Number(last)]; return; }
         const request = this.baseRequest;
         request.start_block_num = parseInt(first, 10);
         this.local_block_num = request.start_block_num - 1;
