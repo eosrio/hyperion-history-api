@@ -16,6 +16,7 @@ export const STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE = 'stateful-owne
 export const STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE = 'stateful-owner-v2-7412889-18d235e-complete-kind-executor-engineering';
 export const STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE = 'stateful-owner-v2-7412889-18d235e-complete-kind-metadata-engineering';
 export const STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE = 'stateful-owner-v2-7412889-69a6606-complete-kind-engineering';
+export const STATEFUL_HISTORY_API_SOURCE_PROFILE = 'stateful-owner-v2-7412889-69a6606-api-history-trace-engineering';
 export const STATEFUL_COMPLETE_KIND_CODEC_WIRE_SOURCE = Object.freeze({
     commit: '69a66064c077a405341f5aaf15e84b88b8d86ccb', tree: '97adfecdfd02d881493f950b2cf5a9a32d2a030b',
     packageSha256: '1e455544de9256a1504293498af802ee1ebf952b6048d6758e37a6218c6ac390',
@@ -67,6 +68,14 @@ export const STATEFUL_COMPLETE_KIND_CODEC_CALLER_SOURCE = Object.freeze({
     packageSha256: '10c3f0f8bff8d69aeaaaea9bda8aa45cdf39058ffbba53943f5eb95b0a278b09',
     sources: STATEFUL_COMPLETE_KIND_METADATA_CALLER_SOURCE.sources,
 });
+export const STATEFUL_HISTORY_API_CALLER_SOURCE = Object.freeze({
+    baseCommit: STATEFUL_COMPLETE_KIND_CODEC_CALLER_SOURCE.commit, files: 550,
+    packageSha256: STATEFUL_COMPLETE_KIND_CODEC_CALLER_SOURCE.packageSha256,
+    sha256: '41a861f8e129d760abf9d4ae32b740dcd4a7294bd7409f8823021f99d62ec260',
+    sources: Object.freeze([...STATEFUL_COMPLETE_KIND_CODEC_CALLER_SOURCE.sources,
+        ['src/api/helpers/protocol-abi.ts', 'c0c8f43e48910c760421e54cf83329b9153216d28322d5519fb1ebe5ac828517'],
+        ['src/api/routes/v1-trace/get_block/index.ts', 'a734453875d777fe608be11405bc4f7a8f5fb359198cbca457ce02391add6c9c']]),
+});
 // Production source was committed before these additive qualification profiles.
 export const STATEFUL_METADATA_FIELDS_NATIVE_SOURCE = Object.freeze({
     commit: '0b51a20c3d9a9b95c39a713c89cad6d55c5103d4', tree: '686850ba3acb00fc1f9424dd300483b83f84c654',
@@ -76,13 +85,13 @@ const oldWire = '7167659e9c043cb3351074fcacb40200cc57f3a3', wire = '18d235e34a9b
 const sdk = '58d68c5cea81490bbb1c9a7736d633d465bab3ef';
 const metadataSdk = 'dd85ee590dcd1e359509c6c41ee99b541706b1f6';
 const completeKindSdk = '7412889a14c84342551fd864ea3ebfcf28849385';
-const codecProfile = profile => profile === STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE;
+const codecProfile = profile => profile === STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE || profile === STATEFUL_HISTORY_API_SOURCE_PROFILE;
 const completeKindProfile = profile => profile === STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE || profile === STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE
     || profile === STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE || profile === STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE || codecProfile(profile);
 const completeKindNativeSource = profile => profile === STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE || codecProfile(profile) ? STATEFUL_COMPLETE_KIND_METADATA_NATIVE_SOURCE
     : profile === STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE ? STATEFUL_COMPLETE_KIND_EXECUTOR_NATIVE_SOURCE
     : profile === STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE ? STATEFUL_COMPLETE_KIND_COMMANDS_NATIVE_SOURCE : STATEFUL_COMPLETE_KIND_NATIVE_SOURCE;
-const completeKindCallerSource = profile => codecProfile(profile) ? STATEFUL_COMPLETE_KIND_CODEC_CALLER_SOURCE : profile === STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE
+const completeKindCallerSource = profile => profile === STATEFUL_HISTORY_API_SOURCE_PROFILE ? STATEFUL_HISTORY_API_CALLER_SOURCE : codecProfile(profile) ? STATEFUL_COMPLETE_KIND_CODEC_CALLER_SOURCE : profile === STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE
     ? STATEFUL_COMPLETE_KIND_METADATA_CALLER_SOURCE : STATEFUL_COMPLETE_KIND_CALLER_SOURCE;
 const fieldsProfile = profile => profile === STATEFUL_METADATA_FIELDS_API_SOURCE_PROFILE || profile === STATEFUL_METADATA_FIELDS_LEGACY_SOURCE_PROFILE;
 const metadataProfile = profile => profile === STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE || profile === STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE || fieldsProfile(profile);

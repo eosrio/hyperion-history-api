@@ -48,6 +48,7 @@ export class ProtocolActionConsumer {
         const profile = {id: selected.id, profileId: selected.provider.profileId, components: selected.components ?? []};
         this.reader = new ProtocolAbiProofReader({chainId, profile,
             maxAncestryBlocks: host.manager.config.settings.protocol_abi_coordination?.recovery_window_blocks,
+            historicalCertificates: host.manager.config.settings.protocol_abi_coordination?.historical_certificates !== undefined,
             store: new ProtocolAbiFrontierStore(host.elastic, chain, host.manager.config.settings.es_replicas ?? 0, {readOnly: true})});
         this.nativeReader = selected.provider.nativeActions ? new ProtocolNativeActionReader({chainId, profile,
             provider: selected.provider, proofReader: this.reader,

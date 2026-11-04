@@ -1,8 +1,8 @@
 // Pure installed-source admission checks: no child process, temporary copy or service.
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {admitNativeApiSourceOptions, admitCoordinatedNativeSourceOptions, STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE as profile,
-    STATEFUL_COMPLETE_KIND_CODEC_WIRE_SOURCE as wire, STATEFUL_COMPLETE_KIND_CODEC_CALLER_SOURCE as caller,
+import {admitNativeApiSourceOptions, admitCoordinatedNativeSourceOptions, STATEFUL_HISTORY_API_SOURCE_PROFILE as profile,
+    STATEFUL_COMPLETE_KIND_CODEC_WIRE_SOURCE as wire, STATEFUL_HISTORY_API_CALLER_SOURCE as caller,
     STATEFUL_COMPLETE_KIND_METADATA_NATIVE_SOURCE as native, STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE as metadata,
     STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE as first, STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE as commands,
     STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE as executor} from '../unit/stateful-engineering-source-admission.mjs';

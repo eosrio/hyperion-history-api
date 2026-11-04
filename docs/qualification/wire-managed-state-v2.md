@@ -151,3 +151,22 @@ one new selected address root. At the observed1.73million-plus Wire head, bucket
 certificate storage and re-walking after every authority rotation may dominate fullsync cost.
 That is an unmeasured risk: scaled transport/storage cost, retention capacity and current-testnet
 acceptance remain open. The0→258 fixture does not establish production readiness.
+
+## Historical source on action responses
+
+When `settings.protocol_abi_coordination.historical_certificates` is explicitly configured,
+the API's extension action consumer also uses the existing historical certificate reader.
+This applies to action, transaction and trace responses that require ABI/source proof. With
+the option absent, the existing bounded ancestry behavior is unchanged. The reader verifies
+the current settled owner, generation, activated address root, source identity and selection,
+and revalidates that authority before publication. A missing, stale, cancelled or unavailable
+certificate remains retryable unavailable; the API does not use a live RPC ABI as historical
+proof. This change does not authorize history that the coordinator has not certified.
+
+The coordinator's historical walk requires contiguous canonical coverage from verified native
+genesis. A bulk reader binding alone does not create that authority. In particular, a node whose
+retained SHiP starts at block 2 needs independently sourced and verified original genesis
+material and a separately qualified ordered bootstrap/handoff; selecting this option does not
+bridge an existing gap. The work limits above remain operator-selected prospective bounds.
+A current coordinator and API restart/config rollout require separate operational review and
+actual validation; this source control does not establish Wire testnet or full-history readiness.

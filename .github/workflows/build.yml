@@ -14,7 +14,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-69a6606-complete-kind-engineering
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-69a6606-api-history-trace-engineering
     strategy:
       matrix:
         node-version: [24.x, 26.x]
@@ -49,6 +49,8 @@ jobs:
           node --test tests/unit/portable-mapping-retry-native.mjs
           node --test tests/unit/wire-managed-state-v2-native.mjs
           node --test tests/unit/protocol-abi-history-native.mjs
+          node --test tests/unit/protocol-native-api-history.test.mjs
+          node --test tests/native/trace-opaque-serialization.test.mjs
       - name: Check Fastify request admission and state route compatibility on Node ${{ matrix.node-version }}
         run: node --test --test-timeout=15000 tests/native/fastify-compatibility.test.mjs
       - name: Check complete-kind query/client and final-publication controls
@@ -253,7 +255,7 @@ jobs:
   action-source-journal:
     runs-on: ubuntu-24.04
     env:
-      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-69a6606-complete-kind-engineering
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-69a6606-api-history-trace-engineering
     timeout-minutes: 15
     strategy:
       fail-fast: false
