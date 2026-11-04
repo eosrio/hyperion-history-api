@@ -58,3 +58,8 @@ test('queue HTTP failures do not masquerade as an empty queue',async()=>{
  try {globalThis.fetch=async()=>{throw Error('network unavailable');};await assert.rejects(checkQueueSize('wire:blocks:1',{protocol:'http',api:'localhost:15672',vhost:'/',user:'test',pass:'test'}),/network unavailable/);}
  finally {globalThis.fetch=previous;}
 });
+
+test('malformed queue observation pauses both until a complete valid sample',async()=>{
+ const f=fixture();f.sizes.set('wire:other',undefined);await f.check();assert.deepEqual(f.events,[['reader','pause'],['continuous_reader','pause']]);
+ f.sizes.set('wire:other',0);await f.check();assert.deepEqual(f.events.slice(-2),[['reader','resume'],['continuous_reader','resume']]);
+});
