@@ -15,7 +15,7 @@ const empty=()=>({schemaVersion:1 as const,actionInputs:[] as any[],deployments:
 const hash=(bytes:Uint8Array)=>createHash('sha256').update(bytes).digest('hex');
 const input=(ordinal:number,globalSequence:string,account='alpha',name='act',rawHex='07000000',origin=ordinal,receiver=account)=>
     ({transactionId:tx,actionOrdinal:ordinal,inputActionOrdinal:origin,receiver,account,name,rawHex,globalSequence,receiptAbiSequence:'0'});
-async function fixture(options:{maxPendingBlocks?:number;recoveryWindowBlocks?:number}={}){
+async function fixture(options:{maxPendingBlocks?:number;recoveryWindowBlocks?:number;historicalCertificates?:{interfaceVersion:1;maxCommitsPerDrain:number;maxCommitBytesPerDrain:number;maxMillisecondsPerDrain:number}}={}){
     const memory=frontierMemoryClient(),client=memory.client as any;
     const bindings=new ProtocolSourceBindingStore(client,'fixture'),observations=new ProtocolAbiObservationStore(client,'fixture');
     const store=new ProtocolAbiFrontierStore(client,'fixture');
@@ -47,6 +47,12 @@ async function fixture(options:{maxPendingBlocks?:number;recoveryWindowBlocks?:n
 }
 
 describe('canonical ABI runtime coordinator',()=>{
+    it('prepares historical locator batches through the current owner',async()=>{
+        const f=await fixture({historicalCertificates:{interfaceVersion:1,maxCommitsPerDrain:32,maxCommitBytesPerDrain:8388608,maxMillisecondsPerDrain:1000}});
+        let batches=0;const original=f.store.prepareHistoricalCertificateAddresses.bind(f.store);
+        f.store.prepareHistoricalCertificateAddresses=async (...args)=>{batches++;return original(...args)};
+        await f.append(1);await f.append(2);expect(batches).toBeGreaterThan(0);const current=await f.coordinator.inspect();expect(current.phase).toBe('following');expect(current.gap).toBeNull();expect(current.head?.blockNum).toBe(2);
+    });
     it('retains local source revocation across held fork recovery without additional storage reads',async()=>{
         const f=await fixture();await f.append(1);
         const calls=f.memory.calls.length,current=f.coordinator.retainSourceFence('session-a',f.generation);
