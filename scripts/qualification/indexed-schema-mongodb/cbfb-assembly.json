@@ -27,9 +27,9 @@
         "sha256": "d03d8b268b4171328ac2458ce8ca82d69a1fde38469d4e4faae4f8fa8d8a5e35"
       },
       {
-        "path": ".github/workflows/indexed-cbfb-finite.yml",
-        "bytes": 1699,
-        "sha256": "70c54eed29bd12ca157c60e038db2b601998a354f14255850a28a3a5c69fe03c"
+        "path": ".github/workflows/indexed-schema-finite.yml",
+        "bytes": 1997,
+        "sha256": "b483dec72876b9cca692a0648f8d6899dc0d56dfc7e5d9dcc7a28b1658efb300"
       },
       {
         "path": "package-lock.json",
@@ -38,8 +38,8 @@
       },
       {
         "path": "package.json",
-        "bytes": 3163,
-        "sha256": "c4ac90749a121ef03eb6f91e4148488b1b39c19b8a92c121bc5b92d150b70059"
+        "bytes": 3243,
+        "sha256": "e4591a37fee3acd955f12eca1cf3315c7ce1d3ba3cba0990da8607d02d3c242c"
       },
       {
         "path": "packages/backend-mongodb/ROYALTY-ENGINEERING.json",
@@ -193,8 +193,8 @@
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/cbfb-assembly.mjs",
-        "bytes": 2845,
-        "sha256": "d0fd00dfbac1cb6f791a7dff395e1845caa2e0c01264fc254eab5c3c5fa86438"
+        "bytes": 2847,
+        "sha256": "a9df876238450828588c772b62b2be39cd19d9fd5887dcb5c9602a72d0f72796"
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/cbfb-assembly.test.mjs",

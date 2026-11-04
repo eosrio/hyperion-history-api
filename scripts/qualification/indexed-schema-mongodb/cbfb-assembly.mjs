@@ -10,7 +10,7 @@ export const DESCRIPTOR=JSON.parse(readFileSync(new URL('./cbfb-assembly.json',i
 const root=fileURLToPath(new URL('../../../',import.meta.url)),sha=b=>createHash('sha256').update(b).digest('hex');
 export function observeCbfbAssembly(){
  const observed=observeIndexedAssembly();observed.profile=PROFILE;
- for(const path of ['packages/backend-mongodb/src/stateful-indexed-royalty-engineering-v1.ts','packages/backend-mongodb/ROYALTY-ENGINEERING.json','scripts/qualification/indexed-schema-mongodb/cbfb-assembly.mjs','scripts/qualification/indexed-schema-mongodb/cbfb-assembly.test.mjs','.github/workflows/indexed-cbfb-finite.yml','packages/backend-mongodb/tests/indexed-int64-membership.test.mjs','packages/backend-mongodb/tests/indexed-schema-attachment.test.mjs','packages/backend-mongodb/tests/indexed-schema-owner.test.mjs']){
+ for(const path of ['packages/backend-mongodb/src/stateful-indexed-royalty-engineering-v1.ts','packages/backend-mongodb/ROYALTY-ENGINEERING.json','scripts/qualification/indexed-schema-mongodb/cbfb-assembly.mjs','scripts/qualification/indexed-schema-mongodb/cbfb-assembly.test.mjs','.github/workflows/indexed-schema-finite.yml','packages/backend-mongodb/tests/indexed-int64-membership.test.mjs','packages/backend-mongodb/tests/indexed-schema-attachment.test.mjs','packages/backend-mongodb/tests/indexed-schema-owner.test.mjs']){
   const file=join(root,path),stat=lstatSync(file);assert(stat.isFile()&&!stat.isSymbolicLink()&&stat.size<=4*1024*1024);const bytes=readFileSync(file);observed.sources.push({path,bytes:bytes.length,sha256:sha(bytes)});
  }
  observed.sources.sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0);return observed;

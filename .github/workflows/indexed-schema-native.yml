@@ -1,4 +1,4 @@
-name: Indexed schema native MongoDB engineering
+name: Indexed cbfb native MongoDB engineering
 on:
   workflow_dispatch:
   pull_request:
@@ -34,18 +34,22 @@ jobs:
           bun check -p tsconfig.json
           bun check -p packages/backend-mongodb/tsconfig.json
           npm run build
-      - run: node scripts/qualification/indexed-schema-mongodb/assembly.mjs --profile indexed-schema-sdk49-native2bf-engineering-v1 > indexed-native-source-${{ matrix.node }}.json
-      - run: node --test scripts/qualification/indexed-schema-mongodb/assembly.test.mjs scripts/qualification/indexed-schema-mongodb/assembly-cli.test.mjs scripts/qualification/indexed-schema-mongodb/native-offline.test.mjs
+      - run: node scripts/qualification/indexed-schema-mongodb/cbfb-assembly.mjs --profile indexed-schema-sdk-cbfb-native-cf514-engineering-v1 > indexed-cbfb-native-source-${{ matrix.node }}.json
+      - run: node --test scripts/qualification/indexed-schema-mongodb/cbfb-assembly.test.mjs scripts/qualification/indexed-schema-mongodb/cbfb-native-offline.test.mjs
       - run: npm run test:indexed:finite
-      - run: npm run test:indexed:package
-      - run: node scripts/qualification/indexed-schema-mongodb/native-ci.mjs --profile indexed-schema-mongodb-sdk49-2da-linux-gha-v2 indexed-native-${{ matrix.node }}
+        env:
+          HYPERION_INDEXED_TEST_PROFILE: cbfb
+      - run: npm run test:indexed:cbfb:package
+        env:
+          HYPERION_INDEXED_TEST_PROFILE: cbfb
+      - run: node scripts/qualification/indexed-schema-mongodb/cbfb-native-ci.mjs --profile indexed-schema-mongodb-cbfb-49dfe-linux-gha-v1 indexed-cbfb-native-${{ matrix.node }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: indexed-native-${{ matrix.node }}
+          name: indexed-cbfb-native-${{ matrix.node }}
           path: |
-            indexed-native-source-${{ matrix.node }}.json
-            indexed-native-${{ matrix.node }}/
+            indexed-cbfb-native-source-${{ matrix.node }}.json
+            indexed-cbfb-native-${{ matrix.node }}/
             out/indexed-packed-*/receipt.json
             out/indexed-packed-*/*.stdout
             out/indexed-packed-*/*.stderr
