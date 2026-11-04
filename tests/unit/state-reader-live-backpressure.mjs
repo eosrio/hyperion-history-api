@@ -213,6 +213,25 @@ try {
         assert.deepEqual(signals, [
             {role: 'reader', value: {event: 'pause'}}, {role: 'continuous_reader', value: {event: 'pause'}},
             {role: 'reader', value: {event: 'resume'}}, {role: 'continuous_reader', value: {event: 'resume'}}]);
+    } else if (scenario === 'monitor-inputs') {
+        const bulk = await fixture(false), live = await fixture(true), signals = [];
+        const sizes = new Map([[chain + ':blocks:1', 64], [chain + ':live_blocks', 0], [chain + ':ds_pool:1', 0]]);
+        const master = Object.assign(Object.create(HyperionMaster.prototype), {chain, conf: config,
+            workerMap: [{worker_role: 'reader', wref: {send(value) {signals.push({role: 'reader', value}); bulk.reader.onIpcMessage(value);}}},
+                {worker_role: 'continuous_reader', wref: {send(value) {signals.push({role: 'continuous_reader', value}); live.reader.onIpcMessage(value);}}},
+                {worker_role: 'deserializer', worker_queue: chain + ':blocks:1'},
+                {worker_role: 'deserializer', worker_queue: chain + ':live_blocks'}, {worker_role: 'ds_pool_worker', local_id: 1}],
+            manager: {async checkQueueSize(queue) {assert(sizes.has(queue)); return sizes.get(queue);}}});
+        const monitor = new HyperionQueueMonitor(master); await monitor.checkQueues({}, 1000000);
+        assert.equal(bulk.reader.allowRequests, false); assert.equal(live.reader.allowRequests, true);
+        bulk.socket.message(bulk.frame); live.socket.message(live.frame); await Promise.all([bulk.drain(), live.drain()]);
+        assert.equal(bulk.creditCommands().length, 0); assert.equal(live.creditCommands().length, 1);
+        sizes.set(chain + ':blocks:1', 0); sizes.set(chain + ':live_blocks', 64); await monitor.checkQueues({}, 1000000);
+        assert.equal(bulk.reader.allowRequests, true); assert.equal(live.reader.allowRequests, false);
+        assert.equal(bulk.creditCommands().length, 1); live.socket.message(live.frame); await live.drain();
+        assert.equal(live.creditCommands().length, 1); sizes.set(chain + ':live_blocks', 0); await monitor.checkQueues({}, 1000000);
+        assert.equal(live.reader.allowRequests, true); assert.equal(live.creditCommands().length, 2);
+        assert.deepEqual(signals.map(x => [x.role, x.value.event]), [['reader','pause'], ['reader','resume'], ['continuous_reader','pause'], ['continuous_reader','resume']]);
     } else if (['credits', 'bulk-credits', 'legacy-credits'].includes(scenario)) {
         const h = await fixture(scenario !== 'bulk-credits', scenario === 'legacy-credits');
         const before = h.creditCommands().length;

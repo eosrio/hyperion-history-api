@@ -99,14 +99,6 @@ export async function checkQueueSize(q_name: string, config: AmqpConfig) {
 
         hLog(`[WARNING] Checking queue size failed! - ${e.message}`);
 
-        // if (e.response && e.response.body) {
-        //     if (e instanceof HTTPError) {
-        //         hLog(e.response.body);
-        //     } else {
-        //         hLog(JSON.stringify(e.response.body, null, 2));
-        //     }
-        // }
-
-        return 0;
+        throw e;
     }
 }

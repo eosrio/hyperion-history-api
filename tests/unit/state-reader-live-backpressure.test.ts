@@ -1,7 +1,7 @@
 import {expect, test} from 'bun:test';
 import {fileURLToPath} from 'node:url';
 
-for (const scenario of ['socket-callbacks', 'legacy-socket-late-close', 'monitor', 'credits', 'bulk-credits', 'legacy-credits', 'coalesced-credits',
+for (const scenario of ['socket-callbacks', 'legacy-socket-late-close', 'monitor', 'monitor-inputs', 'credits', 'bulk-credits', 'legacy-credits', 'coalesced-credits',
     'pause-during-confirm', 'resume-before-confirm', 'pause-during-drain', 'resume-before-drain',
     'pause-during-retention', 'reconnect-withheld', 'reconnect-during-confirm', 'legacy-queued-before-reconnect',
     'legacy-reconnect-during-drain', 'legacy-preopen-close', 'legacy-preopen-next-server', 'next-server', 'legacy-next-server', 'close-withheld', 'legacy-close-withheld', 'session-replacement', 'revoked-source', 'finish-cannot-resume', 'stop-cannot-resume', 'range-scheduling', 'failure-nack', 'failure-unknown-close']) {
