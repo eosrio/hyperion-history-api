@@ -10,6 +10,7 @@ test('default protocol source namespace is unchanged and explicit namespaces rej
         expect(()=>protocolSourceNamespace('wire',suffix)).toThrow();
     expect(()=>protocolSourceNamespace('wire/other','new')).toThrow();
     expect(()=>protocolSourceNamespace('wire-psrc-existing','new')).toThrow();
+    expect(()=>protocolSourceNamespace('w'.repeat(115),'new')).toThrow();
 });
 
 test('alternate canonical source uses its own records and mismatched consumers fail closed',async()=>{
