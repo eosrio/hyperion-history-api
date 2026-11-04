@@ -59,14 +59,14 @@ export async function runManagedAtomicDifferential({host,atomicRoot,queryResults
         if(prior)assert.equal(prior.digest,candidate.digest);else{persist({event:'managed-candidate',candidate});state.custody.set(key,copy(candidate));}
         state.lastCandidate=candidate;
     }});
-    const apply=async(state,inputs,reduce)=>{
+    const apply=async(state,inputs,reduce,sourceTimeMs)=>{
         guard();const {entry}=state,declaration=entry.declaration,previous=(await entry.adapter.recovery()).view,id=++serial,
             block={blockNum:previous.checkpoint.blockNum+1,blockId:hex(id),previousBlockId:previous.checkpoint.blockId};
         const target=await owner.captureStatefulRawTargetV2(declaration,{schemaVersion:2,chainId:declaration.projection.definition.binding.chainId,
             declarationDigest:declaration.digest,owner:state.identity,previous,block,
             rawSource:{commitId:'controlled-managed:'+hex(id),selectionId:'controlled-managed:'+hex(id),observationId:'controlled-managed:'+hex(id),observationDigest:hex(id+1000)}});
         await entry.adapter.admitRaw(state.lease,target);
-        const source={previous:copy(previous.checkpoint),block:{...block,timeMs:String(1700000000000+id*1000)},inputs:inputs(id)};
+        const source={previous:copy(previous.checkpoint),block:{...block,timeMs:sourceTimeMs??String(1700000000000+id*1000)},inputs:inputs(id)};
         state.lastCandidate=undefined;
         const result=await owner.executeStatefulOwnerBlockV2(declaration,entry.adapter,state.lease,target.digest,source,custody(state),reduce??entry.reduce,guard);
         assert.equal(result.status,'applied');assert(state.lastCandidate);
@@ -123,7 +123,8 @@ export async function runManagedAtomicDifferential({host,atomicRoot,queryResults
     },aaBefore);
 
     const am=await claim('atomicassets:royalty-template-rules'),amUrl='/atomicmarket/v1/royalties/oracle/templates';
-    const royalty=await amOracle.compareRoyaltyTemplates({initialize:ids=>apply(am,id=>managedRoyaltyTemplateInputs(am.entry.declaration,ids,id)),observe:async(query,name)=>{
+    // The frozen royalty fixture initializes its source at1ms; AA retains the existing synthetic chronology.
+    const royalty=await amOracle.compareRoyaltyTemplates({initialize:ids=>apply(am,id=>managedRoyaltyTemplateInputs(am.entry.declaration,ids,id),undefined,'1'),observe:async(query,name)=>{
         const current=await phase(am,'am:'+name),start=queryResults.length;
         const response=await host.observe(amUrl,current.view,{query}),body=response.json(),observed=queryResults.slice(start);
         assert.deepEqual((await am.entry.adapter.recovery()).view,current.view);

@@ -80,3 +80,25 @@ test('actual managed AA/AM source builders pass the shipping SDK source capture 
   const changed=structuredClone(source);changed.inputs[0].abiSha256=hex(99);await assert.rejects(captureStatefulSourceV2(declaration,changed));
  }
 });
+
+
+test('actual managed royalty initializer uses the frozen source-input clock while AA keeps its chronology',async()=>{
+ const driver=readFileSync(new URL('../../scripts/qualification/atomic-managed/driver.mjs',import.meta.url),'utf8'),original=readFileSync(join(atomicRoot,'scripts/qualification/royalty-template-mongodb/driver.mjs'),'utf8'),clock=/block:\{\.\.\.block,timeMs:('[0-9]+')\}/.exec(original);assert(clock,'Frozen original source frame must explicitly declare its clock');const originalTime=new Function('return '+clock[1])();assert.equal(originalTime,'1');
+ const {managedSourceInputs,managedRoyaltyTemplateInputs}=await import('../../scripts/qualification/atomic-managed/driver.mjs'),{captureStatefulSourceV2}=await import('@eosrio/hyperion-sdk/projection-stateful-source-v2'),{initial}=await import(pathToFileURL(join(atomicRoot,'tests/fixtures/asset-domain-cases.mjs'))),oracle=await import(pathToFileURL(join(atomicRoot,'scripts/qualification/royalty-template-mongodb/oracle.mjs')));
+ const frozen=oracle.originalSnapshot(),ids=frozen.physicalRows.map(row=>row.template_id),expected=new Map(frozen.results.find(row=>row.name==='none').http.body.data.map(row=>[row.template_id,row]));
+ const start=driver.indexOf('    const apply=async('),end=driver.indexOf('\n    const phase=',start);assert(start>0&&end>start);const applySource=driver.slice(start,end),initializeAt=driver.indexOf('initialize:ids=>apply(am,'),observeAt=driver.indexOf(',observe:async(query,name)=>{',initializeAt);assert(initializeAt>0&&observeAt>initializeAt);const initializeSource=driver.slice(initializeAt+'initialize:'.length,observeAt);
+ async function probe(declaration,royalty,serial){
+  const previous={declarationDigest:declaration.digest,backendId:declaration.projection.definition.binding.backendId,generation:declaration.projection.definition.binding.generation,revision:hex(8),checkpoint:{blockNum:0,blockId:hex(0)}},stop=new Error('pure source capture boundary'),state={entry:{declaration,adapter:{async recovery(){return{view:previous};},async admitRaw(){}},reduce:template.reduce},identity:{id:'clock-control',generation:'one'},lease:{}};let captured,frames=0;
+  const owner={...root.owner,async executeStatefulOwnerBlockV2(actual,_adapter,_lease,_target,source){assert.equal(actual,declaration);captured=await captureStatefulSourceV2(actual,source);frames++;throw stop;}},unreachable=()=>{throw new Error('Pure clock probe must stop before effects/custody/publication');};
+  const apply=new Function('owner','guard','copy','hex','custody','publishSource','persist','assert','serial',applySource+';return apply;')(owner,()=>{},structuredClone,hex,()=>({}),unreachable,unreachable,assert,serial);
+  const initialize=new Function('apply','am','managedRoyaltyTemplateInputs','return ('+initializeSource+');')(apply,state,managedRoyaltyTemplateInputs);
+  await assert.rejects(royalty?initialize(ids):apply(state,id=>managedSourceInputs(declaration,initial(),id)),error=>error===stop);assert.equal(frames,1);return captured.source;
+ }
+ const am=await capture(root,template),aa=await capture(root,registration.projections.find(row=>row.definition.id==='atomicassets'));
+ for(const serial of [112,999]){
+  const source=await probe(am,true,serial);assert.equal(source.block.timeMs,originalTime,'Actual AM initialize callback must supply the original input clock independently of AA serial');assert.equal(source.block.blockNum,1);
+  const rows=[];await template.reduce({source,async get(){return{status:'covered-absent'};},put(kind,key,value){assert.equal(kind,'market-royalty-template');rows.push(value);},delete(){throw new Error('Initialization does not delete');}});assert.equal(rows.length,ids.length);
+  for(const row of rows){const prior=expected.get(row.template_id);assert(prior);for(const field of ['created_at_time','updated_at_time','created_at_block','updated_at_block'])assert.equal(row[field],prior[field],row.template_id+': '+field);}
+  assert.equal((await probe(aa,false,serial)).block.timeMs,String(1700000000000+(serial+1)*1000),'AA source chronology remains unchanged');
+ }
+});
