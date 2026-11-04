@@ -6,7 +6,7 @@ on:
     paths: ["src/**", "packages/backend-mongodb/**", "scripts/qualification/atomic-managed/**", "tests/native/atomic-managed*", "package*.json", ".github/workflows/atomic-managed.yml"]
 jobs:
   managed-atomic:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     strategy:
       fail-fast: false

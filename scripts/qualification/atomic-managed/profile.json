@@ -12990,7 +12990,7 @@
       {
         "path": ".github/workflows/atomic-managed.yml",
         "bytes": 2630,
-        "sha256": "c2a8b46ebac894ef692e45ccbc83c630b72a1fed75603bc4402d776a7b35284d"
+        "sha256": "96ca555c12cc124dab0d879a4af615c8b9414944e1ffd626f36f36f65adadd2c"
       },
       {
         "path": "tests/native/atomic-managed-sdk-boundary.test.mjs",
@@ -13082,8 +13082,8 @@
         },
         {
           "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-routing.json",
-          "bytes": 275357,
-          "sha256": "615c6a16e4985e4b08e5609d8a86e9ec3af95fba9231070cc1f944afdcea0156",
+          "bytes": 275646,
+          "sha256": "755f44258eb49277601b710d9ad75dba31cdbb3db0b48deb95837488b447ad35",
           "module": false
         },
         {
@@ -13214,8 +13214,8 @@
         },
         {
           "path": "tests/fixtures/engineering-profiles/all-cbfb-linux.json",
-          "bytes": 13953,
-          "sha256": "03c2f06a4e53647f2424c2c8012e0d15391a031f8f5daab0df17d6c9ae6e73db",
+          "bytes": 14124,
+          "sha256": "998c27dab0911ca91bf27181976f7cd28349438a7d42e01c7ea8bcbcf24ada56",
           "module": false
         },
         {
@@ -13257,7 +13257,7 @@
         {
           "path": "tests/unit/all-cbfb-source-admission.mjs",
           "bytes": 7902,
-          "sha256": "59784c754d91a96bac1da0a3192d0e8a280e9616fb2ab56d6bc3a539695eb113",
+          "sha256": "048072b38f2f1098db811fdaee72eeaced6f6c9f681f4d698b988a9c37aa2888",
           "module": true
         },
         {
@@ -13789,7 +13789,7 @@
         "node:url",
         "typescript/unstable/ast"
       ],
-      "totalBytes": 1532899
+      "totalBytes": 1533359
     }
   }
 }

@@ -40,9 +40,14 @@
   },
   "routeSources": [
     {
+      "path": ".github/workflows/atomic-managed.yml",
+      "bytes": 2630,
+      "sha256": "96ca555c12cc124dab0d879a4af615c8b9414944e1ffd626f36f36f65adadd2c"
+    },
+    {
       "path": ".github/workflows/build.yml",
-      "bytes": 27171,
-      "sha256": "cc728ab8d932e10cf6e8600e6c3feea476b026018c38809a89dcf5cff7958314"
+      "bytes": 27215,
+      "sha256": "1512f2949118dfe65a6f853a004c414edb0f8cb253ce35368e4eda165f37f9a7"
     },
     {
       "path": ".github/workflows/indexed-schema-finite.yml",
@@ -86,13 +91,13 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-contract.test.mjs",
-      "bytes": 16872,
-      "sha256": "ec5660ca30aa002460a4b3cc1b48cdc1720810a48ae8f10d245fe0a41ad04afa"
+      "bytes": 17488,
+      "sha256": "c4db31c09b4dd692e9f242d3831f1991aea2d0e76052d7e6f0807cda0c0f7029"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-routing.json",
-      "bytes": 275357,
-      "sha256": "615c6a16e4985e4b08e5609d8a86e9ec3af95fba9231070cc1f944afdcea0156"
+      "bytes": 275646,
+      "sha256": "755f44258eb49277601b710d9ad75dba31cdbb3db0b48deb95837488b447ad35"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/assembly.json",

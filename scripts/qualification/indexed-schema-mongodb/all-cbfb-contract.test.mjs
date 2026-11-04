@@ -38,12 +38,14 @@ test('standalone CBFB packed consumer explicitly selects its profile for every c
  }
 });
 
-test('PR430 actual target and changed paths reach all required current workflow jobs',()=>{
- // Confirmed against PR430 metadata/file list at head fb891e04, base e19fc9af.
- // GitHub evaluates the complete PR diff; these are actual changed-file witnesses.
- const target='test/indexed-native-mongodb-415',changed=['.github/workflows/build.yml',
-  '.github/workflows/indexed-schema-finite.yml','.github/workflows/indexed-schema-native.yml',
-  'packages/backend-mongodb/src/stateful-indexed-model-v1.ts'];
+// PR430 historical route remains covered. PR440 metadata is verified at head3b04/baseC1.
+// GitHub evaluates the complete PR diff; each cohort uses its actual changed-file witnesses.
+for(const {pr,target,changed}of [
+ {pr:430,target:'test/indexed-native-mongodb-415',changed:['.github/workflows/build.yml',
+  '.github/workflows/indexed-schema-finite.yml','.github/workflows/indexed-schema-native.yml','packages/backend-mongodb/src/stateful-indexed-model-v1.ts']},
+ {pr:440,target:'feat/indexed-int64-tested-49dfe-20261104',changed:['.github/workflows/build.yml',
+  '.github/workflows/indexed-schema-finite.yml','.github/workflows/indexed-schema-native.yml','package.json']}
+])test('PR'+pr+' actual target and changed paths reach all required current workflow jobs',()=>{
  for(const [path,jobs] of [
   ['.github/workflows/build.yml',['build','projection-mongodb','operator-lists-mongodb','action-sequences-design','action-source-journal','historical-mixed-cbfb-admission','historical-sdk49-admission','es955-fixture']],
   ['.github/workflows/indexed-schema-finite.yml',['finite-cbfb']],
@@ -56,7 +58,7 @@ test('PR430 actual target and changed paths reach all required current workflow 
   if(/^    branches:/m.test(filter))assert(branchMatch,'Unsupported branch filter layout');
   if(/^    paths:/m.test(filter))assert(patterns.length>0,'Unsupported path filter layout');
   assert(patterns.every(pattern=>!pattern.startsWith('!')),'Review path exclusions explicitly');
-  assert(!branches||branches.includes(target),path+' must admit the actual PR430 base');
+  assert(!branches||branches.includes(target),path+' must admit the actual PR'+pr+' base');
   assert(patterns.length===0||changed.some(file=>patterns.some(pattern=>matchesGlob(file,pattern))),path+' must admit actual changed paths');
   for(const job of jobs)assert(workflow.includes('\n  '+job+':\n'),path+' missing required job '+job);
   if(path.endsWith('/build.yml')){assert.equal(branches.filter(branch=>branch===target).length,1);assert(branches.includes('feat/stateful-indexed-schema-415'));}
@@ -156,7 +158,7 @@ test('unknown/default/accessor options cannot become an admission or select expe
   {engineeringSourceProfile:ALL_CBFB_PROFILE,nativeMarker:'true'},{get engineeringSourceProfile(){calls++;return ALL_CBFB_PROFILE;}},
   {engineeringSourceProfile:ALL_CBFB_PROFILE,expectedSha256:'0'.repeat(64)}])assert.throws(()=>assertAllCbfbOptions(input));
  assert.equal(calls,0);assert.deepEqual(assertAllCbfbOptions({engineeringSourceProfile:ALL_CBFB_PROFILE,nativeMarker:false}),{nativeMarker:false});
- assert.equal(ALL_CBFB_MANIFEST.routeSources.length,57);
+ assert.equal(ALL_CBFB_MANIFEST.routeSources.length,58);
 });
 
 test('normal root install owns native dependency installation before build and current CI uses that supported path',()=>{
@@ -167,4 +169,10 @@ test('normal root install owns native dependency installation before build and c
   const admission=source.search(/node (?:scripts\/qualification\/indexed-schema-mongodb\/all-cbfb-(?:ci-source-check|assembly)|scripts\/qualification\/operator-list-mongodb\/all-cbfb-source-profile|scripts\/qualification\/atomic-managed\/ci)/);assert(admission>install,name+' must install before admission');
   assert(!source.slice(install,admission).includes('npm ci --prefix packages/backend-mongodb'),name+' must qualify the automatically installed native scope');
  }
+});
+
+test('managed Atomic and indexed native workflows select the same explicit Ubuntu22 cohort',()=>{
+ const runner=path=>/^    runs-on: ([A-Za-z0-9_.-]+)$/m.exec(raw(path))?.[1];
+ assert.equal(runner('.github/workflows/atomic-managed.yml'),'ubuntu-22.04');
+ assert.equal(runner('.github/workflows/indexed-schema-native.yml'),'ubuntu-22.04');
 });

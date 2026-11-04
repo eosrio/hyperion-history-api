@@ -71,9 +71,14 @@
           "historical": "scripts/qualification/indexed-schema-mongodb/all-cbfb-contract.test.mjs",
           "current": "scripts/qualification/indexed-schema-mongodb/all-cbfb-contract.test.mjs scripts/qualification/indexed-schema-mongodb/all-cbfb-native-teardown.test.mjs",
           "count": 1
+        },
+        {
+          "historical": "\"feat/stateful-indexed-schema-415\", \"test/indexed-native-mongodb-415\"]",
+          "current": "\"feat/stateful-indexed-schema-415\", \"test/indexed-native-mongodb-415\", \"feat/indexed-int64-tested-49dfe-20261104\"]",
+          "count": 1
         }
       ],
-      "currentSha256": "cc728ab8d932e10cf6e8600e6c3feea476b026018c38809a89dcf5cff7958314"
+      "currentSha256": "1512f2949118dfe65a6f853a004c414edb0f8cb253ce35368e4eda165f37f9a7"
     },
     {
       "path": ".github/workflows/indexed-schema-finite.yml",
