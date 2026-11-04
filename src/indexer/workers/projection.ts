@@ -36,7 +36,7 @@ export default class ProjectionWorker extends HyperionWorker {
                 requireAttemptScope: this.workerAttemptScopeRequired,
                 maxAncestryBlocks: this.conf.settings.protocol_abi_coordination?.recovery_window_blocks});
             this.controller = await PortableStateController.create({chainId: this.chainId, configuration, adapter, source,
-                attempts: {run: (metadata, operation) => this.runProjectionAttempt('projection-frame', metadata, operation),
+                attempts: {run: (metadata, operation) => this.runProjectionFrameAttempt(metadata, operation, () => !this.stopped),
                     bind: fields => this.bindWorkerAttempt(fields)},
                 onProgress: data => {try {process.send?.({event: 'portable_state_progress', data});} catch {}}});
             this.assertWorkerAttemptActive();
