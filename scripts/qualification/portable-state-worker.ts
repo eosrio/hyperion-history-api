@@ -452,8 +452,29 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
     await mkdir(join(output, 'bulk')); await mkdir(join(output, 'prefixes'));
     if (options.native) await mkdir(join(output, 'history-diagnostics'));
     const reportHandle = await open(join(output, 'report.json'), 'wx');
+    // Observation only: bounded in-memory breadcrumbs survive the ordinary report write on failure.
+    const finalObservation: any = {schemaVersion: 1, maxRecords: 256, calls: 0, omitted: 0, current: null, records: []};
+    const markFinal = (row: number, stage: string, projection?: string) => {
+        const now = performance.now();
+        if (finalObservation.current) {
+            const previous = finalObservation.current;
+            previous.endedMs = now;
+            if (finalObservation.records.length < finalObservation.maxRecords) finalObservation.records.push(previous);
+            else finalObservation.omitted++;
+        }
+        finalObservation.calls++;
+        finalObservation.current = {row, stage, ...(projection === undefined ? {} : {projection}), startedMs: now};
+    };
+    const finishFinal = () => {
+        if (!finalObservation.current) return;
+        const now = performance.now(), previous = finalObservation.current;
+        previous.endedMs = now;
+        if (finalObservation.records.length < finalObservation.maxRecords) finalObservation.records.push(previous);
+        else finalObservation.omitted++;
+        finalObservation.current = null;
+    };
     const cursorWaitClocks = createPortableCursorWaitClocks();
-    const report: any = {schemaVersion: 1, status: 'running', startedAt: new Date().toISOString(), cursorWaitPhases: cursorWaitClocks.evidence, source: {
+    const report: any = {schemaVersion: 1, status: 'running', startedAt: new Date().toISOString(), cursorWaitPhases: cursorWaitClocks.evidence, nativeFinalObservation: finalObservation, source: {
         chainId: source.chainId, profileId: source.profileId, revision: source.sourceRevision, components: source.components,
         range: {first: 1, last: source.endBlock}, inputHashes: source.inputHashes, originalStatus: source.originalStatus},
         planSha256: portableSourceHash(planBytes), oracleHashes, expectationOrigin: plan.expectationOrigin, stateAbiAvailability,
@@ -703,12 +724,14 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         const unrelated = async (height: number, budget?: PortableNativePhaseBudget) => {
             const block = source.records[height - 1], states: any[] = [];
             // Older history remains usable while state queries report the current covered head.
-            for (const [index, definition] of plan.definitions.entries()) {const response = await query(definition.id, undefined, budget);
+            for (const [index, definition] of plan.definitions.entries()) {if (finalObservation.current) markFinal(height, 'unrelated-state-query', definition.id); const response = await query(definition.id, undefined, budget);
                 assert.equal(response.status, 200); assert.equal(response.body.view.binding.projectionId, bindings[index].projectionId);
                 assert.equal(response.headers.get('hyperion-state-last-valid'), 'false'); states.push(responseReceipt(response));}
+            if (finalObservation.current) markFinal(height, 'unrelated-history');
             return {history: await history(block.blockNum, budget), states};
         };
         const native = nativeOracle ? await createPortableNativeQualification({source, oracle: nativeOracle, client: es, chain, apiPort,
+            markFinal, finishFinal,
             events: () => observedRows(), http, unrelated, rawHistory: history,
             wait: (name, work, budget) => wait(name, work, 60000, budget), historyDiagnostics,
             refreshActions: (through, budget) => refreshActions(through, 'native-hold', budget),
