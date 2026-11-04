@@ -198,8 +198,8 @@
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/cbfb-assembly.test.mjs",
-        "bytes": 1029,
-        "sha256": "1cc80cd6a58b9f1e64928e91bc0d4e3aa31cbf9bc47636625d99b6baf591f3f3"
+        "bytes": 1028,
+        "sha256": "1a3c48ea1bbae3cc1bf284badf316bf2a573ad3925aee0e6a9e10c0ad74ec0fa"
       },
       {
         "path": "src/api/config/open_api.ts",

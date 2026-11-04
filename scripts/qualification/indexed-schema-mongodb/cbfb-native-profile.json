@@ -4,7 +4,7 @@
   "qualificationOnly": true,
   "base": "97edbdc56de9a2e54ff60769544e6e09a8d0a5aa",
   "assembly": "indexed-royalty-sdk-cbfb-native-cf514-engineering-v1",
-  "baseAssemblySha256": "73a845d846e0a11fc5ece182e70365ab309cd163b109076926a3cd3090c5980e",
+  "baseAssemblySha256": "c0b6afebc8fd19fabe3f28e75487f798a162e2b93662b301d16f38c25f04c8f2",
   "limits": {
     "readAttempts": 12,
     "responseRecords": 8,
@@ -309,7 +309,7 @@
     {
       "path": "scripts/qualification/indexed-schema-mongodb/cbfb-assembly.json",
       "bytes": 192407,
-      "sha256": "27123d631343c89a778d6ea198bc93d81457fc4fe78f48a4f719a5fa074255b5"
+      "sha256": "7d8579efcb0e8a5e6b8e869c15a30c94f5db9b6308936633735b0020ed8b3657"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/cbfb-assembly.mjs",
@@ -318,13 +318,13 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/cbfb-assembly.test.mjs",
-      "bytes": 1029,
-      "sha256": "1cc80cd6a58b9f1e64928e91bc0d4e3aa31cbf9bc47636625d99b6baf591f3f3"
+      "bytes": 1028,
+      "sha256": "1a3c48ea1bbae3cc1bf284badf316bf2a573ad3925aee0e6a9e10c0ad74ec0fa"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/cbfb-native-assembly.mjs",
-      "bytes": 4376,
-      "sha256": "beef56855ec270393a4d12c5a8cf2d751feefac4a038227c212b353ff8cab2c2"
+      "bytes": 4375,
+      "sha256": "01ff27d65e72c6dad85ba784c31ee96ac2cf57351af2ddca9bd25859bb37c851"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/cbfb-native-ci.mjs",
@@ -5280,7 +5280,7 @@
     "observation": {
       "files": 94,
       "edges": 270,
-      "sha256": "ade2a30c04eeb8f3ea1bc46ca44c193e66ddf6818d596c378bca64c8a6d509f4"
+      "sha256": "103ab9b19e4f2b0aec84c47c88f3326f9a5098cbeb0214e7b56413aa3074a756"
     }
   },
   "provenance": {
