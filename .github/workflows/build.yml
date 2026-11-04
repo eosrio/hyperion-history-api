@@ -186,6 +186,8 @@ jobs:
 
   projection-mongodb:
     runs-on: ubuntu-22.04
+    env:
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-e691f44-complete-kind-engineering
     timeout-minutes: 15
     strategy:
       fail-fast: false
