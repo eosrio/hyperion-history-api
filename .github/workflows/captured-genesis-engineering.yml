@@ -1,0 +1,36 @@
+name: Captured genesis engineering controls
+
+on:
+  pull_request:
+    branches: ["engineering/wire-h3-api-3baf-191"]
+
+permissions:
+  contents: read
+
+jobs:
+  captured-genesis:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [24.x, 26.x]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+      - run: npm ci --allow-git=all
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - name: Verify pinned checker
+        run: |
+          test "$(bun --version)" = "$(cat .bun-version)"
+          test "$(bun -p process.versions.typescript)" = "$(node -p 'require("./package.json").dependencies.typescript')"
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Check reader and master controls on Node
+        run: node --test tests/unit/captured-genesis-master.test.mjs tests/unit/captured-genesis-reader.test.mjs
+      - name: Check coordinator, source custody, and native parser controls
+        run: bun test tests/unit/captured-genesis-coordinator.test.mjs tests/unit/retained-genesis-input.test.ts tests/unit/protocol-abi-coordinator-rpc.test.ts tests/unit/protocol-abi-coordinator.test.ts tests/unit/protocol-native-genesis-worker.test.ts
