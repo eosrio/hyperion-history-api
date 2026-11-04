@@ -242,6 +242,21 @@ export class ProtocolAbiFrontierStore {
             throw new Error('Historical certificate address readback differs');
         return prepared;
     }
+    /** Batch independent locators, retaining fresh certificate validation and per-manifest owner checkpoints. */
+    async prepareHistoricalCertificateAddresses(certificates:readonly ProtocolAbiHeadCertificate[],checkpoint:()=>Promise<void>):Promise<void> {
+        if(this.options.readOnly)throw new Error('Read-only ABI frontier cannot prepare historical addresses');
+        if(!Array.isArray(certificates)||certificates.length<1||certificates.length>32)throw new Error('Invalid historical address batch');
+        const entries:{id:string;address:ProtocolAbiHistoricalAddress;record:unknown}[]=[];
+        for(const certificate of certificates){
+            await checkpoint();const copied=bounded(certificate,limits.certificate).value as ProtocolAbiHeadCertificate;
+            const identity=historicalAddressIdentity(copied),id=historicalAddressId(identity),certificateId=this.certificateId(copied);
+            if(protocolImmutableJson(await this.readCertificate(certificateId))!==protocolImmutableJson(copied))throw new Error('Historical address requires an exact settled certificate');
+            await checkpoint();const address:ProtocolAbiHistoricalAddress={schemaVersion:1,kind:'historical-abi-certificate-address',identity,certificateId};
+            entries.push({id,address,record:{schemaVersion:1,chain:this.chain,kind:'historical-certificate-address',value:address}});
+        }
+        await this.initialize(false);await checkpoint();await this.bundles.prepareMany(entries.map(({id,record})=>({id,record})),undefined,checkpoint);
+        for(const entry of entries){await checkpoint();if(protocolImmutableJson(await this.readHistoricalCertificateAddress(entry.address.identity))!==protocolImmutableJson(entry.address))throw new Error('Historical certificate address readback differs');await checkpoint();}
+    }
     async readHistoricalCertificateAddress(identity:ProtocolAbiHistoricalAddressIdentity,signal?:AbortSignal):Promise<ProtocolAbiHistoricalAddress> {
         const expected=JSON.parse(protocolImmutableJson(identity,64*1024)),id=historicalAddressId(expected);
         let raw:unknown;

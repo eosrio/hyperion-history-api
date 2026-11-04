@@ -216,6 +216,48 @@ export class ImmutableProtocolBundleStore {
         scope?.assertActive();freshPrepares.set(result,{store:this,id,digest,scope});return result;
     }
 
+    /** Prepare independent immutable chunks in bounded groups; ordered manifests retain dependency barriers. */
+    async prepareMany(items: readonly {id:string; record:unknown; after?:readonly string[]}[], signal?:AbortSignal, checkpoint?:()=>Promise<void>):Promise<FreshBundlePrepare[]> {
+        const scope=currentProofConsumerScope();signal?.throwIfAborted();scope?.assertActive();
+        if(this.options.readOnly)throw new Error('Read-only protocol bundles cannot prepare records');
+        if(!Array.isArray(items)||items.length<1||items.length>32)throw new Error('Immutable preparation batch exceeds item bound');
+        const ids=new Set<string>(),prepared:{id:string;digest:string;bytes:Buffer;manifest:StoredDocument;after:readonly string[]}[]=[];
+        let total=0;
+        for(const item of items) {
+            if(!item||typeof item.id!=='string'||ids.has(item.id)||!Array.isArray(item.after??[])
+                ||(item.after??[]).some(id=>!ids.has(id)))throw new Error('Invalid immutable preparation dependency');
+            ids.add(item.id);const bytes=Buffer.from(canonical(item.record,this.bounds.maximumBytes));total+=bytes.length;
+            const count=Math.ceil(bytes.length/this.bounds.chunkBytes);
+            if(bytes.length>this.bounds.maximumBytes||count>this.bounds.maximumChunks||total>72*1024*1024)throw new Error('Immutable preparation batch exceeds byte bound');
+            const digest=sha256(bytes),chunks=Array.from({length:count},(_,index)=>`${item.id}:${digest}:${index}`);
+            prepared.push({id:item.id,digest,bytes,after:item.after??[],manifest:{kind:'manifest',bundle_id:item.id,digest,byte_length:bytes.length,chunk_ids:chunks}});
+        }
+        // Keep every original fresh metadata and manifest preflight boundary.
+        for(const item of prepared){
+            await this.initialize(signal);scope?.assertActive();
+            try {const existing=await this.get(item.id,signal);if(canonical(existing._source)!==canonical(item.manifest))throw new Error(`Immutable ABI observation conflict: ${item.id}`);}
+            catch(error:any){signal?.throwIfAborted();const missing=error?.meta?.body;
+                if(error?.meta?.statusCode!==404||missing?.found!==false||missing?._index!==this.index||missing?._id!==item.id)throw error;}
+        }
+        // A failed or cancelled item cannot release the next wave; drain every launched operation first.
+        const chunks:{id:string;document:StoredDocument}[]=[];
+        for(const item of prepared)for(let index=0;index<item.manifest.chunk_ids!.length;index++){
+            const payload=item.bytes.subarray(index*this.bounds.chunkBytes,(index+1)*this.bounds.chunkBytes);
+            chunks.push({id:item.manifest.chunk_ids![index],document:{kind:'chunk',bundle_id:item.id,digest:sha256(payload),byte_length:payload.length,chunk_index:index,payload:payload.toString('base64')}});
+        }
+        for(let offset=0;offset<chunks.length;offset+=4){
+            signal?.throwIfAborted();scope?.assertActive();if(checkpoint)await checkpoint();
+            const results=await Promise.allSettled(chunks.slice(offset,offset+4).map(chunk=>this.createImmutable(chunk.id,chunk.document,signal)));
+            const failed=results.find(result=>result.status==='rejected');if(failed?.status==='rejected')throw failed.reason;
+            signal?.throwIfAborted();scope?.assertActive();if(checkpoint)await checkpoint();
+        }
+        // Caller ordering is a topological order. Never publish a link before its predecessors.
+        for(const item of prepared){signal?.throwIfAborted();scope?.assertActive();if(checkpoint)await checkpoint();await this.createImmutable(item.id,item.manifest,signal);if(checkpoint)await checkpoint();}
+        signal?.throwIfAborted();scope?.assertActive();
+        return prepared.map(item=>{const result=Object.freeze({id:item.id,digest:item.digest}) as FreshBundlePrepare;
+            freshPrepares.set(result,{store:this,id:item.id,digest:item.digest,scope});return result;});
+    }
+
     /** Realtime existence hint only: presence grants no integrity, durability or canonical authority. */
     async missingManifestHint(input: readonly string[], signal?: AbortSignal): Promise<string | null> {
         signal?.throwIfAborted();
