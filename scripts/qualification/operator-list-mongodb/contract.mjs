@@ -12,7 +12,7 @@ export const HISTORICAL_PLAN = Object.freeze({schemaVersion: 1, scope: 'syntheti
         'empty-missing-and-unavailable', 'whole-read-budgets', 'missing-index-native-failure', 'partial-storage-refusal',
         'concurrent-publication-and-losing-CAS', 'cleanup-attempt-reserve', 'late-cancel-and-retirement', 'blocked-find-deadline', 'original-session-client-cleanup'],
     acceptance: {nativeMongoDB: 'pending-until-run', requestHost: 'pending', finalOnSend: 'pending', AtomicParity: 'pending', WireReplay: 'separate'}});
-export const PLAN = Object.freeze({...HISTORICAL_PLAN, profile: 'stateful-sdk49-root-cbfb-native-wire69-linux-engineering-v1', rootSDK: 'dc20a03f2b60ba05a3369d677222a9cf0d65d299', sdk: 'cbfb26694b90b52266d1e0b9b5dbf6f8389e736b'});
+export const PLAN = Object.freeze({...HISTORICAL_PLAN, profile: 'stateful-all-cbfb-root-native-wire69-linux-engineering-v1', rootSDK: 'cbfb26694b90b52266d1e0b9b5dbf6f8389e736b', sdk: 'cbfb26694b90b52266d1e0b9b5dbf6f8389e736b'});
 export const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 export function argumentsFor(argv, environment) {
     assert.equal(argv.length, 10, 'Use --run --allow-failpoints --database NAME --output NEW_DIR --source COMMIT --compiled-sha256 SHA');

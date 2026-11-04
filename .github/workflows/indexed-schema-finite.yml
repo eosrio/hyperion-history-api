@@ -3,7 +3,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/indexed-schema-finite.yml'
-      - 'scripts/qualification/indexed-schema-mongodb/cbfb-assembly*'
+      - 'scripts/qualification/indexed-schema-mongodb/*cbfb-*'
       - 'packages/backend-mongodb/**'
       - 'package.json'
       - 'package-lock.json'
@@ -31,8 +31,8 @@ jobs:
           bun check -p tsconfig.json
           bun check -p packages/backend-mongodb/tsconfig.json
           npm run build
-      - run: node scripts/qualification/indexed-schema-mongodb/cbfb-assembly.mjs --profile indexed-schema-sdk-cbfb-native-cf514-engineering-v1 > indexed-cbfb-source.json
-      - run: node --test scripts/qualification/indexed-schema-mongodb/cbfb-assembly.test.mjs packages/backend-mongodb/tests/indexed-int64-membership.test.mjs
+      - run: node scripts/qualification/indexed-schema-mongodb/all-cbfb-assembly.mjs --profile indexed-schema-all-cbfb-root-native-wire69-engineering-v1 > indexed-cbfb-source.json
+      - run: node --test scripts/qualification/indexed-schema-mongodb/all-cbfb-assembly.test.mjs packages/backend-mongodb/tests/indexed-int64-membership.test.mjs
       - run: npm run test:indexed:finite
         env:
           HYPERION_INDEXED_TEST_PROFILE: cbfb

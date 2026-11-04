@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import {diagnosticDirectory, diagnosticRelativePath, retainAdmission, writeAssemblyDiagnostic} from './assembly-diagnostics.mjs';
 import {inventory} from './inventory.mjs';
 import {sha} from './contract.mjs';
-import {restoreSdk49Routing} from '../indexed-schema-mongodb/current-cbfb-contract.mjs';
+import {restoreSdk49Routing} from '../indexed-schema-mongodb/all-cbfb-contract.mjs';
 import {OPERATOR_LIST_ASSEMBLY, OPERATOR_LIST_PROFILE, diagnoseOperatorListAssembly} from './source-profile.mjs';
 
 const json = path => JSON.parse(readFileSync(path));

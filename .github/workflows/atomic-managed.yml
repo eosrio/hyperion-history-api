@@ -1,0 +1,53 @@
+name: Managed Atomic MongoDB
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["main", "test/indexed-native-mongodb-415", "feat/indexed-int64-tested-49dfe-20261104"]
+    paths: ["src/**", "packages/backend-mongodb/**", "scripts/qualification/atomic-managed/**", "tests/native/atomic-managed*", "package*.json", ".github/workflows/atomic-managed.yml"]
+jobs:
+  managed-atomic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [24.22.1, 26.4.0]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: eosrio/hyperion-atomicassets-plugin
+          ref: 1bc686bd7ed7d433b2cb7c3a04a762c0c832ad97
+          path: _qualification/atomic
+      - uses: actions/checkout@v4
+        with:
+          ref: c1b98a52a872b6c070ada32243c8286607e86883
+          path: _qualification/mixed
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - run: npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false
+      - run: npm ci --allow-git=all
+      - run: npm ci --prefix _qualification/atomic --allow-git=all
+      - run: npm ci --prefix _qualification/mixed/packages/backend-mongodb --allow-git=all --ignore-scripts=false
+      - run: npm ci --prefix _qualification/mixed --allow-git=all
+      - run: npm run build
+      - run: npm run build --prefix _qualification/atomic
+      - run: npm run typecheck
+      - run: npm run typecheck --prefix _qualification/atomic
+      - name: Pure actual SDK and emitted managed publication controls
+        env:
+          HYPERION_ATOMIC_ROOT: ${{ github.workspace }}/_qualification/atomic
+          HYPERION_MIXED_ROOT: ${{ github.workspace }}/_qualification/mixed
+        run: node --test tests/native/atomic-managed-contract.test.mjs tests/native/atomic-managed-teardown.test.mjs tests/native/atomic-managed-host-publication.test.mjs tests/native/atomic-managed-result-observer.test.mjs tests/native/atomic-managed-sdk-boundary.test.mjs
+      - name: Owned controlled-source managed Atomic HTTP
+        run: node scripts/qualification/atomic-managed/ci.mjs --profile managed-atomic77-hapi-cbfb-linux-engineering-v1 _qualification/atomic out/managed-atomic-${{ matrix.node-version }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: managed-atomic-${{ matrix.node-version }}
+          path: out/managed-atomic-${{ matrix.node-version }}
+          if-no-files-found: error

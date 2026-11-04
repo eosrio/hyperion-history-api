@@ -4,7 +4,7 @@ import cluster from 'node:cluster';
 import {fileURLToPath} from 'node:url';
 import {setTimeout as delay} from 'node:timers/promises';
 import {nativeApiWireSource} from './protocol-native-api-source.mjs';
-import {STATEFUL_CURRENT_CBFB_SOURCE_PROFILE} from './stateful-engineering-source-admission.mjs';
+import {STATEFUL_ALL_CBFB_SOURCE_PROFILE} from './stateful-engineering-source-admission.mjs';
 import {PortableProjectionSource} from '../../build/indexer/projection/source.js';
 import {WorkerAttemptClient} from '../../build/indexer/protocol/worker-attempt-client.js';
 import {WorkerAttemptSupervisor, describeWorkerAttemptEnd} from '../../build/indexer/protocol/worker-attempt-supervisor.js';
@@ -28,7 +28,7 @@ if (cluster.isWorker) {
         if (message.event === 'release-input') input.release();
         if (message.event === 'release-retained') retained.release();
     });
-    const prepared = await nativeApiWireSource({nativeMarker: false, engineeringSourceProfile: STATEFUL_CURRENT_CBFB_SOURCE_PROFILE});
+    const prepared = await nativeApiWireSource({nativeMarker: false, engineeringSourceProfile: STATEFUL_ALL_CBFB_SOURCE_PROFILE});
     const attempts = new WorkerAttemptClient({mode: 'managed', role: 'projection', transport: process,
         timeoutMs: 500, drainTimeoutMs: 2000, retries: 0});
     try {

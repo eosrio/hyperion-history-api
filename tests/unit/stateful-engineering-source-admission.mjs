@@ -17,6 +17,8 @@ import {STATEFUL_SDK49_SOURCE_PROFILE, admitSdk49SourceOptions} from './sdk49-in
 export {STATEFUL_SDK49_SOURCE_PROFILE};
 import {STATEFUL_CURRENT_CBFB_SOURCE_PROFILE, admitCurrentCbfbSourceOptions} from './current-cbfb-source-admission.mjs';
 export {STATEFUL_CURRENT_CBFB_SOURCE_PROFILE};
+import {STATEFUL_ALL_CBFB_SOURCE_PROFILE, admitAllCbfbSourceOptions} from './all-cbfb-source-admission.mjs';
+export {STATEFUL_ALL_CBFB_SOURCE_PROFILE};
 
 export const STATEFUL_ENGINEERING_API_SOURCE_PROFILE = 'stateful-owner-v2-18d235e-engineering';
 export const STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE = 'stateful-owner-v2-dd85ee5-18d235e-engineering';
@@ -137,6 +139,8 @@ export function admitNativeApiSourceOptions(input = {}) {
         && value.enumerable && Object.hasOwn(value, 'value')), 'Qualification default-path override refused');
     const nativeMarker = properties.nativeMarker?.value ?? true, profile = properties.engineeringSourceProfile?.value;
     assert(typeof nativeMarker === 'boolean');
+    if (profile === STATEFUL_ALL_CBFB_SOURCE_PROFILE)
+        return admitAllCbfbSourceOptions({nativeMarker, engineeringSourceProfile: profile});
     if (profile === STATEFUL_CURRENT_CBFB_SOURCE_PROFILE)
         return admitCurrentCbfbSourceOptions({nativeMarker, engineeringSourceProfile: profile});
     if (profile === STATEFUL_SDK49_SOURCE_PROFILE)
@@ -262,6 +266,7 @@ export function admitNativeSourceEnvironment() {
 }
 export function admitCoordinatedNativeSourceOptions(options = {}) {
     const admission = admitNativeApiSourceOptions(options);
+    if (admission.profile === STATEFUL_ALL_CBFB_SOURCE_PROFILE) return admission;
     if (admission.profile === STATEFUL_CURRENT_CBFB_SOURCE_PROFILE) return admission;
     if (admission.profile === STATEFUL_SDK49_SOURCE_PROFILE) return admission;
     if (admission.profile === STATEFUL_CURRENT_NATIVE_API_SOURCE_PROFILE) return admission;

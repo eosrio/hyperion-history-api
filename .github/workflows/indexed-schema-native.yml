@@ -34,15 +34,15 @@ jobs:
           bun check -p tsconfig.json
           bun check -p packages/backend-mongodb/tsconfig.json
           npm run build
-      - run: node scripts/qualification/indexed-schema-mongodb/cbfb-assembly.mjs --profile indexed-schema-sdk-cbfb-native-cf514-engineering-v1 > indexed-cbfb-native-source-${{ matrix.node }}.json
-      - run: node --test scripts/qualification/indexed-schema-mongodb/cbfb-assembly.test.mjs scripts/qualification/indexed-schema-mongodb/cbfb-native-offline.test.mjs
+      - run: node scripts/qualification/indexed-schema-mongodb/all-cbfb-assembly.mjs --profile indexed-schema-all-cbfb-root-native-wire69-engineering-v1 > indexed-cbfb-native-source-${{ matrix.node }}.json
+      - run: node --test scripts/qualification/indexed-schema-mongodb/all-cbfb-assembly.test.mjs scripts/qualification/indexed-schema-mongodb/all-cbfb-native-offline.test.mjs
       - run: npm run test:indexed:finite
         env:
           HYPERION_INDEXED_TEST_PROFILE: cbfb
       - run: npm run test:indexed:cbfb:package
         env:
           HYPERION_INDEXED_TEST_PROFILE: cbfb
-      - run: node scripts/qualification/indexed-schema-mongodb/cbfb-native-ci.mjs --profile indexed-schema-mongodb-cbfb-49dfe-linux-gha-v1 indexed-cbfb-native-${{ matrix.node }}
+      - run: node scripts/qualification/indexed-schema-mongodb/all-cbfb-native-ci.mjs --profile indexed-schema-mongodb-all-cbfb-linux-gha-v1 indexed-cbfb-native-${{ matrix.node }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:

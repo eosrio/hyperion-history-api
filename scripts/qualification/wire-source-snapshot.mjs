@@ -6,6 +6,20 @@ import {mkdir, writeFile} from 'node:fs/promises';
 import {dirname, join} from 'node:path';
 
 export const engineeringAdmissionSourcePaths = Object.freeze([
+    'tests/unit/all-cbfb-source-admission.mjs',
+    'tests/fixtures/engineering-profiles/all-cbfb-linux.json',
+    'scripts/qualification/indexed-schema-mongodb/all-cbfb-contract.mjs',
+    'scripts/qualification/indexed-schema-mongodb/all-cbfb-routing.json',
+    'scripts/qualification/indexed-schema-mongodb/all-cbfb-ci-source-check.mjs',
+    'scripts/qualification/indexed-schema-mongodb/all-cbfb-contract.test.mjs',
+    'scripts/qualification/indexed-schema-mongodb/all-cbfb-assembly.mjs',
+    'scripts/qualification/indexed-schema-mongodb/all-cbfb-assembly.json',
+    'scripts/qualification/indexed-schema-mongodb/all-cbfb-assembly.test.mjs',
+    'scripts/qualification/operator-list-mongodb/all-cbfb-source-profile.mjs',
+    'tests/unit/all-cbfb-source-admission-native.mjs',
+    'tests/native/all-cbfb-codec-profile.test.mjs',
+    'tests/native/all-cbfb-caller-routing.test.mjs',
+    'tests/native/all-cbfb-source-tamper.test.mjs',
     'tests/unit/stateful-engineering-source-admission.mjs',
     'tests/native/projection-manager-lifecycle.test.mjs',
     'tests/native/bounded-json-string-encoding.test.mjs',
