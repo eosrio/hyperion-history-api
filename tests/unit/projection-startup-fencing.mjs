@@ -1,6 +1,6 @@
 /** Real emitted projection worker and native cluster IPC; Mongo/controller I/O is controlled. */
 import assert from 'node:assert/strict';
-import {createProjectionManagerFixture} from './projection-manager-fixture.mjs';
+import {createProjectionManagerFixture,createProjectionControllerFixture} from './projection-manager-fixture.mjs';
 import cluster from 'node:cluster';
 import {mkdtempSync, mkdirSync, writeFileSync, appendFileSync, readFileSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -43,7 +43,7 @@ if (cluster.isWorker) {
         backend() {record('backend'); return {};},
         async controller() {
             record('controller');
-            return {async drain() {send({event: 'fixture_initialized'}); await finish.promise;}, async stop() {}};
+            return createProjectionControllerFixture({async drain() {send({event: 'fixture_initialized'}); await finish.promise;}, async stop() {}});
         },
     };
     globalThis.__projectionStartupFixture = fixture;

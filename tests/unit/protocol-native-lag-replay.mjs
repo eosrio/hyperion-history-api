@@ -354,9 +354,9 @@ try {
     assert.equal(config.settings.protocol_abi_coordination, undefined, 'the actual default 256 ancestry remains in force');
     const lock = JSON.parse(readFileSync(join(repo, 'package-lock.json')));
     assert.equal(lock.packages['node_modules/@eosrio/hyperion-wire-plugin'].resolved,
-        `git+ssh://git@github.com/eosrio/hyperion-wire-plugin.git#${nativeSourceAdmission.wireRevision}`);
+        `git+https://github.com/eosrio/hyperion-wire-plugin.git#${nativeSourceAdmission.wireRevision}`);
     assert.equal(lock.packages['node_modules/@eosrio/hyperion-sdk'].resolved,
-        `git+ssh://git@github.com/eosrio/hyperion-sdk.git#${nativeSourceAdmission.sdkRevision}`);
+        `git+https://github.com/eosrio/hyperion-sdk.git#${nativeSourceAdmission.sdkRevision}`);
     const began = process.hrtime.bigint();
     const stageTimings = {setup: {elapsedMs: Number(began - setupBegan) / 1e6, cpu: process.cpuUsage(setupCpu)}, sourcePreparation: []};
     let pending, control, rewindSelection, lastMeasuredNativeView, lastMeasuredNativeGrant;

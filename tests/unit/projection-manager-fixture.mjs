@@ -1,4 +1,5 @@
-// Portable-only worker fixture port. The real lazy pool never creates a MongoDB client here.
+// Portable-only fixture ports. No controller construction, worker or optional MongoDB client.
+import {PortableStateController} from '../../build/indexer/projection/controller.js';
 import {StatefulCompleteKindMongoClient} from '../../build/indexer/connections/stateful-complete-kind-client.js';
 
 export function createProjectionManagerFixture(mongodbClient){
@@ -8,4 +9,9 @@ export function createProjectionManagerFixture(mongodbClient){
  return {conn:{mongodb:{}},mongodbClient,
   statefulCompleteKindMongoClient:operationTimeoutMS=>completeKind.get(operationTimeoutMS),
   closeStatefulCompleteKindMongoClient:()=>completeKind.close()};
+}
+
+// Retain the real retry-invalidation method while controlling only original drain/stop I/O.
+export function createProjectionControllerFixture({drain,stop}){
+ return Object.assign(Object.create(PortableStateController.prototype),{mappingRetries:new Map(),retryEpoch:{},drain,stop});
 }

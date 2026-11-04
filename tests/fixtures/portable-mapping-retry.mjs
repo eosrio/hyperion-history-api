@@ -1,5 +1,6 @@
 /** Original retained Wire frames and official ABI/row oracle; source ports remain controlled. */
 import assert from 'node:assert/strict';
+import {admitCoordinatedNativeSourceOptions, STATEFUL_CURRENT_CBFB_SOURCE_PROFILE} from '../unit/stateful-engineering-source-admission.mjs';
 import {readFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
@@ -29,8 +30,9 @@ export async function originalWireRows() {
         assert.equal(prepared.files, 1488);
         const source = join(owned, 'capture/source'), receipt = JSON.parse(readFileSync(join(source, 'receipt.json')));
         const sourceReads = [], profileId = 'wire-sysio-6508c9e8-native-engineering-v1';
+        const nativeSourceAdmission = admitCoordinatedNativeSourceOptions({engineeringSourceProfile: STATEFUL_CURRENT_CBFB_SOURCE_PROFILE});
         const selected = await loadChainProtocol({provider: 'extension', package: '@eosrio/hyperion-wire-plugin', profileId});
-        assert(selected.components.every(value => value.sourceRevision === '18d235e34a9b7ab8c3e9f9a322874444d90eed8a'));
+        assert(selected.components.every(value => value.sourceRevision === nativeSourceAdmission.wireRevision));
         const schemaJson = readFileSync(join(source, 'schema.json'), 'utf8');
         assert.equal(hash(schemaJson), '94c5661306467f8c49f22180213e390db10d290be9ebf512fb63314f440ef6f9');
         const codec = createWireShipCodec(JSON.parse(schemaJson), resolveCodecProfile(profileId));

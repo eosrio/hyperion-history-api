@@ -41,8 +41,8 @@
   "routeSources": [
     {
       "path": ".github/workflows/build.yml",
-      "bytes": 25257,
-      "sha256": "41c945dac37d9563de423190c3688fed94c062257ec46d302866a4c0d3cd740e"
+      "bytes": 25307,
+      "sha256": "be24a62eb53cd46a1aa72db1196db48574a085fcf42884f774e9cea2685d0192"
     },
     {
       "path": ".github/workflows/indexed-schema-finite.yml",
@@ -92,12 +92,12 @@
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-contract.test.mjs",
       "bytes": 14521,
-      "sha256": "786d6d3ba96ae8044c1b1b91073c544a4f72c045a5e5cf3f99402d88f3c77d2d"
+      "sha256": "2f2db90fcadf7307d88a241a9bffcfa6605d71c257ed0857f9b94b4887826de3"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-routing.json",
-      "bytes": 371488,
-      "sha256": "b305b091ac2a624ef4e7367db8db5b44a9a02cd911c15111fbb285ad665e4558"
+      "bytes": 512093,
+      "sha256": "f108adec3f3100a7afedf3073b1de4e000ef246c506f07fa5dfc017aa7cfd9a0"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/retained-string-encoding.md",
@@ -156,8 +156,8 @@
     },
     {
       "path": "scripts/qualification/wire-source-snapshot.mjs",
-      "bytes": 7040,
-      "sha256": "2b43e53d9abdea8d136575774965684f95cba734400b1b2bb614b537e48a4cf6"
+      "bytes": 7434,
+      "sha256": "7051eacb32065b19bae23461c5ab2d149f5477469c19e424483555f33064b13f"
     },
     {
       "path": "scripts/qualification/wire-source-snapshot.test.mjs",
@@ -170,9 +170,19 @@
       "sha256": "b770196d4284b2e6daa4d41b7bbbb143962445d7c4d200a0df8dd807d2e832fe"
     },
     {
+      "path": "tests/fixtures/portable-mapping-retry.mjs",
+      "bytes": 8090,
+      "sha256": "d2c63413e44143dc577fa8d19fc7ca1666035b8b4006fa2b5be41c375a84731b"
+    },
+    {
       "path": "tests/native/bounded-json-string-encoding.test.mjs",
       "bytes": 6744,
       "sha256": "f60095d6eee523af8aa95577b778ba5385fb3b2cd1b62b4c196a9f858178b873"
+    },
+    {
+      "path": "tests/native/current-cbfb-caller-routing.test.mjs",
+      "bytes": 4059,
+      "sha256": "a5f819c445f0c36346dcb4f1d15f8719b943fd54e1cc7ea85e335cf55c933f7d"
     },
     {
       "path": "tests/native/current-cbfb-codec-profile.test.mjs",
@@ -191,8 +201,8 @@
     },
     {
       "path": "tests/native/projection-manager-lifecycle.test.mjs",
-      "bytes": 3644,
-      "sha256": "1f191aa7485593ee88a34cabc125ecfea674f8bf5a297e199ee26c82d53e8ce1"
+      "bytes": 6760,
+      "sha256": "4ce3511562163f33ac3dc9530d4d5cdbd7c87133717ce19d1db480674175a1c3"
     },
     {
       "path": "tests/native/retained-workload-progress.mjs",
@@ -225,6 +235,11 @@
       "sha256": "b8edf652dd0ad265917bf0111ca48789ec7a3f1976f2113783202cc3dd38acb4"
     },
     {
+      "path": "tests/unit/portable-state-raw-target.mjs",
+      "bytes": 5767,
+      "sha256": "31f68d5c93b763773cb87d62ad3c8e72d7bf4431f444120855c5b08570823a43"
+    },
+    {
       "path": "tests/unit/portable-state-source-fixture.mjs",
       "bytes": 12760,
       "sha256": "aa41f953c45fc1c37c9e4516f4a52c8200b3e7488d1aa8316947764ac31c0f7d"
@@ -235,19 +250,34 @@
       "sha256": "293d5e7388e1032788a044a38cd50651ab884f046f3af1d97a7752a43efb8f82"
     },
     {
+      "path": "tests/unit/projection-frame-source-fence.mjs",
+      "bytes": 15140,
+      "sha256": "1bae264a63ee2a96c385e79e44121a2d4f132c7269d71b22c8598ab0bf674ea3"
+    },
+    {
       "path": "tests/unit/projection-manager-fixture.mjs",
-      "bytes": 753,
-      "sha256": "23014296401a768164af6acc522f2ec343ce3001af842ccd188f38feeaeb6bf0"
+      "bytes": 1126,
+      "sha256": "55afdfd07b2971465ef55a06c53a6c67af2adb356a82a245bf31c1a98162bf37"
     },
     {
       "path": "tests/unit/projection-startup-fencing.mjs",
-      "bytes": 15245,
-      "sha256": "7b3702450b2b24f2297dcf1332503262a6233ef7e593eee21037a59916f6102c"
+      "bytes": 15314,
+      "sha256": "82d837b9377d2691e0cfba744f7df1fbf422ddecb3b9608bd3ac0a05c53c9ff0"
     },
     {
       "path": "tests/unit/protocol-abi-history-native.mjs",
       "bytes": 25295,
       "sha256": "76039d7a3b5fdeb3d63ebc46cc2b4022e74a0143979dc1e11ae79fe7033f4887"
+    },
+    {
+      "path": "tests/unit/protocol-native-api.mjs",
+      "bytes": 25130,
+      "sha256": "3a1987951b3ab2003108fcd3b526f9c7108127e35dc5fdc89da84cf6220c5f67"
+    },
+    {
+      "path": "tests/unit/protocol-native-lag-replay.mjs",
+      "bytes": 51154,
+      "sha256": "8cacf443498e7cbd96b083999326c7e630f1b6c61efa503607f52e27a1a90083"
     },
     {
       "path": "tests/unit/sdk49-indexed-source-admission.mjs",
@@ -283,6 +313,16 @@
       "path": "tests/unit/worker-attempt-quiescence-worker.mjs",
       "bytes": 95410,
       "sha256": "6f7ab515a361b4f2fcd5f44f16293ba847853e9e7f7e29bd40af4b971194682e"
+    },
+    {
+      "path": "tests/unit/worker-attempt-supervisor.test.ts",
+      "bytes": 18845,
+      "sha256": "738a681f340910b089ac549e6c68fe3cd86e3ba6c7c37c63d85172bd1066af7a"
+    },
+    {
+      "path": "tests/unit/worker-failure-lineage.mjs",
+      "bytes": 7585,
+      "sha256": "91ef5e8963fb5341f4a5274d5ddd04eca122044502812d012aa3990bed076e36"
     }
   ],
   "acceptance": {
