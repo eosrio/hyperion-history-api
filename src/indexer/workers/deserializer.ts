@@ -100,23 +100,12 @@ export default class MainDSWorker extends HyperionWorker {
             this.processMessages(payload).then(() => {
                 cb();
             }).catch((err) => {
-                hLog('NACK ALL', err.message);
-                // nackAll requeues pending broker deliveries too. Discard their
-                // local copies so cargo cannot process stale delivery tags.
-                this.consumerQueue.remove(() => true);
-                try {
-                    if (this.ch && this.ch_ready) {
-                        this.ch.nackAll();
-                    }
-                } catch (nackError: any) {
-                    // A send failure does not establish broker requeue or free
-                    // prefetch credits. Stop this owner instead of resuming cargo.
-                    hLog('Failed to NACK deserializer messages; supervised replacement required:', nackError.message);
-                    this.ch_ready = false;
-                    this.consumerQueue.kill();
-                    return process.exit(1);
-                }
-                cb();
+                // In-transit deliveries can arrive after nackAll and local queue
+                // removal. Replace this owner before any stale tag can resume.
+                hLog('Block deserialization failed; supervised replacement required:', err.message);
+                this.ch_ready = false;
+                this.consumerQueue.kill();
+                return process.exit(1);
             });
         }, this.conf.prefetch.block);
 
