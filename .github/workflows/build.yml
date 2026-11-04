@@ -87,6 +87,8 @@ jobs:
         run: node --test --test-timeout=15000 tests/native/fastify-compatibility.test.mjs
       - name: Check complete-kind query/client and final-publication controls
         run: node --test --test-concurrency=1 tests/native/stateful-complete-kind-client.test.mjs tests/native/stateful-complete-kind-host.test.mjs
+      - name: Preserve proof-read fence ownership on Node ${{ matrix.node-version }}
+        run: node --test tests/unit/proof-reader-owned-fence.test.ts
       - name: Check stream request lifecycle on Node ${{ matrix.node-version }}
         run: node --test tests/native/stream-request-lifecycle.test.mjs tests/native/stream-history-delivery.test.mjs
       - name: Check history/live stream filters and selectors on Node ${{ matrix.node-version }}
