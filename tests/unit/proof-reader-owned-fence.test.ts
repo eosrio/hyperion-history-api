@@ -53,3 +53,24 @@ for (const kind of ['ordinary', 'foreign'] as const) {
         assertProofConsumerEnd(scope, await scope.closeAndDrain());
     });
 }
+
+for (const kind of ['ordinary', 'foreign'] as const) {
+    test(`a fulfilled read retains caller cancellation before a later source fence (${kind})`, async () => {
+        let enter!: () => void, release!: () => void;
+        const entered = new Promise<void>(resolve => {enter = resolve;});
+        const held = new Promise<void>(resolve => {release = resolve;});
+        const primary = kind === 'foreign' ? new ProofConsumerFencedError() : new Error('Original caller cancellation');
+        const caller = new AbortController(), scope = new ProofConsumerScope('proof-fulfilled-caller-' + kind);
+        const reader = new ProtocolAbiProofReader({chainId: source.chainId, profile,
+            store: {async readControl() {enter(); await held; return null;}} as any, requireAttemptScope: true});
+        const result = scope.run(() => reader.open(source, undefined, {signal: caller.signal})).then(() => null, error => error);
+        await entered;
+        caller.abort(primary);
+        scope.fence();
+        release();
+        const error = await result;
+        assert.equal(error?.code, 'proof_cancelled');
+        assert.equal(scope.ownsFenceError(error), false);
+        assertProofConsumerEnd(scope, await scope.closeAndDrain());
+    });
+}

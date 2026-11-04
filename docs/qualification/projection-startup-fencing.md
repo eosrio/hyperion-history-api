@@ -200,7 +200,8 @@ Retained proof reads now check the original consumer scope before classifying a 
 cancellation. A source fence therefore retains scope-owned error authority for the existing
 drained-frame deferral guard. Rejected reads preserve their original ordinary or foreign error;
 only an exact caller-abort reason is normalized while the original scope remains unfenced.
-A caller's error cannot gain ownership from a later source fence. Five deterministic controls
+A caller's error cannot gain ownership from a later source fence, even when its retained read
+subsequently succeeds. Seven deterministic controls
 exercise the actual emitted reader on Node 24/26, including physical drainage and both error
 identities. Existing proof/API cancellation controls retain their prior behavior. These are
 controlled ownership checks, not a live fork, storage recovery or full-worker qualification.
