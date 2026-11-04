@@ -31,6 +31,9 @@ the exact reviewed Linux Node 24.22.1/26.4.0 executable profiles.
 CI retains the exact-version receipts and bit-identical `24.x`/`26.x` aliases
 consumed by the unchanged retained-workload provenance reader. These copies
 preserve the actual checkout, run, job and executable identities.
+The full workflow explicitly includes PR #430's actual base,
+`test/indexed-native-mongodb-415`. The finite and native workflows retain their
+unrestricted base routing, and their path filters match the PR's changed files.
 
 Portable controls exercise actual isolated file mutations across SDK metadata,
 all emitted trees, Wire descriptors/member bytes/prepared lock/nested SDK,

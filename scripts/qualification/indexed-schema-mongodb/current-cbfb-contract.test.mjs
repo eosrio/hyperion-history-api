@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {posix} from 'node:path';
+import {posix,matchesGlob} from 'node:path';
 import {runInNewContext} from 'node:vm';
 import {assertRetainedProvenance} from '../../../tests/native/retained-workload-progress.mjs';
 import {CURRENT_CBFB_PROFILE,HISTORICAL_SDK49_SOURCE,ROUTING,restoreSdk49Routing,sha} from './current-cbfb-contract.mjs';
@@ -11,6 +11,32 @@ import {CURRENT_CBFB_MANIFEST,observeCurrentCbfbSourceOptions,assertCurrentCbfbO
 import {STATEFUL_SDK49_SOURCE_PROFILE,observeSdk49SourceOptions} from '../../../tests/unit/sdk49-indexed-source-admission.mjs';
 import {admitNativeApiSourceOptions} from '../../../tests/unit/stateful-engineering-source-admission.mjs';
 const root=new URL('../../../',import.meta.url),raw=path=>readFileSync(new URL(path,root),'utf8');
+
+test('PR430 actual target and changed paths reach all required current workflow jobs',()=>{
+ // Confirmed against PR430 metadata/file list at head fb891e04, base e19fc9af.
+ // GitHub evaluates the complete PR diff; these are actual changed-file witnesses.
+ const target='test/indexed-native-mongodb-415',changed=['.github/workflows/build.yml',
+  '.github/workflows/indexed-schema-finite.yml','.github/workflows/indexed-schema-native.yml',
+  'packages/backend-mongodb/src/stateful-indexed-model-v1.ts'];
+ for(const [path,jobs] of [
+  ['.github/workflows/build.yml',['build','projection-mongodb','operator-lists-mongodb','action-sequences-design','action-source-journal','historical-sdk49-admission','es955-fixture']],
+  ['.github/workflows/indexed-schema-finite.yml',['finite-cbfb']],
+  ['.github/workflows/indexed-schema-native.yml',['indexed-native']]]){
+  const workflow=raw(path),start=workflow.indexOf('  pull_request:\n');assert(start>0,path+' must handle pull_request');
+  const filter=workflow.slice(start+'  pull_request:\n'.length).split(/\n(?=  [A-Za-z_-]+:|[A-Za-z_-]+:)/)[0],
+   branchMatch=/^    branches: (\[[^\n]+\])/m.exec(filter),branches=branchMatch?JSON.parse(branchMatch[1]):undefined,
+   patterns=[...filter.matchAll(/^      - '([^']+)'$/gm)].map(match=>match[1]);
+  assert(!/^    (?:branches-ignore|paths-ignore):/m.test(filter),'Review explicit exclusions before extending trigger controls');
+  if(/^    branches:/m.test(filter))assert(branchMatch,'Unsupported branch filter layout');
+  if(/^    paths:/m.test(filter))assert(patterns.length>0,'Unsupported path filter layout');
+  assert(patterns.every(pattern=>!pattern.startsWith('!')),'Review path exclusions explicitly');
+  assert(!branches||branches.includes(target),path+' must admit the actual PR430 base');
+  assert(patterns.length===0||changed.some(file=>patterns.some(pattern=>matchesGlob(file,pattern))),path+' must admit actual changed paths');
+  for(const job of jobs)assert(workflow.includes('\n  '+job+':\n'),path+' missing required job '+job);
+  if(path.endsWith('/build.yml')){assert.equal(branches.filter(branch=>branch===target).length,1);assert(branches.includes('feat/stateful-indexed-schema-415'));}
+  else assert.equal(branches,undefined,'Preserve the existing unrestricted base routing for '+path);
+ }
+});
 
 for(const version of ['24.22.1','26.4.0'])test('actual CI receipt producers satisfy the unchanged retained consumer on Node '+version,()=>{
  // Model receipt inputs only. Never generate a source-admission receipt, invoke

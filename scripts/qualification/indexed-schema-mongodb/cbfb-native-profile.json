@@ -48,8 +48,8 @@
   "sourceFiles": [
     {
       "path": ".github/workflows/build.yml",
-      "bytes": 25120,
-      "sha256": "82eb09806a3152c0a78982ee533c9c4ba80c085a2651c34beefceb959c44ef7b"
+      "bytes": 25155,
+      "sha256": "f466f02bef6c00fc3c4310f5325be9343a512ca16db1ca4b4577246f4e69da2e"
     },
     {
       "path": ".github/workflows/indexed-schema-finite.yml",
@@ -358,8 +358,8 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-ci.md",
-      "bytes": 2974,
-      "sha256": "06ee5c8a028d5ae47b0716cb5194212e0bd1dd99795a4bdd7025aa4e57d5d7ab"
+      "bytes": 3195,
+      "sha256": "7ed6b250a91d6eacbf53dfb1833ce7d477c5c32959805b1ca47716c3bb8c06f5"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-contract.mjs",
@@ -368,13 +368,13 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-contract.test.mjs",
-      "bytes": 10078,
-      "sha256": "e6f9ca2f34fe2f59e9ede42d51d0e56d209a9bc40b9c6e6a6e667a02d34644d2"
+      "bytes": 12393,
+      "sha256": "bcb87d9430e0009f25f381726afba52190f26503b3f9fabf161a3ab2108581a7"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-routing.json",
-      "bytes": 217148,
-      "sha256": "48116b5e73ef7bb64091b78e70b9ed61bcfbf22ba616f739d98121db09042cc6"
+      "bytes": 217354,
+      "sha256": "e556c1f5693aa46ec6affdbfc735709e7d8e6720cd53ffd6e18dfec9c16f2ad2"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/fixtures/9d8-explain/PROVENANCE.json",
@@ -634,7 +634,7 @@
     {
       "path": "tests/fixtures/engineering-profiles/current-cbfb-linux.json",
       "bytes": 9915,
-      "sha256": "b991a4839ec355f56a08fe5dacb463e20a12d925d2e71f51a0205a99678db56f"
+      "sha256": "a809fcac61b99653092b2439dedd16a295976f3c2c15fec668c57a0513651824"
     },
     {
       "path": "tests/fixtures/engineering-profiles/current-native45-linux.json",
@@ -709,7 +709,7 @@
     {
       "path": "tests/unit/current-cbfb-source-admission.mjs",
       "bytes": 7971,
-      "sha256": "f97350e2a4223b36ed85068bb1dcf79cef668d7c251e1be43ddbd79c7491ba0e"
+      "sha256": "e0cd366f611fe9872018939b0b5741d9948300985f54d1685cd4f8ba542e7d6e"
     },
     {
       "path": "tests/unit/current-stateful-engineering-source-admission.mjs",
@@ -5344,7 +5344,7 @@
     "observation": {
       "files": 106,
       "edges": 338,
-      "sha256": "d39f7cca247d99c8ad1d62cdbb62389eb1915fd5f0c8c22773e8bd220c4f6352"
+      "sha256": "e242af259d522ef0a1b8635f714c157367f0bc91344eb641229b5c99f470950b"
     }
   },
   "provenance": {

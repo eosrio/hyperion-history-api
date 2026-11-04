@@ -41,8 +41,8 @@
   "routeSources": [
     {
       "path": ".github/workflows/build.yml",
-      "bytes": 25120,
-      "sha256": "82eb09806a3152c0a78982ee533c9c4ba80c085a2651c34beefceb959c44ef7b"
+      "bytes": 25155,
+      "sha256": "f466f02bef6c00fc3c4310f5325be9343a512ca16db1ca4b4577246f4e69da2e"
     },
     {
       "path": ".github/workflows/indexed-schema-finite.yml",
@@ -81,8 +81,8 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-ci.md",
-      "bytes": 2974,
-      "sha256": "06ee5c8a028d5ae47b0716cb5194212e0bd1dd99795a4bdd7025aa4e57d5d7ab"
+      "bytes": 3195,
+      "sha256": "7ed6b250a91d6eacbf53dfb1833ce7d477c5c32959805b1ca47716c3bb8c06f5"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-contract.mjs",
@@ -91,13 +91,13 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-contract.test.mjs",
-      "bytes": 10078,
-      "sha256": "e6f9ca2f34fe2f59e9ede42d51d0e56d209a9bc40b9c6e6a6e667a02d34644d2"
+      "bytes": 12393,
+      "sha256": "bcb87d9430e0009f25f381726afba52190f26503b3f9fabf161a3ab2108581a7"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-routing.json",
-      "bytes": 217148,
-      "sha256": "48116b5e73ef7bb64091b78e70b9ed61bcfbf22ba616f739d98121db09042cc6"
+      "bytes": 217354,
+      "sha256": "e556c1f5693aa46ec6affdbfc735709e7d8e6720cd53ffd6e18dfec9c16f2ad2"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/retained-wire-diagnostics.md",
