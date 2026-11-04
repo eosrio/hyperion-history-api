@@ -178,9 +178,8 @@ export class ProtocolNativeObservationStore {
         const linkId=protocolSourceNativeObservationLinkId(selectionId),record=normalizeRecord(input,this.bounds.maximumBytes);
         const id=observationId(record),observationDigest=hash(protocolImmutableJson(record,this.bounds.maximumBytes));
         this.assertReferences(record,await this.references(selectionId),selectionId);
-        await this.bundles.prepare(id,record);
         const link:ProtocolSourceNativeObservationLink={schemaVersion:1,kind:'source-link',selectionId,observationId:id,observationDigest};
-        await this.bundles.prepare(linkId,link);
+        await this.bundles.prepareMany([{id,record},{id:linkId,record:link,after:[id]}]);
         const opening=await this.readSelection(selectionId);
         if(opening.link.observationId!==id||opening.link.observationDigest!==observationDigest
             ||hash(protocolImmutableJson(opening.record,this.bounds.maximumBytes))!==observationDigest) {

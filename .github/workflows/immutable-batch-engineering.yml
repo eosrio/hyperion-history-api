@@ -1,0 +1,34 @@
+name: Immutable batch engineering controls
+on:
+  pull_request:
+    branches: ["fix/wire-genesis-rpc-191"]
+permissions:
+  contents: read
+concurrency:
+  group: immutable-batch-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  source-controls:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [24.x, 26.x]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+      - run: npm ci --allow-git=all
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Check exact native source profile
+        env:
+          HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-e691f44-immutable-bulk-engineering
+        run: node --test tests/unit/immutable-batch-source-admission.test.mjs
+      - name: Check batch, native custody and canonical frontier behavior
+        run: bun test tests/unit/immutable-prepare-many.test.ts tests/unit/protocol-native-observation-store.test.ts tests/unit/protocol-abi-frontier-store.test.ts tests/unit/protocol-abi-coordinator.test.ts tests/unit/captured-genesis-coordinator.test.mjs

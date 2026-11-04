@@ -59,6 +59,15 @@ export function frontierMemoryClient(replicas=0) {
                 const value=structuredClone(settings.get(request.index));return faults.settings?.(value,request)??{[request.index]:{settings:value}};
             },
         },
+        async bulk(request,options){
+            note('bulk',request);const writes=[];
+            for(let i=0;i<request.operations.length;i+=2){const action=request.operations[i].create,document=request.operations[i+1];
+                writes.push((async()=>{try{const result=await client.create({index:action._index,id:action._id,document,refresh:request.refresh,
+                    wait_for_active_shards:request.wait_for_active_shards,pipeline:request.pipeline},options);return {create:{...result,status:201}};}
+                    catch(error){if(error?.meta?.statusCode===409)return {create:{_index:action._index,_id:action._id,status:409,error:{type:'version_conflict_engine_exception'}}};throw error;}})());}
+            const settled=await Promise.allSettled(writes),failed=settled.find(value=>value.status==='rejected');if(failed)throw failed.reason;
+            const items=settled.map(value=>value.value);return faults.bulkReceipt?.({errors:items.some(value=>value.create.status!==201),items},request)??{errors:items.some(value=>value.create.status!==201),items};
+        },
         async create(request){
             note('create',request);await faults.beforeWrite?.(request,'create');
             if(!mappings.has(request.index))throw missingIndex(request.index);
