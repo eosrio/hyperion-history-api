@@ -125,7 +125,7 @@ export const STATEFUL_GENESIS_RPC_CALLER_SOURCE = Object.freeze({
 });
 export const STATEFUL_BATCH_CALLER_SOURCE = Object.freeze({
     ...STATEFUL_GENESIS_RPC_CALLER_SOURCE,commit:'0d66963c1ce331abde0a8ba35bcb0e7659b4f825',
-    sha256:'6964c75c3fff5c72e823f089e541f075c35ea247fd40dce7f0ee01d8df8fb41c',
+    sha256:'d128d4a5cfc81a0f9daafce8739516ef06f83efe0635266593069e3ff8bf4311',
     sources:Object.freeze([...STATEFUL_GENESIS_RPC_CALLER_SOURCE.sources,
         ['src/indexer/protocol/immutable-bundle-store.ts','9bf9188b84dc5b8be323d9c9b08e90c0c0992f811a7adf817eee63fee217a7b0'],
         ['src/indexer/protocol/native-observation-store.ts','82e2d8faddae68090dee69e3189310c1bc9e7d4241480eb7d0018502c47e73fb']]),
