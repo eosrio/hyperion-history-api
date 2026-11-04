@@ -4,7 +4,7 @@ import {copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, readd
 import {basename, dirname, join, resolve} from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath, pathToFileURL} from 'node:url';
-import {admitNativeApiSourceOptions, admitNativeSourceEnvironment, STATEFUL_COMPLETE_KIND_WIRE32_CACHE_API_SOURCE_PROFILE as profile, STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE as priorMetadataProfile, STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE as priorExecutorProfile, STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE as priorCommandsProfile, STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE as priorCompleteKindProfile, STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE as priorProfile, STATEFUL_COMPLETE_KIND_METADATA_NATIVE_SOURCE as nativeSource, STATEFUL_COMPLETE_KIND_WIRE32_CACHE_CALLER_SOURCE as callerSource, STATEFUL_METADATA_FIELDS_API_SOURCE_PROFILE as fieldsProfile, STATEFUL_ENGINEERING_API_SOURCE_PROFILE as oldProfile, STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE as legacyProfile} from './stateful-engineering-source-admission.mjs';
+import {admitNativeApiSourceOptions, admitNativeSourceEnvironment, STATEFUL_COMBINED_REPLAY_SOURCE_PROFILE as profile, STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE as priorMetadataProfile, STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE as priorExecutorProfile, STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE as priorCommandsProfile, STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE as priorCompleteKindProfile, STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE as priorProfile, STATEFUL_COMPLETE_KIND_METADATA_NATIVE_SOURCE as nativeSource, STATEFUL_COMBINED_REPLAY_CALLER_SOURCE as callerSource, STATEFUL_METADATA_FIELDS_API_SOURCE_PROFILE as fieldsProfile, STATEFUL_ENGINEERING_API_SOURCE_PROFILE as oldProfile, STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE as legacyProfile} from './stateful-engineering-source-admission.mjs';
 
 assert.equal(process.versions.bun, undefined); assert.match(process.version, /^v(?:24|26)\./);
 let cases = 0, accessorCalls = 0;
@@ -63,6 +63,9 @@ try {
     alter(join(directory, 'node_modules/@eosrio/hyperion-backend-mongodb/dist/stateful-owner-v2.js'), bytes => Buffer.concat([bytes, Buffer.from('\n// wrong native tree\n')]), /native emissions/);
     alter(join(directory, 'build/api/helpers/stateful-owner.js'), bytes => Buffer.concat([bytes, Buffer.from('\n// wrong host artifact\n')]), /caller emissions/);
     alter(join(directory, 'src/api/helpers/stateful-owner.ts'), bytes => Buffer.from(bytes.toString().replace(/\n/g, '\r\n')), /Git-LF caller/);
+    for (const sourcePath of ['src/indexer/helpers/bounded-json.ts', 'src/indexer/protocol/abi-coordinator.ts',
+        'src/indexer/protocol/abi-frontier-store.ts'])
+        alter(join(directory, sourcePath), bytes => Buffer.concat([bytes, Buffer.from('\n// changed composed source\n')]), /Git-LF caller/);
     alter(join(directory, 'package-lock.json'), json(value => {
         value.packages['node_modules/@eosrio/hyperion-sdk'].resolved = 'git+https://other.invalid/eosrio/hyperion-sdk.git#' + 'd'.repeat(40); return value;
     }), /coordinated lock source/);

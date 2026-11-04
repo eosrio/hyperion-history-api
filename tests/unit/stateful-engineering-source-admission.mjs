@@ -20,6 +20,7 @@ export const STATEFUL_HISTORY_API_SOURCE_PROFILE = 'stateful-owner-v2-7412889-69
 export const STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE = 'stateful-owner-v2-7412889-e691f44-isolated-genesis-engineering';
 export const STATEFUL_GENESIS_RPC_SOURCE_PROFILE = 'stateful-owner-v2-7412889-e691f44-genesis-rpc-engineering';
 export const STATEFUL_BATCH_SOURCE_PROFILE = 'stateful-owner-v2-7412889-e691f44-immutable-batch-engineering';
+export const STATEFUL_COMBINED_REPLAY_SOURCE_PROFILE = 'stateful-owner-v2-7412889-e691f44-replay-bulk-history-v1-engineering';
 export const STATEFUL_BULK_SOURCE_PROFILE = 'stateful-owner-v2-7412889-e691f44-immutable-bulk-engineering';
 export const STATEFUL_GENESIS_PREVIEW_WIRE_SOURCE = Object.freeze({
     commit:'e691f4471c6e5fdbe001e6709e88d48d33d8bf4c',tree:'375c411d7f76efb460ace846755821445dfb50ea',
@@ -31,7 +32,7 @@ export const STATEFUL_GENESIS_PREVIEW_WIRE_SOURCE = Object.freeze({
 });
 export const STATEFUL_COMPLETE_KIND_WIRE32_API_SOURCE_PROFILE = 'stateful-owner-v2-7412889-e691f44-complete-kind-engineering';
 export const STATEFUL_COMPLETE_KIND_WIRE32_CACHE_API_SOURCE_PROFILE = 'stateful-owner-v2-7412889-e691f44-string-cache-v1-engineering';
-function wire32Profile(profile) {return profile === STATEFUL_COMPLETE_KIND_WIRE32_API_SOURCE_PROFILE || profile === STATEFUL_COMPLETE_KIND_WIRE32_CACHE_API_SOURCE_PROFILE;}
+function wire32Profile(profile) {return profile === STATEFUL_COMBINED_REPLAY_SOURCE_PROFILE || profile === STATEFUL_COMPLETE_KIND_WIRE32_API_SOURCE_PROFILE || profile === STATEFUL_COMPLETE_KIND_WIRE32_CACHE_API_SOURCE_PROFILE;}
 export const STATEFUL_COMPLETE_KIND_WIRE32_SOURCE = Object.freeze({
     commit: 'e691f4471c6e5fdbe001e6709e88d48d33d8bf4c', tree: '375c411d7f76efb460ace846755821445dfb50ea',
     packageSha256: '9f5f8991e1786757fdf52a9cf3978d07ef0c7a6782aa6eed51b2fa479f102936',
@@ -159,6 +160,16 @@ export const STATEFUL_COMPLETE_KIND_WIRE32_CACHE_CALLER_SOURCE = Object.freeze({
     sources: Object.freeze(STATEFUL_COMPLETE_KIND_WIRE32_CALLER_SOURCE.sources.map(([path, hash]) => path === 'src/indexer/helpers/bounded-json.ts'
         ? [path, 'c6cd855e0ce68e708d5f966c13308e3a15f8e099e3ba771b84a9763595b5db28'] : [path, hash])),
 });
+export const STATEFUL_COMBINED_REPLAY_CALLER_SOURCE = Object.freeze({
+    ...STATEFUL_BULK_CALLER_SOURCE, commit:'2a5cbe117577412f5eb8b7995b34d1411901cc30',
+    helperSourceCommit:'c1b98a52a872b6c070ada32243c8286607e86883',
+    files:554,sha256:'63a6f08c20a14a319babacd9c44e7f61ebfe74b0877a7ab52bb08d765edec3ba',
+    sources:Object.freeze([...STATEFUL_BULK_CALLER_SOURCE.sources.filter(([path])=>
+        !["src/indexer/helpers/bounded-json.ts","src/indexer/protocol/abi-coordinator.ts","src/indexer/protocol/abi-frontier-store.ts"].includes(path)),
+        ["src/indexer/helpers/bounded-json.ts","c6cd855e0ce68e708d5f966c13308e3a15f8e099e3ba771b84a9763595b5db28"],
+        ["src/indexer/protocol/abi-coordinator.ts","c15d63975c1a2a88525a8a82dfd29d49ea6990926f0559f22cd07e056b68643f"],
+        ["src/indexer/protocol/abi-frontier-store.ts","25dbb6882ed3354a232c76c50388693489d47fa0bb7000c198908f941f6adc59"]]),
+});
 // Production source was committed before these additive qualification profiles.
 export const STATEFUL_METADATA_FIELDS_NATIVE_SOURCE = Object.freeze({
     commit: '0b51a20c3d9a9b95c39a713c89cad6d55c5103d4', tree: '686850ba3acb00fc1f9424dd300483b83f84c654',
@@ -174,7 +185,7 @@ const completeKindProfile = profile => profile === STATEFUL_COMPLETE_KIND_API_SO
 const completeKindNativeSource = profile => profile === STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE || codecProfile(profile) ? STATEFUL_COMPLETE_KIND_METADATA_NATIVE_SOURCE
     : profile === STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE ? STATEFUL_COMPLETE_KIND_EXECUTOR_NATIVE_SOURCE
     : profile === STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE ? STATEFUL_COMPLETE_KIND_COMMANDS_NATIVE_SOURCE : STATEFUL_COMPLETE_KIND_NATIVE_SOURCE;
-const completeKindCallerSource = profile => profile === STATEFUL_COMPLETE_KIND_WIRE32_CACHE_API_SOURCE_PROFILE ? STATEFUL_COMPLETE_KIND_WIRE32_CACHE_CALLER_SOURCE : profile === STATEFUL_COMPLETE_KIND_WIRE32_API_SOURCE_PROFILE ? STATEFUL_COMPLETE_KIND_WIRE32_CALLER_SOURCE : profile === STATEFUL_BULK_SOURCE_PROFILE ? STATEFUL_BULK_CALLER_SOURCE : profile === STATEFUL_BATCH_SOURCE_PROFILE ? STATEFUL_BATCH_CALLER_SOURCE : profile === STATEFUL_GENESIS_RPC_SOURCE_PROFILE ? STATEFUL_GENESIS_RPC_CALLER_SOURCE : profile === STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE ? STATEFUL_GENESIS_PREVIEW_CALLER_SOURCE : profile === STATEFUL_HISTORY_API_SOURCE_PROFILE ? STATEFUL_HISTORY_API_CALLER_SOURCE : codecProfile(profile) ? STATEFUL_COMPLETE_KIND_CODEC_CALLER_SOURCE : profile === STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE
+const completeKindCallerSource = profile => profile === STATEFUL_COMBINED_REPLAY_SOURCE_PROFILE ? STATEFUL_COMBINED_REPLAY_CALLER_SOURCE : profile === STATEFUL_COMPLETE_KIND_WIRE32_CACHE_API_SOURCE_PROFILE ? STATEFUL_COMPLETE_KIND_WIRE32_CACHE_CALLER_SOURCE : profile === STATEFUL_COMPLETE_KIND_WIRE32_API_SOURCE_PROFILE ? STATEFUL_COMPLETE_KIND_WIRE32_CALLER_SOURCE : profile === STATEFUL_BULK_SOURCE_PROFILE ? STATEFUL_BULK_CALLER_SOURCE : profile === STATEFUL_BATCH_SOURCE_PROFILE ? STATEFUL_BATCH_CALLER_SOURCE : profile === STATEFUL_GENESIS_RPC_SOURCE_PROFILE ? STATEFUL_GENESIS_RPC_CALLER_SOURCE : profile === STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE ? STATEFUL_GENESIS_PREVIEW_CALLER_SOURCE : profile === STATEFUL_HISTORY_API_SOURCE_PROFILE ? STATEFUL_HISTORY_API_CALLER_SOURCE : codecProfile(profile) ? STATEFUL_COMPLETE_KIND_CODEC_CALLER_SOURCE : profile === STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE
     ? STATEFUL_COMPLETE_KIND_METADATA_CALLER_SOURCE : STATEFUL_COMPLETE_KIND_CALLER_SOURCE;
 const fieldsProfile = profile => profile === STATEFUL_METADATA_FIELDS_API_SOURCE_PROFILE || profile === STATEFUL_METADATA_FIELDS_LEGACY_SOURCE_PROFILE;
 const metadataProfile = profile => profile === STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE || profile === STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE || fieldsProfile(profile);
@@ -255,7 +266,7 @@ export function admitNativeApiSourceOptions(input = {}) {
         return Object.freeze({nativeMarker, wireRevision: selectedWire, profile, ...runtime, wireTree: codecWire?.tree ?? '719a03aa0ea7b72d6a7411cfaaad78b05a1a8c4a',
             sdkTree: 'c486de0538bf33b4d7a199147e97ba763d731bab', nativeTree: nativeSource.tree,
             nativeSourceCommit: nativeSource.commit, callerSourceCommit: completeKindCallerSource(profile).commit,
-            ...(profile === STATEFUL_COMPLETE_KIND_WIRE32_CACHE_API_SOURCE_PROFILE ? {callerHelperSourceCommit: STATEFUL_COMPLETE_KIND_WIRE32_CACHE_CALLER_SOURCE.helperSourceCommit} : {}),
+            ...([STATEFUL_COMPLETE_KIND_WIRE32_CACHE_API_SOURCE_PROFILE,STATEFUL_COMBINED_REPLAY_SOURCE_PROFILE].includes(profile) ? {callerHelperSourceCommit: completeKindCallerSource(profile).helperSourceCommit} : {}),
             ...(codecWire ? {descriptorSha256: descriptor.sha256, nodeSha256: node.sha256, rustSha256: rust.sha256} : {}),
             qualificationOnly: true});
     }

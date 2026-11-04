@@ -17,10 +17,12 @@ export const PLAN = Object.freeze({schemaVersion: 1, scope: 'synthetic-native-co
     acceptance: {physicalMongoDB: 'pending-until-run', managedAPI: 'pending', publicHTTP: 'pending', atomicParity: 'pending'}});
 export const WIRE32_PLAN = Object.freeze({...PLAN, profile: 'stateful-owner-v2-7412889-e691f44-complete-kind-engineering'});
 export const WIRE32_CACHE_PLAN = Object.freeze({...WIRE32_PLAN, profile: 'stateful-owner-v2-7412889-e691f44-string-cache-v1-engineering'});
+export const COMBINED_REPLAY_PLAN = Object.freeze({...WIRE32_CACHE_PLAN, profile: 'stateful-owner-v2-7412889-e691f44-replay-bulk-history-v1-engineering'});
 export function selectPlan(profile) {
     if (profile === undefined || profile === '' || profile === PLAN.profile) return PLAN;
     if (profile === WIRE32_PLAN.profile) return WIRE32_PLAN;
     if (profile === WIRE32_CACHE_PLAN.profile) return WIRE32_CACHE_PLAN;
+    if (profile === COMBINED_REPLAY_PLAN.profile) return COMBINED_REPLAY_PLAN;
     throw new Error('Unqualified complete-kind fixture source profile');
 }
 
