@@ -4,7 +4,7 @@ import test from 'node:test';
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import * as ts from 'typescript/unstable/ast';
-import {Long} from 'mongodb';
+import {BSON,Long} from 'mongodb';
 import * as logical from '@eosrio/hyperion-sdk/projection-stateful';
 import * as ownerSdk from '@eosrio/hyperion-sdk/projection-stateful-owner-v2';
 import * as indexed from '@eosrio/hyperion-sdk/projection-stateful-indexed-query-v1';
@@ -13,10 +13,84 @@ import {receiveMongoIndexedModelV1,planMongoIndexedQueryV1,mongoIndexedIndexesV1
 import {createMongoDbStatefulCompleteKindAdapterV1} from '../../../packages/backend-mongodb/dist/stateful-complete-kind-v1.js';
 import {createMongoDbStatefulIndexedAdapterV1} from '../../../packages/backend-mongodb/dist/stateful-indexed-v1.js';
 import {selectMongoDbIndexedEngineeringAssemblyV1} from '../../../packages/backend-mongodb/dist/stateful-indexed-engineering-v1.js';
-import {PLAN,ORACLE,argumentsFor,dispatchCases,assertNativeCompletion,persistNativeChildIntent,projectionDefinition,projectionLimits,schemaModel,corpus,page,count,assertCreatedPeers,assertCoveredAbsence,hex} from './native-contract.mjs';
+import {PLAN,ORACLE,argumentsFor,dispatchCases,assertNativeCompletion,persistNativeChildIntent,projectionDefinition,projectionLimits,schemaModel,corpus,page,count,assertCreatedPeers,assertCoveredAbsence,assertGenesisCoverage,hex,sha} from './native-contract.mjs';
 import {NATIVE_PROFILE,observeNativeInputs,assertNativeInputs,assertNativeRuntime} from './native-assembly.mjs';
+import {ASSEMBLY} from './assembly.mjs';
+import {sourceReferences,observeSourceClosure,assertSourceClosure} from './native-source-closure.mjs';
 import {installIndexedCommandHooks} from './native-command-hooks.mjs';
-import {verifyIndexedTrace,verifyCursorClosure,verifyExplain,bsonCopy} from './native-trace.mjs';
+import {verifyIndexedTrace,verifyCursorClosure,verifyExplain,bsonCopy,captureAndVerifyExplain,lookupIndexSpecs,verifyLookupCatalog} from './native-trace.mjs';
+
+test('integrated native profile closes every static import, literal data input and all 24 declared SDK49 sources without evaluating them',()=>{
+ const boundaries=new Set(ASSEMBLY.sources.map(row=>row.path));
+ for(const [key,prefix]of Object.entries({rootBuild:'build',nativeBuild:'packages/backend-mongodb/dist',rootSDK:'node_modules/@eosrio/hyperion-sdk/dist',nativeSDK:'packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist'}))for(const row of ASSEMBLY.trees[key])boundaries.add(prefix+'/'+row.path);
+ const closure=observeSourceClosure({root:fileURLToPath(new URL('../../../',import.meta.url)),ts,boundaries,...NATIVE_PROFILE.sourceClosure.inputs});
+ assertSourceClosure(closure,NATIVE_PROFILE);
+ assert.equal(NATIVE_PROFILE.sourceClosure.algorithm,'bounded-static-import-and-literal-url-v2');
+ for(const path of ['tests/unit/sdk49-indexed-source-admission.mjs','tests/fixtures/engineering-profiles/sdk49-indexed-linux.json','scripts/qualification/operator-list-mongodb/sdk49-source-profile.mjs'])assert(closure.files.some(row=>row.path===path));
+ assert.equal(NATIVE_PROFILE.sourceClosure.inputs.manifestRouteCount,25);assert.equal(closure.edges.filter(row=>row.kind==='declared-route').length,25);
+ for(const manifestRouteCount of [18,24])assert.throws(()=>observeSourceClosure({root:fileURLToPath(new URL('../../../',import.meta.url)),ts,boundaries,...NATIVE_PROFILE.sourceClosure.inputs,manifestRouteCount}),/Exact selected manifest route count/);
+ for(const path of ['tests/unit/sdk49-indexed-source-admission.mjs','tests/fixtures/engineering-profiles/sdk49-indexed-linux.json','tests/native/retained-workload-progress.mjs','tests/native/retained-workload-test.mjs']){
+  const altered=structuredClone(NATIVE_PROFILE);altered.sourceFiles=altered.sourceFiles.filter(row=>row.path!==path);assert.throws(()=>assertSourceClosure(closure,altered),/transitive source\/data pin/);
+ }
+ const altered=structuredClone(closure);altered.edges.pop();assert.throws(()=>assertSourceClosure(altered,NATIVE_PROFILE),/complete graph/);
+ const legacy=JSON.parse(readFileSync(new URL('./native-profile-v1.json',import.meta.url)));assert.equal(legacy.profile,NATIVE_PROFILE.supersedes.profile);assert.notEqual(legacy.profile,PLAN.profile);
+ const argv=['--profile',legacy.profile,'--run','--allow-failpoints','--database','h45_indexed_'+'a'.repeat(12),'--output','new-dir','--source','b'.repeat(40),'--assembly-sha256','c'.repeat(64)];assert.throws(()=>argumentsFor(argv,{}));
+});
+
+test('source inspection rejects mismatched or stalled scanner APIs within an independent finite input bound',()=>{
+ const source="// import './comment.mjs'\nimport {x} from './actual.mjs'; const a = new URL('./data.json',import.meta.url); import('./lazy.mjs');";
+ assert.deepEqual(sourceReferences(ts,source),[{kind:'module',specifier:'./actual.mjs'},{kind:'data',specifier:'./data.json'},{kind:'module',specifier:'./lazy.mjs'}]);
+ assert.throws(()=>sourceReferences({...ts,SyntaxKind:{...ts.SyntaxKind,EndOfFile:undefined}},source),/EOF API/);
+ assert.throws(()=>sourceReferences({...ts,createScanner:()=>({getText:()=>'',scan:()=>2})},source),/text API/);
+ let calls=0;const stalled={...ts,createScanner:()=>({getText:()=>source,scan:()=>{calls++;return 2;},getTokenEnd:()=>0,getTokenText:()=>'',getTokenValue:()=>''})};
+ assert.throws(()=>sourceReferences(stalled,source),/advance/);assert.equal(calls,2);
+ assert.throws(()=>sourceReferences({createScanner:()=>assert.fail('Oversized source reached scanner')},' '.repeat(1024*1024+1)),/finite input bound/);
+});
+
+function observedPlan(major){
+ const dir='./fixtures/9d8-explain/';
+ const raw=JSON.parse(readFileSync(new URL(dir+'node'+major+'-explain.json',import.meta.url),'utf8'))[0];
+ const samples=JSON.parse(readFileSync(new URL(dir+'node'+major+'-samples.json',import.meta.url),'utf8'));
+ const catalogBefore=samples.find(row=>row.case==='genesis-index-and-coverage').indexes;
+ return {command:BSON.EJSON.deserialize(raw.actualCommand,{relaxed:false}),explanation:BSON.EJSON.deserialize(raw.explain,{relaxed:false}),sealedView:raw.sealedView,baseHint:raw.expected.baseHint,aliases:['collection','assets'],catalogBefore};
+}
+function verifyObserved(input){return verifyExplain(input.explanation,{...input,catalog:input.catalogBefore});}
+function catalogControl(input){return catalog=>verifyLookupCatalog(catalog,lookupIndexSpecs(input.aliases));}
+function after(input){return {view:structuredClone(input.sealedView),catalog:structuredClone(input.catalogBefore)};}
+test('genesis coverage compares the complete BSON document against a null-prototype view checkpoint',()=>{
+ const view={generation:'generation',revision:3,checkpoint:Object.assign(Object.create(null),{blockNum:0,blockId:'0'.repeat(64)})},model='model',owner='owner';
+ const coverage={_id:model,representation:'h45-owner-indexed-materialization-v1',owner,model,generation:view.generation,revision:view.revision,checkpoint:{blockNum:0,blockId:'0'.repeat(64)},ready:true,reason:null};
+ assert.throws(()=>assert.deepEqual(coverage,{...coverage,checkpoint:view.checkpoint}));
+ assertGenesisCoverage(coverage,model,owner,view);const ordinary={...view,checkpoint:{...view.checkpoint}};assertGenesisCoverage(coverage,model,owner,ordinary);
+ for(const checkpoint of [{...view.checkpoint,extra:true},{blockNum:0}])assert.throws(()=>assertGenesisCoverage(coverage,model,owner,{...view,checkpoint}));
+ for(const change of [x=>x.checkpoint.blockNum=1,x=>x.checkpoint.blockId='1'.repeat(64),x=>delete x.checkpoint.blockId,x=>x.checkpoint.extra=true,x=>x.extra=true,x=>delete x.ready,x=>x.owner='foreign',x=>x.reason='gap']){const altered=structuredClone(coverage);change(altered);assert.throws(()=>assertGenesisCoverage(altered,model,owner,view));}
+});
+
+test('retained replay inputs match their official extraction provenance',()=>{
+ const dir='./fixtures/9d8-explain/', provenance=JSON.parse(readFileSync(new URL(dir+'PROVENANCE.json',import.meta.url),'utf8'));
+ assert.equal(provenance.run,41333567862);assert.equal(provenance.head,'9d8c11f57bceb6c9df297de60d86005a96022033');
+ for(const [name,digest] of Object.entries(provenance.files))assert.equal(sha(readFileSync(new URL(dir+name,import.meta.url))),digest);
+});
+test('actual retained plans bind each lookup to its own catalog-verified index',()=>{
+ for(const major of [24,26]){const input=observedPlan(major),checked=verifyObserved(input);assert.equal(checked.lookupIndexes.length,2);
+  for(const row of checked.lookupIndexes)assert(row.indexes.every(name=>name.startsWith('h45_ix_j_')));
+  const bindings=lookupIndexSpecs(input.aliases);for(const stage of input.explanation.stages.filter(x=>x.$lookup))stage.indexesUsed=[bindings.find(x=>'lookups.'+x.alias===stage.$lookup.as).indexes[1].name];
+  assert(verifyObserved(input).lookupIndexes.every(row=>row.indexes.every(name=>name.startsWith('h45_ix_l_'))));
+ }
+});
+test('a received invalid explain remains raw and checksummed while verification fails',async()=>{
+ const input=observedPlan(24),records=[];input.explanation.stages.find(x=>x.$lookup).collectionScans=Long.ONE;
+ await assert.rejects(captureAndVerifyExplain(records,input,async()=>after(input),catalogControl(input)),/collection scan/i);
+ assert.equal(records.length,1);const saved=JSON.parse(JSON.stringify(records));assert.equal(saved[0].status,'received');assert.equal(saved[0].checked,undefined);
+ assert.deepEqual(BSON.EJSON.deserialize(saved[0].actualCommand,{relaxed:false}),input.command);assert.deepEqual(BSON.EJSON.deserialize(saved[0].explain,{relaxed:false}),input.explanation);
+ assert.deepEqual(saved[0].afterView,input.sealedView);assert(saved[0].catalogBefore&&saved[0].catalogAfter);
+ for(const [key,value]of [['command',input.command],['explain',input.explanation]]){const pin=saved[0].bsonReserialization[key],bytes=Buffer.from(pin.base64,'base64');assert.equal(pin.bytes,bytes.length);assert.equal(pin.sha256,sha(bytes));assert.deepEqual(bytes,BSON.serialize(value));}
+ const runner=readFileSync(new URL('./native-runner.mjs',import.meta.url),'utf8');const failure=runner.indexOf('}catch(error){primary=error;report.failure=failure(error);}'),write=runner.indexOf("['explain.json',explains]"),checksums=runner.indexOf("['trace.json','samples.json','explain.json','report.json'].map");assert(failure>=0&&write>failure&&checksums>write);
+});
+test('valid plans retain evidence and changed or unavailable post-view remains unverified',async()=>{
+ const input=observedPlan(26),good=[];await captureAndVerifyExplain(good,input,async()=>after(input),catalogControl(input));assert.equal(good[0].status,'verified');
+ for(const read of [async()=>({...after(input),view:{revision:'changed'}}),async()=>{throw new Error('view unavailable');}]){const rows=[];await assert.rejects(captureAndVerifyExplain(rows,input,read,catalogControl(input)));assert.equal(rows[0].status,'received');}
+});
 
 function actualMakePrefixes(){
  const source=readFileSync(new URL('./native-runner.mjs',import.meta.url),'utf8');assert(source.length<=512*1024);
@@ -166,10 +240,22 @@ test('successful callback retry exposes its failed original command, fresh trans
  assert.throws(()=>verifyIndexedTrace(rows,'read',{attempts:1,maximum:2,success:true}));
  const hidden=structuredClone(rows);hidden[5].labels=[];assert.throws(()=>verifyIndexedTrace(hidden,'read',{maximum:2,success:true}));
 });
-test('explain checks semantic index use and refuses scans, sort, spill or missing lookup access paths',()=>{
- const expected={baseHint:'base',lookupIndexes:['join-a','join-b']},explain={stages:[{$cursor:{queryPlanner:{winningPlan:{stage:'FETCH',inputStage:{stage:'IXSCAN',indexName:'base'}}}}},{$lookup:{indexesUsed:['join-a']}},{$lookup:{indexesUsed:['join-b']}}],command:{pipeline:[{$sort:{created:-1}}]}};
- assert.equal(verifyExplain(explain,expected).baseIndex,'base');
- for(const change of [x=>x.stages[0].$cursor.queryPlanner.winningPlan.stage='COLLSCAN',x=>x.stages[0].$cursor.queryPlanner.winningPlan.stage='SORT',x=>x.stages[1].$lookup.indexesUsed=[],x=>x.stages[2].$lookup.usedDisk=true]){const value=structuredClone(explain);change(value);assert.throws(()=>verifyExplain(value,expected));}
+test('lookup proof refuses wrong aliases, incomplete stats, bad plans and altered catalog specifications',()=>{
+ const mutations=[
+ x=>x.explanation.stages.find(y=>y.$lookup).indexesUsed=[lookupIndexSpecs(x.aliases)[1].indexes[0].name],
+ x=>x.explanation.stages.find(y=>y.$lookup).indexesUsed=[],x=>delete x.explanation.stages.find(y=>y.$lookup).totalDocsExamined,
+ x=>x.explanation.stages.find(y=>y.$lookup).collectionScans=Long.ONE,x=>x.explanation.stages.splice(x.explanation.stages.findIndex(y=>y.$lookup),1),
+ x=>x.explanation.stages[0].$cursor.queryPlanner.winningPlan.stage='COLLSCAN',x=>x.explanation.stages[0].$cursor.queryPlanner.winningPlan.stage='SORT',
+ x=>x.explanation.stages.find(y=>y.$lookup).usedDisk=true,x=>x.explanation.stages.find(y=>y.$lookup).spills=Long.ONE,
+ x=>x.command.allowDiskUse=true,x=>x.explanation.stages.find(y=>y.$lookup).$lookup.as='lookups.assets',
+ x=>{const c=x.catalogBefore.find(y=>y.name===lookupIndexSpecs(x.aliases)[0].indexes[0].name);c.key={'joins.collection':1,alias:1};},
+ x=>{const c=x.catalogBefore.find(y=>y.name===lookupIndexSpecs(x.aliases)[0].indexes[0].name);c.partialFilterExpression={alias:'assets'};},
+ x=>{const c=x.catalogBefore.find(y=>y.name===lookupIndexSpecs(x.aliases)[0].indexes[0].name);c.unique=false;},
+ x=>{const c=x.catalogBefore.find(y=>y.name===lookupIndexSpecs(x.aliases)[0].indexes[0].name);c.hidden=true;},
+ x=>{const c=x.catalogBefore.find(y=>y.name===lookupIndexSpecs(x.aliases)[0].indexes[0].name);c.sparse=true;},
+ x=>{const c=x.catalogBefore.find(y=>y.name===lookupIndexSpecs(x.aliases)[0].indexes[0].name);c.collation={locale:'en'};},
+ x=>x.catalogBefore.splice(x.catalogBefore.findIndex(y=>y.name===lookupIndexSpecs(x.aliases)[0].indexes[0].name),1)
+ ];for(const [i,mutate] of mutations.entries()){const input=observedPlan(24);mutate(input);assert.throws(()=>verifyObserved(input),`mutation ${i}`);}
  const native=bsonCopy({offset:Long.fromString('9007199254740993')});assert.equal(native.offset.toString(),'9007199254740993');assert(Long.isLong(native.offset));
 });
 test('command gates act only on the original owned client/session/model and restore without process or timer handles',async()=>{
@@ -195,6 +281,7 @@ test('canonical genesis absence oracle uses the actual covered-absent protocol a
  for(const result of [{results:[]},{results:[{status:'missing'},{status:'missing'}]},{results:[{status:'covered-absent'},{status:'present',value:{}}]}])assert.throws(()=>assertCoveredAbsence(result,2));
 });
 test('explain spill counters preserve BSON Long semantics across the EJSON artifact boundary',()=>{
- const plan={queryPlanner:{winningPlan:{stage:'IXSCAN',indexName:'base'}},spills:Long.ZERO};assert.equal(verifyExplain(plan,{baseHint:'base',lookupIndexes:[]}).baseIndex,'base');
- assert.throws(()=>verifyExplain({...plan,spills:Long.ONE},{baseHint:'base',lookupIndexes:[]}));assert.throws(()=>verifyExplain({...plan,spills:'0'},{baseHint:'base',lookupIndexes:[]}));
+ const input=observedPlan(24);input.explanation.spills=Long.ZERO;verifyObserved(input);
+ for(const bad of [Long.ONE,'0']){input.explanation.spills=bad;assert.throws(()=>verifyObserved(input));}
 });
+

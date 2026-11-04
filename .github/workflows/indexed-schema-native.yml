@@ -38,7 +38,7 @@ jobs:
       - run: node --test scripts/qualification/indexed-schema-mongodb/assembly.test.mjs scripts/qualification/indexed-schema-mongodb/assembly-cli.test.mjs scripts/qualification/indexed-schema-mongodb/native-offline.test.mjs
       - run: npm run test:indexed:finite
       - run: npm run test:indexed:package
-      - run: node scripts/qualification/indexed-schema-mongodb/native-ci.mjs --profile indexed-schema-mongodb-sdk49-2da-linux-gha-v1 indexed-native-${{ matrix.node }}
+      - run: node scripts/qualification/indexed-schema-mongodb/native-ci.mjs --profile indexed-schema-mongodb-sdk49-2da-linux-gha-v2 indexed-native-${{ matrix.node }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:

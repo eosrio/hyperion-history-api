@@ -9,7 +9,7 @@ import {MongoClient} from 'mongodb';
 import {OwnedMongoFixture, MONGODB_IMAGE, MONGODB_VERSION, waitForMongo} from '../projection-fixture.mjs';
 import {terminalChild} from '../stateful-complete-kind-mongodb/ci.mjs';
 import {PLAN, failure, sha, assertNativeCompletion, assertOriginalTerminal, afterReadiness} from './contract.mjs';
-import {admitOperatorListAssembly, OPERATOR_LIST_ASSEMBLY} from './linux-cleanup-source-profile.mjs';
+import {admitOperatorListAssembly, OPERATOR_LIST_ASSEMBLY} from './sdk49-source-profile.mjs';
 const json = (path, value) => writeFileSync(path, JSON.stringify(value, null, 2) + '\n', {flag: 'wx'});
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 

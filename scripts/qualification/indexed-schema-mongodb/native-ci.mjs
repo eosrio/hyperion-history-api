@@ -10,7 +10,7 @@ import {OwnedMongoFixture,MONGODB_IMAGE,MONGODB_VERSION,waitForMongo} from '../p
 import {terminalChild} from '../stateful-complete-kind-mongodb/ci.mjs';
 import {afterReadiness} from '../operator-list-mongodb/contract.mjs';
 import {PLAN,failure,sha,assertNativeCompletion,persistNativeChildIntent} from './native-contract.mjs';
-import {admitNativeAssembly,NATIVE_PROFILE} from './native-assembly.mjs';
+import {admitNativeAssembly,NATIVE_PROFILE,NATIVE_PROFILE_PATH} from './native-assembly.mjs';
 import {verifyIndexedTrace,verifyCursorClosure,verifyExplain} from './native-trace.mjs';
 const root=fileURLToPath(new URL('../../../',import.meta.url)),json=(path,value)=>writeFileSync(path,JSON.stringify(value,null,2)+'\n',{flag:'wx'});
 export async function runCI(profile,output){
@@ -26,7 +26,7 @@ export async function runCI(profile,output){
   report.checkout={commit:git(['rev-parse','HEAD']),tree:git(['rev-parse','HEAD^{tree}']),workflowSha:process.env.GITHUB_WORKFLOW_SHA,
    runId:process.env.GITHUB_RUN_ID,runAttempt:process.env.GITHUB_RUN_ATTEMPT,job:process.env.GITHUB_JOB};assert.equal(report.checkout.commit,source);
   assert.equal(git(['status','--porcelain=v1','--untracked-files=all','--','src','packages/backend-mongodb','package.json','package-lock.json','tsconfig.json','.bun-version',
-   '.github/workflows/indexed-schema-native.yml',...NATIVE_PROFILE.sourceFiles.map(row=>row.path),'scripts/qualification/indexed-schema-mongodb/native-profile-v1.json']),'','Unreviewed native/fixture source');
+   '.github/workflows/indexed-schema-native.yml',...NATIVE_PROFILE.sourceFiles.map(row=>row.path),NATIVE_PROFILE_PATH]),'','Unreviewed native/fixture source');
   assert.equal(MONGODB_IMAGE,NATIVE_PROFILE.fixture.image);assert.equal(MONGODB_VERSION,PLAN.server);
   // Source/runtime admission and original GHA source binding finish before creating any Docker effect.
   check();fixture=new OwnedMongoFixture();report.run=fixture.run;report.cleanup=fixture.cleanupResult;
@@ -61,7 +61,8 @@ export async function runCI(profile,output){
    for(const row of trace.slice(start,end).filter(row=>row.event==='started'&&row.model&&['aggregate','getMore'].includes(row.command))){assert.equal(row.model,query.model);assert.deepEqual(row.expected,query.view);}}
   const explanations=JSON.parse(readFileSync(join(output,'native/explain.json'),'utf8'));assert.equal(explanations.length,3);
   for(const row of explanations){const actual=BSON.EJSON.deserialize(row.actualCommand,{relaxed:false}),explain=BSON.EJSON.deserialize(row.explain,{relaxed:false});assert.equal(sha(BSON.serialize({pipeline:actual.pipeline})),row.pipelineSha256);
-   verifyExplain(explain,{baseHint:actual.hint,lookupIndexes:['collection','assets'].map(alias=>'h45_ix_l_'+sha(alias).slice(0,20))});}
+   assert.equal(row.status,'verified');assert.deepEqual(row.afterView,row.sealedView);assert.deepEqual(row.expected,{baseHint:actual.hint,aliases:['collection','assets']});
+   for(const raw of [row.catalogBefore,row.catalogAfter])verifyExplain(explain,{baseHint:actual.hint,command:actual,aliases:['collection','assets'],catalog:BSON.EJSON.deserialize(raw,{relaxed:false})});}
   report.native={status:native.status,cases:native.cases.length,independentlyVerifiedQueries:native.successfulQueryAttestations.length,independentlyVerifiedExplains:explanations.length,checksums};
  }catch(error){original??=error;report.failure=failure(original);if(error!==original)report.secondaryFailure=failure(error);}
  finally{

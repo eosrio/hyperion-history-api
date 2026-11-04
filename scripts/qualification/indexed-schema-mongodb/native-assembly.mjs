@@ -6,7 +6,8 @@ import {fileURLToPath} from 'node:url';
 import {findPackageJSON} from 'node:module';
 import {admitIndexedAssembly,ASSEMBLY,inventory} from './assembly.mjs';
 import {PLAN,freeze,sha} from './native-contract.mjs';
-export const NATIVE_PROFILE=freeze(JSON.parse(readFileSync(new URL('./native-profile-v1.json',import.meta.url),'utf8')));
+export const NATIVE_PROFILE_PATH='scripts/qualification/indexed-schema-mongodb/native-profile-v2.json';
+export const NATIVE_PROFILE=freeze(JSON.parse(readFileSync(new URL('./native-profile-v2.json',import.meta.url),'utf8')));
 const root=fileURLToPath(new URL('../../../',import.meta.url));
 const installed=(base,name)=>{const local=join(base,'node_modules',name),manifest=findPackageJSON(name,join(base,'package.json'));
  assert.equal(manifest,join(local,'package.json'),'Scoped native dependency fallback');assert(!lstatSync(local).isSymbolicLink());return local;};
@@ -20,6 +21,9 @@ export function observeNativeInputs(){
 }
 export function assertNativeInputs(observed){
  assert.equal(NATIVE_PROFILE.schemaVersion,1);assert.equal(NATIVE_PROFILE.qualificationOnly,true);assert.equal(NATIVE_PROFILE.profile,PLAN.profile);
+ assert.equal(NATIVE_PROFILE.supersedes.profile,'indexed-schema-mongodb-sdk49-2da-linux-gha-v1');
+ assert.equal(NATIVE_PROFILE.supersedes.path,'scripts/qualification/indexed-schema-mongodb/native-profile-v1.json');
+ assert.equal(sha(readFileSync(join(root,NATIVE_PROFILE.supersedes.path))),NATIVE_PROFILE.supersedes.sha256,'Historical descriptor must retain its exact original bytes');
  assert.equal(NATIVE_PROFILE.base,PLAN.base);assert.equal(NATIVE_PROFILE.assembly,PLAN.assembly);assert.deepEqual(NATIVE_PROFILE.limits,PLAN.limits);
  assert.deepEqual(NATIVE_PROFILE.fixture,PLAN.fixture);assert.deepEqual(NATIVE_PROFILE.runtimes.map(row=>row.node),PLAN.runtimeVersions);
  assert.deepEqual(Object.keys(observed).sort(),['profile','baseAssemblySha256','sourceFiles','dependencies'].sort());

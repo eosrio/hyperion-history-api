@@ -4,10 +4,10 @@ import {randomBytes} from 'node:crypto';
 import {existsSync,mkdirSync,readFileSync,writeFileSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {PLAN,ORACLE,argumentsFor,dispatchCases,projectionDefinition,projectionLimits,schemaModel,corpus,page,count,assertCreatedPeers,assertCoveredAbsence,plain,hex,sha,failure} from './native-contract.mjs';
+import {PLAN,ORACLE,argumentsFor,dispatchCases,projectionDefinition,projectionLimits,schemaModel,corpus,page,count,assertCreatedPeers,assertCoveredAbsence,assertGenesisCoverage,plain,hex,sha,failure} from './native-contract.mjs';
 import {admitNativeAssembly} from './native-assembly.mjs';
 import {installIndexedCommandHooks} from './native-command-hooks.mjs';
-import {monitorIndexed,verifyIndexedTrace,verifyCursorClosure,verifyExplain,bsonCopy,bsonEvidence} from './native-trace.mjs';
+import {monitorIndexed,verifyIndexedTrace,verifyCursorClosure,captureAndVerifyExplain,lookupIndexSpecs,bsonCopy,bsonEvidence} from './native-trace.mjs';
 const json=(path,value)=>{const raw=Buffer.from(JSON.stringify(value,null,2)+'\n');assert(raw.length<=PLAN.evidenceBytes);writeFileSync(path,raw,{flag:'wx'});};
 export async function run(options){
  assert.equal(process.platform,'linux');assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(options.source,process.env.GITHUB_SHA);
@@ -144,9 +144,15 @@ export async function run(options){
     for(const request of [page(),page({order:schemaModel().orders[1]}),count()]){
      const before=await state.adapter.recovery(),start=captured.length;await direct(request);const actual=captured.slice(start).find(row=>row.input.aggregate).input;
      const command={aggregate:actual.aggregate,pipeline:actual.pipeline,hint:actual.hint,collation:actual.collation,allowDiskUse:actual.allowDiskUse,cursor:{batchSize:1},maxTimeMS:PLAN.operationMS};
+     const entry=state.entries[0],aliases=entry.native.declaration.model.joins.map(row=>row.alias);
+     const expectedLookupSpecs=lookupIndexSpecs(aliases).flatMap(row=>row.indexes),modelSpecs=modelNative.mongoIndexedIndexesV1(entry.native);
+     for(const expected of expectedLookupSpecs)assert.deepEqual(modelSpecs.find(row=>row.name===expected.name),expected);
+     const catalogBefore=await rowCollection(entry).listIndexes({timeoutMS:PLAN.operationMS}).toArray();
+     assert.deepEqual((await state.adapter.recovery()).view,before.view);modelNative.assertMongoIndexedIndexesV1(entry.native,catalogBefore);
      const explanation=await admin.db(options.database).command({explain:command,verbosity:'executionStats'},{promoteLongs:false,signal:AbortSignal.timeout(PLAN.operationMS)});
-     assert.deepEqual((await state.adapter.recovery()).view,before.view);const checked=verifyExplain(explanation,{baseHint:actual.hint,lookupIndexes:modelNative.mongoIndexedIndexesV1(state.entries[0].native).filter(row=>row.name.startsWith('h45_ix_l_')).map(row=>row.name)});
-     explains.push({pipelineSha256:sha(BSON.serialize({pipeline:actual.pipeline})),actualCommand:bsonEvidence(command),explain:bsonEvidence(explanation),checked,sealedView:before.view});
+     await captureAndVerifyExplain(explains,{command,explanation,sealedView:before.view,baseHint:actual.hint,aliases,catalogBefore},async()=>{
+      const catalog=await rowCollection(entry).listIndexes({timeoutMS:PLAN.operationMS}).toArray();return {catalog,view:(await state.adapter.recovery()).view};
+     },catalog=>modelNative.assertMongoIndexedIndexesV1(entry.native,catalog));
     }return {actualBsonPipelines:explains.length,explainOutsideServingTransaction:true};
    },
    'update-delete-and-canonical-fork':async()=>{
@@ -164,8 +170,7 @@ export async function run(options){
     finally{closeRead(genesis.adapter,zeroRead);}
     const cleared=[];for(const entry of genesis.entries){let checked=0;for(const row of corpus())for(const alias of [entry.declaration.model.base,...entry.declaration.model.joins].filter(alias=>alias.kind===row.kind)){
      const present=await rowCollection(entry).findOne({_id:modelNative.indexedRowIdV1(entry.declaration.digest,alias.alias,row.key)},{projection:{_id:1}});assert.equal(present,null);checked++;}
-     const coverage=await coverageCollection(entry).findOne({_id:entry.declaration.digest});assert.deepEqual(coverage,{_id:entry.declaration.digest,representation:'h45-owner-indexed-materialization-v1',owner:genesis.owner.digest,
-      model:entry.declaration.digest,generation:zero.view.generation,revision:zero.view.revision,checkpoint:zero.view.checkpoint,ready:true,reason:null});cleared.push({model:entry.declaration.digest,absentTypedRows:checked,coverage});}
+     const coverage=await coverageCollection(entry).findOne({_id:entry.declaration.digest});assertGenesisCoverage(coverage,entry.declaration.digest,genesis.owner.digest,zero.view);cleared.push({model:entry.declaration.digest,absentTypedRows:checked,coverage});}
     samples.push({case:phase.name,coveredGenesis:{view:zero.view,absentCanonicalKeys:corpus().length,emptyPageAndCount:true,typedModels:cleared}});
     const retention=await make(state.client,'retention','retention-generation');retention.lease=await retention.adapter.acquireOwner({expected:null,nextOwner:retention.identity},noCancel);
     const oldAncestor=(await retention.adapter.recovery()).view.checkpoint,targets=[];for(let i=0;i<5;i++)targets.push(await apply([],retention));
