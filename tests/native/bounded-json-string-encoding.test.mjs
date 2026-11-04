@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {boundedCanonicalJson} from '../../build/indexer/helpers/bounded-json.js';
 
 const schema=Buffer.from(JSON.parse(readFileSync(new URL('../unit/fixtures/wire-native-genesis/ship-preflight-20261020.json',import.meta.url))).schema.base64,'base64').toString('utf8');
@@ -40,12 +41,43 @@ test('encoding reuse grants no object validation, source view or numeric-policy 
 
 test('the actual emitted encoding cache remains within its finite byte and entry bounds',()=>{
     const source=readFileSync(new URL('../../build/indexer/helpers/bounded-json.js',import.meta.url),'utf8');
-    const observed=new Function(source.replace('export function boundedCanonicalJson','function boundedCanonicalJson')+
-        '\nreturn {encode:boundedCanonicalJson,snapshot:()=>({entries:encodedStrings.size,bytes:retainedEncodingBytes,rows:[...encodedStrings.values()].map(row=>({bytes:row.bytes,retained:row.retained})),maximumEntries:encodingCacheEntries,maximumBytes:encodingCacheBytes,maximumEntryBytes:encodingEntryBytes})};')();
+    const observed=new Function('createHash',source.replace(/^import .*?;\r?\n/gm,'').replace('export function boundedCanonicalJson','function boundedCanonicalJson')+
+        '\nreturn {encode:boundedCanonicalJson,snapshot:()=>({entries:encodedStrings.size,bytes:retainedEncodingBytes,rows:[...encodedStrings.values()].map(row=>({bytes:row.bytes,retained:row.retained})),maximumEntries:encodingCacheEntries,maximumBytes:encodingCacheBytes,maximumEntryBytes:encodingEntryBytes})};')(createHash);
     for(let index=0;index<40;index++){
         const value=String(index)+'"雪'.repeat(8000);assert.equal(observed.encode(value),encoded(value));
         const current=observed.snapshot();assert(current.entries<=current.maximumEntries);assert(current.bytes<=current.maximumBytes);
         assert.equal(current.bytes,current.rows.reduce((sum,row)=>sum+row.retained,0));assert(current.rows.every(row=>row.bytes<=current.maximumEntryBytes));
     }
     const before=observed.snapshot();observed.encode('"'.repeat(100000));assert.deepEqual(observed.snapshot(),before,'Oversized encodings must never enter the cache');
+});
+
+
+test('known ineligible lengths and caller byte bounds never hash or probe the cache',()=>{
+    const source=readFileSync(new URL('../../build/indexer/helpers/bounded-json.js',import.meta.url),'utf8');
+    let probes=0,hashes=0;
+    class ObservedMap extends Map {get(key){probes++;return super.get(key);}}
+    const observeHash=(...args)=>{hashes++;return createHash(...args);};
+    const encode=new Function('Map','createHash',source.replace(/^import .*?;\r?\n/gm,'').replace('export function boundedCanonicalJson','function boundedCanonicalJson')+'\nreturn boundedCanonicalJson;')(ObservedMap,observeHash);
+    for(const value of ['"'.repeat(65535),'雪'.repeat(32768),'"'.repeat(1024*1024),long]) {
+        assert.throws(()=>encode(value,{maximumBytes:64}),/bounded JSON byte budget/);
+        assert.equal(probes,0);assert.equal(hashes,0);
+    }
+    assert.equal(encode('雪'.repeat(32768)),JSON.stringify('雪'.repeat(32768)));
+    assert.equal(probes,0);assert.equal(hashes,0,'UTF-8-ineligible values must not hash even when the caller permits them');
+});
+
+test('one-off and churning strings retain digest-only entries before repeat admission',()=>{
+    const source=readFileSync(new URL('../../build/indexer/helpers/bounded-json.js',import.meta.url),'utf8');
+    const observed=new Function('createHash',source.replace(/^import .*?;\r?\n/gm,'').replace('export function boundedCanonicalJson','function boundedCanonicalJson')+'\nreturn {encode:boundedCanonicalJson,rows:()=>[...encodedStrings.entries()]};')(createHash);
+    for(let index=0;index<32;index++)assert.equal(observed.encode(schema+' unique '+index),JSON.stringify(schema+' unique '+index));
+    assert(observed.rows().every(([key,row])=>key.length===64&&row.state==='pending'&&row.input===undefined&&row.encoded===undefined&&row.retained===128));
+    observed.encode(long);observed.encode(long);
+    assert(observed.rows().some(([,row])=>row.state==='encoded'&&row.input===long&&row.encoded===JSON.stringify(long)));
+});
+
+test('digest collisions cannot reuse bytes for a different primitive value',()=>{
+    const source=readFileSync(new URL('../../build/indexer/helpers/bounded-json.js',import.meta.url),'utf8');
+    const collisionHash=()=>({update(){return this;},digest(){return 'a'.repeat(64);}});
+    const encode=new Function('createHash',source.replace(/^import .*?;\r?\n/gm,'').replace('export function boundedCanonicalJson','function boundedCanonicalJson')+'\nreturn boundedCanonicalJson;')(collisionHash);
+    for(const value of [long,long,schema,schema,long,schema])assert.equal(encode(value),JSON.stringify(value));
 });

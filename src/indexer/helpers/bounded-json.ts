@@ -1,3 +1,5 @@
+import {createHash} from 'node:crypto';
+
 export interface BoundedJsonOptions {
     maximumBytes?: number;
     /** Protocol identities forbid floating or unsafe integers; opaque action data may contain either. */
@@ -7,23 +9,30 @@ export interface BoundedJsonOptions {
 
 // Pure string encoding only: no object, source, declaration or read authority is
 // retained. Count both UTF-16 strings conservatively, even on Latin-1 V8 storage.
-const encodedStrings = new Map<string, {encoded: string; bytes: number; retained: number}>();
+type EncodingEntry = {state: 'pending'; bytes: number; retained: number} |
+    {state: 'encoded'; input: string; encoded: string; bytes: number; retained: number};
+const encodedStrings = new Map<string, EncodingEntry>();
 const encodingCacheBytes = 512 * 1024, encodingCacheEntries = 8, encodingEntryBytes = 64 * 1024;
 let retainedEncodingBytes = 0;
-function retainEncoding(value: string, encoded: string, bytes: number): void {
-    if (value.length < 512 || bytes > encodingEntryBytes) return;
-    const retained = 2 * (value.length + encoded.length);
+function retainEncoding(value: string, encoded: string, bytes: number, key: string | undefined): void {
+    if (key === undefined || bytes > encodingEntryBytes) return;
+    const previous = encodedStrings.get(key), promote = previous?.state === 'pending';
+    if (previous) {retainedEncodingBytes -= previous.retained; encodedStrings.delete(key);}
+    // One-off/churning inputs retain only a fixed-size digest. Copy full strings
+    // only after another complete encoding observes the same digest.
+    const retained = promote ? 2 * (value.length + encoded.length + key.length) : 2 * key.length;
     while (encodedStrings.size >= encodingCacheEntries || retainedEncodingBytes + retained > encodingCacheBytes) {
         const oldest = encodedStrings.keys().next().value;
         if (oldest === undefined) return;
         retainedEncodingBytes -= encodedStrings.get(oldest)!.retained;
         encodedStrings.delete(oldest);
     }
-    // Decode owned bounded bytes so sliced/rope input strings cannot keep a much
-    // larger parent allocation alive through either retained string.
-    const key = Buffer.from(value, 'utf8').toString('utf8');
-    const copy = Buffer.from(encoded, 'utf8').toString('utf8');
-    encodedStrings.set(key, {encoded: copy, bytes, retained}); retainedEncodingBytes += retained;
+    if (promote) {
+        const input = Buffer.from(value, 'utf8').toString('utf8');
+        const copy = Buffer.from(encoded, 'utf8').toString('utf8');
+        encodedStrings.set(key, {state: 'encoded', input, encoded: copy, bytes, retained});
+    } else encodedStrings.set(key, {state: 'pending', bytes, retained});
+    retainedEncodingBytes += retained;
 }
 
 /** Canonical portable JSON with bounded bytes, nodes and depth; never invokes accessors or toJSON. */
@@ -35,8 +44,17 @@ export function boundedCanonicalJson(input: unknown, options: BoundedJsonOptions
         if ((bytes += size) > maximumBytes) throw new Error(errorPrefix + ' exceeds bounded JSON byte budget');
     };
     const string = (value: string) => {
-        const retained = value.length >= 512 ? encodedStrings.get(value) : undefined;
-        if (retained) {take(retained.bytes); return retained.encoded;}
+        let key: string | undefined;
+        // Reject known ineligible sizes before hashing or probing any cache key.
+        // The ordinary path below retains malformed UTF-16/error precedence.
+        if (value.length >= 512 && value.length <= encodingEntryBytes - 2 && bytes + value.length + 2 <= maximumBytes) {
+            const rawBytes = Buffer.byteLength(value);
+            if (rawBytes + 2 <= encodingEntryBytes && bytes + rawBytes + 2 <= maximumBytes)
+                key = createHash('sha256').update(value, 'utf8').digest('hex');
+        }
+        const retained = key === undefined ? undefined : encodedStrings.get(key);
+        // A digest is a lookup hint, never sufficient identity for reused bytes.
+        if (retained?.state === 'encoded' && retained.input === value) {take(retained.bytes); return retained.encoded;}
         if (!value.isWellFormed()) throw new Error(errorPrefix + ' contains malformed UTF-16');
         const before = bytes;
         take(2);
@@ -57,7 +75,7 @@ export function boundedCanonicalJson(input: unknown, options: BoundedJsonOptions
             else if (code >= 0xd800 && code <= 0xdbff) {take(4); index++;}
             else take(3);
         }
-        const encoded = JSON.stringify(value); retainEncoding(value, encoded, bytes - before); return encoded;
+        const encoded = JSON.stringify(value); retainEncoding(value, encoded, bytes - before, key); return encoded;
     };
     const visit = (value: unknown, depth: number): string => {
         if (++nodes > 1_000_000 || depth > 64) throw new Error(errorPrefix + ' exceeds bounded JSON node/depth budget');

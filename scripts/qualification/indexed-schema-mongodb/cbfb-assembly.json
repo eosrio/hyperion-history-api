@@ -8,12 +8,13 @@
     "originalPhysicalAcceptance": "bounded synthetic only",
     "integratedPhysicalAcceptance": "pending",
     "retainedStringEncoding": {
-      "base": "cb53a8375feb47a5c127e81411dad6ebb652638a",
+      "base": "ca781f1032c52ba519a74658f205737fb6e896b9",
       "source": "src/indexer/helpers/bounded-json.ts",
-      "priorSha256": "9c62cc0fbb69fe34dc739d4904690dd506c10335590aba2a3d1e6a5dc068b5b7",
-      "currentSha256": "a214b1164bf359afc74502498a9e635ba935558e31dcd9a886818829ce46ccb1",
+      "priorSha256": "a214b1164bf359afc74502498a9e635ba935558e31dcd9a886818829ce46ccb1",
+      "currentSha256": "2545a80f2b214bf9ce8e72956b68ba961e9d0d03703b0f1947ab89f816ea3c62",
       "LinuxRetainedResult": "pending",
-      "scope": "pure primitive encoding experiment; no source or object authority cache"
+      "scope": "pure primitive encoding experiment; no source or object authority cache",
+      "coldInputCorrection": "fixed-size digest key, exact input equality, bounded two-observation admission and pre-budget eligibility bypass"
     }
   },
   "observation": {
@@ -966,8 +967,8 @@
       },
       {
         "path": "src/indexer/helpers/bounded-json.ts",
-        "bytes": 6071,
-        "sha256": "a214b1164bf359afc74502498a9e635ba935558e31dcd9a886818829ce46ccb1"
+        "bytes": 7304,
+        "sha256": "2545a80f2b214bf9ce8e72956b68ba961e9d0d03703b0f1947ab89f816ea3c62"
       },
       {
         "path": "src/indexer/helpers/common_functions.ts",
@@ -3109,13 +3110,13 @@
         },
         {
           "path": "indexer/helpers/bounded-json.js",
-          "bytes": 6065,
-          "sha256": "cfa959e0fe6880767b2bd6ce08bf633ad974179bc95af99fc788ac1dedb2776a"
+          "bytes": 6999,
+          "sha256": "84a9bdeb001975d24165bf822664493b7567952828bd483b41ab03575688587f"
         },
         {
           "path": "indexer/helpers/bounded-json.js.map",
-          "bytes": 5953,
-          "sha256": "7a5a07bd02b894f65f800c04f0314b7fdf996d449b1cec5e8eafee338c79bd62"
+          "bytes": 6911,
+          "sha256": "e593d1056c09056ba391f307be7730be6a1c61cbcdee3cec7c9874917d8e6b9c"
         },
         {
           "path": "indexer/helpers/common_functions.js",

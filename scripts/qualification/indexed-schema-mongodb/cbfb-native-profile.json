@@ -4,7 +4,7 @@
   "qualificationOnly": true,
   "base": "97edbdc56de9a2e54ff60769544e6e09a8d0a5aa",
   "assembly": "indexed-royalty-sdk-cbfb-native-cf514-engineering-v1",
-  "baseAssemblySha256": "e491ab6b06a9be6b9f80453c68cc88b236cf9f517c6fb0fd80ba0a95940d8ec3",
+  "baseAssemblySha256": "a54645df86943034b87034456926c378e7d39abbff75ed83fad65bd848f99281",
   "limits": {
     "readAttempts": 12,
     "responseRecords": 8,
@@ -308,8 +308,8 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/cbfb-assembly.json",
-      "bytes": 192868,
-      "sha256": "35c7332e905531f726944dea50ff54da4a1d51291490216fb6df8419b3f674b5"
+      "bytes": 193013,
+      "sha256": "28bbe56132b45322fa9c46e20e08b5d2226cc46cc3580eb1de6ebbb1292cf92c"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/cbfb-assembly.mjs",
@@ -458,8 +458,8 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/retained-string-encoding.md",
-      "bytes": 2721,
-      "sha256": "24078deb6af54a33d87f6efc8750685fb446b24da45ebb14bd81c87e9e1f56a0"
+      "bytes": 4386,
+      "sha256": "1bde410f6b9fb2372beba7db066757071559480d1365dd2e01a5d62c35da029a"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/retained-wire-diagnostics.md",
@@ -643,8 +643,8 @@
     },
     {
       "path": "tests/fixtures/engineering-profiles/current-cbfb-linux.json",
-      "bytes": 11872,
-      "sha256": "a35cabac24f083f871cb1a50a1f982a3c4dc7efe48e621cb3adea0e8a97630e1"
+      "bytes": 12017,
+      "sha256": "e371fe1035fa0a86e08c6cfcdb77155dd48e57f923c11b57486e5cdef1bea18e"
     },
     {
       "path": "tests/fixtures/engineering-profiles/current-native45-linux.json",
@@ -683,8 +683,8 @@
     },
     {
       "path": "tests/native/bounded-json-string-encoding.test.mjs",
-      "bytes": 4043,
-      "sha256": "8b36929cd5040620610355dafff6d8afc15c4876b681f601fe981fa622f03ce4"
+      "bytes": 6744,
+      "sha256": "f60095d6eee523af8aa95577b778ba5385fb3b2cd1b62b4c196a9f858178b873"
     },
     {
       "path": "tests/native/current-cbfb-codec-profile.test.mjs",
@@ -734,7 +734,7 @@
     {
       "path": "tests/unit/current-cbfb-source-admission.mjs",
       "bytes": 7971,
-      "sha256": "b38cce4ab401a3fb474f2cb710c87e4b772f858c58e40257ab4e61c80b1e289a"
+      "sha256": "1c99240d57e17a488d77d2bd9822e725c6cf7191174ef1bb8d4fdaacca9de9a3"
     },
     {
       "path": "tests/unit/current-stateful-engineering-source-admission.mjs",
@@ -5393,8 +5393,8 @@
     },
     "observation": {
       "files": 116,
-      "edges": 380,
-      "sha256": "618356539baddbae395be0bffd642967d7336a3d1e2543e663876829d652ca43"
+      "edges": 383,
+      "sha256": "1d3c640e4aba970d345babf232ac0f612f4daa645a26c1ca2054296df13c5281"
     }
   },
   "provenance": {
