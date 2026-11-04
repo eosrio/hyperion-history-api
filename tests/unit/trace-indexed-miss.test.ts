@@ -48,7 +48,7 @@ describe('indexed block trace availability', () => {
     });
     it('treats missing or malformed selectors as 400 without searching', async () => {
         let searches = 0; const f = await fixture(async () => {searches++; return complete([]);});
-        for (const payload of [{}, {block_num: 0}, {block_num: 'bad'}]) expect((await call(f.app, payload)).statusCode).toBe(400);
+        for (const payload of [{}, {block_num: 0}, {block_num: 'bad'}, {block_id: 'not-a-block-id'}, {block_num: 42, block_id: 'broken'}]) expect((await call(f.app, payload)).statusCode).toBe(400);
         expect(searches).toBe(0); expect(f.writes).toHaveLength(0);
     });
     it('returns a real indexed header and leaves search failures as errors', async () => {
