@@ -83,7 +83,7 @@ try {
     const legacyAbi = ABI.from(JSON.parse(legacySchemaBytes));
     const legacyOriginal = Serializer.objectify(Serializer.decode({data: legacyFrame, type: 'result', abi: legacyAbi}))[1];
     const legacyChainId = 'd8b73ada6b0ff982b5bafed1cde4d7612cc778ff82206c3b67d31a134f95be6c';
-    async function fixture(live = true, legacy = false, actualSocket = false) {
+    async function fixture(live = true, legacy = false, actualSocket = false, startupPaused = false) {
         const protocol = legacy ? legacySelection : selected; assert.ok(protocol);
         const inputFrame = legacy ? legacyFrame : frame, result = legacy ? legacyOriginal : original;
         const inputSchema = legacy ? legacySchemaBytes : Buffer.from(schemaJson);
@@ -108,6 +108,7 @@ try {
             local_lib: Number(result.last_irreversible.block_num), receivedFirstBlock: true, currentIdx: 1,
             range_size: 10000, local_distributed_count: 0, drainCount: 0, reconnectCount: 0, internalPendingRanges: [],
             reversibleBlockMap: new Map(), forkedBlocks: new Map(), publications: new Map(), protocolSourceBindingStore: bindings});
+        if (startupPaused) Object.assign(reader,{queuePressurePending:true,queuePressurePaused:false,manualReaderPaused:false,backpressurePaused:true,allowRequests:false});
         reader.stageOneDistQueue = cargo((tasks, callback) => reader.distribute(tasks, callback), 8);
         reader.blockReadingQueue = cargo((tasks, callback) => reader.processIncomingBlocks(tasks).then(() => callback(), error => {queueError = error; callback(error);}), 8);
         reader.ship = actualSocket ? new StateHistorySocket('ws://owned-controlled.invalid') : {connected: false, close() {this.connected = false;}, nextUrl() {},
@@ -211,8 +212,8 @@ try {
         assert.equal(bulk.reader.allowRequests, true); assert.equal(live.reader.allowRequests, true);
         for (const h of [bulk, live]) assert.deepEqual(h.creditCommands(), [{socket: 1, request: ['get_blocks_ack_request_v0', {num_messages: 1}]}]);
         assert.deepEqual(signals, [
-            {role: 'reader', value: {event: 'pause'}}, {role: 'continuous_reader', value: {event: 'pause'}},
-            {role: 'reader', value: {event: 'resume'}}, {role: 'continuous_reader', value: {event: 'resume'}}]);
+            {role: 'reader', value: {event: 'pause', source: 'queue-pressure'}}, {role: 'continuous_reader', value: {event: 'pause', source: 'queue-pressure'}},
+            {role: 'reader', value: {event: 'resume', source: 'queue-pressure'}}, {role: 'continuous_reader', value: {event: 'resume', source: 'queue-pressure'}}]);
     } else if (scenario === 'monitor-inputs') {
         const bulk = await fixture(false), live = await fixture(true), signals = [];
         const sizes = new Map([[chain + ':blocks:1', 64], [chain + ':live_blocks', 0], [chain + ':ds_pool:1', 0]]);
@@ -232,6 +233,18 @@ try {
         assert.equal(live.creditCommands().length, 1); sizes.set(chain + ':live_blocks', 0); await monitor.checkQueues({}, 1000000);
         assert.equal(live.reader.allowRequests, true); assert.equal(live.creditCommands().length, 2);
         assert.deepEqual(signals.map(x => [x.role, x.value.event]), [['reader','pause'], ['reader','resume'], ['continuous_reader','pause'], ['continuous_reader','resume']]);
+    } else if (scenario === 'monitor-replacement-startup') {
+        process.env.worker_last_processed_block='33';
+        const h=await fixture(true,false,false,true);
+        assert.equal(h.reader.backpressurePaused,true);
+        assert.equal(h.commands.filter(row=>row.request[0].startsWith('get_blocks_request_')).length,0,'startup must not request blocks before pressure sync');
+        h.reader.onIpcMessage({event:'reader_pressure_state',paused:true});
+        assert.equal(h.commands.filter(row=>row.request[0].startsWith('get_blocks_request_')).length,0);
+        h.reader.onIpcMessage({event:'pause'});h.reader.onIpcMessage({event:'resume',source:'queue-pressure'});
+        assert.equal(h.commands.filter(row=>row.request[0].startsWith('get_blocks_request_')).length,0,'queue resume must not clear manual pause');
+        h.reader.onIpcMessage({event:'resume'});
+        assert.equal(h.commands.filter(row=>row.request[0].startsWith('get_blocks_request_')).length,1);
+        delete process.env.worker_last_processed_block;
     } else if (['credits', 'bulk-credits', 'legacy-credits'].includes(scenario)) {
         const h = await fixture(scenario !== 'bulk-credits', scenario === 'legacy-credits');
         const before = h.creditCommands().length;

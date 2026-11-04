@@ -63,3 +63,18 @@ test('malformed queue observation pauses both until a complete valid sample',asy
  const f=fixture();f.sizes.set('wire:other',undefined);await f.check();assert.deepEqual(f.events,[['reader','pause'],['continuous_reader','pause']]);
  f.sizes.set('wire:other',0);await f.check();assert.deepEqual(f.events.slice(-2),[['reader','resume'],['continuous_reader','resume']]);
 });
+
+test('stalled queue observation times out, pauses both, then recovers on a valid poll', {timeout: 16000}, async()=>{
+ const {checkQueueSize}=await import('../../build/indexer/connections/amqp.js');const previous=globalThis.fetch;const f=fixture();
+ const config={protocol:'http',api:'localhost:15672',vhost:'/',user:'test',pass:'test'};
+ try {
+  globalThis.fetch=async (_url,{signal})=>new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>reject(signal.reason),{once:true}));
+  f.master.manager.checkQueueSize=async q=>checkQueueSize(q,config);await f.check();
+  assert.deepEqual(f.events,[['reader','pause'],['continuous_reader','pause']]);
+  globalThis.fetch=async()=>({ok:true,json:async()=>({messages:0})});await f.check();
+  assert.deepEqual(f.events.slice(-2),[['reader','resume'],['continuous_reader','resume']]);
+  globalThis.fetch=async (_url,{signal})=>({ok:true,json:()=>new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>reject(signal.reason),{once:true}))});
+  await f.check();assert.deepEqual(f.events.slice(-2),[['reader','pause'],['continuous_reader','pause']]);
+  globalThis.fetch=async()=>({ok:true,json:async()=>({messages:0})});await f.check();assert.deepEqual(f.events.slice(-2),[['reader','resume'],['continuous_reader','resume']]);
+ } finally {globalThis.fetch=previous;}
+});

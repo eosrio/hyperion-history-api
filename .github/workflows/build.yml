@@ -45,7 +45,7 @@ jobs:
       - name: Check explorer system contract metadata on Node ${{ matrix.node-version }}
         run: node --test tests/native/explorer-system-contract.test.mjs
       - name: Check independent reader input pressure on Node ${{ matrix.node-version }}
-        run: node --test tests/native/reader-input-pressure.test.mjs
+        run: node --test tests/native/reader-input-pressure.test.mjs tests/native/reader-startup-pressure.test.mjs
       - name: Typecheck Elasticsearch qualification runner
         run: bun check -p scripts/qualification/tsconfig.json
       - name: Check retained Wire source and replay credits with native Node

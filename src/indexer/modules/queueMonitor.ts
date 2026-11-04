@@ -23,12 +23,16 @@ export class HyperionQueueMonitor {
         this.manager = this.master.manager;
     }
 
+    isReaderPaused(role: 'reader' | 'continuous_reader'): boolean {
+        return this.readingPaused[role];
+    }
+
     private updateReader(role: 'reader' | 'continuous_reader', aboveLimit: boolean, canResume: boolean) {
         if (aboveLimit && !this.readingPaused[role]) {
-            this.master.sendToRole(role, {event: 'pause'});
+            this.master.sendToRole(role, {event: 'pause', source: 'queue-pressure'});
             this.readingPaused[role] = true;
         } else if (!aboveLimit && canResume && this.readingPaused[role]) {
-            this.master.sendToRole(role, {event: 'resume'});
+            this.master.sendToRole(role, {event: 'resume', source: 'queue-pressure'});
             this.readingPaused[role] = false;
         }
     }
