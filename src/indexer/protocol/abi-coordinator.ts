@@ -137,8 +137,8 @@ export class ProtocolAbiCoordinator {
                 ||c.blockTwoPreviousId!==c.genesisBlockId
                 ||c.phase==='capturing'&&(value.source!==null&&(value.source.contextId!==c.contextId||value.source.readerSessionId!==c.readerSessionId)
                     ||value.head!==null&&(value.head.blockNum!==1||value.head.blockId!==c.genesisBlockId))
-                ||c.phase==='handoff'&&(!value.head||value.head.blockNum!==1||value.head.blockId!==c.genesisBlockId)
-                ||c.phase==='complete'&&(!value.head||value.head.blockNum<2))throw new Error('Invalid captured genesis control');
+                ||c.phase==='handoff'&&(!value.head||value.head.blockNum!==1||value.head.blockId!==c.genesisBlockId))
+                throw new Error('Invalid captured genesis control');
         }
         if(value.historical!==undefined&&(!value.historical||Object.keys(value.historical).sort().join(',')!=='activationCertificateId,addressRootId,anchor,interfaceVersion'
             ||value.historical.interfaceVersion!==1||!id('h45abiroot1',value.historical.addressRootId)
@@ -228,6 +228,7 @@ export class ProtocolAbiCoordinator {
 
     /** A normal live source cannot open until the native genesis commit is durably published. */
     async finishCapturedGenesis(readerSessionId:string,generation:string):Promise<void> {
+        if(!this.options.capturedGenesisEnabled)throw new Error('Captured genesis is disabled');
         return this.run(async()=>{
             const version=await this.owned(), c=version.value.capturedGenesis;
             if(!c||c.phase!=='capturing'||c.readerSessionId!==readerSessionId||generation!==version.value.generation
@@ -248,6 +249,8 @@ export class ProtocolAbiCoordinator {
     async resumeCapturedGenesis(grant:CapturedGenesisGrant):Promise<{generation:string}> {
         const input=copy(grant);
         if(!this.options.capturedGenesisEnabled||!this.options.verifyNativeGenesis)throw new Error('Captured genesis is disabled');
+        if(Object.keys(input).sort().join(',')!=='blockTwoId,blockTwoPreviousId,contextId,frameSha256,genesisBlockId,readerSessionId,schemaSha256')
+            throw new Error('Invalid captured genesis recovery grant');
         return this.run(async()=>{
             let version=await this.owned();const c=version.value.capturedGenesis;
             if(!c||c.phase!=='capturing'||version.value.source||version.value.pending.length||!text(input.readerSessionId)

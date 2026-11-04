@@ -43,14 +43,28 @@ test('owner-bound captured genesis commits before an exact, fenced live handoff'
         const live=await coordinator.openSource(p.contextId,'live-session');
         assert.equal(live.resumeFromBlock,2);
         assert.equal((await coordinator.admit(selected.id,generation)).status,'stale');
+        const twoSource={chainId:capture.chainId,blockNum:2,blockId:grant.blockTwoId,previousBlockId:grant.genesisBlockId};
+        const twoSections={kind:'unattested-ship-result-sections-v1',schemaJson,blockHex:two.block,tracesHex:two.traces,deltasHex:two.deltas};
+        const twoDigest=protocolAbiCaptureDigest(twoSource,twoSections);
         const selectionTwo=async(blockId,previousBlockId)=>p.bindings.prepareSelection({schemaVersion:1,contextId:p.contextId,
             readerSessionId:'live-session',readerRole:'live',assignmentId:null,
-            source:{chainId:capture.chainId,blockNum:2,blockId,previousBlockId},frameSha256:hash(frames[1]),captureSha256:hash(frames[1]),
+            source:{chainId:capture.chainId,blockNum:2,blockId,previousBlockId},frameSha256:hash(frames[1]),captureSha256:twoDigest,
             head:{blockNum:two.head.block_num,blockId:two.head.block_id},irreversible:{blockNum:two.last_irreversible.block_num,blockId:two.last_irreversible.block_id}});
         assert.equal((await coordinator.admit((await selectionTwo('f'.repeat(64),grant.genesisBlockId)).id,live.generation)).status,'stale');
         assert.equal((await coordinator.admit((await selectionTwo(grant.blockTwoId,'f'.repeat(64))).id,live.generation)).status,'stale');
-        assert.equal((await coordinator.admit((await selectionTwo(grant.blockTwoId,grant.genesisBlockId)).id,live.generation)).status,'accepted');
+        const second=await selectionTwo(grant.blockTwoId,grant.genesisBlockId);
+        assert.equal((await coordinator.admit(second.id,live.generation)).status,'accepted');
         assert.equal((await coordinator.inspect()).capturedGenesis.phase,'handoff', 'admission is not a durable block-two commit');
+        let ordinal=0;const rows=[];
+        for(const [,delta] of ship.decodeDeltas(Buffer.from(two.deltas,'hex')))for(const row of delta.rows){
+            if(delta.name==='account'){const raw=Buffer.from(row.data,'hex');rows.push({ordinal,present:row.present===1,raw,value:ship.decodeRow('account',raw)});}ordinal++;
+        }
+        const facts=p.options.provider.observeBlockAbi({traces:ship.decodeTraces(Buffer.from(two.traces,'hex')),accountRows:rows},twoSource);
+        const secondObservation=await p.observations.prepare({schemaVersion:1,protocol:p.options.profile,source:{...twoSource,inputSha256:twoDigest},
+            capture:twoSections,observation:{status:'observed',facts}});
+        await p.bindings.prepareObservationLink({schemaVersion:1,selectionId:second.id,observationId:secondObservation.id,observationDigest:secondObservation.digest});
+        await coordinator.drain();const completed=await coordinator.inspect();
+        assert.equal(completed.head.blockNum,2);assert.equal(completed.head.coverageStart,1);assert.equal(completed.capturedGenesis.phase,'complete');
     } finally {ship.close?.();}
 });
 
