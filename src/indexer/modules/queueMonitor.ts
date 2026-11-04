@@ -63,7 +63,7 @@ export class HyperionQueueMonitor {
                 || (!hasLive && this.master.workerMap.some(worker => worker.worker_role === 'continuous_reader'))) {
                 throw new Error('Active reader input queue is not observed');
             }
-            const pressure = {bulk: {above: false, resume: hasBulk}, live: {above: false, resume: hasLive}, shared: {above: false, resume: true}};
+            const pressure = {bulk: {above: !hasBulk, resume: hasBulk}, live: {above: !hasLive, resume: hasLive}, shared: {above: false, resume: true}};
             for (const [queue, item] of queues) {
                 const size = await this.manager.checkQueueSize(queue);
                 if (!Number.isSafeInteger(size) || size < 0) throw new Error(`Invalid queue size for ${queue}`);

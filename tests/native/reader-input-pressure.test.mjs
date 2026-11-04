@@ -89,3 +89,9 @@ test('an active reader with an unobserved input queue fails closed for both role
  const f=fixture();await f.check();f.events.length=0;f.master.workerMap.push({worker_role:'reader'});f.master.workerMap=f.master.workerMap.filter(w=>w.worker_queue!=='wire:blocks:1');
  await f.check();assert.deepEqual(f.events,[['reader','pause'],['continuous_reader','pause']]);
 });
+
+test('a disappeared inactive input remains unknown for a later replacement',async()=>{
+ const f=fixture();await f.check();f.events.length=0;f.master.workerMap=f.master.workerMap.filter(w=>w.worker_queue!=='wire:live_blocks');
+ await f.check();assert.equal(f.monitor.isReaderPaused('continuous_reader'),true);assert.equal(f.monitor.isReaderPaused('reader'),false);
+ f.master.workerMap.push({worker_role:'continuous_reader'});assert.equal(f.monitor.isReaderPaused('continuous_reader'),true);
+});
