@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
+import {createRequire} from 'node:module';
+import {dirname, join} from 'node:path';
+import {PassThrough} from 'node:stream';
 import {mock} from 'bun:test';
 
 // Replace startup I/O only. Exercise the production constructor, async.cargo,
@@ -76,19 +79,61 @@ for (const mode of ['live', 'bulk']) {
     } finally {worker.consumerQueue.kill(); worker.preIndexingQueue.kill();}
 }
 
-for (const state of ['disconnected', 'nack-throws']) {
+{
     const worker: any = new MainDSWorker();
     let attempts = 0, nacks = 0;
-    Object.assign(worker, {ch_ready: state !== 'disconnected', ch: {nackAll() {nacks++; throw new Error('Channel closed');}}});
+    Object.assign(worker, {ch_ready: false, ch: {nackAll() {nacks++;}}});
     worker.mLoader.parser = {async parseMessage() {if (++attempts === 1) throw new Error('controlled decoding failure');}};
     try {
         worker.consumerQueue.push({content: Buffer.from('{}')});
-        await until(() => worker.consumerQueue.idle(), () => `${state} cargo did not release its failed batch`);
+        await until(() => worker.consumerQueue.idle(), () => 'Disconnected cargo did not release its failed batch');
         await worker.consumerQueue.pushAsync({content: Buffer.from('{}')});
         assert.equal(attempts, 2);
-        assert.equal(nacks, state === 'disconnected' ? 0 : 1);
-        checks.push(`${state}-releases-cargo`);
+        assert.equal(nacks, 0);
+        checks.push('disconnected-releases-cargo');
     } finally {worker.consumerQueue.kill(); worker.preIndexingQueue.kill();}
+}
+
+// Use the installed amqplib send chain, not a mocked nackAll implementation.
+// A controlled buffer-write fault and a pending channel-close handshake both
+// throw before a BasicNack frame is accepted, without an automatic close event.
+const require = createRequire(import.meta.url), amqpRoot = dirname(require.resolve('amqplib'));
+const {Connection} = require(join(amqpRoot, 'lib/connection.js'));
+const {Channel} = require(join(amqpRoot, 'lib/channel_model.js'));
+assert.equal(require(join(amqpRoot, 'package.json')).version, '2.0.1');
+for (const fault of ['write-failure', 'closing-channel']) {
+    const worker: any = new MainDSWorker();
+    const stream = new PassThrough(), connection = new Connection(stream);
+    connection.channelMax = 2047;
+    const channel = new Channel(connection).allocate(), buffer = connection.channels[channel.ch].buffer;
+    const entered = gate(), failed = gate(), originalExit = process.exit;
+    let attempts = 0, callbacks = 0, writeAttempts = 0, closes = 0;
+    const exits: unknown[] = [];
+    channel.on('close', () => {closes++;});
+    buffer.write = () => {writeAttempts++; throw new Error('Controlled AMQP channel-buffer write failure');};
+    Object.assign(worker, {ch: channel, ch_ready: true});
+    worker.mLoader.parser = {async parseMessage() {
+        attempts++; entered.release(); await failed.promise; throw new Error('controlled decoding failure');
+    }};
+    process.exit = ((code?: number) => {exits.push(code);}) as never;
+    try {
+        worker.consumerQueue.push({}, () => {callbacks++;}); await entered.promise;
+        worker.consumerQueue.push({}, () => {callbacks++;});
+        if (fault === 'closing-channel') channel.toClosing('Controlled pending close handshake');
+        failed.release();
+        await until(() => exits.length > 0, () => `amqplib ${fault} did not request supervised replacement: closes=${closes}, running=${worker.consumerQueue.running()}`);
+        assert.deepEqual(exits, [1]);
+        assert.equal(closes, 0, 'A failed nackAll does not establish broker-side channel closure or requeue');
+        assert.equal(writeAttempts, fault === 'write-failure' ? 1 : 0);
+        assert.equal(worker.ch_ready, false);
+        assert.equal(worker.consumerQueue.length(), 0);
+        assert.equal(attempts, 1);
+        assert.equal(callbacks, 0, 'Failed broker requeue must not resume or settle cargo as successful');
+        checks.push(`amqplib-${fault}-supervised-exit-without-resuming`);
+    } finally {
+        process.exit = originalExit; worker.consumerQueue.kill(); worker.preIndexingQueue.kill();
+        connection.toClosed('Controlled fixture cleanup'); stream.destroy();
+    }
 }
 
 if (process.argv.includes('--protocol')) {
