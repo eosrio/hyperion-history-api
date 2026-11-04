@@ -2,7 +2,7 @@ name: Captured genesis engineering controls
 
 on:
   pull_request:
-    branches: ["engineering/wire-h3-api-3baf-191"]
+    branches: ["engineering/wire-h3-api-3baf-191", "feat/wire-retained-genesis-handoff-191"]
 
 permissions:
   contents: read
@@ -31,6 +31,6 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - name: Check reader and master controls on Node
-        run: node --test tests/unit/captured-genesis-master.test.mjs tests/unit/captured-genesis-reader.test.mjs tests/unit/genesis-preview-source-admission.test.mjs tests/native/reader-input-pressure.test.mjs tests/native/reader-startup-pressure.test.mjs
+        run: node --test tests/unit/captured-genesis-master.test.mjs tests/unit/captured-genesis-reader.test.mjs tests/unit/genesis-preview-source-admission.test.mjs tests/unit/wire-genesis-preview-preflight.test.mjs tests/native/reader-input-pressure.test.mjs tests/native/reader-startup-pressure.test.mjs
       - name: Check coordinator, source custody, and native parser controls
         run: bun test tests/unit/protocol-source-namespace.test.ts tests/unit/captured-genesis-coordinator.test.mjs tests/unit/retained-genesis-input.test.ts tests/unit/protocol-abi-coordinator-rpc.test.ts tests/unit/protocol-abi-coordinator.test.ts tests/unit/protocol-native-genesis-worker.test.ts
