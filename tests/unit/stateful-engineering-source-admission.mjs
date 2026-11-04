@@ -17,6 +17,15 @@ export const STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE = 'stateful-owne
 export const STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE = 'stateful-owner-v2-7412889-18d235e-complete-kind-metadata-engineering';
 export const STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE = 'stateful-owner-v2-7412889-69a6606-complete-kind-engineering';
 export const STATEFUL_HISTORY_API_SOURCE_PROFILE = 'stateful-owner-v2-7412889-69a6606-api-history-trace-engineering';
+export const STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE = 'stateful-owner-v2-7412889-e691f44-isolated-genesis-engineering';
+export const STATEFUL_GENESIS_PREVIEW_WIRE_SOURCE = Object.freeze({
+    commit:'e691f4471c6e5fdbe001e6709e88d48d33d8bf4c',tree:'375c411d7f76efb460ace846755821445dfb50ea',
+    packageSha256:'9f5f8991e1786757fdf52a9cf3978d07ef0c7a6782aa6eed51b2fa479f102936',
+    descriptorSha256:'fc2a98d25a471dbc2065cffe9930af56f8a7fc338095893e3f9062a3617c17ae',
+    nodeSha256:'a7d366f192b948d5ae0a4732fdf16789b9c82be67ff40e0387613332aa5bec0f',
+    rustSha256:'41f968f3f2928b4a3ecbb01828b45c7b4aa4a64aa208c390230bb4f340447bbe',
+    npmLockSha256:'a7bbbb10d86a698d23c44b0ec73774a72a3ec915d11ff5d51c0892dfc9553943',
+});
 export const STATEFUL_COMPLETE_KIND_CODEC_WIRE_SOURCE = Object.freeze({
     commit: '69a66064c077a405341f5aaf15e84b88b8d86ccb', tree: '97adfecdfd02d881493f950b2cf5a9a32d2a030b',
     packageSha256: '1e455544de9256a1504293498af802ee1ebf952b6048d6758e37a6218c6ac390',
@@ -76,6 +85,23 @@ export const STATEFUL_HISTORY_API_CALLER_SOURCE = Object.freeze({
         ['src/api/helpers/protocol-abi.ts', 'c0c8f43e48910c760421e54cf83329b9153216d28322d5519fb1ebe5ac828517'],
         ['src/api/routes/v1-trace/get_block/index.ts', 'a734453875d777fe608be11405bc4f7a8f5fb359198cbca457ce02391add6c9c']]),
 });
+export const STATEFUL_GENESIS_PREVIEW_CALLER_SOURCE = Object.freeze({
+    commit:'0504288d5d6bb1fdb78ed4defada46c7124ab179',files:554,
+    packageSha256:'31b02c51777bab0b6c12fc3ee7a64b44629e009abf77ad4a32aecb00891c48ca',
+    sha256:'d06ab84240fd72876dd5694a7d744e7ef24e277cd085f0ae1abfdc38bb681c63',
+    sources:Object.freeze([...STATEFUL_HISTORY_API_CALLER_SOURCE.sources.filter(([path])=>
+        !['src/indexer/workers/projection.ts','src/api/helpers/protocol-abi.ts','src/api/helpers/stateful-owner.ts'].includes(path)),
+        ['src/indexer/protocol/abi-coordinator.ts','33515bbabc5be6abf88b8d0024f4cd3019e4d8ffabad40036e1735abc87d956d'],
+        ['src/indexer/modules/master.ts','54ab78e153c8078c144d286b9bddfd10fd52e8b05ac7806170ffb414113355be'],
+        ['src/indexer/workers/state-reader.ts','6c9b5e575fa8d93e52b103ef0b5c2ab1c2df6a22a115d2a8af2cafedce85550d'],
+        ['src/indexer/workers/deserializer.ts','a788c817c47d5462e9ee0f508e9ee405e8bf6632797f592071077bcee4018fa3'],
+        ['src/indexer/workers/ds-pool.ts','7eef2cfaa2816bb0ba130dc60213b844363a7402b6b76c075059560d812f2305'],
+        ['src/indexer/workers/projection.ts','596e0969a1e0613f817d5ec65abcadaa2ac896c682bf7b18029e45cb999d4ad1'],
+        ['src/api/helpers/protocol-abi.ts','c0c8f43e48910c760421e54cf83329b9153216d28322d5519fb1ebe5ac828517'],
+        ['src/api/helpers/portable-state.ts','3e1fa21a99d6f5ccfd390161ca3654a5053bff7a099e76ee305d8f717e1b53b0'],
+        ['src/api/helpers/stateful-owner.ts','8bdf6914852f2d9f008adbfd81fe83c0b3f94d6a2928f5567147a9030f72cb82'],
+        ['src/interfaces/hyperionConfig.ts','e500ec37c6e727afd81c8a1723562c1f1b273dabb5ace094c9613f73ca8a24da']]),
+});
 // Production source was committed before these additive qualification profiles.
 export const STATEFUL_METADATA_FIELDS_NATIVE_SOURCE = Object.freeze({
     commit: '0b51a20c3d9a9b95c39a713c89cad6d55c5103d4', tree: '686850ba3acb00fc1f9424dd300483b83f84c654',
@@ -85,13 +111,13 @@ const oldWire = '7167659e9c043cb3351074fcacb40200cc57f3a3', wire = '18d235e34a9b
 const sdk = '58d68c5cea81490bbb1c9a7736d633d465bab3ef';
 const metadataSdk = 'dd85ee590dcd1e359509c6c41ee99b541706b1f6';
 const completeKindSdk = '7412889a14c84342551fd864ea3ebfcf28849385';
-const codecProfile = profile => profile === STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE || profile === STATEFUL_HISTORY_API_SOURCE_PROFILE;
+const codecProfile = profile => profile === STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE || profile === STATEFUL_HISTORY_API_SOURCE_PROFILE || profile === STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE;
 const completeKindProfile = profile => profile === STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE || profile === STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE
     || profile === STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE || profile === STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE || codecProfile(profile);
 const completeKindNativeSource = profile => profile === STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE || codecProfile(profile) ? STATEFUL_COMPLETE_KIND_METADATA_NATIVE_SOURCE
     : profile === STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE ? STATEFUL_COMPLETE_KIND_EXECUTOR_NATIVE_SOURCE
     : profile === STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE ? STATEFUL_COMPLETE_KIND_COMMANDS_NATIVE_SOURCE : STATEFUL_COMPLETE_KIND_NATIVE_SOURCE;
-const completeKindCallerSource = profile => profile === STATEFUL_HISTORY_API_SOURCE_PROFILE ? STATEFUL_HISTORY_API_CALLER_SOURCE : codecProfile(profile) ? STATEFUL_COMPLETE_KIND_CODEC_CALLER_SOURCE : profile === STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE
+const completeKindCallerSource = profile => profile === STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE ? STATEFUL_GENESIS_PREVIEW_CALLER_SOURCE : profile === STATEFUL_HISTORY_API_SOURCE_PROFILE ? STATEFUL_HISTORY_API_CALLER_SOURCE : codecProfile(profile) ? STATEFUL_COMPLETE_KIND_CODEC_CALLER_SOURCE : profile === STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE
     ? STATEFUL_COMPLETE_KIND_METADATA_CALLER_SOURCE : STATEFUL_COMPLETE_KIND_CALLER_SOURCE;
 const fieldsProfile = profile => profile === STATEFUL_METADATA_FIELDS_API_SOURCE_PROFILE || profile === STATEFUL_METADATA_FIELDS_LEGACY_SOURCE_PROFILE;
 const metadataProfile = profile => profile === STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE || profile === STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE || fieldsProfile(profile);
@@ -140,7 +166,7 @@ export function admitNativeApiSourceOptions(input = {}) {
     exact(pkg.json.name, '@eosrio/hyperion-wire-plugin', 'Wire package');
     const descriptor = read(resolve(root, 'dist/protocol-provider.json'));
     const node = read(resolve(root, 'dist/protocol-node-artifact.json')), rust = read(resolve(root, 'dist/protocol-rust-artifact.json'));
-    const codecWire = codecProfile(profile) ? STATEFUL_COMPLETE_KIND_CODEC_WIRE_SOURCE : undefined;
+    const codecWire = profile===STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE?STATEFUL_GENESIS_PREVIEW_WIRE_SOURCE:codecProfile(profile) ? STATEFUL_COMPLETE_KIND_CODEC_WIRE_SOURCE : undefined;
     const selectedWire = profile === undefined || legacyProfile(profile) ? oldWire : codecWire?.commit ?? wire;
     for (const artifact of [node, rust]) {exact(artifact.json.sourceRevision, selectedWire, 'Wire source revision'); exact(artifact.json.sourceModified, false, 'modified Wire source');}
     const lock = read(fileURLToPath(new URL('../../package-lock.json', import.meta.url))).json;
@@ -202,7 +228,7 @@ function coordinatedRuntime(profile) {
         exact(read(nativeSdk).sha256, sdkPackage.sha256, 'complete-kind receiving SDK package');
         exact(inventory(resolve(dirname(nativeSdk), 'dist')).sha256, sdkFiles.sha256, 'complete-kind receiving SDK emissions');
         const callerRoot = fileURLToPath(new URL('../../', import.meta.url));
-        exact(read(resolve(callerRoot, 'package.json')).sha256, codecProfile(profile) ? STATEFUL_COMPLETE_KIND_CODEC_CALLER_SOURCE.packageSha256
+        exact(read(resolve(callerRoot, 'package.json')).sha256, codecProfile(profile) ? callerSource.packageSha256
             : 'c98370f6c9f81aa8d6c4554ea798896d5e02bf9f8554e775f6edb1ee2c8bae54', 'complete-kind caller package');
         const callerFiles = inventory(resolve(callerRoot, 'build'), 1024);
         exact(callerFiles.files, callerSource.files, 'complete-kind caller count');
