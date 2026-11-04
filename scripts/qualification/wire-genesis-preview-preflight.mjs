@@ -54,13 +54,21 @@ export async function observe({config,chainId,endpoint,apiKey,basicAuth,transpor
         method:body?'POST':'GET',headers:body?{...headers,'content-type':'application/json'}:headers,
         ...(body?{body:JSON.stringify(body)}:{}),redirect:'error',signal:AbortSignal.timeout(10000)}));
     const indices=await read('/_cat/indices?format=json&h=index&expand_wildcards=all');
-    const aliases=await read('/_cat/aliases?format=json&h=alias,index&expand_wildcards=all');
-    if(!Array.isArray(indices)||!Array.isArray(aliases)||indices.length>5000||aliases.length>5000)throw new Error('Index or alias inventory is invalid or exceeds bound');
-    const names=indices.map(row=>row.index),aliasNames=aliases.map(row=>row.alias);
-    if(names.some(name=>typeof name!=='string')||aliasNames.some(name=>typeof name!=='string')||aliases.some(row=>typeof row.index!=='string'))
-        throw new Error('Index or alias inventory is malformed');
-    const collisions=[...new Set([...names,...aliasNames].filter(name=>name===input.namespace||name.startsWith(input.namespace+'-')))].sort();
-    const actionIndices=names.filter(name=>name.startsWith(input.chain+'-action-')).sort();
+    const aliasResponse=await read('/_alias?expand_wildcards=all');
+    const streamResponse=await read('/_data_stream?expand_wildcards=all');
+    if(!Array.isArray(indices)||indices.length>5000||!aliasResponse||typeof aliasResponse!=='object'||Array.isArray(aliasResponse)
+        ||!Array.isArray(streamResponse?.data_streams)||streamResponse.data_streams.length>5000)
+        throw new Error('Index, alias or data-stream inventory is invalid or exceeds bound');
+    const aliases=[];
+    for(const [target,value] of Object.entries(aliasResponse)){
+        if(!value||typeof value!=='object'||!value.aliases||typeof value.aliases!=='object'||Array.isArray(value.aliases))
+            throw new Error('Alias inventory is malformed');
+        for(const alias of Object.keys(value.aliases)){if(aliases.length>=5000)throw new Error('Alias inventory exceeds bound');aliases.push({alias,index:target});}
+    }
+    const names=indices.map(row=>row.index),aliasNames=aliases.map(row=>row.alias),dataStreams=streamResponse.data_streams.map(row=>row?.name);
+    if(names.some(name=>typeof name!=='string')||dataStreams.some(name=>typeof name!=='string'))throw new Error('Index or data-stream inventory is malformed');
+    const collisions=[...new Set([...names,...aliasNames,...dataStreams].filter(name=>name===input.namespace||name.startsWith(input.namespace+'-')))].sort();
+    const actionIndices=[...names,...dataStreams].filter(name=>name.startsWith(input.chain+'-action-')).sort();
     const actionAliases=[...new Set(aliasNames.filter(name=>name.startsWith(input.chain+'-action-')))].sort();
     const actionTargets=[...new Set([...actionIndices,...actionAliases])];
     if(actionTargets.length>128)throw new Error('History index inventory exceeds bound');
@@ -82,12 +90,14 @@ export async function observe({config,chainId,endpoint,apiKey,basicAuth,transpor
             try{await reader.open(ref.source,ref.selectionId,{signal:AbortSignal.timeout(Math.min(remaining,5000))});return 'verified';}
             catch{return 'unavailable';}};
         const legacy=await check(old),candidate=collisions.length?await check(fresh):'namespace_absent';
-        sample.push({selectionId:ref.selectionId,blockNum:ref.source.blockNum,legacyProof:legacy,newNamespaceProof:candidate});
+        sample.push({selectionId:ref.selectionId,blockNum:ref.source.blockNum,
+            legacyNamespaceProofUnderCandidateProfile:legacy,newNamespaceProofUnderCandidateProfile:candidate});
     }} finally {await client.close();}
-    return {schemaVersion:1,observedAt:new Date().toISOString(),chain:input.chain,chainId,sourceNamespace:input.namespace,
-        expectedSourceIndices:input.expectedNames,indexNames:names.sort(),aliases:aliases.map(row=>({alias:row.alias,index:row.index})),namespaceCollisions:collisions,
+    return {schemaVersion:1,observedAt:new Date().toISOString(),chain:input.chain,chainId,sourceNamespace:input.namespace,proofProfile:profile,
+        expectedSourceIndices:input.expectedNames,indexNames:names.sort(),aliases,dataStreams:dataStreams.sort(),namespaceCollisions:collisions,
         historyActionIndices:actionIndices,historyActionAliases:actionAliases,historyTotal:total,
         sampleLimit:20,proofBudgetMs:30000,sampled:sample,
+        visibility:'supplied_credentials_only',namespaceAvailability:'unverified',
         scope:'bounded_sample_only_non_snapshot',publisherConfirmationIsConsumerAck:false,activationAuthority:false};
 }
 async function main(){
