@@ -1,0 +1,1511 @@
+{
+  "schemaVersion": 1,
+  "scope": "Minimized recorded command events for pure verifier/runner phase controls only; no physical acceptance",
+  "run": 41884653731,
+  "head": "8af89441fd5b1731d144780b2e37249b9bb43dfd",
+  "reduction": "Retains only data commands, their successful replies, transaction start and the owner/coverage pairs read by verifyIndexedTrace, with only verifier-used fields. Original full row-span hashes and archive/trace hashes identify unmodified evidence. Empty request uses a real successful genesis count. This models phase grouping only and grants no physical acceptance.",
+  "captures": [
+    {
+      "node": "24.22.1",
+      "artifactId": 13351665553,
+      "archiveSha256": "3b3bdb6cf27f2d0dc450b7b056ce57f734cdf0ae1163f66012f23e48f01b98f5",
+      "traceSha256": "6e5570830476cd7ca9b3120733f10b074c66574cef6425f75948f2028d0081b4",
+      "originalFailure": {
+        "name": "AssertionError",
+        "code": "ERR_ASSERTION",
+        "message": "Expected values to be strictly equal:\n\n5 !== 2\n"
+      },
+      "requests": [
+        {
+          "name": "page",
+          "attempts": 3,
+          "originalPhase": "bounded-int64-membership",
+          "originalSpan": [
+            2336,
+            2360
+          ],
+          "originalRowsSha256": "6852c8d4e765c1972f679f4d4914872fb81071e837e7f72263fcca6e1289c81a",
+          "rows": [
+            {
+              "event": "started",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1190,
+              "command": "find",
+              "collection": "bounded_stateful_v2_metadata",
+              "lsid": "2a0000000376616c7565001e0000000569640010000000047dd656d134ed48b4bfe762247d6261760000",
+              "txn": "51",
+              "transactional": true,
+              "startsTransaction": true,
+              "readConcern": "snapshot",
+              "maxTimeMS": 15000,
+              "batchSize": null,
+              "cursor": null,
+              "tagged": false,
+              "comment": null,
+              "expected": {
+                "backendId": "h45_indexed_24b57267a544",
+                "checkpoint": {
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000066",
+                  "blockNum": 2
+                },
+                "declarationDigest": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+                "generation": "fresh-indexed-generation",
+                "revision": "50da7e16dd6572b5472d13afdab049c867a5f16adc60b10ca11a1e349b8044fa"
+              },
+              "owner": {
+                "id": "bounded-owner",
+                "generation": "owner-108"
+              },
+              "ownerClaim": "417dfb9ae564f1384211312623cf4bd866708e60d83ca93f35b9516c485ed543",
+              "model": null,
+              "ownerDeclaration": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+              "seq": 2342
+            },
+            {
+              "event": "succeeded",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1190,
+              "command": "find",
+              "replyBsonBytes": 4933,
+              "cursor": "0",
+              "batch": 1,
+              "metadata": {
+                "declarationDigest": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+                "revision": "50da7e16dd6572b5472d13afdab049c867a5f16adc60b10ca11a1e349b8044fa",
+                "checkpoint": {
+                  "blockNum": 2,
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000066"
+                },
+                "owner": {
+                  "id": "bounded-owner",
+                  "generation": "owner-108"
+                },
+                "ownerClaim": "417dfb9ae564f1384211312623cf4bd866708e60d83ca93f35b9516c485ed543",
+                "initialized": true,
+                "raw": false,
+                "pending": false,
+                "gap": false,
+                "rollback": "complete"
+              },
+              "seq": 2343
+            },
+            {
+              "event": "started",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1191,
+              "command": "find",
+              "collection": "bounded_ix1_5a3bc104a6d9dc38debfe99915562bcb0d52e5fff70658ddd52d2f5bc24fa0df_c",
+              "lsid": "2a0000000376616c7565001e0000000569640010000000047dd656d134ed48b4bfe762247d6261760000",
+              "txn": "51",
+              "transactional": true,
+              "startsTransaction": false,
+              "readConcern": null,
+              "maxTimeMS": 14999,
+              "batchSize": null,
+              "cursor": null,
+              "tagged": false,
+              "comment": null,
+              "expected": {
+                "backendId": "h45_indexed_24b57267a544",
+                "checkpoint": {
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000066",
+                  "blockNum": 2
+                },
+                "declarationDigest": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+                "generation": "fresh-indexed-generation",
+                "revision": "50da7e16dd6572b5472d13afdab049c867a5f16adc60b10ca11a1e349b8044fa"
+              },
+              "owner": {
+                "id": "bounded-owner",
+                "generation": "owner-108"
+              },
+              "ownerClaim": "417dfb9ae564f1384211312623cf4bd866708e60d83ca93f35b9516c485ed543",
+              "model": null,
+              "ownerDeclaration": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+              "seq": 2344
+            },
+            {
+              "event": "succeeded",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1191,
+              "command": "find",
+              "replyBsonBytes": 820,
+              "cursor": "0",
+              "batch": 1,
+              "coverage": {
+                "_id": "5a3bc104a6d9dc38debfe99915562bcb0d52e5fff70658ddd52d2f5bc24fa0df",
+                "representation": "h45-owner-indexed-materialization-v1",
+                "owner": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+                "model": "5a3bc104a6d9dc38debfe99915562bcb0d52e5fff70658ddd52d2f5bc24fa0df",
+                "generation": "fresh-indexed-generation",
+                "revision": "50da7e16dd6572b5472d13afdab049c867a5f16adc60b10ca11a1e349b8044fa",
+                "checkpoint": {
+                  "blockNum": 2,
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000066"
+                },
+                "ready": true,
+                "reason": null
+              },
+              "seq": 2345
+            },
+            {
+              "event": "started",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1192,
+              "command": "aggregate",
+              "collection": "bounded_ix1_5a3bc104a6d9dc38debfe99915562bcb0d52e5fff70658ddd52d2f5bc24fa0df_r",
+              "lsid": "2a0000000376616c7565001e0000000569640010000000047dd656d134ed48b4bfe762247d6261760000",
+              "txn": "51",
+              "transactional": true,
+              "startsTransaction": false,
+              "readConcern": null,
+              "maxTimeMS": 5000,
+              "batchSize": 1,
+              "cursor": null,
+              "tagged": true,
+              "comment": {
+                "model": "5a3bc104a6d9dc38debfe99915562bcb0d52e5fff70658ddd52d2f5bc24fa0df",
+                "trace": "9a617925-0545-4d2c-9fe0-982730333508"
+              },
+              "expected": {
+                "backendId": "h45_indexed_24b57267a544",
+                "checkpoint": {
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000066",
+                  "blockNum": 2
+                },
+                "declarationDigest": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+                "generation": "fresh-indexed-generation",
+                "revision": "50da7e16dd6572b5472d13afdab049c867a5f16adc60b10ca11a1e349b8044fa"
+              },
+              "owner": {
+                "id": "bounded-owner",
+                "generation": "owner-108"
+              },
+              "ownerClaim": "417dfb9ae564f1384211312623cf4bd866708e60d83ca93f35b9516c485ed543",
+              "model": "5a3bc104a6d9dc38debfe99915562bcb0d52e5fff70658ddd52d2f5bc24fa0df",
+              "ownerDeclaration": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+              "hint": "h45_ix_b_ecbb57f6d76f8adfb86a",
+              "collation": {
+                "locale": "simple"
+              },
+              "allowDiskUse": false,
+              "seq": 2346
+            },
+            {
+              "event": "succeeded",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1192,
+              "command": "aggregate",
+              "replyBsonBytes": 2018,
+              "cursor": "8422022703337021470",
+              "batch": 1,
+              "seq": 2347
+            },
+            {
+              "event": "started",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1193,
+              "command": "getMore",
+              "collection": "bounded_ix1_5a3bc104a6d9dc38debfe99915562bcb0d52e5fff70658ddd52d2f5bc24fa0df_r",
+              "lsid": "2a0000000376616c7565001e0000000569640010000000047dd656d134ed48b4bfe762247d6261760000",
+              "txn": "51",
+              "transactional": true,
+              "startsTransaction": false,
+              "readConcern": null,
+              "maxTimeMS": null,
+              "batchSize": 1,
+              "cursor": "8422022703337021470",
+              "tagged": true,
+              "comment": {
+                "model": "5a3bc104a6d9dc38debfe99915562bcb0d52e5fff70658ddd52d2f5bc24fa0df",
+                "trace": "9a617925-0545-4d2c-9fe0-982730333508"
+              },
+              "expected": {
+                "backendId": "h45_indexed_24b57267a544",
+                "checkpoint": {
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000066",
+                  "blockNum": 2
+                },
+                "declarationDigest": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+                "generation": "fresh-indexed-generation",
+                "revision": "50da7e16dd6572b5472d13afdab049c867a5f16adc60b10ca11a1e349b8044fa"
+              },
+              "owner": {
+                "id": "bounded-owner",
+                "generation": "owner-108"
+              },
+              "ownerClaim": "417dfb9ae564f1384211312623cf4bd866708e60d83ca93f35b9516c485ed543",
+              "model": "5a3bc104a6d9dc38debfe99915562bcb0d52e5fff70658ddd52d2f5bc24fa0df",
+              "ownerDeclaration": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+              "seq": 2348
+            },
+            {
+              "event": "succeeded",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1193,
+              "command": "getMore",
+              "replyBsonBytes": 2037,
+              "cursor": "8422022703337021470",
+              "batch": 1,
+              "seq": 2349
+            },
+            {
+              "event": "started",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1194,
+              "command": "getMore",
+              "collection": "bounded_ix1_5a3bc104a6d9dc38debfe99915562bcb0d52e5fff70658ddd52d2f5bc24fa0df_r",
+              "lsid": "2a0000000376616c7565001e0000000569640010000000047dd656d134ed48b4bfe762247d6261760000",
+              "txn": "51",
+              "transactional": true,
+              "startsTransaction": false,
+              "readConcern": null,
+              "maxTimeMS": null,
+              "batchSize": 1,
+              "cursor": "8422022703337021470",
+              "tagged": true,
+              "comment": {
+                "model": "5a3bc104a6d9dc38debfe99915562bcb0d52e5fff70658ddd52d2f5bc24fa0df",
+                "trace": "9a617925-0545-4d2c-9fe0-982730333508"
+              },
+              "expected": {
+                "backendId": "h45_indexed_24b57267a544",
+                "checkpoint": {
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000066",
+                  "blockNum": 2
+                },
+                "declarationDigest": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+                "generation": "fresh-indexed-generation",
+                "revision": "50da7e16dd6572b5472d13afdab049c867a5f16adc60b10ca11a1e349b8044fa"
+              },
+              "owner": {
+                "id": "bounded-owner",
+                "generation": "owner-108"
+              },
+              "ownerClaim": "417dfb9ae564f1384211312623cf4bd866708e60d83ca93f35b9516c485ed543",
+              "model": "5a3bc104a6d9dc38debfe99915562bcb0d52e5fff70658ddd52d2f5bc24fa0df",
+              "ownerDeclaration": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+              "seq": 2350
+            },
+            {
+              "event": "succeeded",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1194,
+              "command": "getMore",
+              "replyBsonBytes": 291,
+              "cursor": "0",
+              "batch": 0,
+              "seq": 2351
+            }
+          ]
+        },
+        {
+          "name": "count",
+          "attempts": 2,
+          "originalPhase": "bounded-int64-membership",
+          "originalSpan": [
+            2380,
+            2402
+          ],
+          "originalRowsSha256": "cf9eb9d882ef5f7bf805a5f87c928e3f8a3a6895b7fbce840e7628ca797aadcb",
+          "rows": [
+            {
+              "event": "started",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1212,
+              "command": "find",
+              "collection": "bounded_stateful_v2_metadata",
+              "lsid": "2a0000000376616c7565001e0000000569640010000000047dd656d134ed48b4bfe762247d6261760000",
+              "txn": "52",
+              "transactional": true,
+              "startsTransaction": true,
+              "readConcern": "snapshot",
+              "maxTimeMS": 15000,
+              "batchSize": null,
+              "cursor": null,
+              "tagged": false,
+              "comment": null,
+              "expected": {
+                "backendId": "h45_indexed_24b57267a544",
+                "checkpoint": {
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000066",
+                  "blockNum": 2
+                },
+                "declarationDigest": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+                "generation": "fresh-indexed-generation",
+                "revision": "50da7e16dd6572b5472d13afdab049c867a5f16adc60b10ca11a1e349b8044fa"
+              },
+              "owner": {
+                "id": "bounded-owner",
+                "generation": "owner-108"
+              },
+              "ownerClaim": "417dfb9ae564f1384211312623cf4bd866708e60d83ca93f35b9516c485ed543",
+              "model": null,
+              "ownerDeclaration": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+              "seq": 2386
+            },
+            {
+              "event": "succeeded",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1212,
+              "command": "find",
+              "replyBsonBytes": 4933,
+              "cursor": "0",
+              "batch": 1,
+              "metadata": {
+                "declarationDigest": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+                "revision": "50da7e16dd6572b5472d13afdab049c867a5f16adc60b10ca11a1e349b8044fa",
+                "checkpoint": {
+                  "blockNum": 2,
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000066"
+                },
+                "owner": {
+                  "id": "bounded-owner",
+                  "generation": "owner-108"
+                },
+                "ownerClaim": "417dfb9ae564f1384211312623cf4bd866708e60d83ca93f35b9516c485ed543",
+                "initialized": true,
+                "raw": false,
+                "pending": false,
+                "gap": false,
+                "rollback": "complete"
+              },
+              "seq": 2387
+            },
+            {
+              "event": "started",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1213,
+              "command": "find",
+              "collection": "bounded_ix1_5a3bc104a6d9dc38debfe99915562bcb0d52e5fff70658ddd52d2f5bc24fa0df_c",
+              "lsid": "2a0000000376616c7565001e0000000569640010000000047dd656d134ed48b4bfe762247d6261760000",
+              "txn": "52",
+              "transactional": true,
+              "startsTransaction": false,
+              "readConcern": null,
+              "maxTimeMS": 14998,
+              "batchSize": null,
+              "cursor": null,
+              "tagged": false,
+              "comment": null,
+              "expected": {
+                "backendId": "h45_indexed_24b57267a544",
+                "checkpoint": {
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000066",
+                  "blockNum": 2
+                },
+                "declarationDigest": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+                "generation": "fresh-indexed-generation",
+                "revision": "50da7e16dd6572b5472d13afdab049c867a5f16adc60b10ca11a1e349b8044fa"
+              },
+              "owner": {
+                "id": "bounded-owner",
+                "generation": "owner-108"
+              },
+              "ownerClaim": "417dfb9ae564f1384211312623cf4bd866708e60d83ca93f35b9516c485ed543",
+              "model": null,
+              "ownerDeclaration": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+              "seq": 2388
+            },
+            {
+              "event": "succeeded",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1213,
+              "command": "find",
+              "replyBsonBytes": 820,
+              "cursor": "0",
+              "batch": 1,
+              "coverage": {
+                "_id": "5a3bc104a6d9dc38debfe99915562bcb0d52e5fff70658ddd52d2f5bc24fa0df",
+                "representation": "h45-owner-indexed-materialization-v1",
+                "owner": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+                "model": "5a3bc104a6d9dc38debfe99915562bcb0d52e5fff70658ddd52d2f5bc24fa0df",
+                "generation": "fresh-indexed-generation",
+                "revision": "50da7e16dd6572b5472d13afdab049c867a5f16adc60b10ca11a1e349b8044fa",
+                "checkpoint": {
+                  "blockNum": 2,
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000066"
+                },
+                "ready": true,
+                "reason": null
+              },
+              "seq": 2389
+            },
+            {
+              "event": "started",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1214,
+              "command": "aggregate",
+              "collection": "bounded_ix1_5a3bc104a6d9dc38debfe99915562bcb0d52e5fff70658ddd52d2f5bc24fa0df_r",
+              "lsid": "2a0000000376616c7565001e0000000569640010000000047dd656d134ed48b4bfe762247d6261760000",
+              "txn": "52",
+              "transactional": true,
+              "startsTransaction": false,
+              "readConcern": null,
+              "maxTimeMS": 5000,
+              "batchSize": 1,
+              "cursor": null,
+              "tagged": true,
+              "comment": {
+                "model": "5a3bc104a6d9dc38debfe99915562bcb0d52e5fff70658ddd52d2f5bc24fa0df",
+                "trace": "2bcd6dcd-e23e-4965-af3d-af4113677290"
+              },
+              "expected": {
+                "backendId": "h45_indexed_24b57267a544",
+                "checkpoint": {
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000066",
+                  "blockNum": 2
+                },
+                "declarationDigest": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+                "generation": "fresh-indexed-generation",
+                "revision": "50da7e16dd6572b5472d13afdab049c867a5f16adc60b10ca11a1e349b8044fa"
+              },
+              "owner": {
+                "id": "bounded-owner",
+                "generation": "owner-108"
+              },
+              "ownerClaim": "417dfb9ae564f1384211312623cf4bd866708e60d83ca93f35b9516c485ed543",
+              "model": "5a3bc104a6d9dc38debfe99915562bcb0d52e5fff70658ddd52d2f5bc24fa0df",
+              "ownerDeclaration": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+              "hint": "h45_ix_b_ecbb57f6d76f8adfb86a",
+              "collation": {
+                "locale": "simple"
+              },
+              "allowDiskUse": false,
+              "seq": 2390
+            },
+            {
+              "event": "succeeded",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1214,
+              "command": "aggregate",
+              "replyBsonBytes": 337,
+              "cursor": "5426847105511701365",
+              "batch": 1,
+              "seq": 2391
+            },
+            {
+              "event": "started",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1215,
+              "command": "getMore",
+              "collection": "bounded_ix1_5a3bc104a6d9dc38debfe99915562bcb0d52e5fff70658ddd52d2f5bc24fa0df_r",
+              "lsid": "2a0000000376616c7565001e0000000569640010000000047dd656d134ed48b4bfe762247d6261760000",
+              "txn": "52",
+              "transactional": true,
+              "startsTransaction": false,
+              "readConcern": null,
+              "maxTimeMS": null,
+              "batchSize": 1,
+              "cursor": "5426847105511701365",
+              "tagged": true,
+              "comment": {
+                "model": "5a3bc104a6d9dc38debfe99915562bcb0d52e5fff70658ddd52d2f5bc24fa0df",
+                "trace": "2bcd6dcd-e23e-4965-af3d-af4113677290"
+              },
+              "expected": {
+                "backendId": "h45_indexed_24b57267a544",
+                "checkpoint": {
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000066",
+                  "blockNum": 2
+                },
+                "declarationDigest": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+                "generation": "fresh-indexed-generation",
+                "revision": "50da7e16dd6572b5472d13afdab049c867a5f16adc60b10ca11a1e349b8044fa"
+              },
+              "owner": {
+                "id": "bounded-owner",
+                "generation": "owner-108"
+              },
+              "ownerClaim": "417dfb9ae564f1384211312623cf4bd866708e60d83ca93f35b9516c485ed543",
+              "model": "5a3bc104a6d9dc38debfe99915562bcb0d52e5fff70658ddd52d2f5bc24fa0df",
+              "ownerDeclaration": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+              "seq": 2392
+            },
+            {
+              "event": "succeeded",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1215,
+              "command": "getMore",
+              "replyBsonBytes": 291,
+              "cursor": "0",
+              "batch": 0,
+              "seq": 2393
+            }
+          ]
+        },
+        {
+          "name": "empty",
+          "attempts": 1,
+          "originalPhase": "genesis-index-and-coverage",
+          "originalSpan": [
+            128,
+            148
+          ],
+          "originalRowsSha256": "7f7879c313728d20a6a9ccd951a31883e0057186d77a4d9ba49101040bb44533",
+          "rows": [
+            {
+              "event": "started",
+              "client": "managed-1",
+              "phase": "genesis-index-and-coverage",
+              "requestId": 78,
+              "command": "find",
+              "collection": "bounded_stateful_v2_metadata",
+              "lsid": "2a0000000376616c7565001e0000000569640010000000047dd656d134ed48b4bfe762247d6261760000",
+              "txn": "4",
+              "transactional": true,
+              "startsTransaction": true,
+              "readConcern": "snapshot",
+              "maxTimeMS": 15000,
+              "batchSize": null,
+              "cursor": null,
+              "tagged": false,
+              "comment": null,
+              "expected": {
+                "backendId": "h45_indexed_24b57267a544",
+                "checkpoint": {
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000000",
+                  "blockNum": 0
+                },
+                "declarationDigest": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+                "generation": "fresh-indexed-generation",
+                "revision": "b7609117d689fe5dd33fa5a768140373cff9b2787cd18e8dd0796fd87c3420b7"
+              },
+              "owner": {
+                "id": "bounded-owner",
+                "generation": "one"
+              },
+              "ownerClaim": "9f5b722394a5144d11efc7fe815bda365244c2b4d94e9fa357b8c8e448e7094e",
+              "model": null,
+              "ownerDeclaration": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+              "seq": 134
+            },
+            {
+              "event": "succeeded",
+              "client": "managed-1",
+              "phase": "genesis-index-and-coverage",
+              "requestId": 78,
+              "command": "find",
+              "replyBsonBytes": 3046,
+              "cursor": "0",
+              "batch": 1,
+              "metadata": {
+                "declarationDigest": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+                "revision": "b7609117d689fe5dd33fa5a768140373cff9b2787cd18e8dd0796fd87c3420b7",
+                "checkpoint": {
+                  "blockNum": 0,
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000000"
+                },
+                "owner": {
+                  "id": "bounded-owner",
+                  "generation": "one"
+                },
+                "ownerClaim": "9f5b722394a5144d11efc7fe815bda365244c2b4d94e9fa357b8c8e448e7094e",
+                "initialized": true,
+                "raw": false,
+                "pending": false,
+                "gap": false,
+                "rollback": null
+              },
+              "seq": 135
+            },
+            {
+              "event": "started",
+              "client": "managed-1",
+              "phase": "genesis-index-and-coverage",
+              "requestId": 79,
+              "command": "find",
+              "collection": "bounded_ix1_5a3bc104a6d9dc38debfe99915562bcb0d52e5fff70658ddd52d2f5bc24fa0df_c",
+              "lsid": "2a0000000376616c7565001e0000000569640010000000047dd656d134ed48b4bfe762247d6261760000",
+              "txn": "4",
+              "transactional": true,
+              "startsTransaction": false,
+              "readConcern": null,
+              "maxTimeMS": 14998,
+              "batchSize": null,
+              "cursor": null,
+              "tagged": false,
+              "comment": null,
+              "expected": {
+                "backendId": "h45_indexed_24b57267a544",
+                "checkpoint": {
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000000",
+                  "blockNum": 0
+                },
+                "declarationDigest": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+                "generation": "fresh-indexed-generation",
+                "revision": "b7609117d689fe5dd33fa5a768140373cff9b2787cd18e8dd0796fd87c3420b7"
+              },
+              "owner": {
+                "id": "bounded-owner",
+                "generation": "one"
+              },
+              "ownerClaim": "9f5b722394a5144d11efc7fe815bda365244c2b4d94e9fa357b8c8e448e7094e",
+              "model": null,
+              "ownerDeclaration": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+              "seq": 136
+            },
+            {
+              "event": "succeeded",
+              "client": "managed-1",
+              "phase": "genesis-index-and-coverage",
+              "requestId": 79,
+              "command": "find",
+              "replyBsonBytes": 820,
+              "cursor": "0",
+              "batch": 1,
+              "coverage": {
+                "_id": "5a3bc104a6d9dc38debfe99915562bcb0d52e5fff70658ddd52d2f5bc24fa0df",
+                "representation": "h45-owner-indexed-materialization-v1",
+                "owner": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+                "model": "5a3bc104a6d9dc38debfe99915562bcb0d52e5fff70658ddd52d2f5bc24fa0df",
+                "generation": "fresh-indexed-generation",
+                "revision": "b7609117d689fe5dd33fa5a768140373cff9b2787cd18e8dd0796fd87c3420b7",
+                "checkpoint": {
+                  "blockNum": 0,
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000000"
+                },
+                "ready": true,
+                "reason": null
+              },
+              "seq": 137
+            },
+            {
+              "event": "started",
+              "client": "managed-1",
+              "phase": "genesis-index-and-coverage",
+              "requestId": 80,
+              "command": "aggregate",
+              "collection": "bounded_ix1_5a3bc104a6d9dc38debfe99915562bcb0d52e5fff70658ddd52d2f5bc24fa0df_r",
+              "lsid": "2a0000000376616c7565001e0000000569640010000000047dd656d134ed48b4bfe762247d6261760000",
+              "txn": "4",
+              "transactional": true,
+              "startsTransaction": false,
+              "readConcern": null,
+              "maxTimeMS": 5000,
+              "batchSize": 1,
+              "cursor": null,
+              "tagged": true,
+              "comment": {
+                "model": "5a3bc104a6d9dc38debfe99915562bcb0d52e5fff70658ddd52d2f5bc24fa0df",
+                "trace": "5b4d2c82-df92-4f73-b724-72cc71f05a07"
+              },
+              "expected": {
+                "backendId": "h45_indexed_24b57267a544",
+                "checkpoint": {
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000000",
+                  "blockNum": 0
+                },
+                "declarationDigest": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+                "generation": "fresh-indexed-generation",
+                "revision": "b7609117d689fe5dd33fa5a768140373cff9b2787cd18e8dd0796fd87c3420b7"
+              },
+              "owner": {
+                "id": "bounded-owner",
+                "generation": "one"
+              },
+              "ownerClaim": "9f5b722394a5144d11efc7fe815bda365244c2b4d94e9fa357b8c8e448e7094e",
+              "model": "5a3bc104a6d9dc38debfe99915562bcb0d52e5fff70658ddd52d2f5bc24fa0df",
+              "ownerDeclaration": "6828dee8299561b9f616f87b6e9ade8c57e7b6081502a26c770825d9516e465e",
+              "hint": "h45_ix_b_ecbb57f6d76f8adfb86a",
+              "collation": {
+                "locale": "simple"
+              },
+              "allowDiskUse": false,
+              "seq": 138
+            },
+            {
+              "event": "succeeded",
+              "client": "managed-1",
+              "phase": "genesis-index-and-coverage",
+              "requestId": 80,
+              "command": "aggregate",
+              "replyBsonBytes": 292,
+              "cursor": "0",
+              "batch": 0,
+              "seq": 139
+            }
+          ]
+        }
+      ],
+      "executedSource": "467d803789fb5fe0e02f029b17240dfcb2f2d026",
+      "checkout": {
+        "commit": "467d803789fb5fe0e02f029b17240dfcb2f2d026",
+        "tree": "06460232d4bcb763833a50291e4cb7611f37ab8a",
+        "workflowSha": "467d803789fb5fe0e02f029b17240dfcb2f2d026",
+        "runId": "41884653731",
+        "runAttempt": "1",
+        "job": "indexed-native"
+      }
+    },
+    {
+      "node": "26.4.0",
+      "artifactId": 13349734368,
+      "archiveSha256": "ed1b95bc4035c5c1ea89fc13fe5aa2372a8fecf8ff138520fcae79f26e8609dd",
+      "traceSha256": "d98d4dc8c6097f05982a8a70ba0818de8740d5b485138f73054e9fdae0127040",
+      "originalFailure": {
+        "name": "AssertionError",
+        "code": "ERR_ASSERTION",
+        "message": "Expected values to be strictly equal:\n\n5 !== 2\n"
+      },
+      "requests": [
+        {
+          "name": "page",
+          "attempts": 3,
+          "originalPhase": "bounded-int64-membership",
+          "originalSpan": [
+            2336,
+            2360
+          ],
+          "originalRowsSha256": "de8a9f39b68b149ad5e15ff86a2914aea9c425ddd3ac6a54a27c5869fe50c86b",
+          "rows": [
+            {
+              "event": "started",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1190,
+              "command": "find",
+              "collection": "bounded_stateful_v2_metadata",
+              "lsid": "2a0000000376616c7565001e000000056964001000000004b708f12968b448e7945fc77b2e4449100000",
+              "txn": "51",
+              "transactional": true,
+              "startsTransaction": true,
+              "readConcern": "snapshot",
+              "maxTimeMS": 14999,
+              "batchSize": null,
+              "cursor": null,
+              "tagged": false,
+              "comment": null,
+              "expected": {
+                "backendId": "h45_indexed_21cab40caa38",
+                "checkpoint": {
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000066",
+                  "blockNum": 2
+                },
+                "declarationDigest": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+                "generation": "fresh-indexed-generation",
+                "revision": "1fc2a090c4ea734290132623f82c78bcfaea1e9abdb6d2f430845cc649065adc"
+              },
+              "owner": {
+                "id": "bounded-owner",
+                "generation": "owner-108"
+              },
+              "ownerClaim": "30f48554a6d55e60edb9c74293a053ab476223ac7b28e14b44b4704043efe9d9",
+              "model": null,
+              "ownerDeclaration": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+              "seq": 2342
+            },
+            {
+              "event": "succeeded",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1190,
+              "command": "find",
+              "replyBsonBytes": 4933,
+              "cursor": "0",
+              "batch": 1,
+              "metadata": {
+                "declarationDigest": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+                "revision": "1fc2a090c4ea734290132623f82c78bcfaea1e9abdb6d2f430845cc649065adc",
+                "checkpoint": {
+                  "blockNum": 2,
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000066"
+                },
+                "owner": {
+                  "id": "bounded-owner",
+                  "generation": "owner-108"
+                },
+                "ownerClaim": "30f48554a6d55e60edb9c74293a053ab476223ac7b28e14b44b4704043efe9d9",
+                "initialized": true,
+                "raw": false,
+                "pending": false,
+                "gap": false,
+                "rollback": "complete"
+              },
+              "seq": 2343
+            },
+            {
+              "event": "started",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1191,
+              "command": "find",
+              "collection": "bounded_ix1_28805d6c3dbb0c1c96b739b123759433af84e7da93664a17b31e73fe82849cc1_c",
+              "lsid": "2a0000000376616c7565001e000000056964001000000004b708f12968b448e7945fc77b2e4449100000",
+              "txn": "51",
+              "transactional": true,
+              "startsTransaction": false,
+              "readConcern": null,
+              "maxTimeMS": 14998,
+              "batchSize": null,
+              "cursor": null,
+              "tagged": false,
+              "comment": null,
+              "expected": {
+                "backendId": "h45_indexed_21cab40caa38",
+                "checkpoint": {
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000066",
+                  "blockNum": 2
+                },
+                "declarationDigest": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+                "generation": "fresh-indexed-generation",
+                "revision": "1fc2a090c4ea734290132623f82c78bcfaea1e9abdb6d2f430845cc649065adc"
+              },
+              "owner": {
+                "id": "bounded-owner",
+                "generation": "owner-108"
+              },
+              "ownerClaim": "30f48554a6d55e60edb9c74293a053ab476223ac7b28e14b44b4704043efe9d9",
+              "model": null,
+              "ownerDeclaration": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+              "seq": 2344
+            },
+            {
+              "event": "succeeded",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1191,
+              "command": "find",
+              "replyBsonBytes": 820,
+              "cursor": "0",
+              "batch": 1,
+              "coverage": {
+                "_id": "28805d6c3dbb0c1c96b739b123759433af84e7da93664a17b31e73fe82849cc1",
+                "representation": "h45-owner-indexed-materialization-v1",
+                "owner": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+                "model": "28805d6c3dbb0c1c96b739b123759433af84e7da93664a17b31e73fe82849cc1",
+                "generation": "fresh-indexed-generation",
+                "revision": "1fc2a090c4ea734290132623f82c78bcfaea1e9abdb6d2f430845cc649065adc",
+                "checkpoint": {
+                  "blockNum": 2,
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000066"
+                },
+                "ready": true,
+                "reason": null
+              },
+              "seq": 2345
+            },
+            {
+              "event": "started",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1192,
+              "command": "aggregate",
+              "collection": "bounded_ix1_28805d6c3dbb0c1c96b739b123759433af84e7da93664a17b31e73fe82849cc1_r",
+              "lsid": "2a0000000376616c7565001e000000056964001000000004b708f12968b448e7945fc77b2e4449100000",
+              "txn": "51",
+              "transactional": true,
+              "startsTransaction": false,
+              "readConcern": null,
+              "maxTimeMS": 5000,
+              "batchSize": 1,
+              "cursor": null,
+              "tagged": true,
+              "comment": {
+                "model": "28805d6c3dbb0c1c96b739b123759433af84e7da93664a17b31e73fe82849cc1",
+                "trace": "59877d20-37cd-42aa-8cb2-d36d6aa20680"
+              },
+              "expected": {
+                "backendId": "h45_indexed_21cab40caa38",
+                "checkpoint": {
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000066",
+                  "blockNum": 2
+                },
+                "declarationDigest": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+                "generation": "fresh-indexed-generation",
+                "revision": "1fc2a090c4ea734290132623f82c78bcfaea1e9abdb6d2f430845cc649065adc"
+              },
+              "owner": {
+                "id": "bounded-owner",
+                "generation": "owner-108"
+              },
+              "ownerClaim": "30f48554a6d55e60edb9c74293a053ab476223ac7b28e14b44b4704043efe9d9",
+              "model": "28805d6c3dbb0c1c96b739b123759433af84e7da93664a17b31e73fe82849cc1",
+              "ownerDeclaration": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+              "hint": "h45_ix_b_ecbb57f6d76f8adfb86a",
+              "collation": {
+                "locale": "simple"
+              },
+              "allowDiskUse": false,
+              "seq": 2346
+            },
+            {
+              "event": "succeeded",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1192,
+              "command": "aggregate",
+              "replyBsonBytes": 2018,
+              "cursor": "2102598282861461805",
+              "batch": 1,
+              "seq": 2347
+            },
+            {
+              "event": "started",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1193,
+              "command": "getMore",
+              "collection": "bounded_ix1_28805d6c3dbb0c1c96b739b123759433af84e7da93664a17b31e73fe82849cc1_r",
+              "lsid": "2a0000000376616c7565001e000000056964001000000004b708f12968b448e7945fc77b2e4449100000",
+              "txn": "51",
+              "transactional": true,
+              "startsTransaction": false,
+              "readConcern": null,
+              "maxTimeMS": null,
+              "batchSize": 1,
+              "cursor": "2102598282861461805",
+              "tagged": true,
+              "comment": {
+                "model": "28805d6c3dbb0c1c96b739b123759433af84e7da93664a17b31e73fe82849cc1",
+                "trace": "59877d20-37cd-42aa-8cb2-d36d6aa20680"
+              },
+              "expected": {
+                "backendId": "h45_indexed_21cab40caa38",
+                "checkpoint": {
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000066",
+                  "blockNum": 2
+                },
+                "declarationDigest": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+                "generation": "fresh-indexed-generation",
+                "revision": "1fc2a090c4ea734290132623f82c78bcfaea1e9abdb6d2f430845cc649065adc"
+              },
+              "owner": {
+                "id": "bounded-owner",
+                "generation": "owner-108"
+              },
+              "ownerClaim": "30f48554a6d55e60edb9c74293a053ab476223ac7b28e14b44b4704043efe9d9",
+              "model": "28805d6c3dbb0c1c96b739b123759433af84e7da93664a17b31e73fe82849cc1",
+              "ownerDeclaration": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+              "seq": 2348
+            },
+            {
+              "event": "succeeded",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1193,
+              "command": "getMore",
+              "replyBsonBytes": 2037,
+              "cursor": "2102598282861461805",
+              "batch": 1,
+              "seq": 2349
+            },
+            {
+              "event": "started",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1194,
+              "command": "getMore",
+              "collection": "bounded_ix1_28805d6c3dbb0c1c96b739b123759433af84e7da93664a17b31e73fe82849cc1_r",
+              "lsid": "2a0000000376616c7565001e000000056964001000000004b708f12968b448e7945fc77b2e4449100000",
+              "txn": "51",
+              "transactional": true,
+              "startsTransaction": false,
+              "readConcern": null,
+              "maxTimeMS": null,
+              "batchSize": 1,
+              "cursor": "2102598282861461805",
+              "tagged": true,
+              "comment": {
+                "model": "28805d6c3dbb0c1c96b739b123759433af84e7da93664a17b31e73fe82849cc1",
+                "trace": "59877d20-37cd-42aa-8cb2-d36d6aa20680"
+              },
+              "expected": {
+                "backendId": "h45_indexed_21cab40caa38",
+                "checkpoint": {
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000066",
+                  "blockNum": 2
+                },
+                "declarationDigest": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+                "generation": "fresh-indexed-generation",
+                "revision": "1fc2a090c4ea734290132623f82c78bcfaea1e9abdb6d2f430845cc649065adc"
+              },
+              "owner": {
+                "id": "bounded-owner",
+                "generation": "owner-108"
+              },
+              "ownerClaim": "30f48554a6d55e60edb9c74293a053ab476223ac7b28e14b44b4704043efe9d9",
+              "model": "28805d6c3dbb0c1c96b739b123759433af84e7da93664a17b31e73fe82849cc1",
+              "ownerDeclaration": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+              "seq": 2350
+            },
+            {
+              "event": "succeeded",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1194,
+              "command": "getMore",
+              "replyBsonBytes": 291,
+              "cursor": "0",
+              "batch": 0,
+              "seq": 2351
+            }
+          ]
+        },
+        {
+          "name": "count",
+          "attempts": 2,
+          "originalPhase": "bounded-int64-membership",
+          "originalSpan": [
+            2380,
+            2402
+          ],
+          "originalRowsSha256": "c12e045c96e5a16bd5f41d7e7066fb51aa32fb4eb125dd6d6c39f0f5de64967e",
+          "rows": [
+            {
+              "event": "started",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1212,
+              "command": "find",
+              "collection": "bounded_stateful_v2_metadata",
+              "lsid": "2a0000000376616c7565001e000000056964001000000004b708f12968b448e7945fc77b2e4449100000",
+              "txn": "52",
+              "transactional": true,
+              "startsTransaction": true,
+              "readConcern": "snapshot",
+              "maxTimeMS": 14999,
+              "batchSize": null,
+              "cursor": null,
+              "tagged": false,
+              "comment": null,
+              "expected": {
+                "backendId": "h45_indexed_21cab40caa38",
+                "checkpoint": {
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000066",
+                  "blockNum": 2
+                },
+                "declarationDigest": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+                "generation": "fresh-indexed-generation",
+                "revision": "1fc2a090c4ea734290132623f82c78bcfaea1e9abdb6d2f430845cc649065adc"
+              },
+              "owner": {
+                "id": "bounded-owner",
+                "generation": "owner-108"
+              },
+              "ownerClaim": "30f48554a6d55e60edb9c74293a053ab476223ac7b28e14b44b4704043efe9d9",
+              "model": null,
+              "ownerDeclaration": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+              "seq": 2386
+            },
+            {
+              "event": "succeeded",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1212,
+              "command": "find",
+              "replyBsonBytes": 4933,
+              "cursor": "0",
+              "batch": 1,
+              "metadata": {
+                "declarationDigest": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+                "revision": "1fc2a090c4ea734290132623f82c78bcfaea1e9abdb6d2f430845cc649065adc",
+                "checkpoint": {
+                  "blockNum": 2,
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000066"
+                },
+                "owner": {
+                  "id": "bounded-owner",
+                  "generation": "owner-108"
+                },
+                "ownerClaim": "30f48554a6d55e60edb9c74293a053ab476223ac7b28e14b44b4704043efe9d9",
+                "initialized": true,
+                "raw": false,
+                "pending": false,
+                "gap": false,
+                "rollback": "complete"
+              },
+              "seq": 2387
+            },
+            {
+              "event": "started",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1213,
+              "command": "find",
+              "collection": "bounded_ix1_28805d6c3dbb0c1c96b739b123759433af84e7da93664a17b31e73fe82849cc1_c",
+              "lsid": "2a0000000376616c7565001e000000056964001000000004b708f12968b448e7945fc77b2e4449100000",
+              "txn": "52",
+              "transactional": true,
+              "startsTransaction": false,
+              "readConcern": null,
+              "maxTimeMS": 14998,
+              "batchSize": null,
+              "cursor": null,
+              "tagged": false,
+              "comment": null,
+              "expected": {
+                "backendId": "h45_indexed_21cab40caa38",
+                "checkpoint": {
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000066",
+                  "blockNum": 2
+                },
+                "declarationDigest": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+                "generation": "fresh-indexed-generation",
+                "revision": "1fc2a090c4ea734290132623f82c78bcfaea1e9abdb6d2f430845cc649065adc"
+              },
+              "owner": {
+                "id": "bounded-owner",
+                "generation": "owner-108"
+              },
+              "ownerClaim": "30f48554a6d55e60edb9c74293a053ab476223ac7b28e14b44b4704043efe9d9",
+              "model": null,
+              "ownerDeclaration": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+              "seq": 2388
+            },
+            {
+              "event": "succeeded",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1213,
+              "command": "find",
+              "replyBsonBytes": 820,
+              "cursor": "0",
+              "batch": 1,
+              "coverage": {
+                "_id": "28805d6c3dbb0c1c96b739b123759433af84e7da93664a17b31e73fe82849cc1",
+                "representation": "h45-owner-indexed-materialization-v1",
+                "owner": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+                "model": "28805d6c3dbb0c1c96b739b123759433af84e7da93664a17b31e73fe82849cc1",
+                "generation": "fresh-indexed-generation",
+                "revision": "1fc2a090c4ea734290132623f82c78bcfaea1e9abdb6d2f430845cc649065adc",
+                "checkpoint": {
+                  "blockNum": 2,
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000066"
+                },
+                "ready": true,
+                "reason": null
+              },
+              "seq": 2389
+            },
+            {
+              "event": "started",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1214,
+              "command": "aggregate",
+              "collection": "bounded_ix1_28805d6c3dbb0c1c96b739b123759433af84e7da93664a17b31e73fe82849cc1_r",
+              "lsid": "2a0000000376616c7565001e000000056964001000000004b708f12968b448e7945fc77b2e4449100000",
+              "txn": "52",
+              "transactional": true,
+              "startsTransaction": false,
+              "readConcern": null,
+              "maxTimeMS": 5000,
+              "batchSize": 1,
+              "cursor": null,
+              "tagged": true,
+              "comment": {
+                "model": "28805d6c3dbb0c1c96b739b123759433af84e7da93664a17b31e73fe82849cc1",
+                "trace": "7835ed8a-c5bd-4c09-b0a8-14f5f877ffa3"
+              },
+              "expected": {
+                "backendId": "h45_indexed_21cab40caa38",
+                "checkpoint": {
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000066",
+                  "blockNum": 2
+                },
+                "declarationDigest": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+                "generation": "fresh-indexed-generation",
+                "revision": "1fc2a090c4ea734290132623f82c78bcfaea1e9abdb6d2f430845cc649065adc"
+              },
+              "owner": {
+                "id": "bounded-owner",
+                "generation": "owner-108"
+              },
+              "ownerClaim": "30f48554a6d55e60edb9c74293a053ab476223ac7b28e14b44b4704043efe9d9",
+              "model": "28805d6c3dbb0c1c96b739b123759433af84e7da93664a17b31e73fe82849cc1",
+              "ownerDeclaration": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+              "hint": "h45_ix_b_ecbb57f6d76f8adfb86a",
+              "collation": {
+                "locale": "simple"
+              },
+              "allowDiskUse": false,
+              "seq": 2390
+            },
+            {
+              "event": "succeeded",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1214,
+              "command": "aggregate",
+              "replyBsonBytes": 337,
+              "cursor": "7625685754793104358",
+              "batch": 1,
+              "seq": 2391
+            },
+            {
+              "event": "started",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1215,
+              "command": "getMore",
+              "collection": "bounded_ix1_28805d6c3dbb0c1c96b739b123759433af84e7da93664a17b31e73fe82849cc1_r",
+              "lsid": "2a0000000376616c7565001e000000056964001000000004b708f12968b448e7945fc77b2e4449100000",
+              "txn": "52",
+              "transactional": true,
+              "startsTransaction": false,
+              "readConcern": null,
+              "maxTimeMS": null,
+              "batchSize": 1,
+              "cursor": "7625685754793104358",
+              "tagged": true,
+              "comment": {
+                "model": "28805d6c3dbb0c1c96b739b123759433af84e7da93664a17b31e73fe82849cc1",
+                "trace": "7835ed8a-c5bd-4c09-b0a8-14f5f877ffa3"
+              },
+              "expected": {
+                "backendId": "h45_indexed_21cab40caa38",
+                "checkpoint": {
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000066",
+                  "blockNum": 2
+                },
+                "declarationDigest": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+                "generation": "fresh-indexed-generation",
+                "revision": "1fc2a090c4ea734290132623f82c78bcfaea1e9abdb6d2f430845cc649065adc"
+              },
+              "owner": {
+                "id": "bounded-owner",
+                "generation": "owner-108"
+              },
+              "ownerClaim": "30f48554a6d55e60edb9c74293a053ab476223ac7b28e14b44b4704043efe9d9",
+              "model": "28805d6c3dbb0c1c96b739b123759433af84e7da93664a17b31e73fe82849cc1",
+              "ownerDeclaration": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+              "seq": 2392
+            },
+            {
+              "event": "succeeded",
+              "client": "managed-1",
+              "phase": "bounded-int64-membership",
+              "requestId": 1215,
+              "command": "getMore",
+              "replyBsonBytes": 291,
+              "cursor": "0",
+              "batch": 0,
+              "seq": 2393
+            }
+          ]
+        },
+        {
+          "name": "empty",
+          "attempts": 1,
+          "originalPhase": "genesis-index-and-coverage",
+          "originalSpan": [
+            128,
+            148
+          ],
+          "originalRowsSha256": "4cda7a9fb2b0278f03899d4f6ee07125dfa3292e66e77b04ddde1ed20cdb1ca6",
+          "rows": [
+            {
+              "event": "started",
+              "client": "managed-1",
+              "phase": "genesis-index-and-coverage",
+              "requestId": 78,
+              "command": "find",
+              "collection": "bounded_stateful_v2_metadata",
+              "lsid": "2a0000000376616c7565001e000000056964001000000004b708f12968b448e7945fc77b2e4449100000",
+              "txn": "4",
+              "transactional": true,
+              "startsTransaction": true,
+              "readConcern": "snapshot",
+              "maxTimeMS": 14999,
+              "batchSize": null,
+              "cursor": null,
+              "tagged": false,
+              "comment": null,
+              "expected": {
+                "backendId": "h45_indexed_21cab40caa38",
+                "checkpoint": {
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000000",
+                  "blockNum": 0
+                },
+                "declarationDigest": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+                "generation": "fresh-indexed-generation",
+                "revision": "b3a132289bc903a2422bc2442c0bdacfa9521d9c384a0c17beb3c67959182001"
+              },
+              "owner": {
+                "id": "bounded-owner",
+                "generation": "one"
+              },
+              "ownerClaim": "5166649e86a98b95de780d05bed04da4ec45c70a6739283781eff6362eb2221f",
+              "model": null,
+              "ownerDeclaration": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+              "seq": 134
+            },
+            {
+              "event": "succeeded",
+              "client": "managed-1",
+              "phase": "genesis-index-and-coverage",
+              "requestId": 78,
+              "command": "find",
+              "replyBsonBytes": 3046,
+              "cursor": "0",
+              "batch": 1,
+              "metadata": {
+                "declarationDigest": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+                "revision": "b3a132289bc903a2422bc2442c0bdacfa9521d9c384a0c17beb3c67959182001",
+                "checkpoint": {
+                  "blockNum": 0,
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000000"
+                },
+                "owner": {
+                  "id": "bounded-owner",
+                  "generation": "one"
+                },
+                "ownerClaim": "5166649e86a98b95de780d05bed04da4ec45c70a6739283781eff6362eb2221f",
+                "initialized": true,
+                "raw": false,
+                "pending": false,
+                "gap": false,
+                "rollback": null
+              },
+              "seq": 135
+            },
+            {
+              "event": "started",
+              "client": "managed-1",
+              "phase": "genesis-index-and-coverage",
+              "requestId": 79,
+              "command": "find",
+              "collection": "bounded_ix1_28805d6c3dbb0c1c96b739b123759433af84e7da93664a17b31e73fe82849cc1_c",
+              "lsid": "2a0000000376616c7565001e000000056964001000000004b708f12968b448e7945fc77b2e4449100000",
+              "txn": "4",
+              "transactional": true,
+              "startsTransaction": false,
+              "readConcern": null,
+              "maxTimeMS": 14998,
+              "batchSize": null,
+              "cursor": null,
+              "tagged": false,
+              "comment": null,
+              "expected": {
+                "backendId": "h45_indexed_21cab40caa38",
+                "checkpoint": {
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000000",
+                  "blockNum": 0
+                },
+                "declarationDigest": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+                "generation": "fresh-indexed-generation",
+                "revision": "b3a132289bc903a2422bc2442c0bdacfa9521d9c384a0c17beb3c67959182001"
+              },
+              "owner": {
+                "id": "bounded-owner",
+                "generation": "one"
+              },
+              "ownerClaim": "5166649e86a98b95de780d05bed04da4ec45c70a6739283781eff6362eb2221f",
+              "model": null,
+              "ownerDeclaration": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+              "seq": 136
+            },
+            {
+              "event": "succeeded",
+              "client": "managed-1",
+              "phase": "genesis-index-and-coverage",
+              "requestId": 79,
+              "command": "find",
+              "replyBsonBytes": 820,
+              "cursor": "0",
+              "batch": 1,
+              "coverage": {
+                "_id": "28805d6c3dbb0c1c96b739b123759433af84e7da93664a17b31e73fe82849cc1",
+                "representation": "h45-owner-indexed-materialization-v1",
+                "owner": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+                "model": "28805d6c3dbb0c1c96b739b123759433af84e7da93664a17b31e73fe82849cc1",
+                "generation": "fresh-indexed-generation",
+                "revision": "b3a132289bc903a2422bc2442c0bdacfa9521d9c384a0c17beb3c67959182001",
+                "checkpoint": {
+                  "blockNum": 0,
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000000"
+                },
+                "ready": true,
+                "reason": null
+              },
+              "seq": 137
+            },
+            {
+              "event": "started",
+              "client": "managed-1",
+              "phase": "genesis-index-and-coverage",
+              "requestId": 80,
+              "command": "aggregate",
+              "collection": "bounded_ix1_28805d6c3dbb0c1c96b739b123759433af84e7da93664a17b31e73fe82849cc1_r",
+              "lsid": "2a0000000376616c7565001e000000056964001000000004b708f12968b448e7945fc77b2e4449100000",
+              "txn": "4",
+              "transactional": true,
+              "startsTransaction": false,
+              "readConcern": null,
+              "maxTimeMS": 5000,
+              "batchSize": 1,
+              "cursor": null,
+              "tagged": true,
+              "comment": {
+                "model": "28805d6c3dbb0c1c96b739b123759433af84e7da93664a17b31e73fe82849cc1",
+                "trace": "714de462-f404-4f56-865d-6b767c82ea63"
+              },
+              "expected": {
+                "backendId": "h45_indexed_21cab40caa38",
+                "checkpoint": {
+                  "blockId": "0000000000000000000000000000000000000000000000000000000000000000",
+                  "blockNum": 0
+                },
+                "declarationDigest": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+                "generation": "fresh-indexed-generation",
+                "revision": "b3a132289bc903a2422bc2442c0bdacfa9521d9c384a0c17beb3c67959182001"
+              },
+              "owner": {
+                "id": "bounded-owner",
+                "generation": "one"
+              },
+              "ownerClaim": "5166649e86a98b95de780d05bed04da4ec45c70a6739283781eff6362eb2221f",
+              "model": "28805d6c3dbb0c1c96b739b123759433af84e7da93664a17b31e73fe82849cc1",
+              "ownerDeclaration": "216a35dd31e183dff79bf4b99979c7d99183bfd17d6bc1dd0f61f17b934b3a01",
+              "hint": "h45_ix_b_ecbb57f6d76f8adfb86a",
+              "collation": {
+                "locale": "simple"
+              },
+              "allowDiskUse": false,
+              "seq": 138
+            },
+            {
+              "event": "succeeded",
+              "client": "managed-1",
+              "phase": "genesis-index-and-coverage",
+              "requestId": 80,
+              "command": "aggregate",
+              "replyBsonBytes": 292,
+              "cursor": "0",
+              "batch": 0,
+              "seq": 139
+            }
+          ]
+        }
+      ],
+      "executedSource": "467d803789fb5fe0e02f029b17240dfcb2f2d026",
+      "checkout": {
+        "commit": "467d803789fb5fe0e02f029b17240dfcb2f2d026",
+        "tree": "06460232d4bcb763833a50291e4cb7611f37ab8a",
+        "workflowSha": "467d803789fb5fe0e02f029b17240dfcb2f2d026",
+        "runId": "41884653731",
+        "runAttempt": "1",
+        "job": "indexed-native"
+      }
+    }
+  ]
+}

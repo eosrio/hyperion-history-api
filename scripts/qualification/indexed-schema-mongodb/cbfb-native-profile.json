@@ -253,8 +253,8 @@
     },
     {
       "path": "scripts/check-indexed-cbfb-package.mjs",
-      "bytes": 5492,
-      "sha256": "56e51fea7c5c61c84b018b66016353ceee9c57cbde4c7829cbab8a4bf0447e7d"
+      "bytes": 5529,
+      "sha256": "5763c14d1969af236f2438c7c6fd004bb76fbb3b89df44a991ca3722117ffa28"
     },
     {
       "path": "scripts/qualification/action-source-admission-fault.mjs",
@@ -338,13 +338,13 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/cbfb-native-offline.test.mjs",
-      "bytes": 5032,
-      "sha256": "d7635ee576c3a778420aa9842e51bf40f96523868e1047a67b21f94d545a7157"
+      "bytes": 7139,
+      "sha256": "2ee52f412570684ac821b25ff606aa10e1f5bd71490d98662f7601ec36babf04"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/cbfb-native-runner.mjs",
-      "bytes": 42273,
-      "sha256": "0ccc910b40443d44756acfb44f2f120db02f28ea928743237d3962ab4e844051"
+      "bytes": 42383,
+      "sha256": "29181a184f240453a5acfb6df46f81f55f283a14daebd0be887c3565fed9d3c0"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/cbfb-native-trace.mjs",
@@ -358,8 +358,8 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-ci.md",
-      "bytes": 3195,
-      "sha256": "7ed6b250a91d6eacbf53dfb1833ce7d477c5c32959805b1ca47716c3bb8c06f5"
+      "bytes": 4087,
+      "sha256": "6c141a6cc8517c2a78a3f134f517e7dc4129c6a72fb8a3d2054cc95423fab535"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-contract.mjs",
@@ -368,13 +368,13 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-contract.test.mjs",
-      "bytes": 12393,
-      "sha256": "bcb87d9430e0009f25f381726afba52190f26503b3f9fabf161a3ab2108581a7"
+      "bytes": 14521,
+      "sha256": "8a62482f2af8021b722d766017bac0be08a108c4f3f664d8196b327710b55b2a"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-routing.json",
-      "bytes": 217354,
-      "sha256": "e556c1f5693aa46ec6affdbfc735709e7d8e6720cd53ffd6e18dfec9c16f2ad2"
+      "bytes": 217507,
+      "sha256": "b9be8eee86f92718e3c602256af5c9cc9e48c61a6c91b46ae0eda5059e2fb051"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/fixtures/9d8-explain/PROVENANCE.json",
@@ -634,12 +634,17 @@
     {
       "path": "tests/fixtures/engineering-profiles/current-cbfb-linux.json",
       "bytes": 9915,
-      "sha256": "a809fcac61b99653092b2439dedd16a295976f3c2c15fec668c57a0513651824"
+      "sha256": "7e453b57ad3e89a33fa295e7c6ebe46aba817ae3364cfd31be519ac34bedd17f"
     },
     {
       "path": "tests/fixtures/engineering-profiles/current-native45-linux.json",
       "bytes": 6575,
       "sha256": "672f0d35b9cdf68629155cd8002a832361c579a5c11d80d3fe81b51e6e6ca9ad"
+    },
+    {
+      "path": "tests/fixtures/engineering-profiles/failed-native-membership-41884653731.json",
+      "bytes": 65480,
+      "sha256": "fd63b5c787fde07bd99ae4ad121887044f1735d2689ecc5f51d85c88749358ba"
     },
     {
       "path": "tests/fixtures/engineering-profiles/native-cleanup-linux.json",
@@ -703,13 +708,13 @@
     },
     {
       "path": "tests/unit/current-cbfb-source-admission-native.mjs",
-      "bytes": 17407,
-      "sha256": "4e32141467b3b061b738d59748f7a002e664734ac27c78c976c121ca956f1ad8"
+      "bytes": 17438,
+      "sha256": "422f23423ec14e29a806f086efe5a1f579d2fde6ca29e06c48ef6ff67b7d7719"
     },
     {
       "path": "tests/unit/current-cbfb-source-admission.mjs",
       "bytes": 7971,
-      "sha256": "e0cd366f611fe9872018939b0b5741d9948300985f54d1685cd4f8ba542e7d6e"
+      "sha256": "6f12060d62a4d3694dcecbb887cecf891cb9fe63ca6786ea99ff407881230f58"
     },
     {
       "path": "tests/unit/current-stateful-engineering-source-admission.mjs",
@@ -769,7 +774,7 @@
     {
       "path": "tests/unit/stateful-engineering-source-admission.test.ts",
       "bytes": 1172,
-      "sha256": "3dc529ddcd4e0b339ca5aad4f264c5d3f5f3526d714f939f1aff935b9e133d04"
+      "sha256": "a7e0bf22aca3acace1d5a3072c31a13e4b6a63a84505300361349ad0ec46cd45"
     },
     {
       "path": "tests/unit/stateful-host-fixture.mjs",
@@ -5342,9 +5347,9 @@
       "manifestRouteCount": 41
     },
     "observation": {
-      "files": 106,
+      "files": 107,
       "edges": 338,
-      "sha256": "e242af259d522ef0a1b8635f714c157367f0bc91344eb641229b5c99f470950b"
+      "sha256": "ea8843c7cc01e5eb7eb7acf1a2b54b9a74e783629d4f17919717b46154027dce"
     }
   },
   "provenance": {

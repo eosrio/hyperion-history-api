@@ -38,8 +38,20 @@ unrestricted base routing, and their path filters match the PR's changed files.
 Portable controls exercise actual isolated file mutations across SDK metadata,
 all emitted trees, Wire descriptors/member bytes/prepared lock/nested SDK,
 scoped MongoDB/BSON packages, TypeScript, locks, Git-LF sources and routing.
-The native 42-case successor retains caller and qualification before-effects
+The native 54-check successor retains caller and qualification before-effects
 negatives. Those native controls run on Linux CI; they are not Windows fixtures.
+The Bun wrapper expects the actual 54-check success receipt, and the CBFB packed
+consumer sets its own profile explicitly rather than relying on CI environment.
+
+Native run `41884653731` for PR head `8af89441` executed GitHub merge source
+`467d803789fb5fe0e02f029b17240dfcb2f2d026`, tree `06460232`, and failed on both Node versions in the
+membership group: the page's three attempts and count's two attempts were
+incorrectly compared as five phase-wide attempts against two request attempts.
+The captured per-request attestations pass independently. The minimized recorded
+fixture retains both original failure identities and artifact/trace hashes.
+Page, count and empty-set requests now use the existing isolated phase helper;
+their assertions, limits, deadlines and cleanup rules are unchanged. The original
+failed artifacts remain failed; this correction requires a fresh native CI run.
 
 Source admission leaves physical MongoDB, AtomicAssets/AtomicMarket SQL parity,
 managed HTTP, full Wire replay and release qualification pending. The separate

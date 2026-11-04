@@ -5,6 +5,30 @@ import {PLAN} from './cbfb-native-contract.mjs';
 import {DESCRIPTOR} from './cbfb-assembly.mjs';
 import {NATIVE_PROFILE,observeNativeInputs,assertNativeInputs,assertNativeRuntime} from './cbfb-native-assembly.mjs';
 import {observeSourceClosure,assertSourceClosure} from './native-source-closure.mjs';
+import {readFileSync} from 'node:fs';
+import {runInNewContext} from 'node:vm';
+import {verifyIndexedTrace} from './cbfb-native-trace.mjs';
+import {page as nativePage,count as nativeCount} from './cbfb-native-contract.mjs';
+
+const recorded=JSON.parse(readFileSync(new URL('../../../tests/fixtures/engineering-profiles/failed-native-membership-41884653731.json',import.meta.url)));
+for(const capture of recorded.captures)test('recorded Node '+capture.node+' membership requests keep exact per-request accounting in the real runner handler',async()=>{
+ const source=readFileSync(new URL('./cbfb-native-runner.mjs',import.meta.url),'utf8'),
+  phaseWork=/^ const phaseWork=.*$/m.exec(source)?.[0],verify=/^ const verify=.*$/m.exec(source)?.[0],
+  start=source.indexOf("   'bounded-int64-membership':async()=>{"),end=source.indexOf("   'sealed-explain':",start);
+ assert(phaseWork&&verify&&start>0&&end>start);let calls=0;const observed=[];
+ const result=await runInNewContext(`(async()=>{let phase={name:'bounded-int64-membership'};const trace=[];${phaseWork}\n${verify}\nconst direct=async request=>JSON.parse(JSON.stringify(await observe(request,phase.name,trace)));const handlers={${source.slice(start,end)}};return handlers['bounded-int64-membership']();})()`,{
+  assert,PLAN,verifyIndexedTrace,page:nativePage,count:nativeCount,
+  observe:async(request,phase,trace)=>{
+   const selected=capture.requests[calls];assert(selected,'Unexpected membership query');assert.equal(request.kind,calls===0?'page':'count');
+   assert.equal(request.where[1].values.length,calls===2?0:3);
+   for(const row of selected.rows)trace.push({...structuredClone(row),seq:trace.length,phase});
+   observed.push({name:selected.name,phase,attempts:selected.attempts});calls++;
+   return {attempts:selected.attempts,result:request.kind==='page'?{rows:[{key:'s:d'},{key:'s:a'}]}:{value:selected.name==='count'?'2':'0'}};
+  }
+ });
+ assert.equal(calls,3);assert.equal(result.bsonLongMembership,true);assert.equal(new Set(observed.map(row=>row.phase)).size,3);
+ assert.deepEqual(observed.map(row=>row.name),['page','count','empty']);
+});
 test('cbfb fixture preserves historical resources, limits and all existing cases',()=>{
  assert.deepEqual(PLAN.fixture,historical.fixture);assert.deepEqual(PLAN.limits,historical.limits);assert.equal(PLAN.operationMS,historical.operationMS);assert.equal(PLAN.transactionMS,historical.transactionMS);
  assert.deepEqual(PLAN.cases.filter(x=>x!=='bounded-int64-membership'),historical.cases);assert(PLAN.cases.includes('bounded-int64-membership'));

@@ -112,9 +112,14 @@
           "historical": "./stateful-complete-kind-source-admission-native.mjs",
           "current": "./current-cbfb-source-admission-native.mjs",
           "count": 1
+        },
+        {
+          "historical": "expect(result.cases).toBe(42)",
+          "current": "expect(result.cases).toBe(54)",
+          "count": 1
         }
       ],
-      "currentSha256": "3dc529ddcd4e0b339ca5aad4f264c5d3f5f3526d714f939f1aff935b9e133d04",
+      "currentSha256": "a7e0bf22aca3acace1d5a3072c31a13e4b6a63a84505300361349ad0ec46cd45",
       "historicalSource": "import {expect, test} from 'bun:test';\nimport {fileURLToPath} from 'node:url';\ntest('native engineering source option checks exact artifacts and leaves the default path closed to overrides', async () => {\n    const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node', fileURLToPath(new URL('./stateful-complete-kind-source-admission-native.mjs', import.meta.url))],\n        {stdout: 'pipe', stderr: 'pipe', timeout: 60000});\n    const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);\n    expect({code, error: code ? stderr : undefined}).toEqual({code: 0, error: undefined});\n    const result = JSON.parse(stdout); expect(result.cases).toBe(42); expect(result.sealedEngineeringOption).toBe(true);\n    expect(result.default716Preserved).toBe(true); expect(result.artifactAndSourceSetChecked).toBe(true);\n    expect(result.unknownRevisionPackageTreeArtifactRefused).toBe(true); expect(result.defaultOverrideRefusedBeforeEffects).toBe(true);\n    expect(result.services).toBe(false); expect(result.defaultDistributionQualified).toBe(false); expect(result.launchQualified).toBe(false);\n}, 65000);\n"
     },
     {

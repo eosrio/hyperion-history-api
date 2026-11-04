@@ -1,4 +1,4 @@
-// Current mixed-SDK successor of the unchanged historical 42-case admission suite. Linux CI only.
+// Current mixed-SDK successor of the frozen historical admission families; the successful path reports 54 checks. Linux CI only.
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, readdirSync, rmSync, realpathSync} from 'node:fs';
