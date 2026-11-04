@@ -7,6 +7,7 @@ import {protocolNumber} from '../protocol/contract-cache.js';
 import {HyperionWorker, protocolSourceCapture} from './hyperionWorker.js';
 import {createHash, randomUUID} from 'node:crypto';
 import {ProtocolSourceBindingStore, protocolSourceSelectionHeader, type ProtocolSourcePosition} from '../protocol/source-bindings.js';
+import {loadRetainedGenesisInput} from '../protocol/retained-genesis-input.js';
 import {ProtocolAbiCoordinatorRpc} from '../protocol/abi-coordinator-rpc.js';
 import {debugLog, hLog} from '../helpers/common_functions.js';
 import {RabbitQueueDef} from '../definitions/index-queues.js';
@@ -197,17 +198,21 @@ export default class StateReader extends HyperionWorker {
                         ...(d.headers ? {headers: d.headers} : {})
                     },
                     (err: any) => {
-                        if (!this.publications.delete(token) || this.publisherFailure) return;
+                        if (!this.publications.delete(token)) return;
+                        if (this.publisherFailure) {d.failCaptured?.(new Error(this.publisherFailure));return;}
                         this.scheduleConfirmationDeadline();
                         const successful = !err && channel === this.cch;
                         range?.settle(token, d.num, successful);
                         if (err) {
+                            d.failCaptured?.(new Error('Captured genesis broker confirmation failed'));
                             this.failPublisherRecovery(`Block ${d.num} confirmation failed: ${err?.message ?? 'unknown confirmation'}`, {predicate: 'confirmation_failed', publisher: channel, blockNum: d.num});
                         } else if (!successful) {
+                            d.failCaptured?.(new Error('Captured genesis publisher was replaced'));
                             this.failPublisherRecovery(`Block ${d.num} confirmed by a replaced publisher`, {predicate: 'confirmation_publisher_replaced', publisher: channel, blockNum: d.num});
                         } else {
                             if (range && range !== this.confirmRange) return;
                             try {
+                                d.confirmCaptured?.();
                                 const checkpoint = d.confirmLive?.();
                                 if (checkpoint) process.send?.({event: 'live_checkpoint', data: checkpoint});
                             } catch (error: any) {
@@ -227,6 +232,7 @@ export default class StateReader extends HyperionWorker {
                 );
                 } catch (error: any) {
                     this.publications.delete(token);
+                    d.failCaptured?.(error instanceof Error?error:new Error('Captured genesis publication failed'));
                     range?.settle(token, d.num, false);
                     this.failPublisherRecovery(`Block ${d.num} publish failed: ${error.message}`, {predicate: 'publication_threw', publisher: channel, blockNum: d.num});
                     return;
@@ -1034,7 +1040,10 @@ export default class StateReader extends HyperionWorker {
                         }
                         this.assertCurrentIngress(this.sourceContext.generation);
                         this.verifiedReaderSessionId = this.sourceContext.readerSessionId;
-                        if (this.isLiveReader) await this.openCoordinatorSource();
+                        if (this.isLiveReader) {
+                            if(this.conf.settings.protocol_abi_coordination?.retained_genesis)await this.publishRetainedGenesis();
+                            await this.openCoordinatorSource();
+                        }
                     }
                     this.handleStatusResult(result[1]);
                     break;
@@ -1152,6 +1161,64 @@ export default class StateReader extends HyperionWorker {
             if (this.isLiveReader) await this.admitCoordinatorSelection(selection.id, context.readerSessionId, context.generation);
             return {[protocolSourceSelectionHeader]: selection.id};
         } finally { stop(); }
+    }
+
+    private async publishRetainedGenesis():Promise<void> {
+        const config=this.conf.settings.protocol_abi_coordination?.retained_genesis,live=this.sourceContext;
+        if(!config||!live||this.verifiedReaderSessionId!==live.readerSessionId||!this.protocolSourceBindingStore)
+            throw new Error('Captured genesis requires a verified physical reader session');
+        const input=loadRetainedGenesisInput(config),captureSession=randomUUID();
+        const context=await this.protocolSourceBindingStore.prepareContext({schemaVersion:1,chainId:this.chainId,
+            protocol:{id:this.protocolId,profileId:this.protocol.profileId,components:this.protocolComponents??[]},schemaJson:input.schemaJson});
+        this.assertCurrentIngress(live.generation);
+        this.coordinatorRpc ??=new ProtocolAbiCoordinatorRpc();
+        const opened=await this.coordinatorRpc.captureBegin(context.id,captureSession);
+        this.assertCurrentIngress(live.generation);
+        if(this.sourceContext!==live)throw new Error('Reader changed during captured genesis grant');
+        if(opened.resumeFromBlock!==null)return; // The durable marker already completed or is awaiting block two.
+        const captured={readerSessionId:captureSession,generation:opened.generation};this.coordinatorSource=captured;
+        const ship=this.protocol.createShipSession(JSON.parse(input.schemaJson));
+        try {
+            const decoded=ship.decodeResult(input.frame) as any;
+            if(!Array.isArray(decoded)||!decoded[1])throw new Error('Captured genesis frame is malformed');
+            const result=decoded[1],capture=protocolSourceCapture(this.chainId,result,input.schemaJson);
+            const position=(value:BlockInfo)=>({blockNum:protocolNumber(value?.block_num),blockId:value?.block_id?.toString().toLowerCase()??''});
+            let selectionId=opened.replaySelectionId;
+            if(selectionId){
+                const retained=(await this.protocolSourceBindingStore.readSelection(selectionId)).selection;
+                if(retained.readerRole!=='captured-genesis'||retained.contextId!==context.id
+                    ||retained.frameSha256!==config.frame_sha256||retained.captureSha256!==capture.captureSha256
+                    ||retained.source.blockId!==capture.source.blockId||retained.source.blockNum!==1||retained.source.previousBlockId!==null)
+                    throw new Error('Recovered captured selection differs from its original frame');
+            } else {
+                const selection=await this.protocolSourceBindingStore.prepareSelection({schemaVersion:1,contextId:context.id,
+                    readerSessionId:captureSession,readerRole:'captured-genesis',assignmentId:null,source:capture.source,
+                    frameSha256:createHash('sha256').update(input.frame).digest('hex'),captureSha256:capture.captureSha256,
+                    head:position(result.head),irreversible:position(result.last_irreversible)});
+                selectionId=selection.id;
+                await this.admitCoordinatorSelection(selectionId,captureSession,live.generation);
+            }
+            this.assertCurrentIngress(live.generation);
+            const confirmed=new Promise<void>((resolve,reject)=>{
+                const timer=setTimeout(()=>reject(new Error('Captured genesis broker confirmation timed out')),60000);
+                void this.stageOneDistQueue.push({num:1,content:input.frame,headers:{[protocolSourceSelectionHeader]:selectionId},
+                    failCaptured:(error:Error)=>{clearTimeout(timer);reject(error);},
+                    confirmCaptured:()=>{clearTimeout(timer);try {this.assertCurrentIngress(live.generation);
+                        if(this.sourceContext!==live||this.coordinatorSource!==captured)throw new Error('Captured publisher lost its source');resolve();
+                    } catch(error){reject(error);}}}).catch((error:Error)=>{clearTimeout(timer);reject(error);});
+            });
+            await confirmed;
+            const deadline=performance.now()+60000;
+            for(;;){
+                this.assertCurrentIngress(live.generation);
+                if(this.sourceContext!==live||this.coordinatorSource!==captured)throw new Error('Captured genesis source was revoked');
+                const outcome=await this.coordinatorRpc.captureFinish(captureSession,captured.generation);
+                if(outcome.status==='done')break;
+                if(performance.now()>=deadline)throw new Error('Captured genesis durable commit timed out');
+                await new Promise(resolve=>setTimeout(resolve,100));
+            }
+            this.coordinatorSource=undefined;
+        } finally {ship.close?.();}
     }
 
     private async openCoordinatorSource(): Promise<void> {

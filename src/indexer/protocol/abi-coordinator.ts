@@ -245,6 +245,22 @@ export class ProtocolAbiCoordinator {
         });
     }
 
+    /** Return the original immutable selection only after a recovered owner revalidates its commit. */
+    async capturedGenesisReplay(readerSessionId:string,generation:string):Promise<string|null> {
+        return this.run(async()=>{
+            const version=await this.owned(),c=version.value.capturedGenesis;
+            if(!this.options.capturedGenesisEnabled||!c||c.phase!=='capturing'||generation!==version.value.generation
+                ||version.value.source?.readerSessionId!==readerSessionId)throw new Error('Captured source is not current');
+            if(!version.value.head)return null;
+            const commit=await this.readCommit(version.value.head.commitId);
+            const original=(await this.options.bindings.readSelection(commit.selectionId)).selection;
+            if(commit.status!=='complete'||!commit.nativeGenesis||commit.source.blockNum!==1||commit.source.blockId!==c.genesisBlockId
+                ||original.readerRole!=='captured-genesis'||original.contextId!==c.contextId||original.frameSha256!==c.frameSha256)
+                throw new Error('Recovered captured selection does not match its grant');
+            return commit.selectionId;
+        });
+    }
+
     /** A new owner may rebind an interrupted capture only to the identical pinned input. */
     async resumeCapturedGenesis(grant:CapturedGenesisGrant):Promise<{generation:string}> {
         const input=copy(grant);

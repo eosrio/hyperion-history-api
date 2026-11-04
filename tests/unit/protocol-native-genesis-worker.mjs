@@ -11,6 +11,7 @@ import {PROJECTION_CAPABILITIES} from '@eosrio/hyperion-sdk/projection';
 // This child exercises native emitted code. Importing the legacy Antelope addon on Wire is a failure.
 registerHooks({resolve(specifier, context, next) {if (specifier.includes('node-abieos')) throw new Error('Wire imported the legacy addon'); return next(specifier, context);}});
 const hash = bytes => createHash('sha256').update(bytes).digest('hex'), zero = '0'.repeat(64);
+const capturedBootstrap = process.env.HYPERION_CAPTURED_GENESIS === '1';
 const original = readFileSync(new URL('./fixtures/wire-native-genesis/ship-preflight-20261020.json', import.meta.url));
 assert.equal(hash(original), 'b8edf652dd0ad265917bf0111ca48789ec7a3f1976f2113783202cc3dd38acb4');
 const fixture = JSON.parse(original), chainId = fixture.chainId, capture = fixture.messages.find(message => message.kind === 'block1');
@@ -60,11 +61,16 @@ try {
     const profile = {id: main.protocolId, profileId: main.protocol.profileId, components: main.protocolComponents};
     const contextId = (await bindings.prepareContext({schemaVersion: 1, chainId, protocol: profile, schemaJson})).id;
     coordinator = new ProtocolAbiCoordinator({chainId, profile, ownerId: 'native-genesis-master', bindings, observations, store,
-        verifyNativeGenesis: main.protocol.verifyNativeGenesis.bind(main.protocol)});
-    await coordinator.start(); const {generation} = await coordinator.openSource(contextId, 'verified-source-fixture');
+        verifyNativeGenesis: main.protocol.verifyNativeGenesis.bind(main.protocol),capturedGenesisEnabled:capturedBootstrap});
+    await coordinator.start();
     const res = main.decodeShipResult(frame)[1], retained = protocolSourceCapture(chainId, res, schemaJson);
+    const second = main.decodeShipResult(Buffer.from(forward.messages.find(message=>message.kind==='block').response.base64,'base64'))[1];
+    let generation=capturedBootstrap?(await coordinator.beginCapturedGenesis({contextId,readerSessionId:'captured-source-fixture',
+        schemaSha256:hash(schemaJson),frameSha256:hash(frame),genesisBlockId:retained.source.blockId,
+        blockTwoId:second.this_block.block_id.toString(),blockTwoPreviousId:second.prev_block.block_id.toString()})).generation:
+        (await coordinator.openSource(contextId, 'verified-source-fixture')).generation;
     assert.equal(retained.source.blockNum, 1); assert.equal(retained.source.previousBlockId, null); assert.equal(retained.capture.tracesHex, null);
-    const selectionId = (await bindings.prepareSelection({schemaVersion: 1, contextId, readerSessionId: 'verified-source-fixture', readerRole: 'live',
+    const selectionId = (await bindings.prepareSelection({schemaVersion: 1, contextId, readerSessionId: capturedBootstrap?'captured-source-fixture':'verified-source-fixture', readerRole: capturedBootstrap?'captured-genesis':'live',
         assignmentId: null, source: retained.source, frameSha256: hash(frame), captureSha256: retained.captureSha256,
         head: {blockNum: Number(res.head.block_num), blockId: res.head.block_id.toString()},
         irreversible: {blockNum: Number(res.last_irreversible.block_num), blockId: res.last_irreversible.block_id.toString()}})).id;
@@ -104,6 +110,8 @@ try {
     const runtime = await DeclarativeProjectionRuntime.create({adapter, definition, binding, genesis: checkpoint});
     await runtime.process(nativeFrame); assert.deepEqual({...applied[0].previous}, {blockNum: 0, blockId: zero}); assert.deepEqual(applied[0].mutations, []);
     assert.deepEqual(checkpoint, {blockNum: 1, blockId: retained.source.blockId});
+    if(capturedBootstrap){await coordinator.finishCapturedGenesis('captured-source-fixture',generation);
+        const opened=await coordinator.openSource(contextId,'verified-source-fixture');assert.equal(opened.resumeFromBlock,2);generation=opened.generation;}
     let parent = retained.source.blockId;
     for (const source of forward.messages.filter(message => message.kind === 'block')) {
         const nextFrame = Buffer.from(source.response.base64, 'base64'); assert.equal(hash(nextFrame), source.response.sha256);

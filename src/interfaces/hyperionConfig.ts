@@ -62,6 +62,8 @@ export interface MainSettings {
     protocol?: import("../indexer/protocol/selection.js").ChainProtocolConfiguration;
     reader_recovery_window_blocks?: number;
     protocol_abi_coordination?: {max_pending_blocks?: number; recovery_window_blocks?: number;
+        retained_genesis?: {schema_path:string; schema_sha256:string; frame_path:string; frame_sha256:string;
+            block_two_path:string; block_two_sha256:string};
         historical_certificates?: {interface_version: 1; max_commits_per_drain: number; max_commit_bytes_per_drain: number; max_ms_per_drain: number}};
     use_global_agent?: boolean;
     process_prefix?: string;
@@ -441,6 +443,11 @@ export const HyperionSettingsConfigSchema = z.object({
     protocol_abi_coordination: z.object({
         max_pending_blocks: z.number().int().min(1).max(4096).optional(),
         recovery_window_blocks: z.number().int().min(1).max(4096).optional(),
+        retained_genesis: z.object({
+            schema_path: z.string().min(1).max(4096), schema_sha256: z.string().regex(/^[0-9a-f]{64}$/),
+            frame_path: z.string().min(1).max(4096), frame_sha256: z.string().regex(/^[0-9a-f]{64}$/),
+            block_two_path: z.string().min(1).max(4096), block_two_sha256: z.string().regex(/^[0-9a-f]{64}$/),
+        }).strict().optional(),
         historical_certificates: z.object({
             interface_version: z.literal(1),
             max_commits_per_drain: z.number().int().min(1).max(256),

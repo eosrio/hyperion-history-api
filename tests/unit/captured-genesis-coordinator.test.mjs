@@ -6,7 +6,7 @@ import {protocolAbiCaptureDigest} from '../../src/indexer/protocol/abi-observati
 
 test('owner-bound captured genesis commits before an exact, fenced live handoff', async()=>{
     const p=await prepared({},0);
-    const coordinator=new ProtocolAbiCoordinator({chainId:capture.chainId,profile:p.options.profile,ownerId:'bootstrap-owner',
+    let coordinator=new ProtocolAbiCoordinator({chainId:capture.chainId,profile:p.options.profile,ownerId:'bootstrap-owner',
         store:p.store,bindings:p.bindings,observations:p.observations,
         verifyNativeGenesis:p.options.provider.verifyNativeGenesis.bind(p.options.provider),capturedGenesisEnabled:true});
     await coordinator.start();
@@ -19,7 +19,7 @@ test('owner-bound captured genesis commits before an exact, fenced live handoff'
         const disabled=new ProtocolAbiCoordinator({chainId:capture.chainId,profile:p.options.profile,ownerId:'unused',
             store:p.store,bindings:p.bindings,observations:p.observations});
         await assert.rejects(disabled.beginCapturedGenesis(grant),/disabled/);
-        const {generation}=await coordinator.beginCapturedGenesis(grant);
+        let {generation}=await coordinator.beginCapturedGenesis(grant);
         await assert.rejects(coordinator.finishCapturedGenesis('capture-session',generation),/not durably committed/);
         await assert.rejects(coordinator.openSource(p.contextId,'live-session'),/handoff is not complete/);
         const sections={kind:'unattested-ship-result-sections-v1',schemaJson,blockHex:one.block,tracesHex:one.traces,deltasHex:one.deltas};
@@ -35,7 +35,13 @@ test('owner-bound captured genesis commits before an exact, fenced live handoff'
         await p.bindings.prepareObservationLink({schemaVersion:1,selectionId:selected.id,observationId:receipt.id,observationDigest:receipt.digest});
         await coordinator.drain();
         assert.equal((await coordinator.inspect()).head.coverageStart,1);
-        const finish=coordinator.finishCapturedGenesis('capture-session',generation);
+        coordinator=new ProtocolAbiCoordinator({chainId:capture.chainId,profile:p.options.profile,ownerId:'restart-after-commit',
+            store:p.store,bindings:p.bindings,observations:p.observations,
+            verifyNativeGenesis:p.options.provider.verifyNativeGenesis.bind(p.options.provider),capturedGenesisEnabled:true});
+        await coordinator.start();
+        generation=(await coordinator.resumeCapturedGenesis({...grant,readerSessionId:'recovered-capture'})).generation;
+        assert.equal(await coordinator.capturedGenesisReplay('recovered-capture',generation),selected.id);
+        const finish=coordinator.finishCapturedGenesis('recovered-capture',generation);
         await assert.rejects(coordinator.openSource(p.contextId,'racing-live'),/handoff is not complete/);
         await finish;
         assert.equal((await coordinator.inspect()).head.blockNum,1,'racing open must not replace the durable genesis head');

@@ -44,6 +44,7 @@ import { HyperionModuleLoader } from './loader.js';
 import { HyperionQueueMonitor } from './queueMonitor.js';
 import {loadChainProtocol} from '../protocol/selection.js';
 import {ProtocolAbiCoordinator} from '../protocol/abi-coordinator.js';
+import {verifyRetainedGenesisInput} from '../protocol/retained-genesis-input.js';
 import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
 import {ProtocolSourceBindingStore, type ProtocolSourcePosition} from '../protocol/source-bindings.js';
 import {ProtocolAbiObservationStore} from '../protocol/abi-observation-store.js';
@@ -771,6 +772,9 @@ export class HyperionMaster {
     }
 
     private async initializeProtocolAbiCoordinator(): Promise<void> {
+        if(this.conf.settings.protocol_abi_coordination?.retained_genesis
+            &&(this.conf.settings.protocol?.provider!=='extension'||!this.conf.indexer.live_reader))
+            throw new Error('Retained genesis requires an extension protocol and a live reader');
         // A bulk-only process must never acquire or replace live-source ownership.
         if ((this.conf.settings.protocol?.provider !== 'extension' && this.engineering?.exactActionSequenceStorage !== true)
             || !this.conf.indexer.live_reader || this.protocolAbiCoordinator) return;
@@ -784,6 +788,7 @@ export class HyperionMaster {
                 observations: new ProtocolAbiObservationStore(this.esClient, this.chain, replicas),
                 store: new ProtocolAbiFrontierStore(this.esClient, this.chain, replicas),
                 verifyNativeGenesis: selected.provider.verifyNativeGenesis?.bind(selected.provider),
+                capturedGenesisEnabled: !!options?.retained_genesis,
                 nativeActionInterfaceVersion: selected.provider.nativeActions?.interfaceVersion,
                 maxPendingBlocks: options?.max_pending_blocks, recoveryWindowBlocks: options?.recovery_window_blocks,
                 historicalCertificates: options?.historical_certificates && {interfaceVersion: 1,
@@ -829,12 +834,50 @@ export class HyperionMaster {
                 source = {worker, readerSessionId: input.readerSessionId};
                 this.protocolAbiSource = source; // Invalidates an older awaited continuation before any I/O.
                 result = await this.protocolAbiCoordinator!.openSource(input.contextId, input.readerSessionId);
-            } else {
+            } else if (input.operation === 'admit') {
                 if (!source || source.worker !== worker || source.readerSessionId !== input.readerSessionId || source.generation !== input.generation) {
                     this.replyProtocolAbiCoordinator(worker, message.mId, {ok: true, result: {status: 'stale', generation: input.generation}});
                     return;
                 }
                 result = await this.protocolAbiCoordinator!.admit(input.selectionId, input.generation);
+            } else if (input.operation === 'capture_begin') {
+                const config=this.conf.settings.protocol_abi_coordination?.retained_genesis;
+                if(!config||source)throw new Error('Captured genesis is not available for this reader');
+                const selected=await loadChainProtocol(this.conf.settings.protocol,{sourceEvidence:true});
+                const chainId=this.manager.conn.chains[this.chain].chain_id;
+                const capture=await verifyRetainedGenesisInput(config,chainId,selected.provider,this.rpc);
+                if(!this.isCurrentProtocolLiveReader(worker)||this.protocolAbiSource!==source)
+                    throw new Error('Reader changed during captured source preflight');
+                const prior=await this.protocolAbiCoordinator!.inspect();
+                const recorded=prior.capturedGenesis;
+                if(recorded&&(recorded.schemaSha256!==config.schema_sha256||recorded.frameSha256!==config.frame_sha256
+                    ||recorded.contextId!==input.contextId||recorded.genesisBlockId!==capture.verified.source.blockId
+                    ||recorded.blockTwoId!==capture.verified.blockTwoId))throw new Error('Captured genesis differs from durable authority');
+                if(recorded&&recorded.phase!=='capturing') {
+                    this.replyProtocolAbiCoordinator(worker,message.mId,{ok:true,result:{generation:prior.generation,resumeFromBlock:2,replaySelectionId:null}});
+                    return;
+                }
+                source={worker,readerSessionId:input.readerSessionId};this.protocolAbiSource=source;
+                const grant={contextId:input.contextId,readerSessionId:input.readerSessionId,
+                    schemaSha256:config.schema_sha256,frameSha256:config.frame_sha256,genesisBlockId:capture.verified.source.blockId,
+                    blockTwoId:capture.verified.blockTwoId,blockTwoPreviousId:capture.verified.source.blockId};
+                const opened=recorded?await this.protocolAbiCoordinator!.resumeCapturedGenesis(grant):
+                    await this.protocolAbiCoordinator!.beginCapturedGenesis(grant);
+                const replaySelectionId=await this.protocolAbiCoordinator!.capturedGenesisReplay(input.readerSessionId,opened.generation);
+                result={generation:opened.generation,resumeFromBlock:null,replaySelectionId};
+            } else {
+                if(!source||source.worker!==worker||source.readerSessionId!==input.readerSessionId||source.generation!==input.generation)
+                    throw new Error('Captured genesis source was superseded');
+                const state=await this.protocolAbiCoordinator!.inspect();
+                if(!state.head||state.head.blockNum!==1||state.pending.length) {
+                    result={status:'pending' as const,generation:input.generation};
+                } else {
+                    await this.protocolAbiCoordinator!.finishCapturedGenesis(input.readerSessionId,input.generation);
+                    if(!this.isCurrentProtocolLiveReader(worker)||this.protocolAbiSource!==source)throw new Error('Reader changed during captured handoff');
+                    this.protocolAbiSource=undefined;
+                    this.replyProtocolAbiCoordinator(worker,message.mId,{ok:true,result:{status:'done',generation:input.generation}});
+                    return;
+                }
             }
             if (!this.isCurrentProtocolLiveReader(worker) || this.protocolAbiSource !== source) {
                 await this.protocolAbiCoordinator!.revokeSource(input.readerSessionId);
