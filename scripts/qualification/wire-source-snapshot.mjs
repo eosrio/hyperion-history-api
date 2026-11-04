@@ -8,6 +8,9 @@ import {dirname, join} from 'node:path';
 export const engineeringAdmissionSourcePaths = Object.freeze([
     'tests/unit/stateful-engineering-source-admission.mjs',
     'tests/native/projection-manager-lifecycle.test.mjs',
+    'tests/native/bounded-json-string-encoding.test.mjs',
+    'scripts/qualification/indexed-schema-mongodb/retained-string-encoding.md',
+    'tests/unit/fixtures/wire-native-genesis/ship-preflight-20261020.json',
     'tests/unit/projection-manager-fixture.mjs',
     'tests/unit/projection-startup-fencing.mjs',
     'tests/unit/projection-controller-startup.mjs',

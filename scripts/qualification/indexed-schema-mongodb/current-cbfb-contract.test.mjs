@@ -153,5 +153,5 @@ test('unknown/default/accessor options cannot become an admission or select expe
   {engineeringSourceProfile:CURRENT_CBFB_PROFILE,nativeMarker:'true'},{get engineeringSourceProfile(){calls++;return CURRENT_CBFB_PROFILE;}},
   {engineeringSourceProfile:CURRENT_CBFB_PROFILE,expectedSha256:'0'.repeat(64)}])assert.throws(()=>assertCurrentCbfbOptions(input));
  assert.equal(calls,0);assert.deepEqual(assertCurrentCbfbOptions({engineeringSourceProfile:CURRENT_CBFB_PROFILE,nativeMarker:false}),{nativeMarker:false});
- assert.equal(CURRENT_CBFB_MANIFEST.routeSources.length,46);
+ assert.equal(CURRENT_CBFB_MANIFEST.routeSources.length,49);
 });

@@ -6,7 +6,15 @@
     "testedHapi": "49dfe804590ab5b9cb17df05ebc85eb8e6976b14",
     "testedHapiTree": "3291b5c4cc1ad1ae0f6886265c32a69f95d154a5",
     "originalPhysicalAcceptance": "bounded synthetic only",
-    "integratedPhysicalAcceptance": "pending"
+    "integratedPhysicalAcceptance": "pending",
+    "retainedStringEncoding": {
+      "base": "cb53a8375feb47a5c127e81411dad6ebb652638a",
+      "source": "src/indexer/helpers/bounded-json.ts",
+      "priorSha256": "9c62cc0fbb69fe34dc739d4904690dd506c10335590aba2a3d1e6a5dc068b5b7",
+      "currentSha256": "a214b1164bf359afc74502498a9e635ba935558e31dcd9a886818829ce46ccb1",
+      "LinuxRetainedResult": "pending",
+      "scope": "pure primitive encoding experiment; no source or object authority cache"
+    }
   },
   "observation": {
     "profile": "indexed-schema-sdk-cbfb-native-cf514-engineering-v1",
@@ -958,8 +966,8 @@
       },
       {
         "path": "src/indexer/helpers/bounded-json.ts",
-        "bytes": 4511,
-        "sha256": "9c62cc0fbb69fe34dc739d4904690dd506c10335590aba2a3d1e6a5dc068b5b7"
+        "bytes": 6071,
+        "sha256": "a214b1164bf359afc74502498a9e635ba935558e31dcd9a886818829ce46ccb1"
       },
       {
         "path": "src/indexer/helpers/common_functions.ts",
@@ -3101,13 +3109,13 @@
         },
         {
           "path": "indexer/helpers/bounded-json.js",
-          "bytes": 4521,
-          "sha256": "14bb527ff80b89426b17fdd209a9f54123419c97e1a4781a80474a59bc3f28c2"
+          "bytes": 6065,
+          "sha256": "cfa959e0fe6880767b2bd6ce08bf633ad974179bc95af99fc788ac1dedb2776a"
         },
         {
           "path": "indexer/helpers/bounded-json.js.map",
-          "bytes": 4578,
-          "sha256": "0606616f88b9e4a23724c2e213eb38e4b80bd46d07de2ebd2bb76810166996c6"
+          "bytes": 5953,
+          "sha256": "7a5a07bd02b894f65f800c04f0314b7fdf996d449b1cec5e8eafee338c79bd62"
         },
         {
           "path": "indexer/helpers/common_functions.js",

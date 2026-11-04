@@ -5,6 +5,27 @@ export interface BoundedJsonOptions {
     errorPrefix?: string;
 }
 
+// Pure string encoding only: no object, source, declaration or read authority is
+// retained. Count both UTF-16 strings conservatively, even on Latin-1 V8 storage.
+const encodedStrings = new Map<string, {encoded: string; bytes: number; retained: number}>();
+const encodingCacheBytes = 512 * 1024, encodingCacheEntries = 8, encodingEntryBytes = 64 * 1024;
+let retainedEncodingBytes = 0;
+function retainEncoding(value: string, encoded: string, bytes: number): void {
+    if (value.length < 512 || bytes > encodingEntryBytes) return;
+    const retained = 2 * (value.length + encoded.length);
+    while (encodedStrings.size >= encodingCacheEntries || retainedEncodingBytes + retained > encodingCacheBytes) {
+        const oldest = encodedStrings.keys().next().value;
+        if (oldest === undefined) return;
+        retainedEncodingBytes -= encodedStrings.get(oldest)!.retained;
+        encodedStrings.delete(oldest);
+    }
+    // Decode owned bounded bytes so sliced/rope input strings cannot keep a much
+    // larger parent allocation alive through either retained string.
+    const key = Buffer.from(value, 'utf8').toString('utf8');
+    const copy = Buffer.from(encoded, 'utf8').toString('utf8');
+    encodedStrings.set(key, {encoded: copy, bytes, retained}); retainedEncodingBytes += retained;
+}
+
 /** Canonical portable JSON with bounded bytes, nodes and depth; never invokes accessors or toJSON. */
 export function boundedCanonicalJson(input: unknown, options: BoundedJsonOptions = {}): string {
     const {maximumBytes = 128 * 1024 * 1024, numberPolicy = 'safe-integer', errorPrefix = 'JSON value'} = options;
@@ -14,7 +35,10 @@ export function boundedCanonicalJson(input: unknown, options: BoundedJsonOptions
         if ((bytes += size) > maximumBytes) throw new Error(errorPrefix + ' exceeds bounded JSON byte budget');
     };
     const string = (value: string) => {
+        const retained = value.length >= 512 ? encodedStrings.get(value) : undefined;
+        if (retained) {take(retained.bytes); return retained.encoded;}
         if (!value.isWellFormed()) throw new Error(errorPrefix + ' contains malformed UTF-16');
+        const before = bytes;
         take(2);
         // Refuse the minimum size before scanning or allocating the encoded string.
         if (bytes + value.length > maximumBytes) take(value.length);
@@ -33,7 +57,7 @@ export function boundedCanonicalJson(input: unknown, options: BoundedJsonOptions
             else if (code >= 0xd800 && code <= 0xdbff) {take(4); index++;}
             else take(3);
         }
-        return JSON.stringify(value);
+        const encoded = JSON.stringify(value); retainEncoding(value, encoded, bytes - before); return encoded;
     };
     const visit = (value: unknown, depth: number): string => {
         if (++nodes > 1_000_000 || depth > 64) throw new Error(errorPrefix + ' exceeds bounded JSON node/depth budget');

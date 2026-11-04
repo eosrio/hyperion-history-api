@@ -6,7 +6,7 @@
     "commit": "2f636372bd8fe82c86ebd46179cc96fbe9d81241",
     "tree": "36eff358421dc9f19c4112c5375144b2ba4e5e22"
   },
-  "baseAssemblySha256": "2ad7d27214a32e66cb9be3b5c486516f6305033dda8ab9a5eddd997c0f9bc275",
+  "baseAssemblySha256": "e491ab6b06a9be6b9f80453c68cc88b236cf9f517c6fb0fd80ba0a95940d8ec3",
   "dependenciesSha256": "0233aeceb915f1f71f6a894ae45662a273380f209b30d6917d89b366e6c1f71d",
   "sdkPackages": {
     "root": {
@@ -41,8 +41,8 @@
   "routeSources": [
     {
       "path": ".github/workflows/build.yml",
-      "bytes": 25206,
-      "sha256": "7c36fac184c68546e03ad61cb0f7859cae3575b90bc923bd6994b5f6496b2bf3"
+      "bytes": 25257,
+      "sha256": "41c945dac37d9563de423190c3688fed94c062257ec46d302866a4c0d3cd740e"
     },
     {
       "path": ".github/workflows/indexed-schema-finite.yml",
@@ -66,8 +66,8 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/cbfb-assembly.json",
-      "bytes": 192407,
-      "sha256": "9847bb119c792a2833fc9397bca7d15398797412ee7db6852c48d718f3087605"
+      "bytes": 192868,
+      "sha256": "35c7332e905531f726944dea50ff54da4a1d51291490216fb6df8419b3f674b5"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/cbfb-assembly.mjs",
@@ -92,12 +92,17 @@
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-contract.test.mjs",
       "bytes": 14521,
-      "sha256": "51aacd72806c88f9734c874d2c025abe6c4d4f039bb9508793d1243037508665"
+      "sha256": "786d6d3ba96ae8044c1b1b91073c544a4f72c045a5e5cf3f99402d88f3c77d2d"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-routing.json",
-      "bytes": 371220,
-      "sha256": "ef1c13abfd140e96cde31ecaae2b9908d01ed109b11ea6b7da67b29442e9e54f"
+      "bytes": 371488,
+      "sha256": "b305b091ac2a624ef4e7367db8db5b44a9a02cd911c15111fbb285ad665e4558"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/retained-string-encoding.md",
+      "bytes": 2721,
+      "sha256": "24078deb6af54a33d87f6efc8750685fb446b24da45ebb14bd81c87e9e1f56a0"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/retained-wire-diagnostics.md",
@@ -151,8 +156,8 @@
     },
     {
       "path": "scripts/qualification/wire-source-snapshot.mjs",
-      "bytes": 6826,
-      "sha256": "fa68a1cb621a09065e989b2850b1d35536449f4e9e789c9f447ae4284ccccc54"
+      "bytes": 7040,
+      "sha256": "2b43e53d9abdea8d136575774965684f95cba734400b1b2bb614b537e48a4cf6"
     },
     {
       "path": "scripts/qualification/wire-source-snapshot.test.mjs",
@@ -163,6 +168,11 @@
       "path": "tests/fixtures/engineering-profiles/sdk49-indexed-linux.json",
       "bytes": 171293,
       "sha256": "b770196d4284b2e6daa4d41b7bbbb143962445d7c4d200a0df8dd807d2e832fe"
+    },
+    {
+      "path": "tests/native/bounded-json-string-encoding.test.mjs",
+      "bytes": 4043,
+      "sha256": "8b36929cd5040620610355dafff6d8afc15c4876b681f601fe981fa622f03ce4"
     },
     {
       "path": "tests/native/current-cbfb-codec-profile.test.mjs",
@@ -208,6 +218,11 @@
       "path": "tests/unit/current-cbfb-source-admission-native.mjs",
       "bytes": 17438,
       "sha256": "422f23423ec14e29a806f086efe5a1f579d2fde6ca29e06c48ef6ff67b7d7719"
+    },
+    {
+      "path": "tests/unit/fixtures/wire-native-genesis/ship-preflight-20261020.json",
+      "bytes": 139383,
+      "sha256": "b8edf652dd0ad265917bf0111ca48789ec7a3f1976f2113783202cc3dd38acb4"
     },
     {
       "path": "tests/unit/portable-state-source-fixture.mjs",
@@ -277,5 +292,15 @@
     "managedHTTP": "pending",
     "WireReplay": "pending",
     "release": "pending"
-  }
+  },
+  "sourceChanges": [
+    {
+      "base": "cb53a8375feb47a5c127e81411dad6ebb652638a",
+      "source": "src/indexer/helpers/bounded-json.ts",
+      "priorSha256": "9c62cc0fbb69fe34dc739d4904690dd506c10335590aba2a3d1e6a5dc068b5b7",
+      "currentSha256": "a214b1164bf359afc74502498a9e635ba935558e31dcd9a886818829ce46ccb1",
+      "LinuxRetainedResult": "pending",
+      "scope": "pure primitive encoding experiment; no source or object authority cache"
+    }
+  ]
 }
