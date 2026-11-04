@@ -21,6 +21,7 @@ test('real Wire response identity and native genesis preflight reject malformed 
   assert.equal((await verify()).verified.source.blockId,blocks[0].id);
   for(const change of [{id:'invalid'},{id:blocks[1].id},{block_num:2},{previous:'f'.repeat(64)}]){current=[{...blocks[0],...change},blocks[1]];await assert.rejects(verify)}
   current=[blocks[0],{...blocks[1],previous:'0'.repeat(64)}];await assert.rejects(verify);
+  current=[blocks[0],{...blocks[1],id:'00000002'+'f'.repeat(56)}];await assert.rejects(verify);
   current=blocks;lib=1;await assert.rejects(verify);lib=2;chain='f'.repeat(64);await assert.rejects(verify);
  } finally {rmSync(dir,{recursive:true,force:true})}
 });
