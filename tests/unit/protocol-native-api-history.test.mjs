@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import Fastify from 'fastify';
 import {registerHooks} from 'node:module';
-import {nativeApiWireSource, STATEFUL_HISTORY_API_SOURCE_PROFILE} from './protocol-native-api-source.mjs';
+import {nativeApiWireSource, STATEFUL_EXPLORER_API_SOURCE_PROFILE} from './protocol-native-api-source.mjs';
 registerHooks({resolve(specifier, context, next) {
     if (specifier.includes('node-abieos')) throw new Error('Native API imported the legacy addon');
     if (specifier === 'uWebSockets.js') return {url: 'data:text/javascript,export const App=()=>{};', shortCircuit: true};
@@ -30,7 +30,7 @@ async function host(source, row, enabled) {
     await app.ready();return app;
 }
 test('explicit historical source permits API actions, transaction, and trace beyond the unchanged 256 window', {timeout:180000},async()=>{
-    const source=await nativeApiWireSource({engineeringSourceProfile:STATEFUL_HISTORY_API_SOURCE_PROFILE},history);
+    const source=await nativeApiWireSource({engineeringSourceProfile:STATEFUL_EXPLORER_API_SOURCE_PROFILE},history);
     let off,on,wrongSource,wrongEpoch;
     try {
         await source.appendUntil(2);const row=await source.action(2);await source.appendUntil(259);
