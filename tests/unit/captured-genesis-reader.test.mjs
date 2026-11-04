@@ -49,8 +49,14 @@ for(const recovered of [false,true])test(`reader ${recovered?'recovers committed
             conf:{settings:{protocol:{provider:'extension',package:'@eosrio/hyperion-wire-plugin',profileId:capture.profileId},
                 protocol_abi_coordination:{retained_genesis:config}}},chain:'wire',manager:{conn:{chains:{wire:{chain_id:capture.chainId}}}},
             protocolAbiCoordinator:coordinator,liveReader:{wref:worker},workerMap:[{wref:worker,worker_role:'continuous_reader'}],
-            rpc:{v1:{chain:{get_info:async()=>({chain_id:capture.chainId,last_irreversible_block_num:2}),
-                get_block:async n=>n===1?{id:one.this_block.block_id,previous:'0'.repeat(64)}:{id:two.this_block.block_id,previous:two.prev_block.block_id}}}},
+            rpc:{v1:{chain:{get_info:async()=>({chain_id:capture.chainId,last_irreversible_block_num:2})}},
+                call:async({path,params})=>{
+                    assert.equal(path,'/v1/chain/get_block');
+                    assert.ok(params.block_num_or_id===1||params.block_num_or_id===2);
+                    return params.block_num_or_id===1
+                        ?{block_num:1,id:one.this_block.block_id,previous:'0'.repeat(64)}
+                        :{block_num:2,id:two.this_block.block_id,previous:two.prev_block.block_id};
+                }},
             replyProtocolAbiCoordinator:(_worker,_id,data)=>replies.push(data),requestProtocolAbiDrain:()=>{},failProtocolAbiCoordinator:error=>{throw error;}
         });
         const request=async data=>{await master.handleProtocolAbiCoordinatorRequest(worker,{event:'protocol_abi_coordinator_request',mId:randomUUID(),data});

@@ -2,10 +2,14 @@ name: Captured genesis engineering controls
 
 on:
   pull_request:
-    branches: ["engineering/wire-h3-api-3baf-191"]
+    branches: ["engineering/wire-h3-api-3baf-191", "feat/wire-retained-genesis-handoff-191", "feat/wire-isolated-fullsync-191"]
 
 permissions:
   contents: read
+
+concurrency:
+  group: captured-genesis-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   captured-genesis:
@@ -31,6 +35,12 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - name: Check reader and master controls on Node
-        run: node --test tests/unit/captured-genesis-master.test.mjs tests/unit/captured-genesis-reader.test.mjs
+        env:
+          HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-e691f44-genesis-rpc-engineering
+        run: node --test tests/unit/retained-genesis-rpc-node.test.mjs tests/unit/captured-genesis-master.test.mjs tests/unit/captured-genesis-reader.test.mjs tests/unit/genesis-preview-source-admission.test.mjs tests/native/reader-input-pressure.test.mjs tests/native/reader-startup-pressure.test.mjs tests/native/explorer-system-contract.test.mjs tests/native/trace-opaque-serialization.test.mjs tests/native/isolated-live-only.test.mjs
       - name: Check coordinator, source custody, and native parser controls
-        run: bun test tests/unit/captured-genesis-coordinator.test.mjs tests/unit/retained-genesis-input.test.ts tests/unit/protocol-abi-coordinator-rpc.test.ts tests/unit/protocol-abi-coordinator.test.ts tests/unit/protocol-native-genesis-worker.test.ts
+        run: bun test tests/unit/captured-genesis-coordinator.test.mjs tests/unit/retained-genesis-input.test.ts tests/unit/protocol-abi-coordinator-rpc.test.ts tests/unit/protocol-abi-coordinator.test.ts tests/unit/protocol-native-genesis-worker.test.ts tests/unit/deserializer-queue.test.ts tests/unit/trace-indexed-miss.test.ts
+      - name: Check original Wire mapping retry controls
+        env:
+          HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-e691f44-genesis-rpc-engineering
+        run: node --test tests/unit/portable-mapping-retry-native.mjs
