@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync, mkdirSync, mkdtempSync, rmSync, realpathSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
+import {performance} from 'node:perf_hooks';
 import {join, dirname, basename} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {prepared} from './portable-state-source-fixture.mjs';
@@ -36,6 +37,10 @@ test('Wire qualification plugin requires explicit opt-in and preserves physical 
 
 test('interleaved retained Wire 1..1480 reaches managed owner-v2 worker and request-scoped API with nonempty state',
     {timeout: 180000}, async () => {
+    // Bounded diagnostic points do not change the existing workload or timeout.
+    const started = performance.now(); let marks = 0;
+    const progress = (stage, through) => {if (marks++ < 512) console.log(JSON.stringify({kind: 'wire-retained-progress', stage, through, elapsedMs: performance.now() - started}));};
+    progress('start', 0);
     const manifest = JSON.parse(readFileSync(join(sourceRoot, 'manifest.json')));
     assert.equal(manifest.archive.sha256, '42d092f3ecf6f428ecdba4825580377acdd27f2818ce445d4f197719e6ab72b7');
     const archive = readFileSync(join(sourceRoot, manifest.archive.file));
@@ -59,21 +64,30 @@ test('interleaved retained Wire 1..1480 reaches managed owner-v2 worker and requ
         const receipt = JSON.parse(read('receipt.json'));
         // The first contract ABI is originally deployed at222. Keep reader/owner distance inside
         // the existing256-block window; this does not claim a cold historical catch-up proof.
+        progress('prepare-source-start', 222);
         const p = await prepared({}, 222, undefined, {frames, schemaJson,
             capture: {chainId: receipt.chainId, profileId: 'wire-sysio-6508c9e8-native-engineering-v1'}});
+        progress('prepare-source-end', 222);
         assert.equal(p.positions.length, 222);
+        progress('host-start', 222);
         host = await statefulHostFixture({preparedSource: p, timeoutMs: 5000, through: 222,
             pluginDirectory: join(root, 'tests/fixtures/wire-managed-state-v2/plugin'),
             pluginConfiguration: config(), projectionId: PROJECTION_ID});
+        progress('host-ready', 222);
         assert.equal(host.ownerErrors.length, 0, host.ownerErrors.map(error => error.stack).join('\n'));
         for (let through = 222; through < 1480;) {
             const next = Math.min(1480, through + 8);
+            progress('advance-start', next);
             await p.advance(next);
+            progress('advance-end', next);
             for (let i = through; i < next && host.ownerErrors.length === 0; i++) await host.controller.drain();
             assert.equal(host.ownerErrors.length, 0, host.ownerErrors.map(error => error.stack).join('\n'));
             through = next;
+            progress('drain-end', through);
         }
+        progress('recovery-start', 1480);
         const recovery = await host.native.adapter.recovery();
+        progress('recovery-end', 1480);
         assert.equal(recovery.view.checkpoint.blockNum, 1480, host.ownerErrors.map(error => error.stack).join('\n'));
         assert.equal(recovery.raw, null); assert.equal(recovery.pending, null); assert.equal(recovery.gap, null);
         assert.ok(host.ends.length >= 1480, 'Actual managed worker attempts must have completed');
