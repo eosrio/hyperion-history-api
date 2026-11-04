@@ -849,6 +849,8 @@ export class HyperionMaster {
                 if(!this.isCurrentProtocolLiveReader(worker)||this.protocolAbiSource!==source)
                     throw new Error('Reader changed during captured source preflight');
                 const prior=await this.protocolAbiCoordinator!.inspect();
+                if(!this.isCurrentProtocolLiveReader(worker)||this.protocolAbiSource!==source)
+                    throw new Error('Reader changed while captured authority was inspected');
                 const recorded=prior.capturedGenesis;
                 if(recorded&&(recorded.schemaSha256!==config.schema_sha256||recorded.frameSha256!==config.frame_sha256
                     ||recorded.contextId!==input.contextId||recorded.genesisBlockId!==capture.verified.source.blockId
@@ -880,6 +882,7 @@ export class HyperionMaster {
                 }
             }
             if (!this.isCurrentProtocolLiveReader(worker) || this.protocolAbiSource !== source) {
+                if(this.protocolAbiSource===source)this.protocolAbiSource=undefined;
                 await this.protocolAbiCoordinator!.revokeSource(input.readerSessionId);
                 this.replyProtocolAbiCoordinator(worker, message.mId, {ok: false, error: {code: 'stale', message: 'Reader source changed while request was pending'}});
                 return;
@@ -889,6 +892,7 @@ export class HyperionMaster {
             this.requestProtocolAbiDrain();
         } catch (error: any) {
             const stale = !this.isCurrentProtocolLiveReader(worker) || this.protocolAbiSource !== source;
+            if(stale&&this.protocolAbiSource===source)this.protocolAbiSource=undefined;
             this.replyProtocolAbiCoordinator(worker, message.mId, {ok: false, error: {code: stale ? 'stale' : 'coordinator_unavailable',
                 message: String(error?.message ?? error).slice(0, 4096).toWellFormed()}});
             if (!stale) this.failProtocolAbiCoordinator(error);

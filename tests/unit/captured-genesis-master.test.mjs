@@ -33,6 +33,14 @@ test('master grants only the current continuous reader after exact native and RP
         const message={event:'protocol_abi_coordinator_request',mId:randomUUID(),data:{operation:'capture_begin',contextId:p.contextId,readerSessionId:'capture'}};
         await master.handleProtocolAbiCoordinatorRequest(other,message);
         assert.equal(replies.pop().error.code,'unauthorized');assert.equal((await coordinator.inspect()).source,null);
+        const inspect=coordinator.inspect.bind(coordinator);let release,entered;
+        const waiting=new Promise(resolve=>{entered=resolve;}),held=new Promise(resolve=>{release=resolve;});
+        coordinator.inspect=async()=>{entered();await held;return inspect();};
+        const racing=master.handleProtocolAbiCoordinatorRequest(worker,message);await waiting;
+        master.liveReader={wref:other};master.workerMap=[{wref:other,worker_role:'continuous_reader'}];release();await racing;
+        assert.equal(replies.pop().error.code,'stale');assert.equal(master.protocolAbiSource,undefined);
+        coordinator.inspect=inspect;assert.equal((await coordinator.inspect()).source,null);
+        master.liveReader={wref:worker};master.workerMap=[{wref:worker,worker_role:'continuous_reader'}];
         await master.handleProtocolAbiCoordinatorRequest(worker,message);
         const response=replies.pop();assert.equal(response.ok,true);assert.equal(typeof response.result.generation,'string');
         assert.equal((await coordinator.inspect()).capturedGenesis.frameSha256,config.frame_sha256);
