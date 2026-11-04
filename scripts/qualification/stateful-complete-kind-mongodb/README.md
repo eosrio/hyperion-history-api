@@ -84,3 +84,7 @@ remain unchanged; a separate caller package pin records the updated dependency.
 All earlier profiles and outcomes retain their original source and artifact
 pins. The same physical MongoDB cases and original replay/deadline/resource
 gates remain required.
+
+The historical 69a6606 plan remains the default. The separately selected `stateful-owner-v2-7412889-e691f44-complete-kind-engineering` profile admits the Wire32 assembly with the same SDK 741, fixture operations, bounds and acceptance criteria. The parent CI controller and runner both resolve the explicitly named profile and record it in their reports; an unrecognized profile is rejected before fixture creation.
+
+The Wire32 string-cache successor is a distinct explicitly selected profile `stateful-owner-v2-7412889-e691f44-string-cache-v1-engineering`; its source admission binds the new caller emission while retaining the prior Wire32 plan and all fixture limits.

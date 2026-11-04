@@ -8,7 +8,7 @@ import {release} from 'node:os';
 import {MongoClient} from 'mongodb';
 import {OwnedMongoFixture, MONGODB_IMAGE, MONGODB_VERSION, waitForMongo} from '../projection-fixture.mjs';
 import {admitNativeApiSourceOptions} from '../../../tests/unit/stateful-engineering-source-admission.mjs';
-import {PLAN} from './runner.mjs';
+import {selectPlan} from './runner.mjs';
 
 const json = (path, value) => writeFileSync(path, JSON.stringify(value, null, 2) + '\n', {flag: 'wx'});
 
@@ -37,14 +37,15 @@ export async function terminalChild(child, stdout, stderr, {deadlineMS = 300000,
 /** CI-only owned fixture. No URI, image, resource name or Docker target is accepted as input. */
 export async function runCI(output) {
     assert.ok(!existsSync(output), 'CI evidence directory must be new'); mkdirSync(output, {recursive: true});
+    const plan = selectPlan(process.env.HYPERION_NATIVE_SOURCE_PROFILE);
     const fixture = new OwnedMongoFixture(), report = {schemaVersion: 1, status: 'running', run: fixture.run,
-        image: MONGODB_IMAGE, mongodb: MONGODB_VERSION, kernel: release(), plan: PLAN,
+        image: MONGODB_IMAGE, mongodb: MONGODB_VERSION, kernel: release(), plan,
         cleanup: fixture.cleanupResult, physicalManagedAPI: 'pending', publicHTTP: 'pending', atomicParity: 'pending'};
     let failure, child;
     const stop = () => {failure ??= new Error('CI controller interrupted'); child?.kill('SIGTERM');};
     process.once('SIGINT', stop); process.once('SIGTERM', stop);
     try {
-        report.source = admitNativeApiSourceOptions({engineeringSourceProfile: PLAN.profile});
+        report.source = admitNativeApiSourceOptions({engineeringSourceProfile: plan.profile});
         const kernel = fixture.command(['info', '--format', '{{.KernelVersion}}']); report.dockerKernel = kernel;
         const version = /^(\d+)\.(\d+)\.(\d+)/.exec(kernel);
         assert.ok(!version || !(Number(version[1]) === 6 && Number(version[2]) >= 19

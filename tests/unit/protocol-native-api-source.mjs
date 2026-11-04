@@ -5,8 +5,8 @@ import {tmpdir} from 'node:os';
 import {basename, dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
-import {admitNativeApiSourceOptions, STATEFUL_ENGINEERING_API_SOURCE_PROFILE, STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE, STATEFUL_METADATA_FIELDS_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE, STATEFUL_HISTORY_API_SOURCE_PROFILE} from './stateful-engineering-source-admission.mjs';
-export {STATEFUL_ENGINEERING_API_SOURCE_PROFILE, STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE, STATEFUL_METADATA_FIELDS_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE, STATEFUL_HISTORY_API_SOURCE_PROFILE};
+import {admitNativeApiSourceOptions, STATEFUL_ENGINEERING_API_SOURCE_PROFILE, STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE, STATEFUL_METADATA_FIELDS_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_WIRE32_CACHE_API_SOURCE_PROFILE} from './stateful-engineering-source-admission.mjs';
+export {STATEFUL_ENGINEERING_API_SOURCE_PROFILE, STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE, STATEFUL_METADATA_FIELDS_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE, STATEFUL_COMPLETE_KIND_WIRE32_CACHE_API_SOURCE_PROFILE};
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const repo = fileURLToPath(new URL('../../', import.meta.url));
@@ -17,7 +17,7 @@ const originals = join(wireRoot, 'fixtures/codec/native-onblock-6508-20261022');
 /** Original Wire source plus actual coordinator/proof/journals. Only ES transport is in memory.
  * The native capability is an explicitly engineered selection after the unchanged installed loader.
  */
-export async function nativeApiWireSource(options = {}, historyOptions = undefined) {
+export async function nativeApiWireSource(options = {}) {
     // Inert exact-source admission precedes provider import and temporary capture extraction.
     const admission = admitNativeApiSourceOptions(options), {nativeMarker} = admission;
     const {validateProtocolNativeActions} = await import('@eosrio/hyperion-sdk/protocol');
@@ -64,7 +64,7 @@ export async function nativeApiWireSource(options = {}, historyOptions = undefin
     const proofReader = new ProtocolAbiProofReader({chainId, profile, store: frontier});
     const nativeReader = new ProtocolNativeActionReader({chainId, profile, provider, store: nativeStore, proofReader});
     const contextId = (await bindings.prepareContext({schemaVersion: 1, chainId, protocol: profile, schemaJson})).id;
-    const coordinator = new ProtocolAbiCoordinator({chainId, profile, ownerId: 'native-api-original-owner', bindings, observations, store: frontier, historicalCertificates: historyOptions,
+    const coordinator = new ProtocolAbiCoordinator({chainId, profile, ownerId: 'native-api-original-owner', bindings, observations, store: frontier,
         verifyNativeGenesis: provider.verifyNativeGenesis.bind(provider), ...(nativeMarker ? {nativeActionInterfaceVersion: 1} : {})});
     await coordinator.start(); let {generation} = await coordinator.openSource(contextId, 'native-api-original-reader');
     const session = provider.createShipSession(JSON.parse(schemaJson)), retained = new Map(); let height = 0, parent = null;
@@ -118,7 +118,7 @@ export async function nativeApiWireSource(options = {}, historyOptions = undefin
             act_digest: occurrence.actDigest, act: {account: input.account, name: input.name, authorization: structuredClone(occurrence.authorization), data: value},
             receipts: [structuredClone(occurrence.receipt)], protocol: metadata};
     }
-    return {chainId, chain, selected, installed, provider, profile, memory, client, frontier, bindings, observations, nativeStore, coordinator, admission,
+    return {chainId, chain, selected, installed, provider, profile, memory, client, frontier, nativeStore, coordinator, admission,
         expected, retained, appendUntil, action, async dispose() {
             session.close?.(); assert.equal(installed.provider.nativeActions, undefined);
             const target = resolve(directory); assert.equal(dirname(target), resolve(tmpdir())); assert(basename(target).startsWith('hapi-native-api-original-'));

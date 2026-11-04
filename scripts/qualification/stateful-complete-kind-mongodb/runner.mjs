@@ -15,6 +15,15 @@ export const PLAN = Object.freeze({schemaVersion: 1, scope: 'synthetic-native-co
         'same-snapshot-metadata', 'adaptive-retry-positive-control', 'bounded-find-failure', 'bounded-getMore-failure',
         'callback-retry-accounting', 'foreign-token-client-session', 'cancel-late-result', 'gap-takeover-fork', 'lifecycle-cleanup'],
     acceptance: {physicalMongoDB: 'pending-until-run', managedAPI: 'pending', publicHTTP: 'pending', atomicParity: 'pending'}});
+export const WIRE32_PLAN = Object.freeze({...PLAN, profile: 'stateful-owner-v2-7412889-e691f44-complete-kind-engineering'});
+export const WIRE32_CACHE_PLAN = Object.freeze({...WIRE32_PLAN, profile: 'stateful-owner-v2-7412889-e691f44-string-cache-v1-engineering'});
+export function selectPlan(profile) {
+    if (profile === undefined || profile === '' || profile === PLAN.profile) return PLAN;
+    if (profile === WIRE32_PLAN.profile) return WIRE32_PLAN;
+    if (profile === WIRE32_CACHE_PLAN.profile) return WIRE32_CACHE_PLAN;
+    throw new Error('Unqualified complete-kind fixture source profile');
+}
+
 const hash = value => createHash('sha256').update(value).digest('hex');
 const hex = n => n.toString(16).padStart(64, '0');
 const plain = value => JSON.parse(JSON.stringify(value));
@@ -50,9 +59,9 @@ export function argumentsFor(argv, environment) {
     return {uri, database: argv[3], output: resolve(argv[5]), member, replicaSet};
 }
 
-function definition(sdk, database) {
+function definition(sdk, database, plan) {
     return {family: sdk.STATEFUL_FAMILY, interfaceVersion: 1, id: 'complete-kind-native-qualification',
-        binding: {chainId: hex(10), backendId: database, generation: database, mappingRevision: hash(JSON.stringify(PLAN)),
+        binding: {chainId: hex(10), backendId: database, generation: database, mappingRevision: hash(JSON.stringify(plan)),
             hookArtifact: hash(readFileSync(fileURLToPath(import.meta.url))), hookRevision: hex(13), codecRevision: hex(14), normalizerRevision: hex(15)},
         selectors: [{id: 'synthetic', kind: 'action', contract: 'fixture', name: 'change', abiDeployment: 'synthetic-no-chain-authority', abiSha256: hex(16)}],
         records: [{kind: 'asset', integers: [{path: ['id'], type: 'uint64', vector: false}]},
@@ -77,7 +86,8 @@ class Custody {
 export async function run(options) {
     // Source admission precedes creating any MongoClient or issuing native commands.
     const {admitNativeApiSourceOptions} = await import('../../../tests/unit/stateful-engineering-source-admission.mjs');
-    const admitted = admitNativeApiSourceOptions({engineeringSourceProfile: PLAN.profile});
+    const plan = selectPlan(process.env.HYPERION_NATIVE_SOURCE_PROFILE);
+    const admitted = admitNativeApiSourceOptions({engineeringSourceProfile: plan.profile});
     const [{MongoClient}, logical, sdk, native, ownerNative, internal, managed] = await Promise.all([
         import('mongodb'), import('@eosrio/hyperion-sdk/projection-stateful'), import('@eosrio/hyperion-sdk/projection-stateful-owner-v2'),
         import('@eosrio/hyperion-backend-mongodb/stateful-owner-complete-kind-v1'),
@@ -106,7 +116,7 @@ export async function run(options) {
         monitorCommands: true, maxPoolSize: 1, minPoolSize: 0, serverSelectionTimeoutMS: PLAN.operationMS});
     const stopRetry = monitor(retry, options.database, 'retry-positive-control', () => phase, trace);
     let reportError;
-    const report = {schemaVersion: 1, plan: PLAN, source: admitted, database: options.database,
+    const report = {schemaVersion: 1, plan, source: admitted, database: options.database,
         runtime: {node: process.version, executable: process.execPath, executableSha256: hash(readFileSync(process.execPath))},
         sourceAuthority: 'Synthetic native fixture only; no Antelope source, managed API, public HTTP or Atomic parity grant', cases,
         metrics: {responseBytes: 'Successful canonical SDK envelopes and composed JSON result, counted by the SDK',
@@ -139,7 +149,7 @@ export async function run(options) {
             beforeData: async input => {const before = gate; if (before) await before(input);},
             afterData: async (input, response) => {const after = afterData; if (after) await after(input, response);}});
         assert.equal(closes.length, 0);
-        const projection = await logical.captureStatefulDeclaration(definition(logical, options.database), limits());
+        const projection = await logical.captureStatefulDeclaration(definition(logical, options.database, plan), limits());
         const draft = await sdk.captureStatefulOwnerDeclarationV2(projection, 2);
         const config = {client: bounded, databaseName: options.database, backendId: options.database, collectionPrefix: 'bounded', declaration: draft,
             receiptRetention: 4, rollbackRetentionBlocks: 4, rollbackRetentionBytes: 4194304, rollbackMaxBlockBytes: 1048576,
@@ -312,7 +322,7 @@ export async function run(options) {
                 persistedGapRefused: true, staleOwnerRefused: true, actualRollbackAndReplacement: true};
         });
         await caseRun('changed-declaration-refused', async () => {
-            const changed = definition(logical, options.database); changed.binding.generation += '_other';
+            const changed = definition(logical, options.database, plan); changed.binding.generation += '_other';
             const other = await sdk.captureStatefulOwnerDeclarationV2(await logical.captureStatefulDeclaration(changed, limits()), 2);
             const foreign = await native.createMongoDbStatefulCompleteKindAdapterV1({...config, declaration: other}, PLAN.budgets);
             await assert.rejects(foreign.recovery()); return {silentAdoption: false};
@@ -343,7 +353,7 @@ export async function run(options) {
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
     try {const options = argumentsFor(process.argv.slice(2), process.env);
-        if (options === null) console.log(JSON.stringify({status: 'inert-plan-only', ...PLAN}, null, 2));
+        if (options === null) console.log(JSON.stringify({status: 'inert-plan-only', ...selectPlan(process.env.HYPERION_NATIVE_SOURCE_PROFILE)}, null, 2));
         else {const report = await run(options); console.log(JSON.stringify({status: report.status, output: options.output}));}}
     catch (error) {console.error(JSON.stringify({status: 'failed', error: failure(error)})); process.exitCode = 1;}
 }

@@ -125,6 +125,8 @@ export async function auditPortableNativeOracle(source: PortableWorkerSource) {
 interface NativeRunOptions {
     readonly source: PortableWorkerSource; readonly oracle: Awaited<ReturnType<typeof auditPortableNativeOracle>>;
     readonly client: Client; readonly chain: string; readonly apiPort: number;
+    readonly markFinal: (row: number, stage: string, projection?: string) => void;
+    readonly finishFinal: () => void;
     readonly events: () => Promise<any[]>;
     readonly http: (path: string, budget?: PortableNativePhaseBudget) => Promise<{status: number; headers: Headers; body: any}>;
     readonly unrelated: (through: number, budget?: PortableNativePhaseBudget) => Promise<unknown>;
@@ -523,20 +525,29 @@ export async function createPortableNativeQualification(options: NativeRunOption
         },
         async final() {
             assert.equal(checkedNotifications.size, 25); assert.equal(controls.length, 3);
+            options.markFinal(0, 'events');
             const expired: any[] = [], events = await options.events();
             for (const expected of oracle.rows) {
+                options.markFinal(expected.blockNum, 'selection');
                 const event = selectionEvent(events, expected.blockNum), retained = await nativeStore.readSelection(event.selectionId);
                 const position = {chainId: source.chainId, blockNum: expected.blockNum, blockId: expected.blockId};
+                options.markFinal(expected.blockNum, 'canonical-open');
                 await assert.rejects(reader.open(position, event.selectionId), {code: 'ancestry_unavailable'});
+                options.markFinal(expected.blockNum, 'native-open');
                 await assert.rejects(native.open(position, event.selectionId), {code: 'ancestry_unavailable'});
+                options.markFinal(expected.blockNum, 'native-http');
                 const response = await options.http(path(expected.blockNum)); assertPortableNativeUnavailable(response, ['ancestry_unavailable']);
                 assert.equal(retained.abiObservation.capture.blockHex, originals.get(expected.blockNum).capture.blockHex);
+                options.markFinal(expected.blockNum, 'physical-admission');
                 const membership = await admission(events, expected.blockNum, await actions(expected.blockNum));
+                options.markFinal(expected.blockNum, 'unrelated');
                 expired.push({blockNum: expected.blockNum, decoded: receipt(response), retainedSelectionId: event.selectionId,
                     rawCaptureSha256: retained.record.captureRef.inputSha256, retainedIngressSha256: portableSourceHash(Buffer.from(membership.ingress.frameHex, 'hex')),
                     rawHistory: await options.unrelated(expected.blockNum)});
             }
+            options.markFinal(0, 'bulk-audit');
             const confirmedBulk = await auditBulk();
+            options.finishFinal();
             return {expired, confirmedBulk, verifiedNotifications: checkedNotifications.size, notificationBlocks: 17, defaultAncestryBlocks: 256,
                 admissionActivation: 'existing-explicit-engineering-preload; public/default operator activation remains disabled',
                 historicalServingQualified: false, fullForkRecoveryQualified: false, streamCompatibilityQualified: false};

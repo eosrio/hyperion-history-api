@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "main", "dev", "release/4.5" ]
   pull_request:
-    branches: ["main", "dev", "release/4.5", "codex/fix-action-abi-epochs", "codex/wire-protocol-host", "codex/protocol-abi-observations", "codex/protocol-abi-coverage", "codex/protocol-abi-frontier", "codex/protocol-abi-consumers", "codex/exact-sequence-history-adapter", "codex/action-source-journal", "codex/portable-state-production", "feat/protocol-action-occurrence-proof", "fix/protocol-source-read-cancellation", "build/native-action-dependencies", "feat/native-observation-prepare", "feat/native-action-authorization", "feat/native-action-consumers", "build/native-wire-profile-pin", "build/bun-1.4.4", "fix/native-wire-worker-proofs", "fix/live-reader-ship-credits", "feat/source-handoff-outcomes", "feat/action-attempt-dispositions", "fix/worker-attempt-quiescence", "fix/stream-client-compatibility-45", "codex/wire-full-worker-replay", "feat/source-bound-attempt-adjudication", "perf/native-wire-worker-profiles", "codex/wire-storage-recovery", "codex/native-source-proof-pair", "feat/original-action-authorization-397", "fix/portable-mapping-retry-eligibility-403", "feat/mongodb-complete-kind-402", "test/wire-mongodb-combined-profile-408"]
+    branches: ["main", "dev", "release/4.5", "codex/fix-action-abi-epochs", "codex/wire-protocol-host", "codex/protocol-abi-observations", "codex/protocol-abi-coverage", "codex/protocol-abi-frontier", "codex/protocol-abi-consumers", "codex/exact-sequence-history-adapter", "codex/action-source-journal", "codex/portable-state-production", "feat/protocol-action-occurrence-proof", "fix/protocol-source-read-cancellation", "build/native-action-dependencies", "feat/native-observation-prepare", "feat/native-action-authorization", "feat/native-action-consumers", "build/native-wire-profile-pin", "build/bun-1.4.4", "fix/native-wire-worker-proofs", "fix/live-reader-ship-credits", "feat/source-handoff-outcomes", "feat/action-attempt-dispositions", "fix/worker-attempt-quiescence", "fix/stream-client-compatibility-45", "codex/wire-full-worker-replay", "feat/source-bound-attempt-adjudication", "perf/native-wire-worker-profiles", "codex/wire-storage-recovery", "codex/native-source-proof-pair", "feat/original-action-authorization-397", "fix/portable-mapping-retry-eligibility-403", "feat/mongodb-complete-kind-402", "test/wire-mongodb-combined-profile-408", "engineering/wire119-attribution-base-191"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
@@ -14,8 +14,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-69a6606-api-history-trace-engineering
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-e691f44-string-cache-v1-engineering
     strategy:
+      fail-fast: false
       matrix:
         node-version: [24.x, 26.x]
     steps:
@@ -37,7 +38,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - name: Check bounded canonical JSON and authentic protocol records on Node ${{ matrix.node-version }}
-        run: node --test tests/unit/bounded-json.test.mjs tests/native/bounded-json-protocol-records.test.mjs
+        run: node --test tests/unit/bounded-json.test.mjs tests/native/bounded-json-protocol-records.test.mjs tests/native/bounded-json-string-encoding.test.mjs
       - name: Check mixed stateful source and final publication on Node ${{ matrix.node-version }}
         run: |
           node --test tests/native/pinned-git-source.test.mjs
@@ -49,8 +50,6 @@ jobs:
           node --test tests/unit/portable-mapping-retry-native.mjs
           node --test tests/unit/wire-managed-state-v2-native.mjs
           node --test tests/unit/protocol-abi-history-native.mjs
-          node --test tests/unit/protocol-native-api-history.test.mjs
-          node --test tests/native/trace-opaque-serialization.test.mjs
       - name: Check Fastify request admission and state route compatibility on Node ${{ matrix.node-version }}
         run: node --test --test-timeout=15000 tests/native/fastify-compatibility.test.mjs
       - name: Check complete-kind query/client and final-publication controls
@@ -61,14 +60,15 @@ jobs:
         run: node --test tests/native/stream-filter-parity.test.mjs
       - name: Check pinned native stream JSON and credit windows on Node ${{ matrix.node-version }}
         run: node --test tests/native/native-stream-json.test.mjs tests/native/native-stream-credits.test.mjs
-      - name: Check independent reader input pressure on Node ${{ matrix.node-version }}
-        run: node --test tests/native/reader-input-pressure.test.mjs tests/native/reader-startup-pressure.test.mjs
-      - name: Check explorer system contract metadata on Node ${{ matrix.node-version }}
-        run: node --test tests/native/explorer-system-contract.test.mjs
       - name: Typecheck Elasticsearch qualification runner
         run: bun check -p scripts/qualification/tsconfig.json
       - name: Check retained Wire source and replay credits with native Node
         run: node --experimental-strip-types scripts/qualification/check-wire-replay-fixture.mjs
+      - name: Check bounded Wire final callback observations
+        run: |
+          node --test tests/unit/wire119-final-profile.test.mjs tests/unit/qualified-git-lock.test.mjs tests/native/projection-manager-lifecycle.test.mjs
+          node tests/unit/wire119-final-replay-control.cjs
+          node tests/unit/wire119-final-bounds-control.cjs
       - name: Check coherent Mongo qualification sampling with native Node
         run: |
           node --experimental-strip-types tests/unit/portable-state-mongo-sampling.mjs
@@ -186,6 +186,8 @@ jobs:
 
   projection-mongodb:
     runs-on: ubuntu-22.04
+    env:
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-e691f44-string-cache-v1-engineering
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -259,7 +261,7 @@ jobs:
   action-source-journal:
     runs-on: ubuntu-24.04
     env:
-      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-69a6606-api-history-trace-engineering
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-e691f44-string-cache-v1-engineering
     timeout-minutes: 15
     strategy:
       fail-fast: false

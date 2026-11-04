@@ -1,5 +1,6 @@
 /** Original emitted failure handlers with controlled services; native child exits remain raw. */
 import assert from 'node:assert/strict';
+import {createProjectionManagerFixture} from './projection-manager-fixture.mjs';
 import {spawnSync} from 'node:child_process';
 import {mkdtempSync, mkdirSync, writeFileSync, appendFileSync, readFileSync, rmSync, realpathSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -41,7 +42,7 @@ if (process.argv[2] === 'child') {
         assert.equal(nacks, 1); assert.equal(worker.ch_ready, true);
         process.exit(0);
     }
-    const worker = Object.assign(Object.create(Projection.prototype), {chainId: 'a'.repeat(64),
+    const worker = Object.assign(Object.create(Projection.prototype), {manager: createProjectionManagerFixture({}), chainId: 'a'.repeat(64),
         conf: {features: {portable_state: {}}}, protocolReady: scenario === 'copied-error' ? Promise.resolve()
             : Promise.reject(scenario === 'primitive' ? undefined : sentinel),
         profiler: {stopReporting() {}}});
