@@ -42,6 +42,8 @@ jobs:
         run: node --test tests/native/native-stream-json.test.mjs tests/native/native-stream-credits.test.mjs
       - name: Check trace action serialization on Node ${{ matrix.node-version }}
         run: node --test tests/native/trace-opaque-serialization.test.mjs
+      - name: Check explorer system contract metadata on Node ${{ matrix.node-version }}
+        run: node --test tests/native/explorer-system-contract.test.mjs
       - name: Typecheck Elasticsearch qualification runner
         run: bun check -p scripts/qualification/tsconfig.json
       - name: Check retained Wire source and replay credits with native Node
