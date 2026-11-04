@@ -12,7 +12,7 @@ export class HyperionQueueMonitor {
 
 
     private queueMonitoringInterval?: Timeout;
-    private readonly readingPaused = {reader: false, continuous_reader: false};
+    private readonly readingPaused = {reader: true, continuous_reader: true};
     private checking = false;
     chain: string;
 
@@ -57,7 +57,13 @@ export class HyperionQueueMonitor {
                     limit: previous ? Math.min(previous.limit, qlimit) : qlimit,
                     ingestor: previous?.ingestor ?? (worker.worker_role === 'ingestor' ? worker : undefined)});
             }
-            const pressure = {bulk: {above: false, resume: true}, live: {above: false, resume: true}, shared: {above: false, resume: true}};
+            const hasBulk = [...queues.values()].some(item => item.scope === 'bulk');
+            const hasLive = [...queues.values()].some(item => item.scope === 'live');
+            if ((!hasBulk && this.master.workerMap.some(worker => worker.worker_role === 'reader'))
+                || (!hasLive && this.master.workerMap.some(worker => worker.worker_role === 'continuous_reader'))) {
+                throw new Error('Active reader input queue is not observed');
+            }
+            const pressure = {bulk: {above: false, resume: hasBulk}, live: {above: false, resume: hasLive}, shared: {above: false, resume: true}};
             for (const [queue, item] of queues) {
                 const size = await this.manager.checkQueueSize(queue);
                 if (!Number.isSafeInteger(size) || size < 0) throw new Error(`Invalid queue size for ${queue}`);

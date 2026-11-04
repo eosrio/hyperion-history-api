@@ -11,38 +11,38 @@ function fixture(){
  return {monitor:new HyperionQueueMonitor(master),master,sizes,events,launches,async check(){await this.monitor.checkQueues({},100);}};
 }
 test('historical input pressure pauses only bulk and preserves independent hysteresis',async()=>{
- const f=fixture();f.sizes.set('wire:blocks:1',10);await f.check();assert.deepEqual(f.events,[['reader','pause']]);
+ const f=fixture();await f.check();f.events.length=0;f.sizes.set('wire:blocks:1',10);await f.check();assert.deepEqual(f.events,[['reader','pause']]);
  f.sizes.set('wire:blocks:1',5);await f.check();assert.equal(f.events.length,1);f.sizes.set('wire:blocks:1',4);await f.check();assert.deepEqual(f.events,[['reader','pause'],['reader','resume']]);
 });
 test('live input pressure is separately bounded and does not pause bulk',async()=>{
- const f=fixture();f.sizes.set('wire:live_blocks',10);await f.check();assert.deepEqual(f.events,[['continuous_reader','pause']]);
+ const f=fixture();await f.check();f.events.length=0;f.sizes.set('wire:live_blocks',10);await f.check();assert.deepEqual(f.events,[['continuous_reader','pause']]);
  f.sizes.set('wire:live_blocks',5);await f.check();assert.equal(f.events.length,1);f.sizes.set('wire:live_blocks',4);await f.check();assert.deepEqual(f.events,[['continuous_reader','pause'],['continuous_reader','resume']]);
 });
 test('shared and unrecognized pressure pauses both, and each remains blocked by its own queue',async()=>{
  for(const queue of ['wire:ds_pool:1','wire:index_actions:1','wire:other']){
-  const f=fixture();f.sizes.set(queue,20);await f.check();assert.deepEqual(f.events,[['reader','pause'],['continuous_reader','pause']]);
+  const f=fixture();await f.check();f.events.length=0;f.sizes.set(queue,20);await f.check();assert.deepEqual(f.events,[['reader','pause'],['continuous_reader','pause']]);
   f.sizes.set(queue,4);f.sizes.set('wire:blocks:1',7);await f.check();assert.deepEqual(f.events.at(-1),['continuous_reader','resume']);assert.equal(f.events.length,3);
   f.sizes.set('wire:blocks:1',4);await f.check();assert.deepEqual(f.events.at(-1),['reader','resume']);
  }
 });
 test('duplicate or malformed input queue classifications remain conservative',async()=>{
- const f=fixture();f.master.workerMap.push({worker_role:'other',queue:'wire:blocks:1'});f.sizes.set('wire:blocks:1',10);await f.check();assert.deepEqual(f.events,[['reader','pause'],['continuous_reader','pause']]);
+ const f=fixture();await f.check();f.events.length=0;f.master.workerMap.push({worker_role:'other',queue:'wire:blocks:1'});f.sizes.set('wire:blocks:1',10);await f.check();assert.deepEqual(f.events,[['reader','pause'],['continuous_reader','pause']]);
 });
 test('ingestor autoscale remains independent of reader classification',async()=>{
- const f=fixture();f.sizes.set('wire:index_actions:1',101);await f.monitor.checkQueues({},100);assert.equal(f.launches.length,1);assert.equal(f.launches[0].worker_role,'ingestor');assert.deepEqual(f.events,[['reader','pause'],['continuous_reader','pause']]);
+ const f=fixture();await f.check();f.events.length=0;f.sizes.set('wire:index_actions:1',101);await f.monitor.checkQueues({},100);assert.equal(f.launches.length,1);assert.equal(f.launches[0].worker_role,'ingestor');assert.deepEqual(f.events,[['reader','pause'],['continuous_reader','pause']]);
 });
 
 test('both input pressures recover independently and cannot clear shared pressure',async()=>{
- const f=fixture();f.sizes.set('wire:blocks:1',10);f.sizes.set('wire:live_blocks',10);await f.check();
+ const f=fixture();await f.check();f.events.length=0;f.sizes.set('wire:blocks:1',10);f.sizes.set('wire:live_blocks',10);await f.check();
  f.sizes.set('wire:blocks:1',0);f.sizes.set('wire:ds_pool:1',20);await f.check();assert.deepEqual(f.events,[['reader','pause'],['continuous_reader','pause']]);
  f.sizes.set('wire:ds_pool:1',4);await f.check();assert.deepEqual(f.events.at(-1),['reader','resume']);assert.equal(f.events.length,3);
  f.sizes.set('wire:live_blocks',0);await f.check();assert.deepEqual(f.events.at(-1),['continuous_reader','resume']);
 });
 test('unknown deserializer queue remains shared pressure',async()=>{
- const f=fixture();f.master.workerMap.push({worker_role:'deserializer',worker_queue:'wire:blocks:invalid'});f.sizes.set('wire:blocks:invalid',10);await f.check();assert.deepEqual(f.events,[['reader','pause'],['continuous_reader','pause']]);
+ const f=fixture();await f.check();f.events.length=0;f.master.workerMap.push({worker_role:'deserializer',worker_queue:'wire:blocks:invalid'});f.sizes.set('wire:blocks:invalid',10);await f.check();assert.deepEqual(f.events,[['reader','pause'],['continuous_reader','pause']]);
 });
 test('overlapping polls do not publish stale pause decisions and failed reads allow a later poll',async()=>{
- const f=fixture();let entered,release;const active=new Promise(r=>entered=r),gate=new Promise(r=>release=r),original=f.master.manager.checkQueueSize;let first=true;
+ const f=fixture();await f.check();f.events.length=0;let entered,release;const active=new Promise(r=>entered=r),gate=new Promise(r=>release=r),original=f.master.manager.checkQueueSize;let first=true;
  f.master.manager.checkQueueSize=async q=>{if(first){first=false;entered();await gate;}return original(q);};
  f.sizes.set('wire:blocks:1',10);const pending=f.check();await active;await f.check();assert.equal(f.events.length,0);release();await pending;assert.deepEqual(f.events,[['reader','pause']]);
  f.master.manager.checkQueueSize=async()=>{throw Error('unavailable');};await f.check();assert.deepEqual(f.events.at(-1),['continuous_reader','pause']);assert.equal(f.events.length,2);
@@ -50,7 +50,7 @@ test('overlapping polls do not publish stale pause decisions and failed reads al
 });
 
 test('conflicting live-mode metadata is shared pressure',async()=>{
- const f=fixture();f.master.workerMap[0].live_mode='true';f.sizes.set('wire:blocks:1',10);await f.check();assert.deepEqual(f.events,[['reader','pause'],['continuous_reader','pause']]);
+ const f=fixture();await f.check();f.events.length=0;f.master.workerMap[0].live_mode='true';f.sizes.set('wire:blocks:1',10);await f.check();assert.deepEqual(f.events,[['reader','pause'],['continuous_reader','pause']]);
 });
 
 test('queue HTTP failures do not masquerade as an empty queue',async()=>{
@@ -60,12 +60,12 @@ test('queue HTTP failures do not masquerade as an empty queue',async()=>{
 });
 
 test('malformed queue observation pauses both until a complete valid sample',async()=>{
- const f=fixture();f.sizes.set('wire:other',undefined);await f.check();assert.deepEqual(f.events,[['reader','pause'],['continuous_reader','pause']]);
+ const f=fixture();await f.check();f.events.length=0;f.sizes.set('wire:other',undefined);await f.check();assert.deepEqual(f.events,[['reader','pause'],['continuous_reader','pause']]);
  f.sizes.set('wire:other',0);await f.check();assert.deepEqual(f.events.slice(-2),[['reader','resume'],['continuous_reader','resume']]);
 });
 
 test('stalled queue observation times out, pauses both, then recovers on a valid poll', {timeout: 16000}, async()=>{
- const {checkQueueSize}=await import('../../build/indexer/connections/amqp.js');const previous=globalThis.fetch;const f=fixture();
+ const {checkQueueSize}=await import('../../build/indexer/connections/amqp.js');const previous=globalThis.fetch;const f=fixture();await f.check();f.events.length=0;
  const config={protocol:'http',api:'localhost:15672',vhost:'/',user:'test',pass:'test'};
  try {
   globalThis.fetch=async (_url,{signal})=>new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>reject(signal.reason),{once:true}));
@@ -77,4 +77,15 @@ test('stalled queue observation times out, pauses both, then recovers on a valid
   await f.check();assert.deepEqual(f.events.slice(-2),[['reader','pause'],['continuous_reader','pause']]);
   globalThis.fetch=async()=>({ok:true,json:async()=>({messages:0})});await f.check();assert.deepEqual(f.events.slice(-2),[['reader','resume'],['continuous_reader','resume']]);
  } finally {globalThis.fetch=previous;}
+});
+
+test('startup remains paused through unknown, saturated and hysteresis-band samples',async()=>{
+ const f=fixture();assert.equal(f.monitor.isReaderPaused('reader'),true);assert.equal(f.monitor.isReaderPaused('continuous_reader'),true);
+ f.sizes.set('wire:blocks:1',10);await f.check();assert.equal(f.monitor.isReaderPaused('reader'),true);assert.equal(f.monitor.isReaderPaused('continuous_reader'),false);
+ f.sizes.set('wire:blocks:1',5);await f.check();assert.equal(f.monitor.isReaderPaused('reader'),true);
+ f.sizes.set('wire:blocks:1',4);await f.check();assert.equal(f.monitor.isReaderPaused('reader'),false);
+});
+test('an active reader with an unobserved input queue fails closed for both roles',async()=>{
+ const f=fixture();await f.check();f.events.length=0;f.master.workerMap.push({worker_role:'reader'});f.master.workerMap=f.master.workerMap.filter(w=>w.worker_queue!=='wire:blocks:1');
+ await f.check();assert.deepEqual(f.events,[['reader','pause'],['continuous_reader','pause']]);
 });

@@ -192,13 +192,15 @@ try {
         assert.equal(h.publications.length, 1); assert.equal(h.creditCommands().length, before + 1);
     } else if (scenario === 'monitor') {
         const bulk = await fixture(false), live = await fixture(true), signals = [];
-        let queueSize = 64;
+        let queueSize = 0;
         const master = Object.assign(Object.create(HyperionMaster.prototype), {chain, conf: config,
             workerMap: [{worker_role: 'reader', wref: {send(value) {signals.push({role: 'reader', value}); bulk.reader.onIpcMessage(value);}}},
                 {worker_role: 'continuous_reader', wref: {send(value) {signals.push({role: 'continuous_reader', value}); live.reader.onIpcMessage(value);}}},
-                {worker_role: 'ds_pool_worker', local_id: 1}],
-            manager: {async checkQueueSize(queue) {assert.equal(queue, chain + ':ds_pool:1'); return queueSize;}}});
+                {worker_role: 'deserializer', worker_queue: chain + ':blocks:1'},
+                {worker_role: 'deserializer', worker_queue: chain + ':live_blocks'}, {worker_role: 'ds_pool_worker', local_id: 1}],
+            manager: {async checkQueueSize(queue) {return queue === chain + ':ds_pool:1' ? queueSize : 0;}}});
         const monitor = new HyperionQueueMonitor(master);
+        await monitor.checkQueues({}, 1000000); signals.length=0; queueSize=64;
         await monitor.checkQueues({}, 1000000);
         assert.equal(bulk.reader.allowRequests, false);
         assert.equal(live.reader.allowRequests, false, 'queue monitor must pause continuous_reader too');
@@ -216,14 +218,14 @@ try {
             {role: 'reader', value: {event: 'resume', source: 'queue-pressure'}}, {role: 'continuous_reader', value: {event: 'resume', source: 'queue-pressure'}}]);
     } else if (scenario === 'monitor-inputs') {
         const bulk = await fixture(false), live = await fixture(true), signals = [];
-        const sizes = new Map([[chain + ':blocks:1', 64], [chain + ':live_blocks', 0], [chain + ':ds_pool:1', 0]]);
+        const sizes = new Map([[chain + ':blocks:1', 0], [chain + ':live_blocks', 0], [chain + ':ds_pool:1', 0]]);
         const master = Object.assign(Object.create(HyperionMaster.prototype), {chain, conf: config,
             workerMap: [{worker_role: 'reader', wref: {send(value) {signals.push({role: 'reader', value}); bulk.reader.onIpcMessage(value);}}},
                 {worker_role: 'continuous_reader', wref: {send(value) {signals.push({role: 'continuous_reader', value}); live.reader.onIpcMessage(value);}}},
                 {worker_role: 'deserializer', worker_queue: chain + ':blocks:1'},
                 {worker_role: 'deserializer', worker_queue: chain + ':live_blocks'}, {worker_role: 'ds_pool_worker', local_id: 1}],
             manager: {async checkQueueSize(queue) {assert(sizes.has(queue)); return sizes.get(queue);}}});
-        const monitor = new HyperionQueueMonitor(master); await monitor.checkQueues({}, 1000000);
+        const monitor = new HyperionQueueMonitor(master); await monitor.checkQueues({}, 1000000);signals.length=0;sizes.set(chain + ':blocks:1',64);await monitor.checkQueues({}, 1000000);
         assert.equal(bulk.reader.allowRequests, false); assert.equal(live.reader.allowRequests, true);
         bulk.socket.message(bulk.frame); live.socket.message(live.frame); await Promise.all([bulk.drain(), live.drain()]);
         assert.equal(bulk.creditCommands().length, 0); assert.equal(live.creditCommands().length, 1);
