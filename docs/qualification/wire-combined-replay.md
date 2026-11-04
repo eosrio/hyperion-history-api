@@ -22,3 +22,8 @@ historical activation/recovery, full testnet sync, Atomic API parity or public d
 The frozen `wire119-final-observer-source-v1` file remains an observation-source record; its
 production-emission selector describes its own predecessor. A composed run uses the new profile
 and complete source input inventory, never that predecessor selector as current authority.
+
+Actual composed-profile admission verifies the exact pinned manifest bytes and every308 listed
+runtime input before admitting the runner's source assembly. Duplicate or unsafe paths, escaped files,
+source drift, changed manifest/aggregate and unchanged-emission source substitutions are refused.
+A previously passing standalone inventory test does not replace these current source checks.

@@ -30,7 +30,10 @@ const codeTree = (from, to) => {for (const entry of readdirSync(from, {withFileT
 try {
     copy(fileURLToPath(new URL('../../package.json', import.meta.url)), join(directory, 'package.json'));
     codeTree(fileURLToPath(new URL('../../build', import.meta.url)), join(directory, 'build'));
-    for (const [path] of callerSource.sources) copy(fileURLToPath(new URL('../../' + path, import.meta.url)), join(directory, path));
+    const manifestPath = 'docs/qualification/wire-combined-replay-source-profile.json';
+    const manifest = JSON.parse(readFileSync(new URL('../../' + manifestPath, import.meta.url)));
+    for (const [path] of manifest.runtimeInputFiles) copy(fileURLToPath(new URL('../../' + path, import.meta.url)), join(directory, path));
+    copy(fileURLToPath(new URL('../../' + manifestPath, import.meta.url)), join(directory, manifestPath));
     copy(fileURLToPath(new URL('../../package-lock.json', import.meta.url)), join(directory, 'package-lock.json'));
     const gate = join(directory, 'tests/unit/stateful-engineering-source-admission.mjs');
     copy(fileURLToPath(new URL('./stateful-engineering-source-admission.mjs', import.meta.url)), gate);
@@ -66,6 +69,19 @@ try {
     for (const sourcePath of ['src/indexer/helpers/bounded-json.ts', 'src/indexer/protocol/abi-coordinator.ts',
         'src/indexer/protocol/abi-frontier-store.ts'])
         alter(join(directory, sourcePath), bytes => Buffer.concat([bytes, Buffer.from('\n// changed composed source\n')]), /Git-LF caller/);
+    // This file was outside callerSource.sources. The actual admission must reject its drift
+    // even though no generated file changed; a prior passing inventory test cannot authorize it.
+    const uncheckedSource = 'src/indexer/helpers/common_functions.ts';
+    assert(!callerSource.sources.some(([path]) => path === uncheckedSource));
+    const emitted = readFileSync(join(directory, 'build/indexer/helpers/common_functions.js'));
+    alter(join(directory, uncheckedSource), bytes => Buffer.concat([bytes, Buffer.from('\n// drift after build\n')]), /composed runtime input/);
+    assert.deepEqual(readFileSync(join(directory, 'build/indexer/helpers/common_functions.js')), emitted); cases++;
+    for (const change of [value => ({...value, runtimeInputFiles: value.runtimeInputFiles.slice(1)}),
+        value => ({...value, runtimeInputFiles: [value.runtimeInputFiles[0], ...value.runtimeInputFiles.slice(0, -1)]}),
+        value => ({...value, runtimeInputFiles: [['../outside.ts', 'd'.repeat(64)], ...value.runtimeInputFiles.slice(1)]}),
+        value => ({...value, runtimeInputSha256: 'd'.repeat(64)}),
+        value => ({...value, runtimeInputFiles: value.runtimeInputFiles.map(([path, hash], index) => [path, index === 0 ? 'd'.repeat(64) : hash])})])
+        alter(join(directory, manifestPath), json(change), /composed runtime manifest bytes/);
     alter(join(directory, 'package-lock.json'), json(value => {
         value.packages['node_modules/@eosrio/hyperion-sdk'].resolved = 'git+https://other.invalid/eosrio/hyperion-sdk.git#' + 'd'.repeat(40); return value;
     }), /coordinated lock source/);

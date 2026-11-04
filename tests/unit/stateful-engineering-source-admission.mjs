@@ -279,6 +279,35 @@ export function admitNativeApiSourceOptions(input = {}) {
         ...(fieldsProfile(profile) ? {nativeSourceCommit: STATEFUL_METADATA_FIELDS_NATIVE_SOURCE.commit} : {}), qualificationOnly: true});
 }
 
+// The composed runner verifies its current inputs; a prior standalone test is insufficient.
+const combinedManifestSha256 = '01a3c5c96ef9a6f961555776390335f0ee2c32d485a082180b2aaa0dc1e6b66b';
+function combinedRuntimeInputs(callerRoot) {
+    const manifest = read(resolve(callerRoot, 'docs/qualification/wire-combined-replay-source-profile.json'));
+    exact(manifest.sha256, combinedManifestSha256, 'composed runtime manifest bytes');
+    const rows = manifest.json.runtimeInputFiles;
+    exact(manifest.json.profile, STATEFUL_COMBINED_REPLAY_SOURCE_PROFILE, 'composed runtime manifest profile');
+    assert(Array.isArray(rows) && rows.length === 308, 'Composed runtime input count');
+    const root = realpathSync(callerRoot), seen = new Set(); let bytes = 0;
+    for (const row of rows) {
+        assert(Array.isArray(row) && row.length === 2, 'Composed runtime input row');
+        const [path, expected] = row;
+        assert(typeof path === 'string' && !isAbsolute(path) && !path.includes('\\')
+            && path.split('/').every(part => part !== '' && part !== '.' && part !== '..')
+            && !seen.has(path) && typeof expected === 'string' && /^[a-f0-9]{64}$/.test(expected),
+        'Composed runtime input path or digest');
+        seen.add(path);
+        const actualPath = realpathSync(resolve(root, path)), inner = relative(root, actualPath), info = statSync(actualPath);
+        assert(inner !== '..' && !inner.startsWith('..' + (process.platform === 'win32' ? '\\' : '/'))
+            && !isAbsolute(inner) && info.isFile(), 'Composed runtime input containment');
+        bytes += info.size; assert(info.size <= 4 * 1024 * 1024 && bytes <= 64 * 1024 * 1024, 'Composed runtime input byte bound');
+        exact(sha(readFileSync(actualPath)), expected, 'composed runtime input ' + path);
+    }
+    const digest = sha(JSON.stringify(rows));
+    exact(digest, 'f0b4ada670720b644e1b83b97017aa090f3983f4e20bfb63f83041718fc79a1d', 'composed runtime input aggregate');
+    exact(manifest.json.runtimeInputSha256, digest, 'composed runtime declared aggregate');
+    return {runtimeInputFiles: {files: rows.length, sha256: digest}, runtimeInputManifestSha256: manifest.sha256};
+}
+
 function coordinatedRuntime(profile) {
     const metadata = metadataProfile(profile), selectedSdk = metadata ? metadataSdk : sdk;
     const sdkRoot = rootFor('@eosrio/hyperion-sdk/projection-stateful-owner-v2');
@@ -304,7 +333,8 @@ function coordinatedRuntime(profile) {
         exact(callerFiles.sha256, callerSource.sha256, 'complete-kind caller emissions');
         for (const [path, expected] of callerSource.sources)
             exact(sha(readFileSync(resolve(callerRoot, path))), expected, 'complete-kind Git-LF caller ' + path);
-        return {sdkFiles, nativeFiles, callerFiles};
+        const inputs = profile === STATEFUL_COMBINED_REPLAY_SOURCE_PROFILE ? combinedRuntimeInputs(callerRoot) : {};
+        return {sdkFiles, nativeFiles, callerFiles, ...inputs};
     }
     exact(sdkPackage.sha256, metadata ? 'dff953cf5e7fd64274aa5e3a60a7d760c6138e0bfee5eda1b85e53eafcd4fbf6'
         : '2e11db52cf8d150e30d165bafb962b50c6ad0cc764770714ea7fdca48a5e4684', 'SDK package');

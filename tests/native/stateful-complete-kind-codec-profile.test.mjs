@@ -16,6 +16,8 @@ test('composed replay profile admits exact Node/Rust descriptors, SDK/native and
     assert.equal(actual.nativeFiles.files, 39); assert.equal(actual.sdkFiles.files, 31);
     assert.equal(actual.callerSourceCommit, caller.commit);
     assert.equal(actual.callerHelperSourceCommit, 'c1b98a52a872b6c070ada32243c8286607e86883'); assert.equal(actual.callerFiles.sha256, caller.sha256);
+    assert.deepEqual(actual.runtimeInputFiles, {files:308, sha256:'f0b4ada670720b644e1b83b97017aa090f3983f4e20bfb63f83041718fc79a1d'});
+    assert.equal(actual.runtimeInputManifestSha256,'01a3c5c96ef9a6f961555776390335f0ee2c32d485a082180b2aaa0dc1e6b66b');
     assert.equal(actual.callerFiles.files, 554); assert.equal(actual.qualificationOnly, true);
     const coordinated = admitCoordinatedNativeSourceOptions({engineeringSourceProfile: profile});
     assert.equal(coordinated.sdkRevision, '7412889a14c84342551fd864ea3ebfcf28849385');
