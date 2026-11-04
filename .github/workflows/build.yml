@@ -14,7 +14,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-69a6606-complete-kind-engineering
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-e691f44-complete-kind-engineering
     strategy:
       matrix:
         node-version: [24.x, 26.x]
@@ -253,7 +253,7 @@ jobs:
   action-source-journal:
     runs-on: ubuntu-24.04
     env:
-      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-69a6606-complete-kind-engineering
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-e691f44-complete-kind-engineering
     timeout-minutes: 15
     strategy:
       fail-fast: false

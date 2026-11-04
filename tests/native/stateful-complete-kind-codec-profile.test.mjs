@@ -1,13 +1,13 @@
 // Pure installed-source admission checks: no child process, temporary copy or service.
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {admitNativeApiSourceOptions, admitCoordinatedNativeSourceOptions, STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE as profile,
-    STATEFUL_COMPLETE_KIND_CODEC_WIRE_SOURCE as wire, STATEFUL_COMPLETE_KIND_CODEC_CALLER_SOURCE as caller,
+import {admitNativeApiSourceOptions, admitCoordinatedNativeSourceOptions, STATEFUL_COMPLETE_KIND_WIRE32_API_SOURCE_PROFILE as profile,
+    STATEFUL_COMPLETE_KIND_WIRE32_SOURCE as wire, STATEFUL_COMPLETE_KIND_WIRE32_CALLER_SOURCE as caller,
     STATEFUL_COMPLETE_KIND_METADATA_NATIVE_SOURCE as native, STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE as metadata,
     STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE as first, STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE as commands,
-    STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE as executor} from '../unit/stateful-engineering-source-admission.mjs';
+    STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE as executor, STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE as previousCodec, STATEFUL_COMPLETE_KIND_CODEC_WIRE_SOURCE as previousWire} from '../unit/stateful-engineering-source-admission.mjs';
 
-test('codec profile admits installed Wire69 Node/Rust descriptors and unchanged SDK/native/caller emissions', () => {
+test('Wire32 profile admits installed Node/Rust descriptors and unchanged SDK/native/caller emissions', () => {
     const actual = admitNativeApiSourceOptions({engineeringSourceProfile: profile});
     assert.equal(actual.wireRevision, wire.commit); assert.equal(actual.wireTree, wire.tree);
     assert.equal(actual.descriptorSha256, wire.descriptorSha256); assert.equal(actual.nodeSha256, wire.nodeSha256);
@@ -23,7 +23,9 @@ test('codec profile admits installed Wire69 Node/Rust descriptors and unchanged 
     assert.equal(coordinated.wireSdkFiles.sha256, 'df919dbdbfe8eb6c0b0f05a7f4b4ddabf42095d9da1e2621d0adba250fd3b7cc');
 });
 
-test('all four previous complete-kind profiles retain their pins and refuse the new Wire codec source', () => {
-    for (const prior of [first, commands, executor, metadata])
+test('previous complete-kind profiles retain their pins and refuse the new Wire codec source', () => {
+    assert.equal(previousWire.commit, '69a66064c077a405341f5aaf15e84b88b8d86ccb');
+    assert.equal(previousWire.descriptorSha256, '19fc9804da7e9ec5744733cdc191cd430bb807d73c25dcb98014bf4ca3ef20b8');
+    for (const prior of [first, commands, executor, metadata, previousCodec])
         assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: prior}), /Wire source revision/);
 });

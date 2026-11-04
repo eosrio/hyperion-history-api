@@ -151,3 +151,14 @@ one new selected address root. At the observed1.73million-plus Wire head, bucket
 certificate storage and re-walking after every authority rotation may dominate fullsync cost.
 That is an unmeasured risk: scaled transport/storage cost, retention capacity and current-testnet
 acceptance remain open. The0→258 fixture does not establish production readiness.
+
+### Wire32 attribution profile
+
+The separately selected `stateful-owner-v2-7412889-e691f44-complete-kind-engineering`
+profile pins Wire plugin `e691f4471c6e5fdbe001e6709e88d48d33d8bf4c` and its
+coordinated Node and Rust descriptors, with the existing SDK 741 and complete-kind
+native adapter. The Wire69 profile and its descriptor pins remain available and
+unchanged. This source-only candidate changes the installed Wire revision; it does
+not qualify a runtime, extend a timeout, enable a public feature, or adopt an earlier
+replay. Any attribution run requires a fresh build and the original workload,
+resource boundaries, deadline and source-authority checks.
