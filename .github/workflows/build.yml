@@ -19,6 +19,7 @@ jobs:
     env:
       HYPERION_NATIVE_SOURCE_PROFILE: stateful-all-cbfb-root-native-wire69-linux-engineering-v1
     strategy:
+      fail-fast: false
       matrix:
         node-version: ["24.22.1", "26.4.0"]
     steps:

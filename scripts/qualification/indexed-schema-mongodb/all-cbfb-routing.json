@@ -76,9 +76,14 @@
           "historical": "\"feat/stateful-indexed-schema-415\", \"test/indexed-native-mongodb-415\"]",
           "current": "\"feat/stateful-indexed-schema-415\", \"test/indexed-native-mongodb-415\", \"feat/indexed-int64-tested-49dfe-20261104\"]",
           "count": 1
+        },
+        {
+          "historical": "    strategy:\n      matrix:\n        node-version: [\"24.22.1\", \"26.4.0\"]",
+          "current": "    strategy:\n      fail-fast: false\n      matrix:\n        node-version: [\"24.22.1\", \"26.4.0\"]",
+          "count": 1
         }
       ],
-      "currentSha256": "1512f2949118dfe65a6f853a004c414edb0f8cb253ce35368e4eda165f37f9a7"
+      "currentSha256": "8bf001d030c5e96444be79a3e8d08cfcc757e9629a862deb82eda7d7950ff785"
     },
     {
       "path": ".github/workflows/indexed-schema-finite.yml",

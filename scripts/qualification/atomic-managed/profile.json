@@ -13082,8 +13082,8 @@
         },
         {
           "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-routing.json",
-          "bytes": 275646,
-          "sha256": "755f44258eb49277601b710d9ad75dba31cdbb3db0b48deb95837488b447ad35",
+          "bytes": 275919,
+          "sha256": "3f36667c10a920d3511d4e04ef061c6198a55eeb43489aad05d913f684a3a92c",
           "module": false
         },
         {
@@ -13215,7 +13215,7 @@
         {
           "path": "tests/fixtures/engineering-profiles/all-cbfb-linux.json",
           "bytes": 14124,
-          "sha256": "998c27dab0911ca91bf27181976f7cd28349438a7d42e01c7ea8bcbcf24ada56",
+          "sha256": "29c851dfce89c7cd91b5febf05f1a33d0cf18bcbbc12c35bb9acdf49fd210ed9",
           "module": false
         },
         {
@@ -13257,7 +13257,7 @@
         {
           "path": "tests/unit/all-cbfb-source-admission.mjs",
           "bytes": 7902,
-          "sha256": "048072b38f2f1098db811fdaee72eeaced6f6c9f681f4d698b988a9c37aa2888",
+          "sha256": "2f48e249454b6e11229c25bedec7033c3e83f1af4e065676eed18938432ea484",
           "module": true
         },
         {
@@ -13789,7 +13789,7 @@
         "node:url",
         "typescript/unstable/ast"
       ],
-      "totalBytes": 1533510
+      "totalBytes": 1533783
     }
   }
 }
