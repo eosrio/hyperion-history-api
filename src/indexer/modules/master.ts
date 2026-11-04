@@ -44,6 +44,7 @@ import { HyperionModuleLoader } from './loader.js';
 import { HyperionQueueMonitor } from './queueMonitor.js';
 import {loadChainProtocol} from '../protocol/selection.js';
 import {ProtocolAbiCoordinator} from '../protocol/abi-coordinator.js';
+import {verifyRetainedGenesisInput} from '../protocol/retained-genesis-input.js';
 import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
 import {ProtocolSourceBindingStore, type ProtocolSourcePosition} from '../protocol/source-bindings.js';
 import {ProtocolAbiObservationStore} from '../protocol/abi-observation-store.js';
@@ -424,6 +425,7 @@ export class HyperionMaster {
 
     initHandlerMap() {
         this.msgHandlerMap = {
+            reader_pressure_ready: (worker: Worker) => { this.syncReaderPressure(worker); },
             protocol_abi_coordinator_request: async (worker: Worker, msg: WorkerMessage) => {
                 await this.handleProtocolAbiCoordinatorRequest(worker, msg);
             },
@@ -771,6 +773,9 @@ export class HyperionMaster {
     }
 
     private async initializeProtocolAbiCoordinator(): Promise<void> {
+        if(this.conf.settings.protocol_abi_coordination?.retained_genesis
+            &&(this.conf.settings.protocol?.provider!=='extension'||!this.conf.indexer.live_reader))
+            throw new Error('Retained genesis requires an extension protocol and a live reader');
         // A bulk-only process must never acquire or replace live-source ownership.
         if ((this.conf.settings.protocol?.provider !== 'extension' && this.engineering?.exactActionSequenceStorage !== true)
             || !this.conf.indexer.live_reader || this.protocolAbiCoordinator) return;
@@ -784,6 +789,7 @@ export class HyperionMaster {
                 observations: new ProtocolAbiObservationStore(this.esClient, this.chain, replicas),
                 store: new ProtocolAbiFrontierStore(this.esClient, this.chain, replicas),
                 verifyNativeGenesis: selected.provider.verifyNativeGenesis?.bind(selected.provider),
+                capturedGenesisEnabled: !!options?.retained_genesis,
                 nativeActionInterfaceVersion: selected.provider.nativeActions?.interfaceVersion,
                 maxPendingBlocks: options?.max_pending_blocks, recoveryWindowBlocks: options?.recovery_window_blocks,
                 historicalCertificates: options?.historical_certificates && {interfaceVersion: 1,
@@ -829,14 +835,55 @@ export class HyperionMaster {
                 source = {worker, readerSessionId: input.readerSessionId};
                 this.protocolAbiSource = source; // Invalidates an older awaited continuation before any I/O.
                 result = await this.protocolAbiCoordinator!.openSource(input.contextId, input.readerSessionId);
-            } else {
+            } else if (input.operation === 'admit') {
                 if (!source || source.worker !== worker || source.readerSessionId !== input.readerSessionId || source.generation !== input.generation) {
                     this.replyProtocolAbiCoordinator(worker, message.mId, {ok: true, result: {status: 'stale', generation: input.generation}});
                     return;
                 }
                 result = await this.protocolAbiCoordinator!.admit(input.selectionId, input.generation);
+            } else if (input.operation === 'capture_begin') {
+                const config=this.conf.settings.protocol_abi_coordination?.retained_genesis;
+                if(!config||source)throw new Error('Captured genesis is not available for this reader');
+                const selected=await loadChainProtocol(this.conf.settings.protocol,{sourceEvidence:true});
+                const chainId=this.manager.conn.chains[this.chain].chain_id;
+                const capture=await verifyRetainedGenesisInput(config,chainId,selected.provider,this.rpc);
+                if(!this.isCurrentProtocolLiveReader(worker)||this.protocolAbiSource!==source)
+                    throw new Error('Reader changed during captured source preflight');
+                const prior=await this.protocolAbiCoordinator!.inspect();
+                if(!this.isCurrentProtocolLiveReader(worker)||this.protocolAbiSource!==source)
+                    throw new Error('Reader changed while captured authority was inspected');
+                const recorded=prior.capturedGenesis;
+                if(recorded&&(recorded.schemaSha256!==config.schema_sha256||recorded.frameSha256!==config.frame_sha256
+                    ||recorded.contextId!==input.contextId||recorded.genesisBlockId!==capture.verified.source.blockId
+                    ||recorded.blockTwoId!==capture.verified.blockTwoId))throw new Error('Captured genesis differs from durable authority');
+                if(recorded&&recorded.phase!=='capturing') {
+                    this.replyProtocolAbiCoordinator(worker,message.mId,{ok:true,result:{generation:prior.generation,resumeFromBlock:2,replaySelectionId:null}});
+                    return;
+                }
+                source={worker,readerSessionId:input.readerSessionId};this.protocolAbiSource=source;
+                const grant={contextId:input.contextId,readerSessionId:input.readerSessionId,
+                    schemaSha256:config.schema_sha256,frameSha256:config.frame_sha256,genesisBlockId:capture.verified.source.blockId,
+                    blockTwoId:capture.verified.blockTwoId,blockTwoPreviousId:capture.verified.source.blockId};
+                const opened=recorded?await this.protocolAbiCoordinator!.resumeCapturedGenesis(grant):
+                    await this.protocolAbiCoordinator!.beginCapturedGenesis(grant);
+                const replaySelectionId=await this.protocolAbiCoordinator!.capturedGenesisReplay(input.readerSessionId,opened.generation);
+                result={generation:opened.generation,resumeFromBlock:null,replaySelectionId};
+            } else {
+                if(!source||source.worker!==worker||source.readerSessionId!==input.readerSessionId||source.generation!==input.generation)
+                    throw new Error('Captured genesis source was superseded');
+                const state=await this.protocolAbiCoordinator!.inspect();
+                if(!state.head||state.head.blockNum!==1||state.pending.length) {
+                    result={status:'pending' as const,generation:input.generation};
+                } else {
+                    await this.protocolAbiCoordinator!.finishCapturedGenesis(input.readerSessionId,input.generation);
+                    if(!this.isCurrentProtocolLiveReader(worker)||this.protocolAbiSource!==source)throw new Error('Reader changed during captured handoff');
+                    this.protocolAbiSource=undefined;
+                    this.replyProtocolAbiCoordinator(worker,message.mId,{ok:true,result:{status:'done',generation:input.generation}});
+                    return;
+                }
             }
             if (!this.isCurrentProtocolLiveReader(worker) || this.protocolAbiSource !== source) {
+                if(this.protocolAbiSource===source)this.protocolAbiSource=undefined;
                 await this.protocolAbiCoordinator!.revokeSource(input.readerSessionId);
                 this.replyProtocolAbiCoordinator(worker, message.mId, {ok: false, error: {code: 'stale', message: 'Reader source changed while request was pending'}});
                 return;
@@ -846,6 +893,7 @@ export class HyperionMaster {
             this.requestProtocolAbiDrain();
         } catch (error: any) {
             const stale = !this.isCurrentProtocolLiveReader(worker) || this.protocolAbiSource !== source;
+            if(stale&&this.protocolAbiSource===source)this.protocolAbiSource=undefined;
             this.replyProtocolAbiCoordinator(worker, message.mId, {ok: false, error: {code: stale ? 'stale' : 'coordinator_unavailable',
                 message: String(error?.message ?? error).slice(0, 4096).toWellFormed()}});
             if (!stale) this.failProtocolAbiCoordinator(error);
@@ -1453,7 +1501,8 @@ export class HyperionMaster {
         let launchedCount = 0;
         this.workerMap.forEach((wrk: HyperionWorkerDef) => {
             if (!wrk.wref && wrk.worker_id && !wrk.reader_incomplete) {
-                const worker = cluster.fork(wrk);
+                const reader = wrk.worker_role === 'reader' || wrk.worker_role === 'continuous_reader';
+                const worker = cluster.fork(reader ? {...wrk, reader_pressure_sync: 'true'} : wrk);
                 wrk.wref = worker;
                 worker.id = wrk.worker_id;
                 if (wrk.worker_role && ['deserializer', 'ds_pool_worker', 'projection'].includes(wrk.worker_role))
@@ -1582,6 +1631,18 @@ export class HyperionMaster {
                 this.globalUsageMap[code][2] = propWorkerMap[code];
             }
         }
+    }
+
+    /** A newly forked reader stays closed until its current pressure state arrives. */
+    syncReaderPressure(worker: Worker): void {
+        const definition = this.workerMap.find(value => value.wref === worker);
+        const role = definition?.worker_role;
+        if (role !== 'reader' && role !== 'continuous_reader') return;
+        try {
+            worker.send({event: 'reader_pressure_state', paused: this.queueMonitor.isReaderPaused(role)}, error => {
+                if (error) hLog('Reader pressure synchronization failed:', error);
+            });
+        } catch (error) { hLog('Reader pressure synchronization failed:', error); }
     }
 
     sendToRole(role: string, payload: any) {

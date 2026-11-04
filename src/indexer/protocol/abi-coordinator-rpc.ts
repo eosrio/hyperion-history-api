@@ -1,15 +1,19 @@
 import {randomUUID} from 'node:crypto';
 
 export interface ProtocolAbiOpenResult {generation: string; resumeFromBlock: number | null}
+export interface ProtocolAbiCaptureBeginResult extends ProtocolAbiOpenResult {replaySelectionId:string|null}
 export interface ProtocolAbiAdmitResult {status: 'accepted' | 'backpressure' | 'stale'; generation: string}
+export interface ProtocolAbiCaptureFinishResult {status:'pending'|'done'; generation:string}
 export type ProtocolAbiCoordinatorRequest = {
     event: 'protocol_abi_coordinator_request'; mId: string;
     data: {operation: 'open'; contextId: string; readerSessionId: string}
-        | {operation: 'admit'; selectionId: string; readerSessionId: string; generation: string};
+        | {operation: 'admit'; selectionId: string; readerSessionId: string; generation: string}
+        | {operation: 'capture_begin'; contextId:string; readerSessionId:string}
+        | {operation: 'capture_finish'; readerSessionId:string; generation:string};
 };
 export interface ProtocolAbiCoordinatorReply {
     event: 'protocol_abi_coordinator_reply'; mId: string;
-    data: {ok: true; result: ProtocolAbiOpenResult | ProtocolAbiAdmitResult}
+    data: {ok: true; result: ProtocolAbiOpenResult | ProtocolAbiCaptureBeginResult | ProtocolAbiAdmitResult | ProtocolAbiCaptureFinishResult}
         | {ok: false; error: {code: string; message: string}};
 }
 export class ProtocolAbiCoordinatorRpcError extends Error {
@@ -22,16 +26,17 @@ export function isProtocolAbiCoordinatorRequest(message: any): message is Protoc
     if (message?.event !== 'protocol_abi_coordinator_request' || typeof message.mId !== 'string'
         || !/^[0-9a-f-]{36}$/.test(message.mId) || !text(message.data?.readerSessionId)) return false;
     const input = message.data;
-    return (input.operation === 'open' && keys(input, ['operation', 'contextId', 'readerSessionId'])
+    return ((input.operation === 'open' || input.operation === 'capture_begin') && keys(input, ['operation', 'contextId', 'readerSessionId'])
         && /^h45srcctx1:[0-9a-f]{64}$/.test(input.contextId))
         || (input.operation === 'admit' && keys(input, ['operation', 'selectionId', 'readerSessionId', 'generation'])
-        && /^h45srcsel1:[0-9a-f]{64}$/.test(input.selectionId) && text(input.generation));
+        && /^h45srcsel1:[0-9a-f]{64}$/.test(input.selectionId) && text(input.generation))
+        || (input.operation === 'capture_finish' && keys(input,['operation','readerSessionId','generation']) && text(input.generation));
 }
 
 /** A reader holds at most one request; waiting for capacity never occupies the master mutation queue. */
 export class ProtocolAbiCoordinatorRpc {
-    private pending?: {id: string; operation: 'open' | 'admit'; timer: NodeJS.Timeout;
-        resolve: (result: ProtocolAbiOpenResult | ProtocolAbiAdmitResult) => void; reject: (error: Error) => void};
+    private pending?: {id: string; operation: ProtocolAbiCoordinatorRequest['data']['operation']; timer: NodeJS.Timeout;
+        resolve: (result: ProtocolAbiOpenResult | ProtocolAbiAdmitResult | ProtocolAbiCaptureFinishResult) => void; reject: (error: Error) => void};
     constructor(private readonly send: (message: ProtocolAbiCoordinatorRequest, callback: (error: Error | null) => void) => unknown = (message, callback) => {
         if (!process.send) throw new ProtocolAbiCoordinatorRpcError('ipc_unavailable', 'Canonical coordinator requires master IPC');
         return process.send(message, callback);
@@ -43,7 +48,13 @@ export class ProtocolAbiCoordinatorRpc {
     admit(selectionId: string, readerSessionId: string, generation: string): Promise<ProtocolAbiAdmitResult> {
         return this.request({operation: 'admit', selectionId, readerSessionId, generation}) as Promise<ProtocolAbiAdmitResult>;
     }
-    private request(data: ProtocolAbiCoordinatorRequest['data']): Promise<ProtocolAbiOpenResult | ProtocolAbiAdmitResult> {
+    captureBegin(contextId:string,readerSessionId:string):Promise<ProtocolAbiCaptureBeginResult> {
+        return this.request({operation:'capture_begin',contextId,readerSessionId}) as Promise<ProtocolAbiCaptureBeginResult>;
+    }
+    captureFinish(readerSessionId:string,generation:string):Promise<ProtocolAbiCaptureFinishResult> {
+        return this.request({operation:'capture_finish',readerSessionId,generation}) as Promise<ProtocolAbiCaptureFinishResult>;
+    }
+    private request(data: ProtocolAbiCoordinatorRequest['data']): Promise<ProtocolAbiOpenResult | ProtocolAbiAdmitResult | ProtocolAbiCaptureFinishResult> {
         if (this.pending) return Promise.reject(new ProtocolAbiCoordinatorRpcError('request_pending', 'Reader already has a pending coordinator request'));
         return new Promise((resolve, reject) => {
             const id = randomUUID();
@@ -63,10 +74,11 @@ export class ProtocolAbiCoordinatorRpc {
             return true;
         }
         const result = reply?.result;
-        const valid = reply?.ok === true && text(result?.generation) && (pending.operation === 'open'
-            ? keys(result, ['generation', 'resumeFromBlock']) && (result.resumeFromBlock === null
+        const valid = reply?.ok === true && text(result?.generation) && (pending.operation === 'open'||pending.operation==='capture_begin'
+            ? (pending.operation==='open'?keys(result,['generation','resumeFromBlock']):
+                keys(result,['generation','resumeFromBlock','replaySelectionId'])&&(result.replaySelectionId===null||/^h45srcsel1:[0-9a-f]{64}$/.test(result.replaySelectionId))) && (result.resumeFromBlock === null
                 || (Number.isSafeInteger(result.resumeFromBlock) && result.resumeFromBlock >= 1 && result.resumeFromBlock <= 0xffffffff))
-            : keys(result, ['status', 'generation']) && ['accepted', 'backpressure', 'stale'].includes(result.status));
+            : keys(result, ['status', 'generation']) && (pending.operation==='capture_finish'?['pending','done']:['accepted','backpressure','stale']).includes(result.status));
         if (!valid) {this.fail(pending.id, new ProtocolAbiCoordinatorRpcError('invalid_reply', 'Malformed coordinator response')); return true;}
         clearTimeout(pending.timer); this.pending = undefined; pending.resolve(result);
         return true;

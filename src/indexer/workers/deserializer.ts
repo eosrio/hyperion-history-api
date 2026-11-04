@@ -102,7 +102,7 @@ export default class MainDSWorker extends HyperionWorker {
     private protocolNativeObservationStore?: ProtocolNativeObservationStore;
     private activeSourceBinding?: Awaited<ReturnType<ProtocolSourceBindingStore['readSelection']>>;
     private activeSourceSelectionId?: string;
-    private activeSourceRole?: 'live' | 'bulk' | 'repair';
+    private activeSourceRole?: 'live' | 'bulk' | 'repair' | 'captured-genesis';
     private protocolAbiProofReader?: ProtocolAbiProofReader;
     private activeProtocolAbiProofView?: ProtocolAbiProofView;
     private protocolAbiProofDeployments = new Map<string, ProtocolAbiProofView>();
@@ -158,10 +158,12 @@ export default class MainDSWorker extends HyperionWorker {
                     this.consumerQueue.kill();
                     return process.exit(1);
                 }
-                hLog('NACK ALL', err.message);
-                if (this.ch && this.ch_ready) {
-                    this.ch.nackAll();
-                }
+                // In-transit deliveries can arrive after nackAll and local queue
+                // removal. Replace this owner before any stale tag can resume.
+                hLog('Block deserialization failed; supervised replacement required:', err.message);
+                this.ch_ready = false;
+                this.consumerQueue.kill();
+                return process.exit(1);
             });
         }, this.conf.prefetch.block);
 
@@ -661,7 +663,7 @@ export default class MainDSWorker extends HyperionWorker {
         const stopProof = this.profiler.start('protocol_abi_block_wait');
         try {
             const reader = this.getProtocolAbiProofReader();
-            this.activeProtocolAbiProofView = await (this.activeSourceRole === 'live'
+            this.activeProtocolAbiProofView = await (this.activeSourceRole === 'live' || this.activeSourceRole === 'captured-genesis'
                 ? reader.waitForOpen(position, this.activeSourceSelectionId) : reader.open(position, this.activeSourceSelectionId));
         } catch (error) {
             if (!(error instanceof ProtocolAbiProofUnavailableError)) throw error;

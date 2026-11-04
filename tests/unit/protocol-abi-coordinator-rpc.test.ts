@@ -32,3 +32,15 @@ test('coordinator RPC reports IPC failures, malformed replies and bounded timeou
     await expect(client.open(context,'reader')).rejects.toThrow('timed out');
     expect(isProtocolAbiCoordinatorRequest({...sent[0],data:{operation:'open',contextId:context,readerSessionId:'r',proof:true}})).toBe(false);
 });
+test('capture RPC checks strict request shapes and cannot confuse finish with admission',async()=>{
+    const sent:any[]=[];const client=new ProtocolAbiCoordinatorRpc(message=>{sent.push(message);},1000);
+    const begun=client.captureBegin(context,'capture');
+    expect(isProtocolAbiCoordinatorRequest(sent[0])).toBe(true);
+    expect(isProtocolAbiCoordinatorRequest({...sent[0],data:{...sent[0].data,source:'untrusted'}})).toBe(false);
+    client.onMessage({event:'protocol_abi_coordinator_reply',mId:sent[0].mId,data:{ok:true,result:{generation:'one',resumeFromBlock:null,replaySelectionId:null}}});
+    expect(await begun).toEqual({generation:'one',resumeFromBlock:null,replaySelectionId:null});
+    const finish=client.captureFinish('capture','one');
+    expect(isProtocolAbiCoordinatorRequest(sent[1])).toBe(true);
+    client.onMessage({event:'protocol_abi_coordinator_reply',mId:sent[1].mId,data:{ok:true,result:{status:'accepted',generation:'one'}}});
+    await expect(finish).rejects.toThrow('Malformed');
+});
