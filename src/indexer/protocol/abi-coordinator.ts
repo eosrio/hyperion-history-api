@@ -13,11 +13,17 @@ import {resolveProtocolAbiHistory, historicalAddressIdentity, historicalAddressI
 type Head = {blockNum:number;blockId:string;commitId:string;stateRootId:string|null;
     lastGlobalSequence:string|null;coverageStart:number|null};
 type Gap = {code:string;message:string;fromBlock:number|null};
+export interface CapturedGenesisGrant {
+    contextId:string; readerSessionId:string; schemaSha256:string; frameSha256:string;
+    genesisBlockId:string; blockTwoId:string; blockTwoPreviousId:string;
+}
+type CapturedGenesisControl = CapturedGenesisGrant & {phase:'capturing'|'handoff'|'complete'};
 export interface ProtocolAbiCoordinatorControl {
     schemaVersion:1; chainId:string; profile:ProtocolSourceProfile; ownerId:string; generation:string; revision:number;
     source:{contextId:string;readerSessionId:string}|null; head:Head|null; pending:string[];
     phase:'awaiting-source'|'recovering'|'following'|'incomplete'; gap:Gap|null; replayFromBlock:number|null;
     historical?:{interfaceVersion:1;addressRootId:string;activationCertificateId:string;anchor:Head};
+    capturedGenesis?:CapturedGenesisControl;
 }
 interface Commit {
     schemaVersion:1; kind:'canonical-abi-block'; chainId:string; profile:ProtocolSourceProfile; generation:string;
@@ -38,6 +44,8 @@ export interface ProtocolAbiCoordinatorOptions {
     /** Native-aware epochs keep this requirement in immutable canonical commits, including failed extraction. */
     nativeActionInterfaceVersion?:1;
     historicalCertificates?:ProtocolAbiHistoryOptions;
+    /** Root-owned opt-in. This alone does not validate or authorize a capture. */
+    capturedGenesisEnabled?:boolean;
     onHistoricalError?:(error:unknown)=>void;
 }
 export class ProtocolAbiCoordinatorStaleError extends Error {
@@ -121,6 +129,17 @@ export class ProtocolAbiCoordinator {
             ||(value.gap.fromBlock!==null&&!uint32(value.gap.fromBlock))))throw new Error('Invalid canonical ABI gap');
         if(value.head!==null)this.validateHead(value.head);
         if(!value.source&&value.pending.length)throw new Error('Canonical ABI pending work has no source');
+        if(value.capturedGenesis){
+            const c=value.capturedGenesis;
+            if(Object.keys(c).sort().join(',')!=='blockTwoId,blockTwoPreviousId,contextId,frameSha256,genesisBlockId,phase,readerSessionId,schemaSha256'
+                ||!['capturing','handoff','complete'].includes(c.phase)||!id('h45srcctx1',c.contextId)||!text(c.readerSessionId)
+                ||![c.schemaSha256,c.frameSha256,c.genesisBlockId,c.blockTwoId,c.blockTwoPreviousId].every(x=>typeof x==='string'&&hex64.test(x))
+                ||c.blockTwoPreviousId!==c.genesisBlockId
+                ||c.phase==='capturing'&&(value.source!==null&&(value.source.contextId!==c.contextId||value.source.readerSessionId!==c.readerSessionId)
+                    ||value.head!==null&&(value.head.blockNum!==1||value.head.blockId!==c.genesisBlockId))
+                ||c.phase==='handoff'&&(!value.head||value.head.blockNum!==1||value.head.blockId!==c.genesisBlockId)
+                ||c.phase==='complete'&&(!value.head||value.head.blockNum<2))throw new Error('Invalid captured genesis control');
+        }
         if(value.historical!==undefined&&(!value.historical||Object.keys(value.historical).sort().join(',')!=='activationCertificateId,addressRootId,anchor,interfaceVersion'
             ||value.historical.interfaceVersion!==1||!id('h45abiroot1',value.historical.addressRootId)
             ||!id('h45abicert1',value.historical.activationCertificateId)))
@@ -177,22 +196,93 @@ export class ProtocolAbiCoordinator {
                 reason=gap('retained_frontier_unavailable',String((error as Error).message),previous!.head!.blockNum);}
         }
         const value:ProtocolAbiCoordinatorControl={schemaVersion:1,chainId:this.options.chainId,profile:this.profile,ownerId:this.options.ownerId,
-            generation:randomUUID(),revision:(previous?.revision??-1)+1,source:null,head,pending:[],phase:'awaiting-source',gap:reason,replayFromBlock};
+            generation:randomUUID(),revision:(previous?.revision??-1)+1,source:null,head,pending:[],phase:'awaiting-source',gap:reason,replayFromBlock,
+            ...(previous?.capturedGenesis?{capturedGenesis:previous.capturedGenesis}:{})};
         const receipt=await this.options.store.compareAndSet(stored,value);
         this.known={...receipt,value:this.validateControl(receipt.value)};this.started=true;
     });}
 
+    /** Called by the runtime owner after it has independently validated original source custody. */
+    async beginCapturedGenesis(grant:CapturedGenesisGrant):Promise<{generation:string}> {
+        const input=copy(grant);
+        if(!this.options.capturedGenesisEnabled||!this.options.verifyNativeGenesis)throw new Error('Captured genesis is disabled');
+        if(Object.keys(input).sort().join(',')!=='blockTwoId,blockTwoPreviousId,contextId,frameSha256,genesisBlockId,readerSessionId,schemaSha256'
+            ||!id('h45srcctx1',input.contextId)||!text(input.readerSessionId)
+            ||![input.schemaSha256,input.frameSha256,input.genesisBlockId,input.blockTwoId,input.blockTwoPreviousId].every(x=>typeof x==='string'&&hex64.test(x))
+            ||input.genesisBlockId!==input.blockTwoPreviousId)throw new Error('Invalid captured genesis grant');
+        if(this.known?.value.source||this.known?.value.head||this.known?.value.capturedGenesis)
+            throw new Error('Captured genesis requires a fresh unowned frontier');
+        const epoch=++this.sourceEpoch;this.openingSession=input.readerSessionId;this.recentSelections.clear();
+        return this.run(async()=>{
+            let version=await this.owned();
+            if(version.value.source||version.value.head||version.value.pending.length||version.value.capturedGenesis
+                ||version.value.gap||version.value.replayFromBlock!==null)throw new Error('Captured genesis requires a fresh unowned frontier');
+            const context=await this.options.bindings.readContext(input.contextId);this.assertEpoch(epoch);
+            if(context.chainId!==this.options.chainId||!this.sameProfile(context.protocol)||digest(context.schemaJson)!==input.schemaSha256)
+                throw new Error('Captured genesis context does not match the grant');
+            version=await this.save(version,{...version.value,generation:randomUUID(),source:{contextId:input.contextId,readerSessionId:input.readerSessionId},
+                capturedGenesis:{...input,phase:'capturing'},phase:'recovering'});
+            this.assertEpoch(epoch);this.activeSession=input.readerSessionId;return {generation:version.value.generation};
+        }).finally(()=>{if(this.openingSession===input.readerSessionId)this.openingSession=undefined;});
+    }
+
+    /** A normal live source cannot open until the native genesis commit is durably published. */
+    async finishCapturedGenesis(readerSessionId:string,generation:string):Promise<void> {
+        return this.run(async()=>{
+            const version=await this.owned(), c=version.value.capturedGenesis;
+            if(!c||c.phase!=='capturing'||c.readerSessionId!==readerSessionId||generation!==version.value.generation
+                ||version.value.source?.readerSessionId!==readerSessionId||version.value.pending.length
+                ||!version.value.head||version.value.head.blockNum!==1||version.value.head.blockId!==c.genesisBlockId
+                ||version.value.head.coverageStart!==1)throw new Error('Captured genesis is not durably committed');
+            const commit=await this.readCommit(version.value.head.commitId);
+            const original=(await this.options.bindings.readSelection(commit.selectionId)).selection;
+            if(commit.status!=='complete'||!commit.nativeGenesis||original.readerRole!=='captured-genesis'
+                ||original.frameSha256!==c.frameSha256||original.contextId!==c.contextId)throw new Error('Captured genesis commit does not match its grant');
+            await this.save(version,{...version.value,generation:randomUUID(),source:null,phase:'awaiting-source',
+                capturedGenesis:{...c,phase:'handoff'}});
+            this.sourceEpoch++;this.activeSession=undefined;this.recentSelections.clear();
+        });
+    }
+
+    /** A new owner may rebind an interrupted capture only to the identical pinned input. */
+    async resumeCapturedGenesis(grant:CapturedGenesisGrant):Promise<{generation:string}> {
+        const input=copy(grant);
+        if(!this.options.capturedGenesisEnabled||!this.options.verifyNativeGenesis)throw new Error('Captured genesis is disabled');
+        return this.run(async()=>{
+            let version=await this.owned();const c=version.value.capturedGenesis;
+            if(!c||c.phase!=='capturing'||version.value.source||version.value.pending.length||!text(input.readerSessionId)
+                ||input.readerSessionId===c.readerSessionId||input.contextId!==c.contextId||input.schemaSha256!==c.schemaSha256
+                ||input.frameSha256!==c.frameSha256||input.genesisBlockId!==c.genesisBlockId||input.blockTwoId!==c.blockTwoId
+                ||input.blockTwoPreviousId!==c.blockTwoPreviousId)throw new Error('Captured genesis recovery grant differs');
+            const context=await this.options.bindings.readContext(input.contextId);
+            if(context.chainId!==this.options.chainId||!this.sameProfile(context.protocol)||digest(context.schemaJson)!==input.schemaSha256)
+                throw new Error('Captured genesis recovery context differs');
+            this.sourceEpoch++;this.recentSelections.clear();
+            version=await this.save(version,{...version.value,generation:randomUUID(),source:{contextId:input.contextId,readerSessionId:input.readerSessionId},
+                capturedGenesis:{...c,readerSessionId:input.readerSessionId},phase:'recovering'});
+            this.activeSession=input.readerSessionId;return {generation:version.value.generation};
+        });
+    }
+
     async openSource(contextId:string,readerSessionId:string):Promise<{generation:string;resumeFromBlock:number|null}> {
         if(!text(readerSessionId))throw new Error('Invalid source reader session');
+        if(this.known?.value.capturedGenesis?.phase==='capturing')throw new Error('Captured genesis handoff is not complete');
+        if(this.known?.value.capturedGenesis?.phase==='handoff'&&readerSessionId===this.known.value.capturedGenesis.readerSessionId)
+            throw new Error('Live handoff requires a distinct session');
         const settled=this.known?.value;
         this.recentSelections.clear();
         this.openingSession=readerSessionId;const epoch=++this.sourceEpoch;
         return this.run(async()=>{
-            let version=await this.owned();const context=await this.options.bindings.readContext(contextId);this.assertEpoch(epoch);
+            let version=await this.owned();
+            if(version.value.capturedGenesis?.phase==='capturing')throw new Error('Captured genesis handoff is not complete');
+            if(version.value.capturedGenesis?.phase==='handoff'&&readerSessionId===version.value.capturedGenesis.readerSessionId)
+                throw new Error('Live handoff requires a distinct session');
+            const context=await this.options.bindings.readContext(contextId);this.assertEpoch(epoch);
             if(context.chainId!==this.options.chainId||!this.sameProfile(context.protocol))throw new Error('Source context does not match installed protocol');
             version=await this.save(version,{...version.value,generation:randomUUID(),source:{contextId,readerSessionId},pending:[],phase:'recovering',
-                head:settled?.head??(settled?null:version.value.head),gap:settled?.gap??(settled?null:version.value.gap),
-                replayFromBlock:settled?settled.replayFromBlock:version.value.replayFromBlock});
+                head:version.value.capturedGenesis?.phase==='handoff'?version.value.head:settled?.head??(settled?null:version.value.head),
+                gap:version.value.capturedGenesis?.phase==='handoff'?version.value.gap:settled?.gap??(settled?null:version.value.gap),
+                replayFromBlock:version.value.capturedGenesis?.phase==='handoff'?version.value.replayFromBlock:settled?settled.replayFromBlock:version.value.replayFromBlock});
             this.assertEpoch(epoch);this.activeSession=readerSessionId;
             const resume=version.value.head?version.value.head.blockNum+1:null,boundary=version.value.replayFromBlock;
             return {generation:version.value.generation,resumeFromBlock:boundary===null?resume:Math.min(resume??boundary,boundary)};
@@ -213,7 +303,12 @@ export class ProtocolAbiCoordinator {
     }
     private async selection(selectedId:string,control:ProtocolAbiCoordinatorControl):Promise<ProtocolSourceSelection> {
         const {selection,context}=await this.options.bindings.readSelection(selectedId);
-        if(!control.source||selection.readerRole!=='live'||selection.readerSessionId!==control.source.readerSessionId
+        const captured=control.capturedGenesis;
+        const permitted=selection.readerRole==='live'&&captured?.phase!=='capturing'
+            ||selection.readerRole==='captured-genesis'&&captured?.phase==='capturing'
+                &&selection.source.blockNum===1&&selection.source.previousBlockId===null
+                &&selection.assignmentId===null&&selection.source.blockId===captured.genesisBlockId&&selection.frameSha256===captured.frameSha256;
+        if(!control.source||!permitted||selection.readerSessionId!==control.source.readerSessionId
             ||selection.contextId!==control.source.contextId||context.chainId!==this.options.chainId||!this.sameProfile(context.protocol))
             throw new ProtocolAbiCoordinatorStaleError('Selection is not from the authorized live source');
         return selection;
@@ -225,6 +320,12 @@ export class ProtocolAbiCoordinator {
             let version=await this.owned();this.assertEpoch(epoch);
             if(generation!==version.value.generation||!version.value.source)return {status:'stale',generation:version.value.generation};
             const selection=await this.selection(selectedId,version.value);this.assertEpoch(epoch);
+            const captured=version.value.capturedGenesis;
+            if(captured?.phase==='capturing'&&version.value.pending.length&&!version.value.pending.includes(selectedId))
+                return {status:'stale',generation};
+            if(captured?.phase==='handoff'&&(selection.source.blockNum!==2||selection.source.blockId!==captured.blockTwoId
+                ||selection.source.previousBlockId!==captured.blockTwoPreviousId))
+                return {status:version.value.pending.length&&selection.source.blockNum>2?'backpressure':'stale',generation};
             if(version.value.pending.includes(selectedId)){
                 this.rememberSelection(selectedId,selection.source,generation,selection.readerSessionId);
                 return {status:'accepted',generation};
@@ -544,7 +645,11 @@ export class ProtocolAbiCoordinator {
                 this.assertEpoch(epoch);
                 const {commit,id:preparedId}=await this.prepareBlock(version.value,selectedId,selected,link,reduction);
                 this.assertEpoch(epoch);
+                if(version.value.capturedGenesis?.phase==='handoff'&&commit.status!=='complete')
+                    throw new Error('Captured genesis handoff block is incomplete');
                 version=await this.save(version,{...version.value,head:this.head(commit,preparedId),pending:version.value.pending.slice(1),
+                    ...(version.value.capturedGenesis?.phase==='handoff'&&commit.source.blockNum===2&&commit.status==='complete'
+                        ?{capturedGenesis:{...version.value.capturedGenesis,phase:'complete' as const}}:{}),
                     phase:commit.status==='complete'?'following':'incomplete',gap:commit.reason??version.value.gap,replayFromBlock:null});
                 this.assertEpoch(epoch);
                 // Prepared commits and primary-visible control are not consumer authority.

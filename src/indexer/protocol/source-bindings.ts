@@ -18,7 +18,7 @@ export interface ProtocolSourceSelection {
     schemaVersion:1;
     contextId:string;
     readerSessionId:string;
-    readerRole:'live'|'bulk'|'repair';
+    readerRole:'live'|'bulk'|'repair'|'captured-genesis';
     assignmentId:string|null;
     source:ProtocolSourcePosition;
     frameSha256:string;
@@ -95,7 +95,7 @@ function selection(value:unknown):ProtocolSourceSelection {
     const record=snapshot<any>(value,64*1024);
     if(!keys(record,['schemaVersion','contextId','readerSessionId','readerRole','assignmentId','source','frameSha256','captureSha256','head','irreversible'])
         ||record.schemaVersion!==1||typeof record.contextId!=='string'||!contextId.test(record.contextId)
-        ||!text(record.readerSessionId)||!['live','bulk','repair'].includes(record.readerRole)
+        ||!text(record.readerSessionId)||!['live','bulk','repair','captured-genesis'].includes(record.readerRole)
         ||(record.assignmentId!==null&&!text(record.assignmentId))
         ||!keys(record.source,['chainId','blockNum','blockId','previousBlockId'])
         ||typeof record.source.chainId!=='string'||!hex64.test(record.source.chainId)||!uint32(record.source.blockNum,1)
