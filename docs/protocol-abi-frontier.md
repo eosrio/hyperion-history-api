@@ -123,6 +123,21 @@ Elasticsearch reader backpressure remain in use.
 
 ## Storage and limits
 
+Opt-in historical certificate activation resumes completed work across cooperative drain deadlines.
+The coordinator retains a fixed bounded address subset, locator progress and activation phases, bound
+to the exact owner, generation, source epoch/context and selected base root. The store issues an opaque
+process-local preparation handle and retains completed root, bucket, account and locator steps only
+within that operation. Every step finishes its I/O before yielding; no background promise survives a
+drain return. New live admissions preempt the work between operations. Count, byte and elapsed-time
+budgets are unchanged; a single already-started operation can finish beyond the cooperative deadline.
+
+Authority loss, a replaced base root, unknown/partial writes and process replacement discard the
+continuation. Stored content IDs and primary reads never replace fresh preparation receipts. Canonical
+root publication still needs a complete control CAS receipt before activation-certificate preparation;
+queued entries remain until that certificate has a complete receipt, exact readback and fresh authority
+checks. A primary-visible certificate after an ambiguous certificate write does not retire the queue.
+Existing single-call preparation, record formats and public plugin/backend interfaces remain compatible.
+
 The control and immutable frontier-record indices are dedicated, owned projections with strict mappings,
 stored source, request translog durability, all configured-copy receipts, exact-ID realtime reads, and
 refusal of pruning pipelines or ILM/rollover. Identical CAS repair needs a fresh complete receipt. A primary
@@ -142,6 +157,13 @@ fork/query qualification remain open before production activation. The new proje
 separately; existing Elasticsearch history needs no full reindex.
 
 ## Evidence
+
+`node --test tests/unit/protocol-abi-history-progress.test.mjs` runs service-free controls through the
+emitted coordinator and memory-backed immutable/CAS transport. Controlled 100 ms operations reproduce
+the former repeated-deadline failure and now complete activation across drains. The controls cover
+258 commits, multiple buckets, live preemption, deadline boundaries, authority/root loss, restart and
+partial/unknown receipts. They do not establish physical-engine durability, native worker lifecycle,
+Wire replay completion or release qualification; those require their separately guarded workloads.
 
 Focused tests exercise actual adapters, asynchronous ordering, incomplete resets, same-size ABI changes,
 self-setabi/notifications, exact CAS/fork/restart races and bounded capacity. The coupled worker fixture
