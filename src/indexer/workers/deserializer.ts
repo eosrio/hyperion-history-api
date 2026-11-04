@@ -167,11 +167,14 @@ export default class MainDSWorker extends HyperionWorker {
                         this.ch.nackAll();
                     }
                 } catch (nackError: any) {
-                    hLog('Failed to NACK deserializer messages:', nackError.message);
-                } finally {
-                    // Release cargo even if the channel closed during recovery.
-                    cb();
+                    // A send failure does not establish broker requeue or free
+                    // prefetch credits. Stop this owner instead of resuming cargo.
+                    hLog('Failed to NACK deserializer messages; supervised replacement required:', nackError.message);
+                    this.ch_ready = false;
+                    this.consumerQueue.kill();
+                    return process.exit(1);
                 }
+                cb();
             });
         }, this.conf.prefetch.block);
 
