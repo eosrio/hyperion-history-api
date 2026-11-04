@@ -118,7 +118,7 @@ export const STATEFUL_GENESIS_PREVIEW_CALLER_SOURCE = Object.freeze({
 export const STATEFUL_GENESIS_RPC_CALLER_SOURCE = Object.freeze({
     ...STATEFUL_GENESIS_PREVIEW_CALLER_SOURCE,
     commit:'af12903ec4a4a6357372baf7d62306deec6a94e5',
-    sha256:'61712f7a3b39c22f2d4bee6867e64e6ab1ac31784a4df9abf68e8342f74edcd6',
+    sha256:'6f6f2929408a76019b180bb9b44f9c7dcfa7aa635306d9ff1d7cbf70d8903a1f',
     sources:Object.freeze([...STATEFUL_GENESIS_PREVIEW_CALLER_SOURCE.sources,
       ['src/indexer/protocol/retained-genesis-input.ts','8bdd9f1120b9e22d12b6275dada2eeb0ff3ab4e54cd149f023a1435614602df2']]),
 });
