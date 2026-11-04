@@ -5,6 +5,16 @@ import {searchActions} from '../../../helpers/action-search.js';
 import {protectProtocolAction} from '../../../helpers/protocol-abi.js';
 import {ProtocolAbiProofUnavailableError} from '../../../../indexer/protocol/abi-proof.js';
 
+class IndexedBlockUnavailableError extends Error {
+    readonly statusCode = 503;
+    readonly code = 'indexed_block_unavailable';
+    readonly headers = {'retry-after': '1', 'cache-control': 'no-store'};
+    constructor() {
+        super('The requested block is not available in indexed history; retry later.');
+        this.name = 'IndexedBlockUnavailableError';
+    }
+}
+
 interface getBlockTraceResponse {
     id: string;
     number: number;
@@ -119,10 +129,10 @@ async function getBlockTrace(fastify: FastifyInstance, request: FastifyRequest) 
             }
             return response;
         } else {
-            throw new Error('block not found!');
+            throw new IndexedBlockUnavailableError();
         }
     } else {
-        throw new Error("invalid block number or id");
+        throw Object.assign(new Error('invalid block number or id'), {statusCode: 400});
     }
 }
 
