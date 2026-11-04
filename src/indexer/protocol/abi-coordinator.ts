@@ -557,15 +557,19 @@ export class ProtocolAbiCoordinator {
     }
     private async activateHistorical(control:ProtocolAbiCoordinatorControl,epoch:number,deadline:number):Promise<void> {
         if(!this.historicalQueue.size||performance.now()>=deadline)return;
-        const current=await this.assertHistoricalAuthority(control,epoch);
+        let work=this.historicalActivation;
+        if(work&&(work.epoch!==epoch||work.anchor.ownerId!==control.ownerId||work.anchor.generation!==control.generation
+            ||json(work.anchor.source)!==json(control.source)
+            ||(work.published?.historical?.addressRootId??work.baseRoot)!==(control.historical?.addressRootId??null)))
+            this.historicalActivation=work=undefined;
+        // This fresh entry check also guards the first step: only synchronous scope setup intervenes.
+        // Bind it to the retained operation's anchor/root, including rewinds below an older anchor.
+        let entryAuthority:Version|undefined=await this.historicalAuthorityVersion(work?.anchor??control,epoch,
+            work?(work.published?.historical?.addressRootId??work.baseRoot):undefined,work?.published?.historical?.activationCertificateId);
+        const current=entryAuthority.value;
         if(current.pending.length)return;
         const generation=json([current.ownerId,current.generation]);
         if(generation!==this.historicalQueueGeneration)return;
-        let work=this.historicalActivation;
-        if(work&&(work.epoch!==epoch||work.anchor.ownerId!==current.ownerId||work.anchor.generation!==current.generation
-            ||json(work.anchor.source)!==json(current.source)
-            ||(work.published?.historical?.addressRootId??work.baseRoot)!==(current.historical?.addressRootId??null)))
-            this.historicalActivation=work=undefined;
         if(!work) {
             work={anchor:copy(current),epoch,baseRoot:current.historical?.addressRootId??null,
                 entries:copy([...this.historicalQueue.entries()]),nextAddress:0};
@@ -573,6 +577,7 @@ export class ProtocolAbiCoordinator {
         }
         const operation=work;
         const authority=async()=>{
+            entryAuthority=undefined;
             const selected=operation.published?.historical;
             const version=await this.historicalAuthorityVersion(operation.anchor,epoch,selected?.addressRootId??operation.baseRoot,
                 selected?.activationCertificateId);
@@ -581,8 +586,13 @@ export class ProtocolAbiCoordinator {
             if(value.pending.length)throw new HistoricalWorkYield();
             return version;
         };
-        const checkpoint=async()=>{if(performance.now()>=deadline)throw new HistoricalWorkYield();const version=await authority();
-            if(performance.now()>=deadline)throw new HistoricalWorkYield();return version;};
+        const checkpoint=async()=>{
+            this.assertEpoch(epoch);
+            if(this.queuedAdmissions||performance.now()>=deadline)throw new HistoricalWorkYield();
+            const version=entryAuthority??await authority();entryAuthority=undefined;
+            this.assertEpoch(epoch);
+            if(this.queuedAdmissions||performance.now()>=deadline)throw new HistoricalWorkYield();return version;
+        };
         try {
             while(work.nextAddress<work.entries.length) {
                 const [,address]=work.entries[work.nextAddress];

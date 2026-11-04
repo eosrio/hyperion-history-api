@@ -130,6 +130,8 @@ process-local preparation handle and retains completed root, bucket, account and
 within that operation. Every step finishes its I/O before yielding; no background promise survives a
 drain return. New live admissions preempt the work between operations. Count, byte and elapsed-time
 budgets are unchanged; a single already-started operation can finish beyond the cooperative deadline.
+The fresh entry authority check also guards the first operation when only synchronous scope setup
+intervenes. That result is consumed once; subsequent operations require their own authority checks.
 
 Authority loss, a replaced base root, unknown/partial writes and process replacement discard the
 continuation. Stored content IDs and primary reads never replace fresh preparation receipts. Canonical
@@ -162,7 +164,8 @@ separately; existing Elasticsearch history needs no full reindex.
 emitted coordinator and memory-backed immutable/CAS transport. Controlled 100 ms operations reproduce
 the former repeated-deadline failure and now complete activation across drains. The controls cover
 258 commits, multiple buckets, live preemption, deadline boundaries, authority/root loss, restart and
-partial/unknown receipts. They do not establish physical-engine durability, native worker lifecycle,
+partial/unknown receipts, including 125/150/249 ms control reads under an unchanged 250 ms drain budget.
+They do not establish physical-engine durability, native worker lifecycle,
 Wire replay completion or release qualification; those require their separately guarded workloads.
 
 Focused tests exercise actual adapters, asynchronous ordering, incomplete resets, same-size ABI changes,

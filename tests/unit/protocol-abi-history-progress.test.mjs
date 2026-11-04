@@ -84,6 +84,34 @@ test('slow ancestry and authority reads retain acknowledged phase progress',asyn
     } finally {for(const [name,original] of originals)f.store[name]=original;clock.close();}
 });
 
+for(const milliseconds of [125,150,249])test('one authority read below the drain budget permits progress: '+milliseconds+'ms',async()=>{
+    const f=await fixture(),clock=clocked(f.store,0),read=f.store.readControl.bind(f.store);
+    f.store.readControl=async(...args)=>{const value=await read(...args);clock.tick(milliseconds);return value;};
+    try {
+        await complete(f,80,true);
+        assert.equal((await reader(f).openHistorical(1)).source.blockNum,1);
+    } finally {f.store.readControl=read;clock.close();}
+});
+
+test('repeated live preemption preserves completed steps with 150ms authority reads',async()=>{
+    const f=await fixture(),clock=clocked(f.store,0),read=f.store.readControl.bind(f.store),preempted=new Set(),admissions=[];
+    const originals=['readCertificate','prepareHistoricalCertificateAddress','prepareAccountState'].map(name=>[name,f.store[name].bind(f.store)]);
+    f.store.readControl=async(...args)=>{const value=await read(...args);clock.tick(150);return value;};
+    for(const [name,original] of originals)f.store[name]=async(...args)=>{
+        const result=await original(...args);
+        if(f.coordinator.historicalActivation&&!preempted.has(name)) {
+            preempted.add(name);admissions.push(f.coordinator.admit(f.selections[0],f.generation));
+        }
+        return result;
+    };
+    try {
+        await complete(f,100,true);
+        assert.equal(preempted.size,3);
+        for(const admission of admissions)assert.equal((await admission).status,'accepted');
+        assert.equal((await reader(f).openHistorical(1)).source.blockNum,1);
+    } finally {for(const [name,original] of originals)f.store[name]=original;f.store.readControl=read;clock.close();}
+});
+
 test('256-entry queue and multiple buckets finish without losing later admissions',async()=>{
     const f=await fixture(258),clock=clocked(f.store);
     try {
