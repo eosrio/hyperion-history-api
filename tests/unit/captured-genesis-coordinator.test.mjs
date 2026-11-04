@@ -41,10 +41,50 @@ test('owner-bound captured genesis commits before an exact, fenced live handoff'
         await coordinator.start();
         generation=(await coordinator.resumeCapturedGenesis({...grant,readerSessionId:'recovered-capture'})).generation;
         assert.equal(await coordinator.capturedGenesisReplay('recovered-capture',generation),selected.id);
-        const finish=coordinator.finishCapturedGenesis('recovered-capture',generation);
+        let entered,release;let waiting=new Promise(resolve=>{entered=resolve;}),held=new Promise(resolve=>{release=resolve;});
+        const readSelection=p.bindings.readSelection.bind(p.bindings);
+        p.bindings.readSelection=async id=>{entered();await held;return readSelection(id);};
+        const duringRead=coordinator.finishCapturedGenesis('recovered-capture',generation);
+        void duringRead.catch(()=>{});await waiting;
+        const readRevocation=coordinator.revokeSource('recovered-capture',generation);release();
+        await assert.rejects(duringRead,/superseded/);assert.equal(await readRevocation,true);
+        p.bindings.readSelection=readSelection;
+        assert.equal((await coordinator.inspect()).capturedGenesis.phase,'capturing');
+        generation=(await coordinator.resumeCapturedGenesis({...grant,readerSessionId:'after-read'})).generation;
+        waiting=new Promise(resolve=>{entered=resolve;});held=new Promise(resolve=>{release=resolve;});
+        p.memory.faults.beforeWrite=async request=>{if(request.index===p.store.controlIndex
+            &&JSON.parse(Buffer.from(request.document.payload,'base64').toString()).capturedGenesis?.phase==='handoff'){entered();await held;}};
+        const duringCas=coordinator.finishCapturedGenesis('after-read',generation);
+        void duringCas.catch(()=>{});await waiting;
+        const casRevocation=coordinator.revokeSource('after-read',generation);release();
+        await assert.rejects(duringCas,/revoked during handoff/);await casRevocation;delete p.memory.faults.beforeWrite;
+        const afterCas=await coordinator.inspect();assert.equal(afterCas.source,null);assert.equal(afterCas.capturedGenesis.phase,'capturing');
+        generation=(await coordinator.resumeCapturedGenesis({...grant,readerSessionId:'after-cas'})).generation;
+        p.memory.faults.receipt=(receipt,request)=>{
+            if(request.index===p.store.controlIndex&&JSON.parse(Buffer.from(request.document.payload,'base64').toString()).capturedGenesis?.phase==='handoff')
+                throw new Error('unknown handoff write receipt');
+            return receipt;
+        };
+        await assert.rejects(coordinator.finishCapturedGenesis('after-cas',generation),/unknown handoff write receipt/);
+        delete p.memory.faults.receipt;await assert.rejects(coordinator.inspect());
+        coordinator=new ProtocolAbiCoordinator({chainId:capture.chainId,profile:p.options.profile,ownerId:'restart-after-unknown-cas',
+            store:p.store,bindings:p.bindings,observations:p.observations,
+            verifyNativeGenesis:p.options.provider.verifyNativeGenesis.bind(p.options.provider),capturedGenesisEnabled:true});
+        await coordinator.start();assert.equal((await coordinator.inspect()).capturedGenesis.phase,'capturing');
+        generation=(await coordinator.resumeCapturedGenesis({...grant,readerSessionId:'after-unknown'})).generation;
+        const finish=coordinator.finishCapturedGenesis('after-unknown',generation);
         await assert.rejects(coordinator.openSource(p.contextId,'racing-live'),/handoff is not complete/);
         await finish;
         assert.equal((await coordinator.inspect()).head.blockNum,1,'racing open must not replace the durable genesis head');
+        coordinator=new ProtocolAbiCoordinator({chainId:capture.chainId,profile:p.options.profile,ownerId:'restart-after-handoff',
+            store:p.store,bindings:p.bindings,observations:p.observations,
+            verifyNativeGenesis:p.options.provider.verifyNativeGenesis.bind(p.options.provider),capturedGenesisEnabled:true});
+        await coordinator.start();
+        assert.equal((await coordinator.inspect()).capturedGenesis.phase,'capturing');
+        await assert.rejects(coordinator.openSource(p.contextId,'live-before-recovery'),/handoff is not complete/);
+        generation=(await coordinator.resumeCapturedGenesis({...grant,readerSessionId:'after-handoff-restart'})).generation;
+        assert.equal(await coordinator.capturedGenesisReplay('after-handoff-restart',generation),selected.id);
+        await coordinator.finishCapturedGenesis('after-handoff-restart',generation);
         await assert.rejects(coordinator.beginCapturedGenesis(grant));
         const live=await coordinator.openSource(p.contextId,'live-session');
         assert.equal(live.resumeFromBlock,2);

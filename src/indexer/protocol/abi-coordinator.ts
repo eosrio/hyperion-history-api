@@ -197,7 +197,8 @@ export class ProtocolAbiCoordinator {
         }
         const value:ProtocolAbiCoordinatorControl={schemaVersion:1,chainId:this.options.chainId,profile:this.profile,ownerId:this.options.ownerId,
             generation:randomUUID(),revision:(previous?.revision??-1)+1,source:null,head,pending:[],phase:'awaiting-source',gap:reason,replayFromBlock,
-            ...(previous?.capturedGenesis?{capturedGenesis:previous.capturedGenesis}:{})};
+            ...(previous?.capturedGenesis?{capturedGenesis:previous.capturedGenesis.phase==='handoff'
+                ?{...previous.capturedGenesis,phase:'capturing' as const}:previous.capturedGenesis}:{})};
         const receipt=await this.options.store.compareAndSet(stored,value);
         this.known={...receipt,value:this.validateControl(receipt.value)};this.started=true;
     });}
@@ -229,18 +230,27 @@ export class ProtocolAbiCoordinator {
     /** A normal live source cannot open until the native genesis commit is durably published. */
     async finishCapturedGenesis(readerSessionId:string,generation:string):Promise<void> {
         if(!this.options.capturedGenesisEnabled)throw new Error('Captured genesis is disabled');
+        const epoch=this.sourceEpoch;
         return this.run(async()=>{
-            const version=await this.owned(), c=version.value.capturedGenesis;
+            this.assertEpoch(epoch);
+            const version=await this.owned(), c=version.value.capturedGenesis;this.assertEpoch(epoch);
             if(!c||c.phase!=='capturing'||c.readerSessionId!==readerSessionId||generation!==version.value.generation
                 ||version.value.source?.readerSessionId!==readerSessionId||version.value.pending.length
                 ||!version.value.head||version.value.head.blockNum!==1||version.value.head.blockId!==c.genesisBlockId
                 ||version.value.head.coverageStart!==1)throw new Error('Captured genesis is not durably committed');
             const commit=await this.readCommit(version.value.head.commitId);
-            const original=(await this.options.bindings.readSelection(commit.selectionId)).selection;
+            this.assertEpoch(epoch);
+            const original=(await this.options.bindings.readSelection(commit.selectionId)).selection;this.assertEpoch(epoch);
             if(commit.status!=='complete'||!commit.nativeGenesis||original.readerRole!=='captured-genesis'
                 ||original.frameSha256!==c.frameSha256||original.contextId!==c.contextId)throw new Error('Captured genesis commit does not match its grant');
-            await this.save(version,{...version.value,generation:randomUUID(),source:null,phase:'awaiting-source',
-                capturedGenesis:{...c,phase:'handoff'}});
+            let written:Version;
+            try {written=await this.save(version,{...version.value,generation:randomUUID(),source:null,phase:'awaiting-source',
+                capturedGenesis:{...c,phase:'handoff'}});} catch(error) {this.fenced=true;throw error;}
+            if(epoch!==this.sourceEpoch){
+                try {await this.save(written,{...version.value,generation:randomUUID(),source:null,pending:[],phase:'awaiting-source',capturedGenesis:c});}
+                catch(error){this.fenced=true;throw error;}
+                throw new ProtocolAbiCoordinatorStaleError('Captured source was revoked during handoff publication');
+            }
             this.sourceEpoch++;this.activeSession=undefined;this.recentSelections.clear();
         });
     }
