@@ -152,18 +152,21 @@ export class ProtocolAbiProofReader {
         currentProofConsumerScope(this.options.requireAttemptScope);
     }
     private sameProfile(value:unknown):boolean {try{return json(value)===json(this.profile);}catch{return false;}}
-    private assertActive(signal?:AbortSignal):void {
-        currentProofConsumerScope();
-        if(signal?.aborted)unavailable('proof_cancelled','ABI proof request was cancelled');
+    private assertActive(signal?:AbortSignal,scope=currentProofConsumerScope()):void {
+        if(signal?.aborted){
+            if(scope?.ownsFenceError(signal.reason))throw signal.reason;
+            unavailable('proof_cancelled','ABI proof request was cancelled');
+        }
+        assertProofConsumerCapability(scope);
     }
     private async retained<T>(operation:()=>Promise<T>,code='retained_data_unavailable',signal?:AbortSignal):Promise<T> {
         const scope=currentProofConsumerScope();
-        this.assertActive(signal);
+        this.assertActive(signal,scope);
         if(this.activeReads>=64)unavailable('proof_busy','Canonical ABI proof read budget is exhausted');
         this.activeReads++;
-        try{const result=await trackProofConsumerOperation(operation);this.assertActive(signal);return result;}catch(error:any){
+        try{const result=await trackProofConsumerOperation(operation);this.assertActive(signal,scope);return result;}catch(error:any){
             // Normalize an actual caller abort, never replace a read failure after its owner is fenced.
-            if(signal?.aborted&&error===signal.reason&&!scope?.signal.aborted)this.assertActive(signal);
+            if(signal?.aborted&&error===signal.reason&&!scope?.signal.aborted)this.assertActive(signal,scope);
             if(error instanceof ProtocolAbiFrontierReadError){
                 const failure=new ProtocolAbiProofUnavailableError(error.code==='invalid'?'invalid_proof':code,error.message);
                 if(code==='certificate_unavailable'&&error.recordKind==='certificate'&&error.code==='missing')unsettledCertificateErrors.add(failure);
