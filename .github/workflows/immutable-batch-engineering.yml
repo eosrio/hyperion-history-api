@@ -28,7 +28,7 @@ jobs:
       - run: npm run build
       - name: Check exact native source profile
         env:
-          HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-e691f44-immutable-batch-engineering
+          HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-e691f44-immutable-bulk-engineering
         run: node --test tests/unit/immutable-batch-source-admission.test.mjs
       - name: Check batch, native custody and canonical frontier behavior
         run: bun test tests/unit/immutable-prepare-many.test.ts tests/unit/protocol-native-observation-store.test.ts tests/unit/protocol-abi-frontier-store.test.ts tests/unit/protocol-abi-coordinator.test.ts tests/unit/captured-genesis-coordinator.test.mjs

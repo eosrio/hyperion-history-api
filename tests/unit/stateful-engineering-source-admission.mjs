@@ -20,6 +20,7 @@ export const STATEFUL_HISTORY_API_SOURCE_PROFILE = 'stateful-owner-v2-7412889-69
 export const STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE = 'stateful-owner-v2-7412889-e691f44-isolated-genesis-engineering';
 export const STATEFUL_GENESIS_RPC_SOURCE_PROFILE = 'stateful-owner-v2-7412889-e691f44-genesis-rpc-engineering';
 export const STATEFUL_BATCH_SOURCE_PROFILE = 'stateful-owner-v2-7412889-e691f44-immutable-batch-engineering';
+export const STATEFUL_BULK_SOURCE_PROFILE = 'stateful-owner-v2-7412889-e691f44-immutable-bulk-engineering';
 export const STATEFUL_GENESIS_PREVIEW_WIRE_SOURCE = Object.freeze({
     commit:'e691f4471c6e5fdbe001e6709e88d48d33d8bf4c',tree:'375c411d7f76efb460ace846755821445dfb50ea',
     packageSha256:'9f5f8991e1786757fdf52a9cf3978d07ef0c7a6782aa6eed51b2fa479f102936',
@@ -39,7 +40,7 @@ export const STATEFUL_COMPLETE_KIND_CODEC_WIRE_SOURCE = Object.freeze({
 /** The retained mapping fixture accepts only explicitly named, fully admitted sources. */
 export function assertMappingRetryWireSource(admission,components) {
     const expected=admission.profile===STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE?STATEFUL_COMPLETE_KIND_CODEC_WIRE_SOURCE.commit:
-        (admission.profile===STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE||admission.profile===STATEFUL_GENESIS_RPC_SOURCE_PROFILE||admission.profile===STATEFUL_BATCH_SOURCE_PROFILE)?STATEFUL_GENESIS_PREVIEW_WIRE_SOURCE.commit:undefined;
+        (admission.profile===STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE||admission.profile===STATEFUL_GENESIS_RPC_SOURCE_PROFILE||admission.profile===STATEFUL_BATCH_SOURCE_PROFILE||admission.profile===STATEFUL_BULK_SOURCE_PROFILE)?STATEFUL_GENESIS_PREVIEW_WIRE_SOURCE.commit:undefined;
     assert(expected,'Mapping retry source profile not admitted');
     assert.equal(admission.wireRevision,expected,'Mapping retry admission source revision');
     assert(Array.isArray(components)&&components.length>0&&components.every(value=>value.sourceRevision===expected),
@@ -130,6 +131,12 @@ export const STATEFUL_BATCH_CALLER_SOURCE = Object.freeze({
         ['src/indexer/protocol/immutable-bundle-store.ts','9bf9188b84dc5b8be323d9c9b08e90c0c0992f811a7adf817eee63fee217a7b0'],
         ['src/indexer/protocol/native-observation-store.ts','82e2d8faddae68090dee69e3189310c1bc9e7d4241480eb7d0018502c47e73fb']]),
 });
+export const STATEFUL_BULK_CALLER_SOURCE = Object.freeze({
+    ...STATEFUL_BATCH_CALLER_SOURCE,commit:'524eb2ce0ffeebbcd356b5a1b1dd9a064234a2cc',
+    sha256:'a1792aef4494a4c085e57175e7150e1932e3ab25b55e116bbc4d3d7447acabc8',
+    sources:Object.freeze([...STATEFUL_BATCH_CALLER_SOURCE.sources.filter(([path])=>path!=='src/indexer/protocol/immutable-bundle-store.ts'),
+        ['src/indexer/protocol/immutable-bundle-store.ts','55ddc2b6268282af087cee5a684768c30f8d04bde08895dce8ba7aace2970248']]),
+});
 // Production source was committed before these additive qualification profiles.
 export const STATEFUL_METADATA_FIELDS_NATIVE_SOURCE = Object.freeze({
     commit: '0b51a20c3d9a9b95c39a713c89cad6d55c5103d4', tree: '686850ba3acb00fc1f9424dd300483b83f84c654',
@@ -139,13 +146,13 @@ const oldWire = '7167659e9c043cb3351074fcacb40200cc57f3a3', wire = '18d235e34a9b
 const sdk = '58d68c5cea81490bbb1c9a7736d633d465bab3ef';
 const metadataSdk = 'dd85ee590dcd1e359509c6c41ee99b541706b1f6';
 const completeKindSdk = '7412889a14c84342551fd864ea3ebfcf28849385';
-const codecProfile = profile => profile === STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE || profile === STATEFUL_HISTORY_API_SOURCE_PROFILE || profile === STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE || profile === STATEFUL_GENESIS_RPC_SOURCE_PROFILE || profile === STATEFUL_BATCH_SOURCE_PROFILE;
+const codecProfile = profile => profile === STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE || profile === STATEFUL_HISTORY_API_SOURCE_PROFILE || profile === STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE || profile === STATEFUL_GENESIS_RPC_SOURCE_PROFILE || profile === STATEFUL_BATCH_SOURCE_PROFILE || profile === STATEFUL_BULK_SOURCE_PROFILE;
 const completeKindProfile = profile => profile === STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE || profile === STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE
     || profile === STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE || profile === STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE || codecProfile(profile);
 const completeKindNativeSource = profile => profile === STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE || codecProfile(profile) ? STATEFUL_COMPLETE_KIND_METADATA_NATIVE_SOURCE
     : profile === STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE ? STATEFUL_COMPLETE_KIND_EXECUTOR_NATIVE_SOURCE
     : profile === STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE ? STATEFUL_COMPLETE_KIND_COMMANDS_NATIVE_SOURCE : STATEFUL_COMPLETE_KIND_NATIVE_SOURCE;
-const completeKindCallerSource = profile => profile === STATEFUL_BATCH_SOURCE_PROFILE ? STATEFUL_BATCH_CALLER_SOURCE : profile === STATEFUL_GENESIS_RPC_SOURCE_PROFILE ? STATEFUL_GENESIS_RPC_CALLER_SOURCE : profile === STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE ? STATEFUL_GENESIS_PREVIEW_CALLER_SOURCE : profile === STATEFUL_HISTORY_API_SOURCE_PROFILE ? STATEFUL_HISTORY_API_CALLER_SOURCE : codecProfile(profile) ? STATEFUL_COMPLETE_KIND_CODEC_CALLER_SOURCE : profile === STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE
+const completeKindCallerSource = profile => profile === STATEFUL_BULK_SOURCE_PROFILE ? STATEFUL_BULK_CALLER_SOURCE : profile === STATEFUL_BATCH_SOURCE_PROFILE ? STATEFUL_BATCH_CALLER_SOURCE : profile === STATEFUL_GENESIS_RPC_SOURCE_PROFILE ? STATEFUL_GENESIS_RPC_CALLER_SOURCE : profile === STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE ? STATEFUL_GENESIS_PREVIEW_CALLER_SOURCE : profile === STATEFUL_HISTORY_API_SOURCE_PROFILE ? STATEFUL_HISTORY_API_CALLER_SOURCE : codecProfile(profile) ? STATEFUL_COMPLETE_KIND_CODEC_CALLER_SOURCE : profile === STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE
     ? STATEFUL_COMPLETE_KIND_METADATA_CALLER_SOURCE : STATEFUL_COMPLETE_KIND_CALLER_SOURCE;
 const fieldsProfile = profile => profile === STATEFUL_METADATA_FIELDS_API_SOURCE_PROFILE || profile === STATEFUL_METADATA_FIELDS_LEGACY_SOURCE_PROFILE;
 const metadataProfile = profile => profile === STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE || profile === STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE || fieldsProfile(profile);
@@ -194,7 +201,7 @@ export function admitNativeApiSourceOptions(input = {}) {
     exact(pkg.json.name, '@eosrio/hyperion-wire-plugin', 'Wire package');
     const descriptor = read(resolve(root, 'dist/protocol-provider.json'));
     const node = read(resolve(root, 'dist/protocol-node-artifact.json')), rust = read(resolve(root, 'dist/protocol-rust-artifact.json'));
-    const codecWire = (profile===STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE||profile===STATEFUL_GENESIS_RPC_SOURCE_PROFILE||profile===STATEFUL_BATCH_SOURCE_PROFILE)?STATEFUL_GENESIS_PREVIEW_WIRE_SOURCE:codecProfile(profile) ? STATEFUL_COMPLETE_KIND_CODEC_WIRE_SOURCE : undefined;
+    const codecWire = (profile===STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE||profile===STATEFUL_GENESIS_RPC_SOURCE_PROFILE||profile===STATEFUL_BATCH_SOURCE_PROFILE||profile===STATEFUL_BULK_SOURCE_PROFILE)?STATEFUL_GENESIS_PREVIEW_WIRE_SOURCE:codecProfile(profile) ? STATEFUL_COMPLETE_KIND_CODEC_WIRE_SOURCE : undefined;
     const selectedWire = profile === undefined || legacyProfile(profile) ? oldWire : codecWire?.commit ?? wire;
     for (const artifact of [node, rust]) {exact(artifact.json.sourceRevision, selectedWire, 'Wire source revision'); exact(artifact.json.sourceModified, false, 'modified Wire source');}
     const lock = read(fileURLToPath(new URL('../../package-lock.json', import.meta.url))).json;
