@@ -1,4 +1,5 @@
 import {expect, it} from 'bun:test';
+import {createProjectionManagerFixture} from './projection-manager-fixture.mjs';
 import {EventEmitter} from 'node:events';
 import {randomUUID} from 'node:crypto';
 import {setImmediate as turn} from 'node:timers/promises';
@@ -147,7 +148,7 @@ it('does not open a projection database after held protocol initialization loses
             fields: [{name: 'owner', path: ['owner'], type: 'string'}], initialization: {kind: 'genesis'}}]}},
             indexer: {live_reader: true}},
         protocol: {profileId: 'controlled-native-profile', verifyNativeGenesis() {}}, profiler: {stopReporting() {}},
-        manager: {conn: {mongodb: {}}, mongodbClient: {async connect() {connections++; throw new Error('Controlled unexpected connection');}}}});
+        manager: createProjectionManagerFixture({async connect() {connections++; throw new Error('Controlled unexpected connection');}})});
     worker.installControlledAttemptLifecycle('projection');
     const run = worker.runProjectionAttempt.bind(worker);
     worker.runProjectionAttempt = (kind: any, metadata: any, operation: any) => run(kind, metadata, () => {

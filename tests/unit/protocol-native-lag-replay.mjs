@@ -1,3 +1,4 @@
+import {assertQualifiedGitLockSource} from './qualified-git-lock.mjs';
 /** #277 causal qualification using unchanged original Wire frames and actual emitted worker methods.
  * Normal installed native engineering profile; controlled broker/storage transport, no live-service qualification. */
 import assert from 'node:assert/strict';
@@ -353,10 +354,10 @@ try {
 
     assert.equal(config.settings.protocol_abi_coordination, undefined, 'the actual default 256 ancestry remains in force');
     const lock = JSON.parse(readFileSync(join(repo, 'package-lock.json')));
-    assert.equal(lock.packages['node_modules/@eosrio/hyperion-wire-plugin'].resolved,
-        `git+ssh://git@github.com/eosrio/hyperion-wire-plugin.git#${nativeSourceAdmission.wireRevision}`);
-    assert.equal(lock.packages['node_modules/@eosrio/hyperion-sdk'].resolved,
-        `git+ssh://git@github.com/eosrio/hyperion-sdk.git#${nativeSourceAdmission.sdkRevision}`);
+    for (const [name, revision] of [['hyperion-wire-plugin', nativeSourceAdmission.wireRevision], ['hyperion-sdk', nativeSourceAdmission.sdkRevision]]) {
+        const actual = lock.packages['node_modules/@eosrio/' + name].resolved;
+        assertQualifiedGitLockSource(actual, name, revision);
+    }
     const began = process.hrtime.bigint();
     const stageTimings = {setup: {elapsedMs: Number(began - setupBegan) / 1e6, cpu: process.cpuUsage(setupCpu)}, sourcePreparation: []};
     let pending, control, rewindSelection, lastMeasuredNativeView, lastMeasuredNativeGrant;

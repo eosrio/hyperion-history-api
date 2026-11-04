@@ -6,7 +6,7 @@ import {createWriteStream, mkdtempSync, readFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {Long, Binary} from 'mongodb';
-import {argumentsFor, PLAN, WIRE32_PLAN, selectPlan, failure} from './runner.mjs';
+import {argumentsFor, PLAN, WIRE32_PLAN, WIRE32_CACHE_PLAN, selectPlan, failure} from './runner.mjs';
 import {monitor, verifyReadTrace} from './trace.mjs';
 import {terminalChild} from './ci.mjs';
 import {admitNativeApiSourceOptions, admitCoordinatedNativeSourceOptions} from '../../../tests/unit/stateful-engineering-source-admission.mjs';
@@ -35,11 +35,14 @@ test('fixture selects only the explicitly named historical or Wire32 assembly wi
     assert.equal(selectPlan(), PLAN); assert.equal(selectPlan(PLAN.profile), PLAN);
     assert.equal(selectPlan(WIRE32_PLAN.profile), WIRE32_PLAN);
     assert.deepEqual({...WIRE32_PLAN, profile: PLAN.profile}, PLAN);
+    assert.equal(selectPlan(WIRE32_CACHE_PLAN.profile), WIRE32_CACHE_PLAN);
+    assert.deepEqual({...WIRE32_CACHE_PLAN, profile: PLAN.profile}, PLAN);
     assert.throws(() => selectPlan('unknown'), /Unqualified complete-kind fixture source profile/);
     assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: PLAN.profile}), /Wire source revision/);
-    const admitted = admitNativeApiSourceOptions({engineeringSourceProfile: WIRE32_PLAN.profile});
+    assert.throws(() => admitNativeApiSourceOptions({engineeringSourceProfile: WIRE32_PLAN.profile}), /caller emissions/);
+    const admitted = admitNativeApiSourceOptions({engineeringSourceProfile: WIRE32_CACHE_PLAN.profile});
     assert.equal(admitted.wireRevision, 'e691f4471c6e5fdbe001e6709e88d48d33d8bf4c');
-    assert.equal(admitCoordinatedNativeSourceOptions({engineeringSourceProfile: WIRE32_PLAN.profile}).sdkRevision, '7412889a14c84342551fd864ea3ebfcf28849385');
+    assert.equal(admitCoordinatedNativeSourceOptions({engineeringSourceProfile: WIRE32_CACHE_PLAN.profile}).sdkRevision, '7412889a14c84342551fd864ea3ebfcf28849385');
 });
 test('actual execution requires explicit run/failpoint authority and an owned loopback target', () => {
     const args = ['--run', '--allow-failpoints', '--database', 'h45_kind_000000000001', '--output', './new-evidence'];

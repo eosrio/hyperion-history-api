@@ -1,5 +1,6 @@
 /** Real emitted projection worker and native cluster IPC; Mongo/controller I/O is controlled. */
 import assert from 'node:assert/strict';
+import {createProjectionManagerFixture,createProjectionControllerFixture} from './projection-manager-fixture.mjs';
 import cluster from 'node:cluster';
 import {mkdtempSync, mkdirSync, writeFileSync, appendFileSync, readFileSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -42,7 +43,7 @@ if (cluster.isWorker) {
         backend() {record('backend'); return {};},
         async controller() {
             record('controller');
-            return {async drain() {send({event: 'fixture_initialized'}); await finish.promise;}, async stop() {}};
+            return createProjectionControllerFixture({async drain() {send({event: 'fixture_initialized'}); await finish.promise;}, async stop() {}});
         },
     };
     globalThis.__projectionStartupFixture = fixture;
@@ -93,7 +94,7 @@ if (cluster.isWorker) {
         protocolId: 'controlled-startup-protocol', protocolComponents: [{id: 'owned-startup-fixture', runtime: 'node',
             version: '0.0.0-dev.1', sourceRevision: 'c'.repeat(40), sha256: 'd'.repeat(64)}], protocolReady: Promise.resolve(),
         protocol: {profileId: 'controlled-startup-v1', verifyNativeGenesis() {}}, client: {},
-        manager: {conn: {mongodb: {}}, mongodbClient: client}, stopped: false, statefulControllers: new Map(), probes: new Set(), profiler: {stopReporting() {}}});
+        manager: createProjectionManagerFixture(client), stopped: false, statefulControllers: new Map(), probes: new Set(), profiler: {stopReporting() {}}});
     const attempts = new WorkerAttemptClient({mode: 'managed', role: 'projection', transport: process,
         timeoutMs: 500, drainTimeoutMs: 1000, retries: 0});
     const capture = attempts.capture.bind(attempts), run = attempts.run.bind(attempts);

@@ -9,7 +9,7 @@
     "scripts/qualification/portable-state-worker.ts": "124f028f942ce0bd9233bebe085d52221378d6ebe25e2e39232f8820d80456d7",
     "scripts/qualification/portable-state-worker-native.ts": "b5dffd4ce802991f31d446358945b0ae203a71c0f81f0807e1b226e243652add"
   },
-  "productionEmissionProfile": "stateful-owner-v2-7412889-e691f44-complete-kind-engineering",
+  "productionEmissionProfile": "stateful-owner-v2-7412889-e691f44-string-cache-v1-engineering",
   "note": "Source identity for observation-only successor; not replay qualification. Existing production emission profile is unchanged. New operators must independently bind the complete selected source tree and inputs.",
   "reviewedObserverPatchSha256": "abc1507ed23f175ae210a37060b379b445f9a995b06d645ea83ae439691cb56f",
   "retainedResponseFixtureSha256": "62f5e838a9f4dd937c925bc22a6651bffc295b0bc33f3876f7296a1a8b6d7d10"

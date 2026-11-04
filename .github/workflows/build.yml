@@ -14,7 +14,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-e691f44-complete-kind-engineering
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-e691f44-string-cache-v1-engineering
     strategy:
       fail-fast: false
       matrix:
@@ -38,7 +38,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - name: Check bounded canonical JSON and authentic protocol records on Node ${{ matrix.node-version }}
-        run: node --test tests/unit/bounded-json.test.mjs tests/native/bounded-json-protocol-records.test.mjs
+        run: node --test tests/unit/bounded-json.test.mjs tests/native/bounded-json-protocol-records.test.mjs tests/native/bounded-json-string-encoding.test.mjs
       - name: Check mixed stateful source and final publication on Node ${{ matrix.node-version }}
         run: |
           node --test tests/native/pinned-git-source.test.mjs
@@ -66,7 +66,7 @@ jobs:
         run: node --experimental-strip-types scripts/qualification/check-wire-replay-fixture.mjs
       - name: Check bounded Wire final callback observations
         run: |
-          node --test tests/unit/wire119-final-profile.test.mjs
+          node --test tests/unit/wire119-final-profile.test.mjs tests/unit/qualified-git-lock.test.mjs tests/native/projection-manager-lifecycle.test.mjs
           node tests/unit/wire119-final-replay-control.cjs
           node tests/unit/wire119-final-bounds-control.cjs
       - name: Check coherent Mongo qualification sampling with native Node
@@ -187,7 +187,7 @@ jobs:
   projection-mongodb:
     runs-on: ubuntu-22.04
     env:
-      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-e691f44-complete-kind-engineering
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-e691f44-string-cache-v1-engineering
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -261,7 +261,7 @@ jobs:
   action-source-journal:
     runs-on: ubuntu-24.04
     env:
-      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-e691f44-complete-kind-engineering
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-owner-v2-7412889-e691f44-string-cache-v1-engineering
     timeout-minutes: 15
     strategy:
       fail-fast: false
