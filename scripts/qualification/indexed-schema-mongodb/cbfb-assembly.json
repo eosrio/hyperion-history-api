@@ -967,8 +967,8 @@
       },
       {
         "path": "src/indexer/helpers/bounded-json.ts",
-        "bytes": 7304,
-        "sha256": "2545a80f2b214bf9ce8e72956b68ba961e9d0d03703b0f1947ab89f816ea3c62"
+        "bytes": 7338,
+        "sha256": "c6cd855e0ce68e708d5f966c13308e3a15f8e099e3ba771b84a9763595b5db28"
       },
       {
         "path": "src/indexer/helpers/common_functions.ts",
@@ -3110,13 +3110,13 @@
         },
         {
           "path": "indexer/helpers/bounded-json.js",
-          "bytes": 6999,
-          "sha256": "84a9bdeb001975d24165bf822664493b7567952828bd483b41ab03575688587f"
+          "bytes": 7033,
+          "sha256": "aef27187111ff8f33cecc2a39e4187163e88e81e9448b404e24eb13c50a9e819"
         },
         {
           "path": "indexer/helpers/bounded-json.js.map",
-          "bytes": 6911,
-          "sha256": "e593d1056c09056ba391f307be7730be6a1c61cbcdee3cec7c9874917d8e6b9c"
+          "bytes": 6874,
+          "sha256": "ebad4a56bd708b643e7ae25e9578d9db4b65a75bec0c01bc80ee3745aaf62417"
         },
         {
           "path": "indexer/helpers/common_functions.js",

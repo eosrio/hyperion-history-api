@@ -44,17 +44,6 @@ export function boundedCanonicalJson(input: unknown, options: BoundedJsonOptions
         if ((bytes += size) > maximumBytes) throw new Error(errorPrefix + ' exceeds bounded JSON byte budget');
     };
     const string = (value: string) => {
-        let key: string | undefined;
-        // Reject known ineligible sizes before hashing or probing any cache key.
-        // The ordinary path below retains malformed UTF-16/error precedence.
-        if (value.length >= 512 && value.length <= encodingEntryBytes - 2 && bytes + value.length + 2 <= maximumBytes) {
-            const rawBytes = Buffer.byteLength(value);
-            if (rawBytes + 2 <= encodingEntryBytes && bytes + rawBytes + 2 <= maximumBytes)
-                key = createHash('sha256').update(value, 'utf8').digest('hex');
-        }
-        const retained = key === undefined ? undefined : encodedStrings.get(key);
-        // A digest is a lookup hint, never sufficient identity for reused bytes.
-        if (retained?.state === 'encoded' && retained.input === value) {take(retained.bytes); return retained.encoded;}
         if (!value.isWellFormed()) throw new Error(errorPrefix + ' contains malformed UTF-16');
         const before = bytes;
         take(2);
@@ -66,6 +55,18 @@ export function boundedCanonicalJson(input: unknown, options: BoundedJsonOptions
             // and minimum-byte checks, then avoid re-encoding large retained hex.
             return '"' + value + '"';
         }
+        let key: string | undefined;
+        // Only strings requiring encoding reach the cache. Preserve the original
+        // UTF-16, quote/minimum-byte and unescaped-ASCII checks before hashing.
+        if (value.length >= 512 && value.length <= encodingEntryBytes - 2) {
+            const rawBytes = Buffer.byteLength(value);
+            if (rawBytes + 2 <= encodingEntryBytes && bytes + rawBytes <= maximumBytes)
+                key = createHash('sha256').update(value, 'utf8').digest('hex');
+        }
+        const retained = key === undefined ? undefined : encodedStrings.get(key);
+        // A digest is a lookup hint, never sufficient identity for reused bytes.
+        // Quotes were already charged by the unchanged minimum-byte path.
+        if (retained?.state === 'encoded' && retained.input === value) {take(retained.bytes - 2); return retained.encoded;}
         for (let index = 0; index < value.length; index++) {
             const code = value.charCodeAt(index);
             if (code < 32) take([8, 9, 10, 12, 13].includes(code) ? 2 : 6);

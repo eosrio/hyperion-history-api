@@ -65,3 +65,22 @@ These are encoding-only observations, not Linux end-to-end qualification. The
 oversized/refused control proves zero hashing and zero cache probes; small timing
 samples are not used as a performance assertion. Original failed CI outcomes and
 the unchanged 180-second workload deadline remain authoritative.
+
+## Plain-ASCII admission correction
+
+Review of the digest successor found that eligible plain ASCII/hex strings paid
+for SHA lookup before the existing ASCII return, although those strings never
+entered the cache. In a pure Windows diagnostic, 2,000 repeated 32,400-unit hex
+strings took 51.0–52.7 ms versus 25.3–25.9 ms in the original helper; unique hex
+took 54.0–54.2 ms versus 26.4–29.7 ms. Ten eligible plain inputs made ten hashes
+and cache probes. This adverse measurement is retained.
+
+The corrected order preserves the original malformed-UTF-16 check, quote and
+minimum-byte debits, and ASCII fast path before considering cache admission.
+Only strings requiring encoding can hash or probe. Hits debit the complete
+encoded length minus the two quotes already charged. A focused control covers
+warm/unique hex at 511, 512, 32,768, 65,534 and 65,535 units, exact and one-byte-short
+caller/wrapper budgets and malformed-surrogate precedence, and proves zero
+hashes and probes. After correction the same diagnostic measured warm hex at
+25.2–28.7 ms versus 24.8–28.5 ms and unique hex at 26.8–30.1 ms versus 28.0–33.1 ms.
+These are encoding-only observations and carry no full retained-workload claim.

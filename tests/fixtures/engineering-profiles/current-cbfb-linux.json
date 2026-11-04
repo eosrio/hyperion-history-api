@@ -6,7 +6,7 @@
     "commit": "2f636372bd8fe82c86ebd46179cc96fbe9d81241",
     "tree": "36eff358421dc9f19c4112c5375144b2ba4e5e22"
   },
-  "baseAssemblySha256": "a54645df86943034b87034456926c378e7d39abbff75ed83fad65bd848f99281",
+  "baseAssemblySha256": "bda28fd3664da327f0b49334b7234f5af40e129106e09a36b401b4c95656d56e",
   "dependenciesSha256": "0233aeceb915f1f71f6a894ae45662a273380f209b30d6917d89b366e6c1f71d",
   "sdkPackages": {
     "root": {
@@ -67,7 +67,7 @@
     {
       "path": "scripts/qualification/indexed-schema-mongodb/cbfb-assembly.json",
       "bytes": 193013,
-      "sha256": "28bbe56132b45322fa9c46e20e08b5d2226cc46cc3580eb1de6ebbb1292cf92c"
+      "sha256": "10c2a9b2052141f8e8ea7888ca3d1ca2ea3117c70eb97731179b0ef17dd75f08"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/cbfb-assembly.mjs",
@@ -101,8 +101,8 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/retained-string-encoding.md",
-      "bytes": 4386,
-      "sha256": "1bde410f6b9fb2372beba7db066757071559480d1365dd2e01a5d62c35da029a"
+      "bytes": 5608,
+      "sha256": "17cd8c44921c03be295e65322428f98a6f1bb4c7031c430f12d978b0b08e445d"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/retained-wire-diagnostics.md",
@@ -176,8 +176,8 @@
     },
     {
       "path": "tests/native/bounded-json-string-encoding.test.mjs",
-      "bytes": 6744,
-      "sha256": "f60095d6eee523af8aa95577b778ba5385fb3b2cd1b62b4c196a9f858178b873"
+      "bytes": 8225,
+      "sha256": "b8f885a73853e24b4841f888f880f3fefe886b47cb839d5abd57e4b7215b21d3"
     },
     {
       "path": "tests/native/current-cbfb-caller-routing.test.mjs",

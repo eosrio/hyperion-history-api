@@ -81,3 +81,17 @@ test('digest collisions cannot reuse bytes for a different primitive value',()=>
     const encode=new Function('createHash',source.replace(/^import .*?;\r?\n/gm,'').replace('export function boundedCanonicalJson','function boundedCanonicalJson')+'\nreturn boundedCanonicalJson;')(collisionHash);
     for(const value of [long,long,schema,schema,long,schema])assert.equal(encode(value),JSON.stringify(value));
 });
+
+test('plain ASCII and hex retain the original fast path with no hashing, cache lookup or changed budget/error precedence',()=>{
+ const source=readFileSync(new URL('../../build/indexer/helpers/bounded-json.js',import.meta.url),'utf8');let hashes=0,probes=0;
+ class ObservedMap extends Map{get(key){probes++;return super.get(key);}}
+ const encode=new Function('Map','createHash',source.replace(/^import .*?;\r?\n/gm,'').replace('export function boundedCanonicalJson','function boundedCanonicalJson')+'\nreturn boundedCanonicalJson;')(ObservedMap,(...args)=>{hashes++;return createHash(...args);});
+ for(const length of [511,512,32768,65534,65535])for(let i=0;i<4;i++){
+  const value=('ab0123456789'.repeat(Math.ceil(length/12))).slice(0,length-1)+String(i),expected=JSON.stringify(value),bytes=Buffer.byteLength(expected);
+  assert.equal(encode(value,{maximumBytes:bytes}),expected);assert.equal(encode(value,{maximumBytes:bytes}),expected);
+  assert.throws(()=>encode(value,{maximumBytes:bytes-1,errorPrefix:'Plain'}),{message:'Plain exceeds bounded JSON byte budget'});
+  assert.equal(encode([value],{maximumBytes:bytes+2}),'['+expected+']');assert.throws(()=>encode([value],{maximumBytes:bytes+1}),/bounded JSON byte budget/);
+ }
+ for(const value of ['a'.repeat(512)+'\ud800','b'.repeat(65534)+'\udfff'])assert.throws(()=>encode(value,{maximumBytes:1,errorPrefix:'Malformed'}),{message:'Malformed contains malformed UTF-16'});
+ assert.equal(hashes,0);assert.equal(probes,0);
+});
