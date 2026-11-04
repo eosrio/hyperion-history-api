@@ -24,8 +24,8 @@ jobs:
         with:
           bun-version-file: .bun-version
       - run: |
-          npm ci --allow-git=all --ignore-scripts=false
           npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false
+          npm ci --allow-git=all --ignore-scripts=false
           test "$(bun --version)" = "$(cat .bun-version)"
           test "$(bun -p process.versions.typescript)" = "7.0.2"
           bun check -p tsconfig.json

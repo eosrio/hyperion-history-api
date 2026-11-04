@@ -35,7 +35,8 @@ test('actual shared snapshot writer retains complete loadable helper/data closur
         'stateful-owner-v2-root741-native429-source-5aaaee4-linux-gitlf-engineering',
         'stateful-owner-v2-root741-native429-source-9c3db03-linux-gitlf-engineering',
         'stateful-owner-v2-root741-native429-source-9c3db03-cleanup-trace-v2-linux-gitlf-engineering',
-        'stateful-sdk49-indexed-2da-linux-engineering-v1']) {
+        'stateful-sdk49-indexed-2da-linux-engineering-v1',
+        'stateful-sdk49-root-cbfb-native-wire69-linux-engineering-v1']) {
         const output = await owned(t), hashes = await captureWireSourceSnapshot({...base, output, engineeringSelected: Boolean(selected)});
         for (const file of [...engineeringAdmissionSourcePaths, ...base.runtimeSources]) {
             const original = await readFile(join(repo, file)), retained = await readFile(join(output, 'sources', file));

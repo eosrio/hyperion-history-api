@@ -15,7 +15,7 @@ export const HISTORICAL_PLAN = Object.freeze({schemaVersion: 1, scope: 'syntheti
         'same-snapshot-metadata', 'adaptive-retry-positive-control', 'bounded-find-failure', 'bounded-getMore-failure',
         'callback-retry-accounting', 'foreign-token-client-session', 'cancel-late-result', 'gap-takeover-fork', 'lifecycle-cleanup'],
     acceptance: {physicalMongoDB: 'pending-until-run', managedAPI: 'pending', publicHTTP: 'pending', atomicParity: 'pending'}});
-export const PLAN = Object.freeze({...HISTORICAL_PLAN, sdk: 'dc20a03f2b60ba05a3369d677222a9cf0d65d299', profile: 'stateful-sdk49-indexed-2da-linux-engineering-v1'});
+export const PLAN = Object.freeze({...HISTORICAL_PLAN, sdk: 'cbfb26694b90b52266d1e0b9b5dbf6f8389e736b', profile: 'stateful-sdk49-root-cbfb-native-wire69-linux-engineering-v1'});
 const hash = value => createHash('sha256').update(value).digest('hex');
 const hex = n => n.toString(16).padStart(64, '0');
 const plain = value => JSON.parse(JSON.stringify(value));

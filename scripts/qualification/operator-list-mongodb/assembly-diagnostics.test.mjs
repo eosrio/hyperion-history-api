@@ -7,6 +7,7 @@ import {tmpdir} from 'node:os';
 import {diagnosticDirectory, diagnosticRelativePath, retainAdmission, writeAssemblyDiagnostic} from './assembly-diagnostics.mjs';
 import {inventory} from './inventory.mjs';
 import {sha} from './contract.mjs';
+import {restoreSdk49Routing} from '../indexed-schema-mongodb/current-cbfb-contract.mjs';
 import {OPERATOR_LIST_ASSEMBLY, OPERATOR_LIST_PROFILE, diagnoseOperatorListAssembly} from './source-profile.mjs';
 
 const json = path => JSON.parse(readFileSync(path));
@@ -84,7 +85,7 @@ test('an admission error remains primary when capture fails and successful colle
 });
 
 test('workflow retains failed raw assembly diagnostics before the physical step while old profile stays frozen', () => {
-    const workflow = readFileSync(new URL('../../../.github/workflows/build.yml', import.meta.url), 'utf8');
+    const workflow = restoreSdk49Routing('.github/workflows/build.yml', readFileSync(new URL('../../../.github/workflows/build.yml', import.meta.url), 'utf8'));
     const dedicated = workflow.slice(workflow.indexOf('\n  operator-lists-mongodb:'), workflow.indexOf('\n  action-sequences-design:'));
     assert.ok(dedicated.includes('sdk49-source-profile.mjs --diagnostics operator-list-assembly-${{ matrix.node-version }}'));
     assert.ok(dedicated.includes('operator-list-assembly-${{ matrix.node-version }}/'));
