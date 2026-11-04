@@ -50,9 +50,8 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                                             }
                                         }
                                     },
-                                    "data": {
-                                        additionalProperties: true
-                                    }
+                                    // Action data can be a decoded JSON value or opaque hex.
+                                    "data": {}
                                 }
                             }
                         }
