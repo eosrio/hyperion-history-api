@@ -16,7 +16,8 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                 },
                 "block_id": {
                     description: 'block id',
-                    type: 'string'
+                    type: 'string',
+                    pattern: '^[a-fA-F0-9]{64}$'
                 }
             }
         },
