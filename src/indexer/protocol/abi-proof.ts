@@ -125,14 +125,17 @@ export class ProtocolAbiProofReader {
     }
     private sameProfile(value:unknown):boolean {try{return json(value)===json(this.profile);}catch{return false;}}
     private assertActive(signal?:AbortSignal):void {
+        currentProofConsumerScope();
         if(signal?.aborted)unavailable('proof_cancelled','ABI proof request was cancelled');
     }
     private async retained<T>(operation:()=>Promise<T>,code='retained_data_unavailable',signal?:AbortSignal):Promise<T> {
+        const scope=currentProofConsumerScope();
         this.assertActive(signal);
         if(this.activeReads>=64)unavailable('proof_busy','Canonical ABI proof read budget is exhausted');
         this.activeReads++;
         try{const result=await trackProofConsumerOperation(operation);this.assertActive(signal);return result;}catch(error:any){
-            this.assertActive(signal);
+            // Normalize an actual caller abort, never replace a read failure after its owner is fenced.
+            if(signal?.aborted&&error===signal.reason&&!scope?.signal.aborted)this.assertActive(signal);
             if(error instanceof ProtocolAbiFrontierReadError)unavailable(error.code==='invalid'?'invalid_proof':code,error.message);
             if(error?.meta?.statusCode===404&&error?.meta?.body?.error?.type==='index_not_found_exception')
                 unavailable('authority_unavailable','Canonical ABI projection has not been initialized');
