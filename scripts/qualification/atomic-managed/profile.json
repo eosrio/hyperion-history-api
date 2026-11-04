@@ -78,8 +78,8 @@
         },
         {
           "path": "package.json",
-          "bytes": 3326,
-          "sha256": "43e4fe4ae60074d06f22c82d5fcbff63e9a4e30bdcd632bdd25b2bf3af3b3853"
+          "bytes": 3287,
+          "sha256": "dea55445210d72e97c044c0a2eca90ff7cd4b863a63bf107217a0ff59760f6f5"
         },
         {
           "path": "packages/backend-mongodb/ROYALTY-ENGINEERING.json",
@@ -13065,7 +13065,7 @@
         {
           "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-assembly.json",
           "bytes": 192872,
-          "sha256": "7711f870e322ba2378db9a36d66905e66fd0a3f6a6fc6e5ca0b87c44db3681b3",
+          "sha256": "b2c0fc9c670bee2f5395a3f7622645ec6b82b697e15fd09a972d301391f5988b",
           "module": false
         },
         {
@@ -13215,7 +13215,7 @@
         {
           "path": "tests/fixtures/engineering-profiles/all-cbfb-linux.json",
           "bytes": 13953,
-          "sha256": "69bfdf514564d6547e2bad1330dd3454b6b7c8acb162dafd1123a250a0124d8c",
+          "sha256": "3634d710e5dddb8aa2fa198ccc967826481ae599676ec80d6ec7739bedfbc32b",
           "module": false
         },
         {
@@ -13257,7 +13257,7 @@
         {
           "path": "tests/unit/all-cbfb-source-admission.mjs",
           "bytes": 7902,
-          "sha256": "ac22745f40d245786a8de19e484b1bde082bb0161d573c58a30493750673826d",
+          "sha256": "5703633e9bf6cc9fe0b563175c91a9f3e99dfb8e687ee42cefc9bdda0697672d",
           "module": true
         },
         {

@@ -160,7 +160,7 @@ test('unknown/default/accessor options cannot become an admission or select expe
 });
 
 test('normal root install owns native dependency installation before build and current CI uses that supported path',()=>{
- const pkg=JSON.parse(raw('package.json'));assert.equal(pkg.scripts.postinstall,'npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false && npm run build && npm run fix-permissions');
+ const pkg=JSON.parse(raw('package.json'));assert.equal(pkg.scripts.postinstall,'npm ci --prefix packages/backend-mongodb && npm run build && npm run fix-permissions');
  const full=raw('.github/workflows/build.yml'),job=name=>{const start=full.indexOf('\n  '+name+':\n');assert(start>0);return full.slice(start+1).split(/\n(?=  [a-z][a-z0-9-]*:)/)[0];};
  for(const [name,source]of [...['build','projection-mongodb','operator-lists-mongodb','action-source-journal'].map(name=>[name,job(name)]),...['.github/workflows/indexed-schema-finite.yml','.github/workflows/indexed-schema-native.yml','.github/workflows/atomic-managed.yml'].map(path=>[path,raw(path)])]){
   const install=source.indexOf('npm ci --allow-git=all');assert(install>=0,name+' must use normal root installation with lifecycle scripts');

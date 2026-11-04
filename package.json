@@ -8,7 +8,7 @@
     "typecheck": "bun check -p tsconfig.json",
     "build": "npm run build --prefix packages/backend-mongodb && tsc",
     "build:watch": "tsc --watch",
-    "postinstall": "npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false && npm run build && npm run fix-permissions",
+    "postinstall": "npm ci --prefix packages/backend-mongodb && npm run build && npm run fix-permissions",
     "fix-permissions": "node scripts/fix-permissions.cjs",
     "test": "bun test ./tests/unit",
     "test:indexed:finite": "node --test packages/backend-mongodb/tests/indexed-schema-model.test.mjs packages/backend-mongodb/tests/indexed-schema-effects.test.mjs packages/backend-mongodb/tests/indexed-schema-cursor.test.mjs packages/backend-mongodb/tests/indexed-schema-attachment.test.mjs packages/backend-mongodb/tests/indexed-schema-owner.test.mjs tests/unit/stateful-indexed-host-finite.mjs",

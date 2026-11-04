@@ -6,7 +6,7 @@
     "commit": "2f636372bd8fe82c86ebd46179cc96fbe9d81241",
     "tree": "36eff358421dc9f19c4112c5375144b2ba4e5e22"
   },
-  "baseAssemblySha256": "90d34fa0212f2a12a6e575e122ca2b78bf06e79546eed32b42c6843ea472df61",
+  "baseAssemblySha256": "20c0b81c9970db4429797ce5139969ea00363f4c48d2ce772a6cc4a41464c270",
   "dependenciesSha256": "0233aeceb915f1f71f6a894ae45662a273380f209b30d6917d89b366e6c1f71d",
   "sdkPackages": {
     "root": {
@@ -62,7 +62,7 @@
     {
       "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-assembly.json",
       "bytes": 192872,
-      "sha256": "7711f870e322ba2378db9a36d66905e66fd0a3f6a6fc6e5ca0b87c44db3681b3"
+      "sha256": "b2c0fc9c670bee2f5395a3f7622645ec6b82b697e15fd09a972d301391f5988b"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-assembly.mjs",
@@ -76,8 +76,8 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-ci.md",
-      "bytes": 3135,
-      "sha256": "6986dde86a38fa1973e388f351658a224c08200377db8fbc66d3c72284b15018"
+      "bytes": 3252,
+      "sha256": "949b3061fc9325bac414d9043217c565d3124ebf93dc07e7fe811a40ed05f04b"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-contract.mjs",
@@ -86,8 +86,8 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-contract.test.mjs",
-      "bytes": 16911,
-      "sha256": "883cad185e0035b53546470f4d3c596f57027bb9f792a5aca2839054c92bacae"
+      "bytes": 16872,
+      "sha256": "ec5660ca30aa002460a4b3cc1b48cdc1720810a48ae8f10d245fe0a41ad04afa"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-routing.json",

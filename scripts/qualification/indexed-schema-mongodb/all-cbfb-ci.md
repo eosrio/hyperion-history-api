@@ -6,7 +6,8 @@ The unchanged Atomic royalty-template declaration requires signed int64 membersh
 at the root SDK capture interface. Both npm scopes retain independently installed
 SDK modules. Normal root npm ci invokes postinstall, which installs native scoped
 dependencies from their own committed lock before the existing build; operators
-do not manage SDK scopes manually. CI qualifies that supported source-install
+do not manage SDK scopes manually. The child install inherits the caller's npm
+Git and lifecycle-script configuration without product policy overrides. CI qualifies that supported source-install
 topology without an extra post-root native install. Packed/default-distribution
 acceptance stays separate. Declarations cross the accepted receiving/recapture interface.
 Root capture, composition and final publication share the root authority instance.

@@ -38,8 +38,8 @@
       },
       {
         "path": "package.json",
-        "bytes": 3326,
-        "sha256": "43e4fe4ae60074d06f22c82d5fcbff63e9a4e30bdcd632bdd25b2bf3af3b3853"
+        "bytes": 3287,
+        "sha256": "dea55445210d72e97c044c0a2eca90ff7cd4b863a63bf107217a0ff59760f6f5"
       },
       {
         "path": "packages/backend-mongodb/ROYALTY-ENGINEERING.json",

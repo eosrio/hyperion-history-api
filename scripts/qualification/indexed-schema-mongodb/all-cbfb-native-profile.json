@@ -4,7 +4,7 @@
   "qualificationOnly": true,
   "base": "97edbdc56de9a2e54ff60769544e6e09a8d0a5aa",
   "assembly": "indexed-royalty-sdk-cbfb-native-cf514-engineering-v1",
-  "baseAssemblySha256": "90d34fa0212f2a12a6e575e122ca2b78bf06e79546eed32b42c6843ea472df61",
+  "baseAssemblySha256": "20c0b81c9970db4429797ce5139969ea00363f4c48d2ce772a6cc4a41464c270",
   "limits": {
     "readAttempts": 12,
     "responseRecords": 8,
@@ -299,7 +299,7 @@
     {
       "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-assembly.json",
       "bytes": 192872,
-      "sha256": "7711f870e322ba2378db9a36d66905e66fd0a3f6a6fc6e5ca0b87c44db3681b3"
+      "sha256": "b2c0fc9c670bee2f5395a3f7622645ec6b82b697e15fd09a972d301391f5988b"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-ci-source-check.mjs",
@@ -308,8 +308,8 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-ci.md",
-      "bytes": 3135,
-      "sha256": "6986dde86a38fa1973e388f351658a224c08200377db8fbc66d3c72284b15018"
+      "bytes": 3252,
+      "sha256": "949b3061fc9325bac414d9043217c565d3124ebf93dc07e7fe811a40ed05f04b"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-contract.mjs",
@@ -318,8 +318,8 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-contract.test.mjs",
-      "bytes": 16911,
-      "sha256": "883cad185e0035b53546470f4d3c596f57027bb9f792a5aca2839054c92bacae"
+      "bytes": 16872,
+      "sha256": "ec5660ca30aa002460a4b3cc1b48cdc1720810a48ae8f10d245fe0a41ad04afa"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-native-assembly.mjs",
@@ -729,7 +729,7 @@
     {
       "path": "tests/fixtures/engineering-profiles/all-cbfb-linux.json",
       "bytes": 13953,
-      "sha256": "69bfdf514564d6547e2bad1330dd3454b6b7c8acb162dafd1123a250a0124d8c"
+      "sha256": "3634d710e5dddb8aa2fa198ccc967826481ae599676ec80d6ec7739bedfbc32b"
     },
     {
       "path": "tests/fixtures/engineering-profiles/current-cbfb-linux.json",
@@ -849,7 +849,7 @@
     {
       "path": "tests/unit/all-cbfb-source-admission.mjs",
       "bytes": 7902,
-      "sha256": "ac22745f40d245786a8de19e484b1bde082bb0161d573c58a30493750673826d"
+      "sha256": "5703633e9bf6cc9fe0b563175c91a9f3e99dfb8e687ee42cefc9bdda0697672d"
     },
     {
       "path": "tests/unit/current-cbfb-source-admission-native.mjs",
@@ -5555,7 +5555,7 @@
     "observation": {
       "files": 133,
       "edges": 446,
-      "sha256": "cbc8fbb2bf5c371f9474f92316441a8a426c1f543227cc2f8f301b9b00504b8c"
+      "sha256": "2cfb994da8ffb2ac4c46bf8b6aa4c2ffdbcff8f7f95709f00ae922fe3b839e81"
     }
   },
   "provenance": {
