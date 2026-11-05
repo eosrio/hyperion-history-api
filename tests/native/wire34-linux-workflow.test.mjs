@@ -48,3 +48,18 @@ test('actual resource reader uses fresh proc and filesystem observations',()=>{
  const result=runInNewContext(source.slice(start,end)+'\nresourceSnapshot();',{assert,root:'/actual/cohort',readFileSync:path=>{reads.push(path);return 'MemTotal:       16777216 kB\nMemAvailable:    8388608 kB\n';},cpus:()=>Array(4),statfsSync:path=>{reads.push(path);return {bavail:2097152,bsize:4096};},process:{version:'v26.4.0',platform:'linux',arch:'x64',pid:123}});
  assert.deepEqual(reads,['/proc/meminfo','/actual/cohort']);assert.equal(result.memoryTotalBytes,16*1024**3);assert.equal(result.memoryAvailableBytes,8*1024**3);assert.equal(result.diskAvailableBytes,8*1024**3);assertCIResources(result,'before');
 });
+test('actual receipt writer closes after write/fsync failure and preserves every primary value',()=>{
+ const source=raw('scripts/qualification/wire34-cbfb/ci.mjs'),start=source.indexOf('function writeJSON('),end=source.indexOf('\nfunction runtime(',start);assert(start>=0&&end>start);
+ for(const point of ['write','fsync'])for(const primary of [new Error('first'),undefined,null,false,0,'']){
+  const calls=[],secondary=new Error('secondary close');let caught=false,observed;
+  const env={assert,Buffer,openSync:(_path,mode)=>{assert.equal(mode,'wx');calls.push('open');return 7;},writeSync:(fd,b)=>{assert.equal(fd,7);calls.push('write');if(point==='write')throw primary;return b.length;},fsyncSync:fd=>{assert.equal(fd,7);calls.push('fsync');throw primary;},closeSync:fd=>{assert.equal(fd,7);calls.push('close');throw secondary;},console:{error:()=>{calls.push('secondary-observed');throw new Error('diagnostic sink');}}};
+  try{runInNewContext(source.slice(start,end)+'\nwriteJSON("owned.json",{value:1});',env);}catch(error){caught=true;observed=error;}
+  assert(caught);assert.equal(observed,primary);assert.deepEqual(calls,point==='write'?['open','write','close','secondary-observed']:['open','write','fsync','close','secondary-observed']);
+ }
+});
+test('actual receipt writer reports close-only failure and confirms successful flush and closure',()=>{
+ const source=raw('scripts/qualification/wire34-cbfb/ci.mjs'),start=source.indexOf('function writeJSON('),end=source.indexOf('\nfunction runtime(',start);assert(start>=0&&end>start);
+ for(const closeFailure of [false,true]){const calls=[],secondary=new Error('close-only');const env={assert,Buffer,openSync:()=>{calls.push('open');return 7;},writeSync:(_fd,b)=>{calls.push('write');return b.length;},fsyncSync:()=>calls.push('fsync'),closeSync:()=>{calls.push('close');if(closeFailure)throw secondary;}};
+  const run=()=>runInNewContext(source.slice(start,end)+'\nwriteJSON("owned.json",{value:1});',env);if(closeFailure)assert.throws(run,error=>error===secondary);else run();assert.deepEqual(calls,['open','write','fsync','close']);
+ }
+});
