@@ -122,8 +122,9 @@ export default class StateReader extends HyperionWorker {
 
     constructor() {
         super();
-        if (this.isLiveReader && process.env.worker_last_processed_block) {
-            this.local_block_num = parseInt(process.env.worker_last_processed_block, 10) - 1;
+        const liveStart = process.env.worker_last_processed_block ?? process.env.worker_start_block;
+        if (this.isLiveReader && liveStart) {
+            this.local_block_num = parseInt(liveStart, 10) - 1;
             this.liveCheckpoint = new LiveReaderCheckpoint(this.local_block_num + 1, process.env.worker_last_processed_block_id,
                 this.conf.settings.reader_recovery_window_blocks);
         }
@@ -657,8 +658,9 @@ export default class StateReader extends HyperionWorker {
                 }
                 // live reader setup
                 case 'continuous_reader': {
-                    if (process.env.worker_last_processed_block) {
-                        this.requestBlocks(parseInt(process.env.worker_last_processed_block, 10));
+                    const liveStart = process.env.worker_last_processed_block ?? process.env.worker_start_block;
+                    if (liveStart) {
+                        this.requestBlocks(parseInt(liveStart, 10));
                     }
                     break;
                 }
