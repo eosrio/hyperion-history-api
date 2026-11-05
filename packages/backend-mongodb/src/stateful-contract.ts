@@ -136,6 +136,7 @@ export function assertStatefulHistory(d: StatefulDeclaration, policy: StatefulPo
     m: Pick<StatefulMetadata, 'floor' | 'floorReceipt' | 'undo' | 'receipts' | 'checkpoint'>): void {
     requireState(Array.isArray(m.receipts) && m.receipts.length <= policy.receiptRetention && Array.isArray(m.undo), 'Receipt/undo bound');
     let previous = m.floor; const ids = new Set<string>([previous.blockId]);
+    const undoById = new Map<string, StatefulUndo>();
     for (const u of m.undo as readonly StatefulUndo[]) {
         fields(u, undoFields);
         fields(u.block, blockFields); hex(u.block.blockId); hex(u.block.previousBlockId);
@@ -143,13 +144,14 @@ export function assertStatefulHistory(d: StatefulDeclaration, policy: StatefulPo
         requireState(u.block.blockNum === previous.blockNum + 1 && u.block.previousBlockId === previous.blockId && !ids.has(u.block.blockId) &&
             Number.isSafeInteger(u.count) && u.count >= 0 && u.count <= d.limits.mutations && Number.isSafeInteger(u.imageBytes) && u.imageBytes >= 0 &&
             retainedBytes([u]) <= policy.maxBlockBytes && (u.count === 0 ? u.imageBytes === 0 : u.imageBytes > 0), 'Undo branch/count/byte identity differs');
-        previous = u.block; ids.add(previous.blockId);
+        previous = u.block; ids.add(previous.blockId); undoById.set(previous.blockId, u);
     }
     requireState(equalPoint(previous, m.checkpoint), 'Undo branch does not end at progress');
     let height = 0; const receiptIds = new Set<string>();
     for (const r of m.receipts) {
         receipt(r); requireState(r.blockNum > height && r.blockNum <= m.checkpoint.blockNum && !receiptIds.has(r.blockId), 'Retained receipt order differs');
-        const retained = m.undo.find(u => equalPoint(u.block, r)) ?? (m.floorReceipt && equalPoint(m.floorReceipt, r) ? m.floorReceipt : null);
+        const indexed = undoById.get(r.blockId);
+        const retained = (indexed && equalPoint(indexed.block, r) ? indexed : null) ?? (m.floorReceipt && equalPoint(m.floorReceipt, r) ? m.floorReceipt : null);
         requireState(r.blockNum < m.floor.blockNum || retained !== null, 'Receipt is not on the retained branch');
         requireState(!ids.has(r.blockId) || retained !== null, 'Receipt block identity conflicts with retained branch');
         if (retained) requireState(('digest' in retained ? retained.digest : retained.candidateDigest) === r.candidateDigest && retained.sourceDigest === r.sourceDigest, 'Receipt and undo disagree');

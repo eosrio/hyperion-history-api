@@ -424,6 +424,7 @@ export class HyperionMaster {
 
     initHandlerMap() {
         this.msgHandlerMap = {
+            reader_pressure_ready: (worker: Worker) => { this.syncReaderPressure(worker); },
             protocol_abi_coordinator_request: async (worker: Worker, msg: WorkerMessage) => {
                 await this.handleProtocolAbiCoordinatorRequest(worker, msg);
             },
@@ -1351,7 +1352,8 @@ export class HyperionMaster {
             // live block reader
             this.liveReader = this.addWorker({
                 worker_role: 'continuous_reader',
-                worker_last_processed_block: _head,
+                // A request seed is not a confirmed publication checkpoint.
+                worker_start_block: _head,
                 ws_router: '',
                 validated_ship_servers: JSON.stringify(this.validatedShipServers)
             });
@@ -1453,7 +1455,8 @@ export class HyperionMaster {
         let launchedCount = 0;
         this.workerMap.forEach((wrk: HyperionWorkerDef) => {
             if (!wrk.wref && wrk.worker_id && !wrk.reader_incomplete) {
-                const worker = cluster.fork(wrk);
+                const reader = wrk.worker_role === 'reader' || wrk.worker_role === 'continuous_reader';
+                const worker = cluster.fork(reader ? {...wrk, reader_pressure_sync: 'true'} : wrk);
                 wrk.wref = worker;
                 worker.id = wrk.worker_id;
                 if (wrk.worker_role && ['deserializer', 'ds_pool_worker', 'projection'].includes(wrk.worker_role))
@@ -1582,6 +1585,22 @@ export class HyperionMaster {
                 this.globalUsageMap[code][2] = propWorkerMap[code];
             }
         }
+    }
+
+    getReaderPressureSnapshot() {
+        return this.queueMonitor.getPressureSnapshot();
+    }
+
+    /** A newly forked reader stays closed until its current pressure state arrives. */
+    syncReaderPressure(worker: Worker): void {
+        const definition = this.workerMap.find(value => value.wref === worker);
+        const role = definition?.worker_role;
+        if (role !== 'reader' && role !== 'continuous_reader') return;
+        try {
+            worker.send({event: 'reader_pressure_state', paused: this.queueMonitor.isReaderPaused(role)}, error => {
+                if (error) hLog('Reader pressure synchronization failed:', error);
+            });
+        } catch (error) { hLog('Reader pressure synchronization failed:', error); }
     }
 
     sendToRole(role: string, payload: any) {

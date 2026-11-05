@@ -32,8 +32,8 @@
       },
       {
         "path": ".github/workflows/build.yml",
-        "bytes": 28896,
-        "sha256": "96e68cae186e4501f2cd7a6596fa59e61e5efd8a3677c036ef4700f5c240a1b2"
+        "bytes": 29522,
+        "sha256": "e786da00011adf317a05fe6288da0da959b5be66468be6fbb3506933e37cfccc"
       },
       {
         "path": ".github/workflows/indexed-schema-finite.yml",
@@ -282,8 +282,8 @@
       },
       {
         "path": "packages/backend-mongodb/src/stateful-contract.ts",
-        "bytes": 14139,
-        "sha256": "9b1850450a2514460253e57aedc47da6ec474cc8d32833756795f202b7369c28"
+        "bytes": 14295,
+        "sha256": "cdede2683331c9395b9bbcd17da0e99924fd20e798bce696d3af219600fc6020"
       },
       {
         "path": "packages/backend-mongodb/src/stateful-effects.ts",
@@ -489,6 +489,11 @@
         "path": "packages/backend-mongodb/tests/stateful-fixture.mjs",
         "bytes": 6351,
         "sha256": "d82d31367bb45eba7a92d1c8bb2161ed27326d97f84df5fa39255926b002a68e"
+      },
+      {
+        "path": "packages/backend-mongodb/tests/stateful-history-lookup.test.mjs",
+        "bytes": 2529,
+        "sha256": "f028941b6822c2f1cdfa4e71052be2eb4c3252120f944988c8d65e51ae29262c"
       },
       {
         "path": "packages/backend-mongodb/tests/stateful-metadata-validation.test.mjs",
@@ -1162,8 +1167,8 @@
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.json",
-        "bytes": 192940,
-        "sha256": "e881b6ad21002cea078c96263b1abc1707c80be4263f61152c0c344926190f33"
+        "bytes": 192941,
+        "sha256": "780d004e7df79713d6ba84ce4d1a7b2cf89ead85f1fc65dcedb327602382ed49"
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.mjs",
@@ -1213,12 +1218,12 @@
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-profile.json",
         "bytes": 213027,
-        "sha256": "d09c7c00b1cc515b64590bab5d489bce181e051d0f35ec095a46657d6ac6b1e7"
+        "sha256": "2a7dfed35a5da890a93eedef963c89dbdbfc2aea7c3c1e03fb2e6e0fff36e588"
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-routes.json",
         "bytes": 11094,
-        "sha256": "1928df437745ac7e9bc8d1042680c3f0aed5b6c9a4d524f63eeb6289677d955c"
+        "sha256": "d66409e5c916672c2dcdeb795b536858da71609bdc82a157e1a593467c63846d"
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-runner.mjs",
@@ -1772,8 +1777,8 @@
       },
       {
         "path": "scripts/qualification/wire34-cbfb/build-parent-routing.json",
-        "bytes": 79409,
-        "sha256": "0377e1af260d7dcc98b04866491753ee6ca5eb98dfda172e25822dba1e4be5e8"
+        "bytes": 80256,
+        "sha256": "67ed4f8dcd3d3d82ab143d05ddd101299b3b5f186528a0d3aa5ec0c6190d8c78"
       },
       {
         "path": "scripts/qualification/wire34-cbfb/ci-child.mjs",
@@ -2082,13 +2087,13 @@
       },
       {
         "path": "src/api/routes/v1-trace/get_block/get_block.ts",
-        "bytes": 4877,
-        "sha256": "91bad12ec1a9318ba7c1b7070d569d7e1432ee0ec5d61d80c3ebbd8a64a768cf"
+        "bytes": 5290,
+        "sha256": "268ea72f0a18469139c080fa8924c2cbf489f2d3f05a17e51b6e58bd0d6a7e4f"
       },
       {
         "path": "src/api/routes/v1-trace/get_block/index.ts",
-        "bytes": 2636,
-        "sha256": "fe732977870380b851d6d5e693d198d2f71f1fbcef6a79a9cce620a11d249ed1"
+        "bytes": 2676,
+        "sha256": "b53c9721a27c55a02e639ddb195b522924c9a93203fc5c77945dfc013c1aaf42"
       },
       {
         "path": "src/api/routes/v2-history/check_transaction/check_transaction.ts",
@@ -2387,8 +2392,8 @@
       },
       {
         "path": "src/api/routes/v2/explorer_metadata/explorer_metadata.ts",
-        "bytes": 1021,
-        "sha256": "08e1ce15a10e07ef25b4db005aba687bf7a385aba2844e307e15ee7118d24fc4"
+        "bytes": 1153,
+        "sha256": "299d5aa5d6a149fdd79acfc7e766c6ccdb2ab6059200f29bc3ee7b55af64214a"
       },
       {
         "path": "src/api/routes/v2/explorer_metadata/index.ts",
@@ -2592,8 +2597,8 @@
       },
       {
         "path": "src/indexer/connections/amqp.ts",
-        "bytes": 3773,
-        "sha256": "d26e8e7ede956c3f448131a313891909315bf2cd71953913f5864f66d6093606"
+        "bytes": 3735,
+        "sha256": "9abdd21786ee00bed927b04f0c906faa609f3316cffb6862e99c6657f42c5f49"
       },
       {
         "path": "src/indexer/connections/manager.class.ts",
@@ -2882,8 +2887,8 @@
       },
       {
         "path": "src/indexer/modules/controller.ts",
-        "bytes": 24114,
-        "sha256": "85e5a77da104cc3e32f5817cd5c29493db5f3afd888a6a418ff04e614bd713ce"
+        "bytes": 24188,
+        "sha256": "efbfc702ba8df17ddc13efb7d7a1f919860676b7120d9c16f8e4b8bcd8956324"
       },
       {
         "path": "src/indexer/modules/custom/dsp-parser.ts",
@@ -2907,8 +2912,8 @@
       },
       {
         "path": "src/indexer/modules/master.ts",
-        "bytes": 116173,
-        "sha256": "05486c60484f6b09d67ab2080d1eb316feea7acd569dacb1e73446c67cc16946"
+        "bytes": 117238,
+        "sha256": "9c5d66d86fc5e23105e329df8ae5f66e8f9075ffc6f9f040a442f28f6e028481"
       },
       {
         "path": "src/indexer/modules/parsers/3.2-parser.ts",
@@ -2922,8 +2927,8 @@
       },
       {
         "path": "src/indexer/modules/queueMonitor.ts",
-        "bytes": 6286,
-        "sha256": "631346561496175f28ae18204e5072127578642fd8ab67faeacfcec3a7120728"
+        "bytes": 8150,
+        "sha256": "e49917bd8052ec89da62fadb4492ac247eb1dd2bb032795f8df00a2457101458"
       },
       {
         "path": "src/indexer/modules/telegram.ts",
@@ -3157,8 +3162,8 @@
       },
       {
         "path": "src/indexer/workers/deserializer.ts",
-        "bytes": 138091,
-        "sha256": "c3dcd08732892598183dcd0c22418483a56430eee0a35669fdc6e4e63fc698ab"
+        "bytes": 138324,
+        "sha256": "033ed7a3dc5f7541878d9048155b75ac247c5db3d61a1d18409d7468e3759a8b"
       },
       {
         "path": "src/indexer/workers/ds-pool.ts",
@@ -3182,8 +3187,8 @@
       },
       {
         "path": "src/indexer/workers/state-reader.ts",
-        "bytes": 81299,
-        "sha256": "4e9d0b83bc035fb929445fb0ac0a8d195a1ad935d79781350c2312fed051f1cc"
+        "bytes": 82943,
+        "sha256": "ad766908cc005188605435c477aab4a3293d71daa008516fce0542552f2734c8"
       },
       {
         "path": "src/indexer/workers/ws-router.ts",
@@ -3227,8 +3232,8 @@
       },
       {
         "path": "src/interfaces/hyperionWorkerDef.ts",
-        "bytes": 1272,
-        "sha256": "747da2a4def7c5755a44092d7bbf65551c6f77372afa1bccd9a4d84b468e53e9"
+        "bytes": 1388,
+        "sha256": "b10df670ea337cc744c418108b9ce77330119f48f2d7499eef526d634fb78d12"
       },
       {
         "path": "src/interfaces/signed-block.ts",
@@ -3956,6 +3961,11 @@
         "sha256": "b4d969f03a36d8a8ccd0257155caa63b906888e57466696f95fb83152e52887c"
       },
       {
+        "path": "tests/native/explorer-system-contract.test.mjs",
+        "bytes": 2677,
+        "sha256": "07af3926a45d294bd0b837fcb063916d420c30813b11e3de9d87436c7038fb19"
+      },
+      {
         "path": "tests/native/fastify-compatibility.test.mjs",
         "bytes": 8121,
         "sha256": "c32f382f50072797cf535da4a577cf37d68b792a9626f7240c47e8e6d1854e88"
@@ -3969,6 +3979,11 @@
         "path": "tests/native/fixtures/stream-config.json",
         "bytes": 60,
         "sha256": "89d8204e2423f528e55fb880aa18f04f205cf47dfa08b1c6aa36bec02400b3a2"
+      },
+      {
+        "path": "tests/native/live-reader-startup-checkpoint.test.mjs",
+        "bytes": 9492,
+        "sha256": "89d6fe1e3c69dc437cc346aa3ad057bec27efd452395e0098a1b5166d36f83b2"
       },
       {
         "path": "tests/native/native-stream-credits.test.mjs",
@@ -4019,6 +4034,21 @@
         "path": "tests/native/protocol-staged-bundle-read.test.mjs",
         "bytes": 18394,
         "sha256": "c3d565fc44a116f98862d78f9c83a7db3eab7e0870e18e176a4324258daf41fe"
+      },
+      {
+        "path": "tests/native/reader-input-pressure.test.mjs",
+        "bytes": 9513,
+        "sha256": "2fb8440ae02a038ea287f527465f1b2f199493fa0db8f6f7774c0b852a9e7ce1"
+      },
+      {
+        "path": "tests/native/reader-pressure-observability.test.mjs",
+        "bytes": 5673,
+        "sha256": "ab3b0dc458a48fb058406916e6d7a04ac0a255ad67fa33a819d75e0e9fd9605f"
+      },
+      {
+        "path": "tests/native/reader-startup-pressure.test.mjs",
+        "bytes": 5406,
+        "sha256": "d76bbce552612f4bc430677eff6d692f5ed39ddc9fcedf4f0844458b1804f875"
       },
       {
         "path": "tests/native/retained-workload-progress.mjs",
@@ -4079,6 +4109,11 @@
         "path": "tests/native/stream-request-lifecycle.test.mjs",
         "bytes": 18462,
         "sha256": "9576562a6fef790186fd78840f5e6d616d5463d4eacf7cb9fe194cb6d187e80f"
+      },
+      {
+        "path": "tests/native/trace-opaque-serialization.test.mjs",
+        "bytes": 3946,
+        "sha256": "8ffeb64e2e791c74efdb7748e0411425cc0d1bbc085eac55bbc6cb93d0ba5791"
       },
       {
         "path": "tests/native/wire34-cbfb-caller-routing.test.mjs",
@@ -4494,6 +4529,21 @@
         "path": "tests/unit/current-stateful-engineering-source-admission.mjs",
         "bytes": 9218,
         "sha256": "4e47b6dfab9eb7d8d7b80c64cecd3989abcc44860c555cbdafc42bb899729172"
+      },
+      {
+        "path": "tests/unit/deserializer-late-delivery-fixture.ts",
+        "bytes": 4713,
+        "sha256": "ba52da61b92a6d003c42b78e816e0722248d88de3d58caef8109e6c9301ee865"
+      },
+      {
+        "path": "tests/unit/deserializer-queue-fixture.ts",
+        "bytes": 4569,
+        "sha256": "b7ff77935e04fcb8c31da49b1dd2a9297da0d8230a9c88e52ea3c01a245cc635"
+      },
+      {
+        "path": "tests/unit/deserializer-queue.test.ts",
+        "bytes": 2969,
+        "sha256": "4f466170375f419fef9a640be23ae870cdc8d29bf34b8b6b6bd608a528a7be3b"
       },
       {
         "path": "tests/unit/elastic-bulk-ack.test.ts",
@@ -5377,13 +5427,13 @@
       },
       {
         "path": "tests/unit/state-reader-live-backpressure.mjs",
-        "bytes": 36418,
-        "sha256": "7bd8bb9e0f673142e80d253873cdcfaddfe3bbdb2b67d92dad31a0e933f152ae"
+        "bytes": 40208,
+        "sha256": "7bdb5b0f9e6ecd2a048afe14e6af8d25c88d49c03723bdf3bbe4b95622957e4d"
       },
       {
         "path": "tests/unit/state-reader-live-backpressure.test.ts",
-        "bytes": 1796,
-        "sha256": "e1e04013eb4378e7b1613003a87331865fbd8d888439c986d0491c32fddb1838"
+        "bytes": 1845,
+        "sha256": "0e28a34b52be9ed4fe516eaaa759ab856602d15e5e5cfe66e5a3d48c4d64c4bc"
       },
       {
         "path": "tests/unit/stateful-abi-epoch.test.ts",
@@ -5474,6 +5524,11 @@
         "path": "tests/unit/storage-held-owner.mjs",
         "bytes": 7987,
         "sha256": "25f48bd7e19cb778f9568780fcc309b24ee68b5a9853862122a4d1aaf4079914"
+      },
+      {
+        "path": "tests/unit/trace-indexed-miss.test.ts",
+        "bytes": 4593,
+        "sha256": "b1828f6f1c41549b3b6cd8f42209293399dc1284dd8ab3a7ebd8d50006505dd1"
       },
       {
         "path": "tests/unit/uint64.test.ts",
@@ -5696,7 +5751,7 @@
         "sha256": "1945027163c553cd08421dd1f8caa08fab025c44279883ed9e6c3dec0e8c6408"
       }
     ],
-    "totalBytes": 15985561,
+    "totalBytes": 16052653,
     "trackedPaths": [
       ".bun-version",
       ".gitattributes",
@@ -5979,6 +6034,7 @@
       "packages/backend-mongodb/tests/stateful-complete-kind.test.mjs",
       "packages/backend-mongodb/tests/stateful-fields.test.mjs",
       "packages/backend-mongodb/tests/stateful-fixture.mjs",
+      "packages/backend-mongodb/tests/stateful-history-lookup.test.mjs",
       "packages/backend-mongodb/tests/stateful-metadata-validation.test.mjs",
       "packages/backend-mongodb/tests/stateful-owner-v2-fixture.mjs",
       "packages/backend-mongodb/tests/stateful-owner-v2.test.mjs",
@@ -6674,9 +6730,11 @@
       "tests/native/current-cbfb-codec-profile.test.mjs",
       "tests/native/current-cbfb-source-tamper.test.mjs",
       "tests/native/current-stateful-source-profile.test.mjs",
+      "tests/native/explorer-system-contract.test.mjs",
       "tests/native/fastify-compatibility.test.mjs",
       "tests/native/fixtures/router-env/config/connections.json",
       "tests/native/fixtures/stream-config.json",
+      "tests/native/live-reader-startup-checkpoint.test.mjs",
       "tests/native/native-stream-credits.test.mjs",
       "tests/native/native-stream-json.test.mjs",
       "tests/native/pinned-git-source.test.mjs",
@@ -6687,6 +6745,9 @@
       "tests/native/protocol-index-metadata.test.mjs",
       "tests/native/protocol-staged-bundle-range.mjs",
       "tests/native/protocol-staged-bundle-read.test.mjs",
+      "tests/native/reader-input-pressure.test.mjs",
+      "tests/native/reader-pressure-observability.test.mjs",
+      "tests/native/reader-startup-pressure.test.mjs",
       "tests/native/retained-workload-progress.mjs",
       "tests/native/retained-workload-progress.test.mjs",
       "tests/native/retained-workload-test.mjs",
@@ -6699,6 +6760,7 @@
       "tests/native/stream-filter-parity.test.mjs",
       "tests/native/stream-history-delivery.test.mjs",
       "tests/native/stream-request-lifecycle.test.mjs",
+      "tests/native/trace-opaque-serialization.test.mjs",
       "tests/native/wire34-cbfb-caller-routing.test.mjs",
       "tests/native/wire34-cbfb-codec-profile.test.mjs",
       "tests/native/wire34-cbfb-current-stateful-source-profile.test.mjs",
@@ -6782,6 +6844,9 @@
       "tests/unit/current-cbfb-source-admission-native.mjs",
       "tests/unit/current-cbfb-source-admission.mjs",
       "tests/unit/current-stateful-engineering-source-admission.mjs",
+      "tests/unit/deserializer-late-delivery-fixture.ts",
+      "tests/unit/deserializer-queue-fixture.ts",
+      "tests/unit/deserializer-queue.test.ts",
       "tests/unit/elastic-bulk-ack.test.ts",
       "tests/unit/elastic-settlement-recovery.test.ts",
       "tests/unit/es-ingest-targets.test.ts",
@@ -6978,6 +7043,7 @@
       "tests/unit/stateful-metadata-fields-source-admission-native.mjs",
       "tests/unit/stateful-old-native-sdk-metadata-refusal.mjs",
       "tests/unit/storage-held-owner.mjs",
+      "tests/unit/trace-indexed-miss.test.ts",
       "tests/unit/uint64.test.ts",
       "tests/unit/wire-backlog-capture.test.mjs",
       "tests/unit/wire-backlog-native.test.ts",
@@ -8432,23 +8498,23 @@
       },
       {
         "path": "api/routes/v1-trace/get_block/get_block.js",
-        "bytes": 4554,
-        "sha256": "6211ff00f59ffd32f8a8adb3f42d9df18dc51e1842f7846d0c4b15cf46b191d0"
+        "bytes": 4943,
+        "sha256": "f08b3f3f30a341f5bf2fd54263f461c291ccb08e91122de8c534a565882e502c"
       },
       {
         "path": "api/routes/v1-trace/get_block/get_block.js.map",
-        "bytes": 3986,
-        "sha256": "176f9b698faf3e0fab120a72a21f60e14e4ce0984452f7b4adf86a904e641d7d"
+        "bytes": 4270,
+        "sha256": "d809abb0a52c561a2b97fbf2d82b9cfe2d8fd1f5a78703ae9ce3e2ea9447ab57"
       },
       {
         "path": "api/routes/v1-trace/get_block/index.js",
-        "bytes": 2587,
-        "sha256": "ebb1b7c4fee42634aa314ba1b4872dbc4d085b1caecb6d39f0e76c4dbe1e0520"
+        "bytes": 2627,
+        "sha256": "45da44bcfb12bb4d821dfce038d2afab0627419c9364a4cba8b2a385f9ecfe4c"
       },
       {
         "path": "api/routes/v1-trace/get_block/index.js.map",
-        "bytes": 1642,
-        "sha256": "515e1dc78626ab8682756cd6eea806cb76fb2c5c1027411b5985e839cc77f630"
+        "bytes": 1654,
+        "sha256": "48625e662dad80a4bcfcfa3c5c9983e7c55f1e57c2df85818c14a4e059a73260"
       },
       {
         "path": "api/routes/v2/explorer_logo/explorer_logo.js",
@@ -8472,13 +8538,13 @@
       },
       {
         "path": "api/routes/v2/explorer_metadata/explorer_metadata.js",
-        "bytes": 921,
-        "sha256": "48c47f96bb5242daa5b48a8c191fa4bb8a2fbb8b88270c4ed0a4da2fdbdb4ee9"
+        "bytes": 1053,
+        "sha256": "e3b7f48b2e0b5aa2e1d6202619557ea582378c2063bab9519177809cd1188b3a"
       },
       {
         "path": "api/routes/v2/explorer_metadata/explorer_metadata.js.map",
-        "bytes": 1042,
-        "sha256": "6beab2d23e51d58fffc3837f6b17ee37f6772923c14ecb18e40a8d748db6ebf2"
+        "bytes": 1163,
+        "sha256": "4139cfd2199e1d7ccf9cbd3b10923ca47506da9310708b2f95dab64cf0896c11"
       },
       {
         "path": "api/routes/v2/explorer_metadata/index.js",
@@ -9372,13 +9438,13 @@
       },
       {
         "path": "indexer/connections/amqp.js",
-        "bytes": 3454,
-        "sha256": "2b66b8793217583aa6fcb6377bbacc1e56addbc2d25c2c4dd769323f38b37d6a"
+        "bytes": 3431,
+        "sha256": "039bbbcdda7b4de687c44e1f826af8bc6248777966e1473540278da470982db1"
       },
       {
         "path": "indexer/connections/amqp.js.map",
-        "bytes": 3303,
-        "sha256": "e3483462889b81e8ccaba7d9d736d531b0c15a8c11be50c3cc18a8082f2abc93"
+        "bytes": 3392,
+        "sha256": "eee59cc9e06bdd00ad561aba01eed740d3249736b83e06fc57f008b8dc6c8cc4"
       },
       {
         "path": "indexer/connections/manager.class.js",
@@ -9932,13 +9998,13 @@
       },
       {
         "path": "indexer/modules/controller.js",
-        "bytes": 22874,
-        "sha256": "ae660d1b0a6805a0e26700cfab315f5cd09558a73a006a817598830a21ed8a38"
+        "bytes": 22948,
+        "sha256": "c6fa09573d01cda9957d3c5e40c51db095a776ed5d2689b2ca73766477e1eeb8"
       },
       {
         "path": "indexer/modules/controller.js.map",
-        "bytes": 15495,
-        "sha256": "5c75650eb94251e03973ea8ce014d8f04910ae2e68c590e08d344d017bf62332"
+        "bytes": 15544,
+        "sha256": "f290c92ae62c05f23503755ccf4c62c4649694d202da7734259d59df040dbae5"
       },
       {
         "path": "indexer/modules/custom/dsp-parser.js",
@@ -9982,13 +10048,13 @@
       },
       {
         "path": "indexer/modules/master.js",
-        "bytes": 111114,
-        "sha256": "a961eb3659b69f3e982da01e3cad126ea07f5cd9f41b2551fb3e6fd8c569b89f"
+        "bytes": 112219,
+        "sha256": "7d8a1d9a6bf3845274ae2f2c57a1b2323b51a0c2897fd03159bb10eeb7f0f456"
       },
       {
         "path": "indexer/modules/master.js.map",
-        "bytes": 91374,
-        "sha256": "6097704832198a3b901eee467f1e8f863707cda87fbec3a76e7c2b7c4c33198f"
+        "bytes": 92272,
+        "sha256": "b7b42403855b1f4388063e6effc5b59b4c8f1902e3c81bec4e34663883e738bc"
       },
       {
         "path": "indexer/modules/parsers/3.2-parser.js",
@@ -10012,13 +10078,13 @@
       },
       {
         "path": "indexer/modules/queueMonitor.js",
-        "bytes": 5913,
-        "sha256": "788bef2a09d30e05fac26da5f6ea7104152feac7204a5fba9cd344c1d1006627"
+        "bytes": 7248,
+        "sha256": "ca92f14c720644754df5471098cfdcd300aa75395cb18f70a233f7e5d64938a8"
       },
       {
         "path": "indexer/modules/queueMonitor.js.map",
-        "bytes": 4166,
-        "sha256": "f18d5c8f3afa32fc20aeef47666524ed0b2b41a89e92e78b23094e14f0633f57"
+        "bytes": 7594,
+        "sha256": "ad00907f36f91f8e3394bb9fe5d21636bb9be90e2dd8e1562b0f4d6e539193d4"
       },
       {
         "path": "indexer/modules/telegram.js",
@@ -10482,13 +10548,13 @@
       },
       {
         "path": "indexer/workers/deserializer.js",
-        "bytes": 135535,
-        "sha256": "282f70a883655b10ee51e327e388d871f6f06e69cba6f8f0e9485e30e51c5021"
+        "bytes": 135768,
+        "sha256": "3170c0f365fd46c572126e62fa599d912c3afb455de8e16221d3cdd7983ab6bb"
       },
       {
         "path": "indexer/workers/deserializer.js.map",
-        "bytes": 106834,
-        "sha256": "6adb8f26cdae160c2dc62dda6a9dd8f7dd787dcf1ec1e780a151d3762abf9a8a"
+        "bytes": 106880,
+        "sha256": "3b46a4cb744e67bc6a9938fd4f918b5eba510ecaf15fd7fe7516a6a90caa9861"
       },
       {
         "path": "indexer/workers/ds-pool.js",
@@ -10532,13 +10598,13 @@
       },
       {
         "path": "indexer/workers/state-reader.js",
-        "bytes": 79518,
-        "sha256": "e4027d2deb68379e03822465f2535acb729c23ff538d608de16059ba1c242c84"
+        "bytes": 81285,
+        "sha256": "1997bdafa42f0396a9f7edb94c9e0ecb1ed452272876364259c76f7f53589d27"
       },
       {
         "path": "indexer/workers/state-reader.js.map",
-        "bytes": 61644,
-        "sha256": "6ebbdd1be58265045d94405013c1c25c133d419842a62c0c694549fd7b51e1dc"
+        "bytes": 63026,
+        "sha256": "db36beb42090f6c7e79c3523178b0ba98492b126e5d9450e8fecb09d10438f95"
       },
       {
         "path": "indexer/workers/ws-router.js",
@@ -10849,13 +10915,13 @@
       },
       {
         "path": "stateful-contract.js",
-        "bytes": 11733,
-        "sha256": "ca2673c667abcba648b48101f89efae5a30141b7e7f9cb91987df924dd2a66fc"
+        "bytes": 11875,
+        "sha256": "28c0b8a198f8276467d6687ccad4e58c5f3828b421c0e04dc599d8a3216b4dab"
       },
       {
         "path": "stateful-contract.js.map",
-        "bytes": 13606,
-        "sha256": "834eaa836f4d042b50d9ab1eff3cb63b6df8f4275759651f84c4056e18d63d11"
+        "bytes": 13779,
+        "sha256": "df4910dde1bbcc45501747793524b247708c962b950afab865407e644e6c7e1e"
       },
       {
         "path": "stateful-effects.d.ts",

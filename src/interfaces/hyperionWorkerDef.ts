@@ -7,6 +7,8 @@ export interface HyperionWorkerDef {
     worker_queue?: string;
     queue?: string;
     local_id?: number;
+    /** Initial live request position, before any broker-confirmed publication. */
+    worker_start_block?: number;
     worker_last_processed_block?: number;
     worker_last_processed_block_id?: string;
     reader_assignment?: string;

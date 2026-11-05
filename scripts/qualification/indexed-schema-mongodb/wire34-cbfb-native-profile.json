@@ -4,7 +4,7 @@
   "qualificationOnly": true,
   "base": "97edbdc56de9a2e54ff60769544e6e09a8d0a5aa",
   "assembly": "indexed-royalty-sdk-cbfb-native-cf514-engineering-v1",
-  "baseAssemblySha256": "6f4f858d1c26be65e0cd6d8f19b72f2e943fc7cdedbd88864dcfeff9c9b04d3f",
+  "baseAssemblySha256": "3091c112f0535ff1be7ab4ec89422d228dd76cab483588c6f7132c4c9dfc9c68",
   "limits": {
     "readAttempts": 12,
     "responseRecords": 8,
@@ -53,8 +53,8 @@
     },
     {
       "path": ".github/workflows/build.yml",
-      "bytes": 28896,
-      "sha256": "96e68cae186e4501f2cd7a6596fa59e61e5efd8a3677c036ef4700f5c240a1b2"
+      "bytes": 29522,
+      "sha256": "e786da00011adf317a05fe6288da0da959b5be66468be6fbb3506933e37cfccc"
     },
     {
       "path": ".github/workflows/indexed-schema-finite.yml",
@@ -118,8 +118,8 @@
     },
     {
       "path": "packages/backend-mongodb/dist/stateful-contract.js",
-      "bytes": 11733,
-      "sha256": "ca2673c667abcba648b48101f89efae5a30141b7e7f9cb91987df924dd2a66fc"
+      "bytes": 11875,
+      "sha256": "28c0b8a198f8276467d6687ccad4e58c5f3828b421c0e04dc599d8a3216b4dab"
     },
     {
       "path": "packages/backend-mongodb/dist/stateful-effects.js",
@@ -563,8 +563,8 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.json",
-      "bytes": 192940,
-      "sha256": "e881b6ad21002cea078c96263b1abc1707c80be4263f61152c0c344926190f33"
+      "bytes": 192941,
+      "sha256": "780d004e7df79713d6ba84ce4d1a7b2cf89ead85f1fc65dcedb327602382ed49"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.mjs",
@@ -604,7 +604,7 @@
     {
       "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-routes.json",
       "bytes": 11094,
-      "sha256": "1928df437745ac7e9bc8d1042680c3f0aed5b6c9a4d524f63eeb6289677d955c"
+      "sha256": "d66409e5c916672c2dcdeb795b536858da71609bdc82a157e1a593467c63846d"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-runner.mjs",
@@ -5656,7 +5656,7 @@
     "observation": {
       "files": 147,
       "edges": 496,
-      "sha256": "0a1ccb5249744a09c6b1981c02a350bf225c5bc627aa5587738388122915eb4d"
+      "sha256": "bd53eca83cd5bb6913b58f5cd4d57d21d442e8d49f211e0a0e2b48bc72f60294"
     }
   },
   "provenance": {

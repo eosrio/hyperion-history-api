@@ -87,9 +87,10 @@ export async function checkQueueSize(q_name: string, config: AmqpConfig) {
         const headers = new Headers();
         const auth = Buffer.from(opts.username + ":" + opts.password).toString('base64')
         headers.set('Authorization', 'Basic ' + auth);
-        const data = await (await fetch(apiUrl, {
-            headers
-        })).json() as any;
+        // One deadline covers both connection and response-body consumption.
+        const response = await fetch(apiUrl, {headers, signal: AbortSignal.timeout(5000)});
+        if (!response.ok) throw new Error(`Queue management returned HTTP ${response.status}`);
+        const data = await response.json() as any;
 
         // GOT
         // const data = await got.get(apiUrl, opts).json() as any;
@@ -99,14 +100,6 @@ export async function checkQueueSize(q_name: string, config: AmqpConfig) {
 
         hLog(`[WARNING] Checking queue size failed! - ${e.message}`);
 
-        // if (e.response && e.response.body) {
-        //     if (e instanceof HTTPError) {
-        //         hLog(e.response.body);
-        //     } else {
-        //         hLog(JSON.stringify(e.response.body, null, 2));
-        //     }
-        // }
-
-        return 0;
+        throw e;
     }
 }
