@@ -1469,11 +1469,14 @@ export default class DSPoolWorker extends HyperionWorker {
                         data: this.contractUsage,
                         total_hits: this.totalHits
                     });
-                    // hLog(`${this.local_queue} ->> ${this.actionDsCounter} actions`);
+                }
+                if (this.totalHits > 0 || this.actionDsCounter > 0) {
                     process.send?.({
                         event: 'ds_report',
                         actions: this.actionDsCounter
                     });
+                }
+                if (this.totalHits > 0 || this.actionDsCounter > 0) {
                     this.noActionCounter = 0;
                 } else {
                     if (!this.conf.indexer.abi_scan_mode && !this.conf.indexer.live_reader) {
