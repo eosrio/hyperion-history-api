@@ -1,6 +1,7 @@
 import {describe,expect,it} from 'bun:test';
 import {createHash} from 'node:crypto';
 import type {ProtocolAbiActionInput,ProtocolAbiDeploymentObservation,ProtocolAbiFinalStateObservation} from '@eosrio/hyperion-sdk/protocol';
+import {ProtocolSourceEquivalence} from '../../src/indexer/protocol/source-equivalence.js';
 import {ProtocolAbiCoordinator} from '../../src/indexer/protocol/abi-coordinator.js';
 import {ProtocolAbiFrontierStore} from '../../src/indexer/protocol/abi-frontier-store.js';
 import {ProtocolAbiObservationStore,protocolAbiCaptureDigest,type ProtocolAbiObservationRecord} from '../../src/indexer/protocol/abi-observation-store.js';
@@ -58,6 +59,33 @@ it('constructed repeated same-block setabi retains exact reader-issued epochs be
     expect(statefulAbiEpoch(first).abiSha256).toBe(statefulAbiEpoch(second).abiSha256);
     expect(statefulAbiEpoch(first).id).not.toBe(statefulAbiEpoch(second).id);
     await reader.revalidate(view);
+    const original=(await f.sources.readSelection(selected.selectionId)).selection;
+    const alias=(await f.sources.prepareSelection({...original,readerRole:'bulk',readerSessionId:'bulk-session',assignmentId:'bulk-assignment'})).id;
+    const link=await f.sources.readObservationLink(selected.selectionId);
+    await f.sources.prepareObservationLink({...link,selectionId:alias});
+    const aliasReader=new ProtocolAbiProofReader({chainId,profile,store:f.store.asReadOnly(),
+        sourceEquivalence:new ProtocolSourceEquivalence(f.sources,f.observations)});
+    const aliasView=await aliasReader.open(f.source(2),alias);
+    expect(aliasView.selectionId).toBe(alias);
+    const aliasFirst=(await aliasReader.action(aliasView,next.actionInputs[1])).state;
+    const aliasSecond=(await aliasReader.action(aliasView,next.actionInputs[3])).state;
+    expect(statefulAbiEpoch(aliasFirst).id).toBe(statefulAbiEpoch(first).id);
+    expect(statefulAbiEpoch(aliasSecond).id).toBe(statefulAbiEpoch(second).id);
+    expect(statefulAbiEpoch(aliasFirst).id).not.toBe(statefulAbiEpoch(aliasSecond).id);
+    expect((await unavailable(aliasReader.occurrence(aliasView,{...next.actionInputs[1],receiptAbiSequence:'1'}))).code).toBe('input_not_bound');
+});
+
+it('rejects a new alias opening if canonical head crosses the ancestry bound during evidence reads', async () => {
+    const f=await fixture(),first=await f.append(1);await f.append(2);
+    const original=(await f.sources.readSelection(first.selectionId)).selection;
+    const alias=(await f.sources.prepareSelection({...original,readerRole:'bulk',readerSessionId:'bulk',assignmentId:'assignment'})).id;
+    await f.sources.prepareObservationLink({...await f.sources.readObservationLink(first.selectionId),selectionId:alias});
+    const reader=new ProtocolAbiProofReader({chainId,profile,store:f.store.asReadOnly(),maxAncestryBlocks:1,
+        sourceEquivalence:new ProtocolSourceEquivalence(f.sources,f.observations)});
+    const view=await reader.open(f.source(1),alias),entered=gate(),release=gate();let held=false;
+    f.memory.faults.beforeRead=async(request:any)=>{if(!held&&request.index===f.sources.index){held=true;entered.release();await release.promise;}};
+    const pending=reader.revalidateOpening(view);await entered.promise;await f.append(3);release.release();
+    expect((await unavailable(pending)).code).toBe('ancestry_unavailable');delete f.memory.faults.beforeRead;
 });
 
 /** Independent opaque ABI facts exercise proof selection; they do not qualify a Wire value codec. */
@@ -100,7 +128,7 @@ async function fixture(){
     }
     const reader=(maximum?:number,selectedProfile=profile)=>new ProtocolAbiProofReader({chainId,profile:selectedProfile,
         store:new ProtocolAbiFrontierStore(client,chain,0,{readOnly:true}),...(maximum===undefined?{}:{maxAncestryBlocks:maximum})});
-    return {memory,store,sources,source,selected,prepare,admit,append,replaceOwner,reader,
+    return {memory,store,sources,observations,source,selected,prepare,admit,append,replaceOwner,reader,
         get coordinator(){return coordinator;},get session(){return session;}};
 }
 
