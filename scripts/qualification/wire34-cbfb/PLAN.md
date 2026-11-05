@@ -25,8 +25,9 @@ Keep each exact committed lock and its original install output. Do not use --ign
 
 ```sh
 node --test tests/native/wire34-cbfb-source-profile.test.mjs
-node scripts/qualification/wire34-cbfb/source-check.mjs > wire34-git.json
-node tests/unit/wire34-cbfb-source-admission.mjs --admit-wire34-cbfb > wire34-source.json
+mkdir -p out/wire34-linux
+node scripts/qualification/wire34-cbfb/source-check.mjs > out/wire34-linux/git.json
+node tests/unit/wire34-cbfb-source-admission.mjs --admit-wire34-cbfb > out/wire34-linux/source.json
 ```
 
 The source observer validates all four MongoDB/BSON inventories, full root/native/SDK emitted trees, exact direct/nested SDK installations and merged Wire Node/Rust/member/prepared-lock/source receipts. Source and runtime identity do not grant workload or release acceptance. Baseline admission remains its unchanged `node tests/unit/all-cbfb-source-admission.mjs --admit-all-cbfb`; the standalone a093 graph issue is not used by that retained test gate. Retain genuine failures; do not overwrite their output with later guards.
@@ -56,3 +57,13 @@ Only after an independently recorded unprofiled result, schedule a separately na
 ## Publication boundary
 
 This packet deliberately leaves the old default CI routes/pins frozen. It is a local, separately selectable qualification cohort, not a claim that the old Wire69 workflow passes with a Wire34 lock. Root must review an explicit workflow/cohort integration before publishing or executing it. Full MongoDB/API/Atomic parity, current-testnet replay, full sync and production activation remain separate pending gates. Wire121 stays on 29bf/e691.
+
+## One-attempt Linux workflow successor
+
+The new `.github/workflows/wire34-cbfb.yml` is an additive compatibility workflow targeting PRs against `feat/atomic-managed-all-cbfb-20261104` and manual dispatch. It leaves every existing workflow unchanged. It runs one original retained attempt and one independently visible historical suite per supported major, with a separate failure-only CPU diagnostic. This is not the five-pair performance experiment above and grants no throughput/causality claim.
+
+The owned child uses Node test isolation `none` so the bounded parent owns one Node process. The original fixture assertions/callbacks and180000ms inner deadline are unchanged. The225000ms custody envelope,2-second TERM/KILL/drain grace and1MiB per-stream cap fail closed on timeout, abort, missing close/EOF or lost data, even if the child later exits0. History still runs after an ordinary closed retained failure. An unresolved prior child/stream outcome refuses further workloads and leaves the step failed. CPU capture has its own4-minute workflow step and a64MiB exported artifact cap. The parent records intent before spawn and preserves the first failure while draining/closing the owned child and streams.
+
+Resources are fresh observations from the GitHub-hosted Ubuntu22 job, bounded to2..8 visible CPUs and at most32GiB physical memory; available memory must be at least2GiB before and1GiB after, with4GiB disk available. These are compatibility-run limits, not the separate physical replay/full-sync envelope. No server, Docker, database daemon, shared data or host service is touched.
+
+The predecessor2e0 path-closure review failed: its source checker accepted an extra tracked path. That commit and its failed check remain preserved. This successor lists the complete actual Git tracked-path inventory separately from the hashed execution/source inputs. Every remaining passive path has an explicit category/reason; all executable/configuration inputs, including the historical `verify.py` files and `.gitattributes`, are hashed. Passive historical document/receipt/archive content is bound by the actual Git commit/tree, not claimed as content-hashed by this profile. The retained1480 archive remains independently pinned and read by the unchanged fixture body. Actual-script VM controls demonstrate the predecessor red case and current extra/missing-path refusals. The profile and its reader are the only declared hash-cycle exceptions; both remain tracked in the actual source commit and immutable review patch.
