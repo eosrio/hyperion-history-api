@@ -20,6 +20,7 @@ export async function createPortableStateApiService(fastify: FastifyInstance): P
     const source = new PortableProjectionSource({client: manager.elasticsearchClient, chain: manager.chain, chainId,
         profile: {id: selected.id, profileId: selected.provider.profileId, components: selected.components ?? []}, provider: selected.provider,
         maxAncestryBlocks: manager.config.settings.protocol_abi_coordination?.recovery_window_blocks,
+        diskAbiHistory:manager.config.settings.protocol_abi_history,
         replicas: manager.config.settings.es_replicas ?? 0});
     return createPortableStateQueryService({chainId, configuration, adapter,
         gate: createPortableStateReadGate({chainId, configuration, adapter, source})});

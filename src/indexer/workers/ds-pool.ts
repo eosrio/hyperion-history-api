@@ -1,5 +1,6 @@
 import {ProtocolSourceEquivalence} from '../protocol/source-equivalence.js';
 import {ProtocolSourceBindingStore} from '../protocol/source-bindings.js';
+import {diskAbiHistoryOptions} from '../protocol/disk-abi-history-options.js';
 import {ProtocolAbiObservationStore} from '../protocol/abi-observation-store.js';
 import { cargo, queue } from "async";
 import { Channel, ConsumeMessage, Message } from "amqplib";
@@ -541,6 +542,8 @@ export default class DSPoolWorker extends HyperionWorker {
 
     private getStandaloneProtocolProofReader(): ProtocolAbiProofReader {
         return this.protocolProofReader ??= new ProtocolAbiProofReader({chainId: this.chainId,
+            diskHistory:diskAbiHistoryOptions(this.conf.settings.protocol_abi_history,this.client,this.chain,this.chainId,
+                {id:this.protocolId,profileId:this.protocol.profileId,components:this.protocolComponents??[]},this.protocol,this.conf.settings.es_replicas??0),
             profile: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
             store: new ProtocolAbiFrontierStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0, {readOnly: true}),
             sourceEquivalence: new ProtocolSourceEquivalence(new ProtocolSourceBindingStore(this.client,this.chain,this.conf.settings.es_replicas ?? 0,{readOnly:true}),

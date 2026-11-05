@@ -18,6 +18,9 @@ import {ProtocolNativeActionReader} from '../protocol/native-authorization.js';
 import {ProtocolNativeObservationStore} from '../protocol/native-observation-store.js';
 import {decodeStatefulSourceV2, statefulActionMetadataSelection} from './stateful-source.js';
 import {statefulAbiEpoch} from './stateful-abi-epoch.js';
+import {diskAbiHistoryOptions} from '../protocol/disk-abi-history-options.js';
+import type {DiskAbiHistoryConfiguration} from '../protocol/disk-abi-history.js';
+import {ProtocolSourceBindingReadError} from '../protocol/source-bindings.js';
 
 const json = protocolImmutableJson;
 const digest = (value: Uint8Array | string) => createHash('sha256').update(value).digest('hex');
@@ -27,6 +30,7 @@ export interface PortableProjectionSourceOptions {
     client: Client; chain: string; chainId: string; profile: ProtocolSourceProfile; provider: ProtocolProvider;
     maxAncestryBlocks?: number; replicas?: number; requireAttemptScope?: boolean;
     historicalCertificates?: boolean;
+    diskAbiHistory?:DiskAbiHistoryConfiguration;
 }
 export interface PortableProjectionSourceEvidence {
     readonly certificateId: string; readonly commitId: string; readonly selectionId: string;
@@ -72,15 +76,18 @@ export class PortableProjectionSource {
     private readonly reader: ProtocolAbiProofReader;
     private readonly options: PortableProjectionSourceOptions;
     private readonly maximumAncestry: number;
+    private readonly diskHistory:ReturnType<typeof diskAbiHistoryOptions>;
     constructor(options: PortableProjectionSourceOptions) {
         this.maximumAncestry = options.maxAncestryBlocks ?? 256;
         this.options = {...options, profile: JSON.parse(json(options.profile))};
         this.store = new ProtocolAbiFrontierStore(options.client, options.chain, options.replicas ?? 0, {readOnly: true});
         this.bindings = new ProtocolSourceBindingStore(options.client, options.chain, options.replicas ?? 0, {readOnly: true});
         this.observations = new ProtocolAbiObservationStore(options.client, options.chain, options.replicas ?? 0, undefined, {readOnly: true});
+        this.diskHistory=diskAbiHistoryOptions(options.diskAbiHistory,options.client,options.chain,options.chainId,
+            this.options.profile,options.provider,options.replicas??0);
         this.reader = new ProtocolAbiProofReader({chainId: options.chainId, profile: this.options.profile,
             store: this.store, maxAncestryBlocks: this.maximumAncestry, requireAttemptScope: options.requireAttemptScope,
-            historicalCertificates: options.historicalCertificates});
+            historicalCertificates: options.historicalCertificates,diskHistory:this.diskHistory});
     }
     private async retained<T>(operation: () => Promise<T>): Promise<T> {
         const scope = currentProofConsumerScope(this.options.requireAttemptScope);
@@ -96,10 +103,18 @@ export class PortableProjectionSource {
     }
     async open(checkpoint: ProjectionCheckpoint): Promise<ProtocolAbiProofView> {
         if (!Number.isSafeInteger(checkpoint.blockNum) || checkpoint.blockNum < 1) unavailable('Checkpoint zero grants no source coverage');
+        if(this.diskHistory&&await this.diskHistory.catalog.covers({chainId:this.options.chainId,...checkpoint}))
+            return this.reader.open({chainId:this.options.chainId,...checkpoint});
         await this.control();
         return this.reader.open({chainId: this.options.chainId, ...checkpoint});
     }
     async head(): Promise<ProjectionCheckpoint> {
+        if(this.diskHistory){const baseline=await this.diskHistory.catalog.baseline();
+            try{const control=await this.control();if(control.head.blockNum>baseline.source.blockNum){
+                const proof=await this.open({blockNum:control.head.blockNum,blockId:control.head.blockId});await this.revalidate(proof);
+                return Object.freeze({blockNum:proof.source.blockNum,blockId:proof.source.blockId});}}
+            catch(error){if(!(error instanceof ProtocolAbiProofUnavailableError)||error.code!=='projection_source_unavailable')throw error;}
+            return Object.freeze({blockNum:baseline.source.blockNum,blockId:baseline.source.blockId});}
         const control = await this.control();
         const proof = await this.open({blockNum: control.head.blockNum, blockId: control.head.blockId});
         await this.revalidate(proof);
@@ -121,6 +136,7 @@ export class PortableProjectionSource {
     }
     async revalidate(proof: ProtocolAbiProofView): Promise<void> {
         this.reader.assertConsumerScope(proof);
+        if(this.diskHistory&&await this.diskHistory.catalog.covers(proof.source)){await this.reader.revalidate(proof);return;}
         await this.control();
         await this.reader.revalidate(proof);
     }
@@ -163,6 +179,14 @@ export class PortableProjectionSource {
     }
     private async canonicalTarget(blockNum: number, admitCanonicalTarget?: (block: ProjectionBlock) => Promise<void>) {
         if (!Number.isSafeInteger(blockNum) || blockNum < 1) unavailable('Invalid source height');
+        if(this.diskHistory){const blockId=await this.diskHistory.catalog.blockId(blockNum);
+            if(blockId){let publication;
+                try{publication=await this.retained(()=>this.bindings.readPublishedSource(this.options.chainId,blockId));}
+                catch(error){if(error instanceof ProtocolSourceBindingReadError&&['missing','incomplete'].includes(error.code))
+                    throw new ProtocolAbiProofUnavailableError('source_publication_pending','Original source capture has not been published');throw error;}
+                const proof=await this.reader.open({chainId:this.options.chainId,blockNum,blockId},publication.selectionId);
+                await admitCanonicalTarget?.(Object.freeze({blockNum,blockId,previousBlockId:proof.source.previousBlockId??zero}));
+                return {proof,commit:publication};}}
         const control = await this.control();
         if (blockNum > control.head.blockNum) unavailable('Next projection source has not committed');
         if (control.head.blockNum - blockNum > this.maximumAncestry && this.options.historicalCertificates === true) {

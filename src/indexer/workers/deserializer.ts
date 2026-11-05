@@ -27,6 +27,7 @@ import {assertProtocolAbiObservationFacts} from '../protocol/abi-observation-fac
 import {ProtocolSourceBindingStore, ProtocolSourceBindingReadError, protocolSourceSelectionHeader} from '../protocol/source-bindings.js';
 import {protocolImmutableJson} from '../protocol/immutable-bundle-store.js';
 import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, type ProtocolAbiProofView} from '../protocol/abi-proof.js';
+import {diskAbiHistoryOptions,publishDiskAbiSource} from '../protocol/disk-abi-history-options.js';
 import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {actionSourceAdmissionHeader, actionSourceIngressHeader, type ActionSourceAdmission} from '../history/action-source-admission.js';
@@ -104,6 +105,8 @@ export default class MainDSWorker extends HyperionWorker {
     private activeSourceSelectionId?: string;
     private activeSourceRole?: 'live' | 'bulk' | 'repair';
     private protocolAbiProofReader?: ProtocolAbiProofReader;
+    private readonly diskAbiHistoryConfiguration=structuredClone(this.conf.settings.protocol_abi_history);
+    private diskHistory?:ReturnType<typeof diskAbiHistoryOptions>;
     private activeProtocolAbiProofView?: ProtocolAbiProofView;
     private protocolAbiProofDeployments = new Map<string, ProtocolAbiProofView>();
     private readonly protocolDerivedPublications = new AsyncLocalStorage<ProtocolDerivedPublications>();
@@ -652,6 +655,8 @@ export default class MainDSWorker extends HyperionWorker {
         // codec rethrow/readiness wait. Neither retained labels nor readback grant authority.
         await this.prepareProtocolNativeObservations(abiRecord, prepared);
         this.assertWorkerAttemptActive();
+        await publishDiskAbiSource(this.getProtocolAbiProofReaderOptions(),this.protocolSourceBindingStore,this.activeSourceSelectionId,
+            ()=>this.assertWorkerAttemptActive());
         // This is only a wake-up hint. Master resolves the durable link and source order itself.
         // Losing IPC cannot erase PREPARE; the master's bounded periodic drain repairs it.
         try {
@@ -732,10 +737,15 @@ export default class MainDSWorker extends HyperionWorker {
 
     private getProtocolAbiProofReader(): ProtocolAbiProofReader {
         return this.protocolAbiProofReader ??= new ProtocolAbiProofReader({chainId: this.chainId,
+            diskHistory:this.getProtocolAbiProofReaderOptions(),
             profile: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
             store: new ProtocolAbiFrontierStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0, {readOnly: true}),
             requireAttemptScope: this.workerAttemptScopeRequired,
             maxAncestryBlocks: this.conf.settings.protocol_abi_coordination?.recovery_window_blocks});
+    }
+    private getProtocolAbiProofReaderOptions():ReturnType<typeof diskAbiHistoryOptions> {
+        return this.diskHistory??=diskAbiHistoryOptions(this.diskAbiHistoryConfiguration,this.client,this.chain,this.chainId,
+            {id:this.protocolId,profileId:this.protocol.profileId,components:this.protocolComponents??[]},this.protocol,this.conf.settings.es_replicas??0);
     }
 
     private initConsumer() {
