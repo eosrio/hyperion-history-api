@@ -26,7 +26,7 @@ const chain = 'handoff-worker-original', chainId = '9ccd94e823fda51363bd4265ad61
 const hash = value => createHash('sha256').update(value).digest('hex');
 const mode = process.argv[2] ?? 'lifecycle';
 const events = [], sourceFrames = [], blockWrites = [], cache = [];
-let reader, coordinator, draining = Promise.resolve();
+let reader, coordinator, restoreObservationReads, draining = Promise.resolve();
 process.send = (event, callback) => {
     events.push(event);
     if (event.event === 'protocol_abi_prepared') draining = coordinator.drain();
@@ -230,11 +230,17 @@ try {
     await parser.parseMessage(main,[tampered]);assert.equal(mainConsumer.sent.length,beforeTamper);
     assert.ok(events.some(e=>e.event==='ds_error'&&e.data?.type==='protocol_source_incomplete'&&e.data?.code==='protocol_source_invalid'));
     console.log(JSON.stringify({control:'changed-original-frame',quarantined:true,downstreamPublications:0}));
+    const measuredObservationId=(await bindings.readObservationLink(prepared.sourceSelectionId)).observationId;
+    const observationReads={count:0,bytes:0},originalObservationRead=ProtocolAbiObservationStore.prototype.read;
+    ProtocolAbiObservationStore.prototype.read=async function(...args){const value=await originalObservationRead.apply(this,args);
+        if(args[0]===measuredObservationId){observationReads.count++;observationReads.bytes+=Buffer.byteLength(JSON.stringify(value));}return value;};
+    restoreObservationReads=()=>{ProtocolAbiObservationStore.prototype.read=originalObservationRead;};
     pool.consumerQueue=pool.createConsumerQueue();pool.local_queue='wire:ds_pool:1';await pool.initConsumer();
     const started=Date.now();let finished;poolConsumer.deliver(prepared.messages[0]);const drained=pool.consumerQueue.drain().then(()=>{finished=Date.now();});await new Promise(resolve=>setTimeout(resolve,100));const pendingAfter100ms=poolConsumer.acked.length===before;await drained;
     const elapsed=finished-started,settled=poolConsumer.acked.length-before;assert.equal(settled,1);
     const diagnostic=events.find(e=>e.event==='ds_error'&&e.data?.type==='protocol_action_incomplete'&&e.data?.blockNum===33);
     const output=poolConsumer.sent.map(x=>JSON.parse(x.payload.toString()));
+    const workerObservationReads={...observationReads};
     const {ProtocolActionConsumer}=await import(new URL('build/api/helpers/protocol-abi.js',repoUrl));
     const host={manager:{chain,conn:{chains:{[chain]:{chain_id:chainId}}},config},elastic:memory.client};const api=new ProtocolActionConsumer(host,selected);host.protocolActionConsumer=api;
     const apiProof=await api.reader.open(canonicalSource,prepared.sourceSelectionId);assert.equal(apiProof.selectionId,prepared.sourceSelectionId);
@@ -243,6 +249,12 @@ try {
     assert.equal(decision.kind,'native');assert.deepEqual(await api.nativeReader.metadata(decision.grant),metadata);
     const {protectProtocolAction}=await import(new URL('build/api/helpers/protocol-abi.js',repoUrl));
     const served=structuredClone(output[0]);await protectProtocolAction(host,{},served,{decode:true});assert.deepEqual(served.protocol,metadata);
+    console.log(JSON.stringify({control:'coupled-full-observation-reads',worker:workerObservationReads,
+        independentApi:{count:observationReads.count-workerObservationReads.count,bytes:observationReads.bytes-workerObservationReads.bytes}}));
+    if(!process.argv.includes('--record-evidence-baseline')) {
+        assert.equal(workerObservationReads.count,2,'One issued alias verification plus independent native original-capture replay');
+        assert.equal(observationReads.count-workerObservationReads.count,6,'Every independent API opening verifies its own observation and native capture');
+    }
     await assert.rejects(()=>api.nativeReader.authorize(apiNative,{...metadata.input,receiptAbiSequence:String(BigInt(metadata.input.receiptAbiSequence)+1n)}));
     const aborted=new AbortController();aborted.abort();await assert.rejects(()=>api.reader.open(canonicalSource,prepared.sourceSelectionId,{signal:aborted.signal}));
     const falseSelection=structuredClone(candidate.selection);falseSelection.captureSha256='f'.repeat(64);
@@ -263,6 +275,7 @@ try {
     console.log(JSON.stringify({test:'warm-live-frame-advances',admissionEnabled:false,bulkSourceSelection:prepared.sourceSelectionId,liveSourceSelection:livePrepared.sourceSelectionId,coordinatorHead:(await coordinator.inspect()).head.blockNum,diagnostic:diagnostic?.data.message,mainPublished:queued,dsAck:settled,elapsedMs:elapsed,actionPublished:output.length,output:output.map(x=>({block_num:x.block_num,protocolStatus:x.protocol?.status,ds_error:x.ds_error??false})),bulkPaused:!bulk.allowRequests,liveOpen:live.allowRequests,controlledBroker:true}));
 
 } finally {
+    restoreObservationReads?.();
     reader?.coordinatorRpc?.cancel(); reader?.shipSession?.close?.();
     process.send = previousSend; process.chdir(previousDirectory); hooks.deregister();
     const ownedDirectory = resolve(directory); assert.equal(dirname(ownedDirectory), resolve(workspaceOut));

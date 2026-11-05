@@ -683,7 +683,7 @@
       {
         "path": "scripts/qualification/atomic-managed-wire34-cbfb/profile.json",
         "bytes": 545157,
-        "sha256": "aa0d602067303a50398eb7a554d722bb893a8f5b00e87f9bc7c2405a135a28ed"
+        "sha256": "1b2029e9f5b3db0699405e8f08a90010b3fd1875d73942f1d2fee1464750d032"
       },
       {
         "path": "scripts/qualification/atomic-managed-wire34-cbfb/runner.mjs",
@@ -1188,7 +1188,7 @@
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.json",
         "bytes": 194373,
-        "sha256": "7c7003fa167648fc20dc767da354aef80053dd24cc6056f7e9b2a32044464fc6"
+        "sha256": "ef17593bf6030cda9ad7f41dc2eb2144d0413a4be234e1e9fd066c68df28621a"
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.mjs",
@@ -1238,7 +1238,7 @@
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-profile.json",
         "bytes": 213033,
-        "sha256": "be5a706997ea748763548d3fa12f4770a380d7fdaa04ea68b2a0719c1ec737e8"
+        "sha256": "f6ae1c20d2f9796e3789e7fe8627db717d4346ce99fef91bac816b7a36efb796"
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-routes.json",
@@ -3187,8 +3187,8 @@
       },
       {
         "path": "src/indexer/protocol/abi-proof.ts",
-        "bytes": 38136,
-        "sha256": "82802a1c5a76b7c3137ae4f67e691bde98b400e4655a0da2fa8b89f7ce6fee57"
+        "bytes": 38577,
+        "sha256": "f3bd817f9332a58d9c0b7ced9d9f8b61e8fcd567b4b40976b7b388bfe0e9bb35"
       },
       {
         "path": "src/indexer/protocol/abi-reducer.ts",
@@ -3282,8 +3282,8 @@
       },
       {
         "path": "src/indexer/protocol/source-equivalence.ts",
-        "bytes": 2505,
-        "sha256": "aa89b25fae7eecb1bca9038fd3130d28dabddbbeba1d7df648576859c6011118"
+        "bytes": 4141,
+        "sha256": "ce0961450bce9f31ff3f51a9e3a0c3b507b6ee0b6f98d88a0bab5ff2c988d5d6"
       },
       {
         "path": "src/indexer/protocol/worker-attempt-client.ts",
@@ -5212,8 +5212,8 @@
       },
       {
         "path": "tests/unit/protocol-abi-proof.test.ts",
-        "bytes": 48228,
-        "sha256": "65bd97dff4fe42ed928c9369fe42e2ad7d923eea5e17cd455fc6ad4f0d64c404"
+        "bytes": 57825,
+        "sha256": "ac62f5c454f10a416030434f6b6ff733f198ff89eca93544229d02a7a463ffd0"
       },
       {
         "path": "tests/unit/protocol-abi-reducer.test.ts",
@@ -5717,8 +5717,8 @@
       },
       {
         "path": "tests/unit/wire-canonical-bulk-regression.mjs",
-        "bytes": 26335,
-        "sha256": "7abaa60363b40d4a28c85138fc16fdb9097aec3e3f693073ac9a26c06802af21"
+        "bytes": 27668,
+        "sha256": "9bd4df10faebcecbc4cc22ed1ca03d55c6f24603445fd40a54cbb69fc160ddbf"
       },
       {
         "path": "tests/unit/wire-historical-bulk-regression.mjs",
@@ -5916,7 +5916,7 @@
         "sha256": "1945027163c553cd08421dd1f8caa08fab025c44279883ed9e6c3dec0e8c6408"
       }
     ],
-    "totalBytes": 16273954,
+    "totalBytes": 16286961,
     "trackedPaths": [
       ".bun-version",
       ".gitattributes",
@@ -10536,13 +10536,13 @@
       },
       {
         "path": "indexer/protocol/abi-proof.js",
-        "bytes": 35607,
-        "sha256": "5ac8c6e51caccbb1ac7a0427de98454e26d450bee1aaaf849b16792842473e9a"
+        "bytes": 35959,
+        "sha256": "5cf3e056ab86f8f9aae77f8d13fb64d84005a77c4aa49acd4c3b9f36724ab459"
       },
       {
         "path": "indexer/protocol/abi-proof.js.map",
-        "bytes": 32825,
-        "sha256": "9937d2479b679518ffa60c98ad40c6cbb9fece927ab04cb31e8481c5ec4a4472"
+        "bytes": 33070,
+        "sha256": "5930bde19e21b9a4655d468c1da99235c72f516f9ef6d48f01a0164b7563415f"
       },
       {
         "path": "indexer/protocol/abi-reducer.js",
@@ -10726,13 +10726,13 @@
       },
       {
         "path": "indexer/protocol/source-equivalence.js",
-        "bytes": 2450,
-        "sha256": "48d9357dee9cbb77da0078346a155074dba3411c8c7cadfc2537c31705eafe66"
+        "bytes": 3664,
+        "sha256": "f77dd5adcd637a3912a05877151797ed0a2bc9a7a566809de11d4ba4563ece2a"
       },
       {
         "path": "indexer/protocol/source-equivalence.js.map",
-        "bytes": 2116,
-        "sha256": "36d8e0124118e901ad9e62b5cf3a6eb536dea0af6ac75bae8e55ca25c6d92648"
+        "bytes": 3297,
+        "sha256": "bfddc9c217c090ebfd017be2d6da96ed135b2f607f43eded81997a3f183de85c"
       },
       {
         "path": "indexer/protocol/worker-attempt-client.js",
