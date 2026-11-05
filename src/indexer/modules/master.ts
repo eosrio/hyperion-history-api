@@ -844,6 +844,7 @@ export class HyperionMaster {
                 maxPendingBlocks: options?.max_pending_blocks, recoveryWindowBlocks: options?.recovery_window_blocks,
                 qualificationGenesisStart: options?.qualification_genesis_start,
                 historicalCertificates: options?.historical_certificates && {interfaceVersion: 1,
+                    ...(options.historical_certificates.allow_pending_work===true?{allowPendingWork:true as const}:{}),
                     maxCommitsPerDrain: options.historical_certificates.max_commits_per_drain,
                     maxCommitBytesPerDrain: options.historical_certificates.max_commit_bytes_per_drain,
                     maxMillisecondsPerDrain: options.historical_certificates.max_ms_per_drain},

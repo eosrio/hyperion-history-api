@@ -730,6 +730,7 @@ export default class MainDSWorker extends HyperionWorker {
             diskHistory:this.getProtocolAbiProofReaderOptions(),
             profile: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
             store: new ProtocolAbiFrontierStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0, {readOnly: true}),
+            historicalCertificates:this.conf.settings.protocol_abi_coordination?.historical_certificates!==undefined,
             requireAttemptScope: this.workerAttemptScopeRequired,
             maxAncestryBlocks: this.conf.settings.protocol_abi_coordination?.recovery_window_blocks});
     }

@@ -176,6 +176,52 @@ test('one catalog baseline carries exact state into first live tail block and su
     expect(commits).toHaveLength(3);
 });
 
+test('bounded pending-work maintenance survives repeated overflow and recovers aged API/MainDS proofs',async()=>{
+    const f=await retainedFixture(),store=new ProtocolAbiFrontierStore(f.memory.client as any,f.chain),budget=4;
+    const coordinator=new ProtocolAbiCoordinator({chainId,profile,ownerId:'history-catchup',bindings:f.bindings,observations:f.observations,
+        store,diskAbiHistory:f.options.catalog,historicalCertificates:{interfaceVersion:1,maxCommitsPerDrain:budget,
+            maxCommitBytesPerDrain:1024*1024,maxMillisecondsPerDrain:1000,allowPendingWork:true}});
+    await coordinator.start();const contextId=(await f.bindings.readSelection(f.selected)).selection.contextId;
+    const opened=await coordinator.openSource(contextId,'history-live');
+    const make=async(n:number)=>{
+        const source={chainId,blockNum:n,blockId:block(n),previousBlockId:block(n-1)},action=input((9007199254740999n+BigInt(n)).toString(),'1');
+        const capture={kind:'unattested-ship-result-sections-v1' as const,schemaJson,blockHex:'01',tracesHex:'02',deltasHex:'03'};
+        const digest=protocolAbiCaptureDigest(source,capture),selected=(await f.bindings.prepareSelection({schemaVersion:1,contextId,readerSessionId:'history-live',
+            readerRole:'live',assignmentId:null,source,captureSha256:digest,frameSha256:'e'.repeat(64),head:{blockNum:n,blockId:block(n)},irreversible:{blockNum:4,blockId:block(4)}})).id;
+        return {source,action,selected,prepare:async()=>{const prepared=await f.observations.prepare({schemaVersion:1,protocol:profile,source:{...source,inputSha256:digest},capture,
+            observation:{status:'observed',facts:{schemaVersion:1,actionInputs:[action],deployments:[],finalStates:[]}}});
+            await f.bindings.prepareObservationLink({schemaVersion:1,selectionId:selected,observationId:prepared.id,observationDigest:prepared.digest});}};
+    };
+    const tail:Awaited<ReturnType<typeof make>>[]=[];let next=await make(5);await coordinator.admit(next.selected,opened.generation);
+    let historicalReads=0,historicalBytes=0,inside=false;const read=store.readCommit.bind(store),extend=(coordinator as any).extendHistorical.bind(coordinator);
+    store.readCommit=async(...args)=>{const value=await read(...args);if(inside){historicalReads++;historicalBytes+=Buffer.byteLength(JSON.stringify(value));}return value;};
+    (coordinator as any).extendHistorical=async(...args:any[])=>{inside=true;try{return await extend(...args);}finally{inside=false;}};
+    for(let batch=0;batch<20;batch++){
+        for(let offset=0;offset<16;offset++){await next.prepare();tail.push(next);next=await make(next.source.blockNum+1);await coordinator.admit(next.selected,opened.generation);}
+        historicalReads=0;historicalBytes=0;await coordinator.drain();
+        expect(historicalReads).toBeLessThanOrEqual(budget);expect(historicalBytes).toBeLessThanOrEqual(1024*1024);
+        expect((await coordinator.inspect()).pending).toHaveLength(1);
+    }
+    const current=await coordinator.inspect();expect(current.head!.blockNum-tail[0].source.blockNum).toBeGreaterThan(256);
+    const strict=new ProtocolAbiProofReader({chainId,profile,store:store.asReadOnly(),diskHistory:f.options});
+    await expect(strict.open(tail[0].source,tail[0].selected)).rejects.toMatchObject({code:'ancestry_unavailable'});
+    const reader=new ProtocolAbiProofReader({chainId,profile,store:store.asReadOnly(),diskHistory:f.options,historicalCertificates:true});
+    expect((await reader.action(await reader.open(tail[0].source,tail[0].selected),tail[0].action)).state.abiHex).toBe('bb');
+    // No new admissions during this bounded gap; incomplete source is still pending and grants no commit.
+    for(let n=0;n<200&&(coordinator as any).historicalCompleted?.head.blockNum!==current.head!.blockNum;n++)await coordinator.drain();
+    expect((coordinator as any).historicalCompleted?.head.blockNum).toBe(current.head!.blockNum);
+    for(const item of tail)expect((await reader.openHistorical(item.source.blockNum,{source:item.source,selectionId:item.selected})).source.blockId).toBe(item.source.blockId);
+    const host:any={manager:{chain:f.chain,conn:{chains:{[f.chain]:{chain_id:chainId}}},config:{settings:{protocol_abi_history:f.config,
+        protocol_abi_coordination:{historical_certificates:{interface_version:1,max_commits_per_drain:budget,max_commit_bytes_per_drain:1024*1024,max_ms_per_drain:1000,allow_pending_work:true}}}}},elastic:f.memory.client};
+    const api=new ProtocolActionConsumer(host,{id:profile.id,provider:{profileId:profile.profileId},components:profile.components} as any);
+    expect((await api.reader.action(await api.reader.open(tail[0].source,tail[0].selected),tail[0].action)).state.abiHex).toBe('bb');
+    const path=join(f.directory,'historical-worker.json');await writeFile(path,JSON.stringify({configuration:f.config,chain:f.chain,chainId,profile,
+        source:tail[0].source,selectionId:tail[0].selected,action:tail[0].action,documents:[...f.memory.documents],mappings:[...f.memory.mappings],
+        settings:[...f.memory.settings],sequences:[...f.memory.sequences]}));
+    const result=spawnSync(process.env.HYPERION_TEST_NODE??'node',[fileURLToPath(new URL('./historical-main-ds-worker.mjs',import.meta.url)),path],
+        {encoding:'utf8',timeout:20000,maxBuffer:1024*1024});expect(result.status,result.stderr+result.stdout).toBe(0);expect(result.stdout).toContain('"passed":true');
+},60000);
+
 test('actual captured Wire genesis and blocks2..4 feed projection source from disk identity and published captures',async()=>{
     const p=await prepared(),f=await artifact([],p.positions.map((value:any)=>value.blockId),p.options.chainId,wireSchema);
     const options=diskAbiHistoryOptions(f.config,p.options.client,p.options.chain,p.options.chainId,p.options.profile,p.options.provider)!;
