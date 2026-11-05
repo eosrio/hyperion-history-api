@@ -259,8 +259,8 @@
       },
       {
         "path": "src/api/helpers/functions.ts",
-        "bytes": 48933,
-        "sha256": "9a9afefc7a6dcbf5888d92ef09778761a6397b07248a081be7d1fe254ccc4806"
+        "bytes": 49855,
+        "sha256": "00bb815990165fabc8d75663485c2111ca35f97a1512578cdc9af65af295a136"
       },
       {
         "path": "src/api/helpers/portable-state.ts",
@@ -269,8 +269,8 @@
       },
       {
         "path": "src/api/helpers/protocol-abi.ts",
-        "bytes": 32820,
-        "sha256": "d7a584e34cc9b65508b1b04b3a35a13fc56a36cfdd2c89b3b1a3121a4c683e15"
+        "bytes": 32903,
+        "sha256": "66bb157aceeb32f4a0b2fd23bf0eaa1cfb7b093b3e96d17494bfd9c486934a7f"
       },
       {
         "path": "src/api/helpers/protocol-action-output.ts",
@@ -284,8 +284,8 @@
       },
       {
         "path": "src/api/helpers/protocol-proof-request.ts",
-        "bytes": 3378,
-        "sha256": "c1c85bc83ac72b897371453b5782de34ab8554b3071bc6d94c1ffb5717a7ad2c"
+        "bytes": 8833,
+        "sha256": "79540b519ea557be527bcec1407c1c99364cd4e2ec957c1946548f64ef1d1349"
       },
       {
         "path": "src/api/helpers/protocol-state-readiness.ts",
@@ -1682,13 +1682,13 @@
         },
         {
           "path": "api/helpers/functions.js",
-          "bytes": 46827,
-          "sha256": "59aa12aca4935cfb80b8767fb12d7af64b0fa1a5d5eb894b6c2305cf584d91cf"
+          "bytes": 47632,
+          "sha256": "7a16ea430f2d1382493eb1b2c8dd644700db8c113d26673d346efd10748d3f6a"
         },
         {
           "path": "api/helpers/functions.js.map",
-          "bytes": 33640,
-          "sha256": "53d85bd4bc40f9b0da7a037024542f4e45b11a73f75893865d3c095afa873f43"
+          "bytes": 34304,
+          "sha256": "cdda7f6d4b70bdefefd04aea5d91f08f4b4f1a8bb667c15208bdb00c37224dfd"
         },
         {
           "path": "api/helpers/portable-state.js",
@@ -1702,13 +1702,13 @@
         },
         {
           "path": "api/helpers/protocol-abi.js",
-          "bytes": 31245,
-          "sha256": "5c791173e21a4aa7f1f47bf1cf38db493d5cfdf80520dd22e3f4ce9a2a097624"
+          "bytes": 31328,
+          "sha256": "3d652b813eaadb6e61569df52073af4d44d4dc3a018121d4ceff85b4a20a3ad4"
         },
         {
           "path": "api/helpers/protocol-abi.js.map",
-          "bytes": 29899,
-          "sha256": "0079c13eb3d25de224747dc6ad203b8617311b5cd68d5a256e0b089cf6856c31"
+          "bytes": 29971,
+          "sha256": "ea3adb9dd35a2deeecd9864aa04f89c4d781b050d2275a4dce0fc424528ab5ec"
         },
         {
           "path": "api/helpers/protocol-action-output.js",
@@ -1732,13 +1732,13 @@
         },
         {
           "path": "api/helpers/protocol-proof-request.js",
-          "bytes": 2879,
-          "sha256": "835a12473fe634728e16d4fc57c01d08821229e04bbddc902c5e538fc9794e8b"
+          "bytes": 8036,
+          "sha256": "b45e9133c2c1376430605688057e5e3bfe184b18d837507df33e97141fdf469d"
         },
         {
           "path": "api/helpers/protocol-proof-request.js.map",
-          "bytes": 3045,
-          "sha256": "11c0c9e427dc30c3ff49beab1d282dfb38caeea6fb820850f8f5fc3d74fbefd1"
+          "bytes": 7870,
+          "sha256": "0ef482210d588a7abb1f3dc24dd96f097a6bc161fb3afac14c78a49e080bb901"
         },
         {
           "path": "api/helpers/protocol-state-readiness.js",
