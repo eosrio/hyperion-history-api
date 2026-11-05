@@ -1425,6 +1425,10 @@ export class HyperionMaster {
         }
     }
 
+    getReaderPressureSnapshot() {
+        return this.queueMonitor.getPressureSnapshot();
+    }
+
     /** A newly forked reader stays closed until its current pressure state arrives. */
     syncReaderPressure(worker: Worker): void {
         const definition = this.workerMap.find(value => value.wref === worker);
