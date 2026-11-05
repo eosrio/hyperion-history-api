@@ -11,7 +11,7 @@ import {terminalChild} from '../stateful-complete-kind-mongodb/ci.mjs';
 import {afterReadiness} from '../operator-list-mongodb/contract.mjs';
 import {verifyCursorClosure,verifyIndexedTrace} from '../indexed-schema-mongodb/cbfb-native-trace.mjs';
 import {PLAN,PROFILE,sha,assertChildTerminal,assertCompletion} from './contract.mjs';
-import {verifyOriginalReports} from './original.mjs';import {verifyCustodyDirectory} from './verify-artifacts.mjs';import {createRequire} from 'node:module';
+import {verifyOriginalReports} from './original.mjs';import {verifyCustodyDirectory,expectedPhaseCensus} from './verify-artifacts.mjs';import {createRequire} from 'node:module';
 import {admitCustodyAssembly} from './admission.mjs';import {root,PROFILE_PATH} from '../atomic-managed-wire34-cbfb/assembly.mjs';
 const json=(path,value)=>writeFileSync(path,JSON.stringify(value,null,2)+'\n',{flag:'wx'});
 export async function runCI(profile,atomicRoot,pgRoot,pgReports,output){
@@ -48,7 +48,7 @@ export async function runCI(profile,atomicRoot,pgRoot,pgReports,output){
   const sums=JSON.parse(readFileSync(join(output,'native/sha256.json'),'utf8'));assert.deepEqual(sums.map(row=>row.path).sort(),['answers.json','events.json','report.json','trace.json']);
   for(const row of sums){const bytes=readFileSync(join(output,'native',row.path));assert.equal(bytes.length,row.bytes);assert.equal(sha(bytes),row.sha256);}
   const trace=JSON.parse(readFileSync(join(output,'native/trace.json'),'utf8'));assert.equal(trace.length,native.traceEvents);assert.deepEqual(verifyCursorClosure(trace),native.nativeCursors);
-  for(const name of native.nativeQueryPhases)verifyIndexedTrace(trace,name,{maximum:128,success:true});
+  for(const name of expectedPhaseCensus({original,trace,reported:native.nativeQueryPhases}))verifyIndexedTrace(trace,name,{maximum:128,success:true});
   const events=JSON.parse(readFileSync(join(output,'native/events.json'),'utf8'));const bsonDir=join(output,'native/bson');report.native=verifyCustodyDirectory({pairs:native.result.pairs,original,events,trace,directory:bsonDir});
 
  }catch(error){retainPrimary(error);report.failure=safeFailure(primary);}
