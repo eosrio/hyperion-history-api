@@ -1516,7 +1516,8 @@ export class HyperionMaster {
                     hLog('Reader replacement awaits restored source-credit configuration or controlled master restart');
                     return;
                 }
-                const worker = cluster.fork(reader ? {...wrk, reader_pressure_sync: 'true'} : wrk);
+                const worker = cluster.fork(reader ? {...wrk, reader_pressure_sync: 'true',
+                    reader_source_credit_capacity: JSON.stringify(this.sourceCreditConfiguration())} : wrk);
                 wrk.wref = worker;
                 worker.id = wrk.worker_id;
                 if (reader && this.sourceCreditConfiguration()) worker.once('exit', () => this.sourceCreditCapacity?.exited(worker));

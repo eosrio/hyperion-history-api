@@ -1234,8 +1234,8 @@
       },
       {
         "path": "src/indexer/modules/master.ts",
-        "bytes": 124949,
-        "sha256": "cb512e77ec9fc908e7aac7f24befce54901c0fb1f04a5338d2e53d48090b3897"
+        "bytes": 125050,
+        "sha256": "8a454e6d703b74bc6fa8c3ccfe26173a6aaaff174e066f7dede0c08c231fa98a"
       },
       {
         "path": "src/indexer/modules/parsers/3.2-parser.ts",
@@ -1509,8 +1509,8 @@
       },
       {
         "path": "src/indexer/workers/state-reader.ts",
-        "bytes": 90495,
-        "sha256": "dac3023308ec76d81c978903e2c669ad86377e587ee01c930418e8adc7d5ba44"
+        "bytes": 91008,
+        "sha256": "7312c38cb1f490625133bfa39d146bdff093a473d7ca9140c01147749d8c2230"
       },
       {
         "path": "src/indexer/workers/ws-router.ts",
@@ -3642,13 +3642,13 @@
         },
         {
           "path": "indexer/modules/master.js",
-          "bytes": 120066,
-          "sha256": "7adb1399680888365a60fced485e72d75137754ed8957ca5e298097286394cde"
+          "bytes": 120167,
+          "sha256": "7d50937ac244f0ece3f07f64d14d1dccacadb4f0b7c441cab83250155ceecabf"
         },
         {
           "path": "indexer/modules/master.js.map",
-          "bytes": 98903,
-          "sha256": "e637d02ca252b67c59a3eb8a108541bfda1446c6d8e8b2841341f7595d49831a"
+          "bytes": 98969,
+          "sha256": "8e009d81cebd9e4e845f906b71c563405492bcf1843666df410eceb8826c6443"
         },
         {
           "path": "indexer/modules/parsers/3.2-parser.js",
@@ -4202,13 +4202,13 @@
         },
         {
           "path": "indexer/workers/state-reader.js",
-          "bytes": 88613,
-          "sha256": "5da964c12e00acb9fc7dd2852892681c30d930061967913300d8a15b7ba930f5"
+          "bytes": 89134,
+          "sha256": "3b1264d053b250158cb9637ef92a90839b175d822066299b909b4758d98681f3"
         },
         {
           "path": "indexer/workers/state-reader.js.map",
-          "bytes": 69204,
-          "sha256": "04789216c7b73d41dab32addb85d554a6bd824f210e96aa9e0cf6eafd8375ee1"
+          "bytes": 69545,
+          "sha256": "cf9fa4a6c4a13c6cd253a51e836ede9aba29831f95d3bcb1db1c64f83f7c159f"
         },
         {
           "path": "indexer/workers/ws-router.js",

@@ -138,6 +138,9 @@ export default class StateReader extends HyperionWorker {
 
     constructor() {
         super();
+        if ((this.sourceCreditOptions() || process.env.reader_source_credit_capacity !== undefined)
+            && process.env.reader_source_credit_capacity !== JSON.stringify(this.sourceCreditOptions()))
+            throw new Error('Source-credit configuration differs from master; controlled restart required');
         if (this.sourceCreditOptions() && !this.isLiveReader) throw new Error('Source-credit capacity requires the qualification live reader');
         const liveStart = process.env.worker_last_processed_block ?? process.env.worker_start_block;
         if (this.isLiveReader && liveStart) {
@@ -1502,7 +1505,7 @@ export default class StateReader extends HyperionWorker {
 
     private startReservedSourceRequest(request: any[]): void {
         if (this.sourceCreditState) {
-            this.failSourceRecovery('Source-credit qualification requires a fresh physical reader for a replaced stream');
+            this.failPublisherRecovery('Source-credit qualification requires a fresh physical reader for a replaced stream', {predicate: 'source_credit_request_replaced'});
             return;
         }
         const options = this.sourceCreditOptions()!;
@@ -1540,7 +1543,7 @@ export default class StateReader extends HyperionWorker {
             }
         }).catch(error => {
             if (!state.cancelled && this.sourceCreditState === state && this.currentShipCreditOwner(state.owner))
-                this.failSourceRecovery('Source-credit capacity is unresolved: ' + String(error?.message ?? error));
+                this.failPublisherRecovery('Source-credit capacity is unresolved: ' + String(error?.message ?? error), {predicate: 'source_credit_capacity_unresolved'});
         }).finally(() => {
             state.pending = false;
             if (state.cancelled || this.sourceCreditState !== state || !this.currentShipCreditOwner(state.owner)) return;
@@ -1635,7 +1638,7 @@ export default class StateReader extends HyperionWorker {
 
     private startWS() {
         if (this.finishing || this.publisherFailure) return;
-        if (this.sourceCreditState) {this.failSourceRecovery('Source-credit stream replacement needs supervised reader recovery'); return;}
+        if (this.sourceCreditState) {this.failPublisherRecovery('Source-credit stream replacement needs supervised reader recovery', {predicate: 'source_credit_stream_replaced'}); return;}
         const generation = ++this.socketGeneration;
         this.physicalIngressGeneration = undefined;
         this.invalidateShipCredits();
@@ -1701,7 +1704,7 @@ export default class StateReader extends HyperionWorker {
     }
 
     private handleLostConnection() {
-        if (this.sourceCreditState) {this.failSourceRecovery('Source-credit socket closed; reservations await physical reader exit'); return;}
+        if (this.sourceCreditState) {this.failPublisherRecovery('Source-credit socket closed; reservations await physical reader exit', {predicate: 'source_credit_socket_closed'}); return;}
         this.invalidateShipCredits();
         this.physicalIngressGeneration = undefined;
         if (this.usesOrderedSourceIngress && (this.reconnectTimer || this.finishing || this.publisherFailure)) return;

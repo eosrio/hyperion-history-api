@@ -8,6 +8,7 @@ import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 import {registerHooks} from 'node:module';
 import cluster from 'node:cluster';
+import vm from 'node:vm';
 import {cargo} from 'async';
 import {ABI, Serializer} from '@wharfkit/antelope';
 import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
@@ -21,8 +22,8 @@ const readers = [];
 const scenario = process.argv[2];
 const capacityScenario = scenario.startsWith('capacity-');
 const previousStartBlock = process.env.worker_start_block;
-const originalWireFrame = !scenario.startsWith('legacy') && !['socket-callbacks','capacity-physical-exit','capacity-config-lifecycle'].includes(scenario);
-const actualReaderMonitorAndEncoding = !['socket-callbacks','capacity-physical-exit','capacity-config-lifecycle'].includes(scenario);
+const originalWireFrame = !scenario.startsWith('legacy') && !['socket-callbacks','capacity-physical-exit','capacity-config-lifecycle','capacity-startup-fence'].includes(scenario);
+const actualReaderMonitorAndEncoding = !['socket-callbacks','capacity-physical-exit','capacity-config-lifecycle','capacity-startup-fence'].includes(scenario);
 const controlledWsUrl = new URL('./state-reader-live-backpressure-ws.mjs', import.meta.url).href;
 const hooks = scenario.includes('socket-') ? registerHooks({resolve(specifier, context, nextResolve) {
     if (specifier === 'ws' && context.parentURL?.endsWith('/connections/state-history.js'))
@@ -72,7 +73,7 @@ try {
         import('../../build/indexer/protocol/abi-frontier-store.js'), import('../../build/indexer/protocol/abi-coordinator.js'),
         import('../../build/indexer/protocol/abi-coordinator-rpc.js')]);
     const selected = await loadChainProtocol(config.settings.protocol);
-    const {SourceCreditCapacityRpc, SourceCreditCapacityCoordinator} = await import('../../build/indexer/helpers/source-credit-capacity.js');
+    const {SourceCreditCapacityRpc, SourceCreditCapacityCoordinator, resolveSourceCreditCapacity} = await import('../../build/indexer/helpers/source-credit-capacity.js');
     const legacySelection = scenario.startsWith('legacy') ? await loadChainProtocol({provider: 'antelope'}) : undefined;
     const wire = await import('@eosrio/hyperion-wire-plugin');
     const wireRoot = dirname(dirname(fileURLToPath(import.meta.resolve('@eosrio/hyperion-wire-plugin/protocol-provider.json'))));
@@ -120,13 +121,14 @@ try {
             local_lib: Number(result.last_irreversible.block_num), receivedFirstBlock: true, currentIdx: 1,
             range_size: 10000, local_distributed_count: 0, drainCount: 0, reconnectCount: 0, internalPendingRanges: [],
             reversibleBlockMap: new Map(), forkedBlocks: new Map(), publications: new Map(), protocolSourceBindingStore: bindings});
-        const capacityRequests = [], capacityReplies = [], physicalReader = new EventEmitter(); let capacityAutomatic = scenario !== 'capacity-pause-grant';
+        const capacityRequests = [], capacityReplies = [], physicalReader = new EventEmitter(); let capacityAutomatic = scenario !== 'capacity-pause-grant', capacityTransportError;
         const capacityMaster = Object.assign(Object.create(HyperionMaster.prototype), {conf: ownConfig,
             workerMap: [{worker_role: 'continuous_reader', wref: physicalReader}]});
         physicalReader.send = (reply, callback) => {const deliver = () => reader.onIpcMessage(reply); capacityReplies.push(deliver);
             if (capacityAutomatic) queueMicrotask(deliver); callback?.(null);};
         reader.createSourceCreditCapacityRpc = () => new SourceCreditCapacityRpc((request, callback) => {
-            capacityRequests.push(request); capacityMaster.handleSourceCreditCapacity(physicalReader, request); callback?.(null);
+            capacityRequests.push(request); capacityMaster.handleSourceCreditCapacity(physicalReader, request);
+            const error=capacityTransportError;capacityTransportError=undefined;callback?.(error??null);
         });
         const retiringReader = {};
         if (scenario === 'capacity-wait') {
@@ -179,10 +181,43 @@ try {
             socket: index + 1, request: legacy ? Serializer.objectify(Serializer.decode({data: bytes, type: 'request', abi: legacyAbi}))
                 : codec.decode('request', bytes)}))) : commands).filter(value => value.request[0] === 'get_blocks_ack_request_v0');
         return {reader, frame: inputFrame, memory, bindings, publisher, commands, publications, sockets, socket, open, beginOpen, handshake, drain, creditCommands,
-            capacityMaster, capacityRequests, capacityReplies, retiringReader, capacityAutomatic(value) {capacityAutomatic = value;},
+            capacityMaster, capacityRequests, capacityReplies, retiringReader, physicalReader, capacityAutomatic(value) {capacityAutomatic = value;},
+            capacityTransportFailure(error) {capacityTransportError=error;},
             automatic(value) {automatic = value;}, writable(value) {writable = value;}};
     }
-    if (scenario === 'capacity-config-lifecycle') {
+    if (scenario === 'capacity-startup-fence') {
+        const emitted=readFileSync(new URL('../../build/indexer/workers/state-reader.js',import.meta.url),'utf8')
+            .replace(/^import[\s\S]*?;\r?\n/gm,'').replace(/^export (?:default )?/gm,'');
+        const source=enabled=>{const next=structuredClone(config);if(!enabled)delete next.settings.source_credit_capacity;return next;};
+        for(const [enabled,mutate,refused] of [
+            [true,x=>delete x.settings.source_credit_capacity,true],
+            [true,x=>{x.settings.max_ws_payload_mb=2;x.settings.source_credit_capacity.maximum_ingress_bytes*=2;},true],
+            [true,x=>x.prefetch.read=4,true],
+            [true,x=>x.settings.source_credit_capacity.maximum_ingress_bytes*=2,true],
+            [false,x=>{x.settings.source_credit_capacity=config.settings.source_credit_capacity;},true],
+            [true,()=>{},false],
+            [false,x=>{x.prefetch.read=4;x.settings.max_ws_payload_mb=2;},false],
+        ]) {
+            const initial=source(enabled),master=Object.assign(Object.create(HyperionMaster.prototype),{conf:initial,
+                workerMap:[{worker_id:1,worker_role:'continuous_reader'}]});
+            const sealed=JSON.stringify(master.sourceCreditConfiguration());
+            const next=source(enabled);mutate(next);const configPath=join(directory,'replacement-startup.json');writeFileSync(configPath,JSON.stringify(next));
+            let forkEnvironment,queues=0;
+            const originalFork=cluster.fork,inheritedSeal=process.env.reader_source_credit_capacity;
+            try {process.env.reader_source_credit_capacity='untrusted-inherited';
+                cluster.fork=env=>{forkEnvironment={...env};return Object.assign(new EventEmitter(),{send(){}});};master.launchWorkers();}
+            finally {cluster.fork=originalFork;if(inheritedSeal===undefined)delete process.env.reader_source_credit_capacity;else process.env.reader_source_credit_capacity=inheritedSeal;}
+            assert.equal(forkEnvironment.reader_source_credit_capacity,sealed);
+            class Parent {constructor(){this.conf=JSON.parse(readFileSync(configPath,'utf8'));this.chain=chain;}}
+            const context=vm.createContext({HyperionWorker:Parent,resolveSourceCreditCapacity,Buffer,console,
+                process:{env:forkEnvironment,send(){}},cargo:()=>{queues++;return{};}});
+            vm.runInContext(emitted+'\nglobalThis.Reader=StateReader;',context);
+            if(refused) {assert.throws(()=>new context.Reader(),/Source-credit configuration differs from master/);assert.equal(queues,0);}
+            else {new context.Reader();assert.equal(queues,2);
+                if(enabled){delete forkEnvironment.reader_source_credit_capacity;queues=0;
+                    assert.throws(()=>new context.Reader(),/Source-credit configuration differs from master/);assert.equal(queues,0);}}
+        }
+    } else if (scenario === 'capacity-config-lifecycle') {
         const {ConfigurationModule} = await import('../../build/indexer/modules/config.js');
         const initial = enabled => {
             const value = structuredClone(config); value.features={contract_state:{contracts:{sample:{}}}};
@@ -248,6 +283,49 @@ try {
         master.handleSourceCreditCapacity(worker,packet);assert.equal(worker.replies.at(-1).data.ok,false);
         const foreign=Object.assign(new EventEmitter(),{replies:[],send:worker.send});master.handleSourceCreditCapacity(foreign,packet);
         assert.equal(foreign.replies.at(-1).data.ok,false);assert.equal(master.getSourceCreditCapacitySnapshot().reservedBytes,0);
+    } else if (scenario === 'capacity-supervised-recovery') {
+        for (const trigger of ['disconnect', 'rpc', 'stream', 'request']) {
+            const h=await fixture(), master=h.capacityMaster, worker=h.physicalReader;
+            await until(()=>h.reader.sourceCreditState.sentTotal===8,'initial reserved stream was not sent');
+            h.socket.message(h.frame);await h.drain();
+            await until(()=>h.reader.sourceCreditState.sentTotal===9,'confirmed captured input did not refill its source reservation');
+            const definition={worker_id:1,worker_role:'continuous_reader',reader_assignment:'owned-capacity-assignment'};
+            h.reader.assignmentId=definition.reader_assignment;master.workerMap=[definition];master.liveReader=definition;master.initHandlerMap();
+            const originalFork=cluster.fork,originalTimeout=globalThis.setTimeout,events=[],timers=[];let exits=0;
+            try {
+                cluster.fork=()=>worker;master.launchWorkers();
+                assert.equal(definition.wref,worker);
+                process.send=(message,callback)=>{events.push(message);worker.emit('message',message);callback?.(null);return true;};
+                h.reader.exitForPublisherRecovery=()=>{exits++;};
+                if(trigger==='disconnect')h.socket.disconnect();
+                else if(trigger==='rpc'){
+                    h.capacityTransportFailure(new Error('controlled transient capacity RPC loss'));
+                    h.reader.pumpReservedSourceCredits();
+                } else if(trigger==='stream')h.reader.startWS();
+                else h.reader.startReservedSourceRequest(['get_blocks_request_v0',{have_positions:[]}]);
+                await until(()=>exits===1,'transient source capacity failure did not exit for supervised replay');
+                assert(events.some(message=>message.event==='reader_recovery_required'));
+                assert(!events.some(message=>message.event==='reader_source_incomplete'),'transient capacity failure permanently disabled reader replacement');
+                assert.equal(definition.reader_incomplete,undefined);
+                assert.equal(master.getSourceCreditCapacitySnapshot().pendingCredits,8,'recovery claim released physical reservations');
+                const replacement=Object.assign(new EventEmitter(),{replies:[],send(reply,callback){this.replies.push(reply);callback?.(null);}});
+                globalThis.setTimeout=(callback,ms)=>{timers.push({callback,ms});return{unref(){}};};
+                master.handleWorkerDisconnect(worker);
+                assert.equal(definition.wref,undefined);assert.equal(timers[0].ms,5000);
+                assert.equal(master.getSourceCreditCapacitySnapshot().pendingCredits,8,'disconnect released uncertain source reservations');
+                cluster.fork=()=>replacement;timers[0].callback();
+                assert.equal(definition.wref,replacement,'actual master relaunch did not replace a recoverable reader');
+                assert.equal(definition.reader_incomplete,undefined);
+                const request=sequence=>({event:'source_credit_capacity_request',mId:'11111111-1111-4111-8111-111111111111',
+                    data:{sessionId:'33333333-3333-4333-8333-333333333333',sequence,settledTotal:0,wantedTotal:8}});
+                replacement.emit('message',request(1));assert.equal(replacement.replies.at(-1).data.result.grantedTotal,0);
+                assert.equal(master.getSourceCreditCapacitySnapshot().pendingCredits,8);
+                worker.emit('exit',1);assert.equal(master.getSourceCreditCapacitySnapshot().pendingCredits,0);
+                replacement.emit('message',request(2));assert.equal(replacement.replies.at(-1).data.result.grantedTotal,8);
+                assert.equal(master.getSourceCreditCapacitySnapshot().pendingCredits,8);
+                console.log(JSON.stringify({control:'capacity-supervised-recovery',trigger,actualReaderEvents:true,actualMasterRelaunch:true,heldUntilPhysicalExit:true}));
+            } finally {cluster.fork=originalFork;globalThis.setTimeout=originalTimeout;process.send=(_message,callback)=>{callback?.(null);return true;};}
+        }
     } else if (capacityScenario) {
         const h = await fixture();
         const requests = () => h.commands.filter(row => row.request[0].startsWith('get_blocks_request_'));

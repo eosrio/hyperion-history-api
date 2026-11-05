@@ -16,6 +16,9 @@ The runtime option is fixed for the master lifetime. Contract reload validates i
 changing configuration or filters; mode, active window/frame or budget changes require a
 controlled restart. Rejected changes fence new reader forks until the original option is
 restored or the master restarts. Ordinary mapping reload with capacity absent remains supported.
+Each reader fork also carries the master's sealed options. The reader validates its freshly
+loaded configuration before creating ingress queues, so an on-disk edit cannot bypass the
+restart boundary by racing a replacement.
 
 The actual master authenticates the physical `Worker` and holds a shared reservation pool
 across current and retiring reader objects. A source request is sent only after its complete
@@ -23,6 +26,9 @@ existing prefetch window is reserved. Each issued credit reserves the maximum en
 size; neither a small observed response nor a diagnostic estimate reduces that reservation.
 The reader counts block-flow responses, including unavailable-block responses, against issued
 credits. Oversized and ungranted responses refuse before publication.
+Transient capacity RPC, socket and stream-replacement failures request supervised reader
+replacement; they do not mark retained source unavailable. Their uncertain reservations
+remain charged until the retiring physical worker exits.
 
 Only the existing broker-confirmed source-input boundary advances cumulative settlement.
 It does not attest any downstream result. Paused readers can report completed source input
