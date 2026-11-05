@@ -178,6 +178,11 @@ test('managed Atomic and indexed native workflows select the same explicit Ubunt
  assert.equal(runner('.github/workflows/indexed-schema-native.yml'),'ubuntu-22.04');
 });
 
+test('managed Atomic source closure keeps an exact aggregate byte ledger',()=>{
+ const closure=JSON.parse(raw('scripts/qualification/atomic-managed/profile.json')).observation.closure;
+ assert.equal(closure.totalBytes,closure.files.reduce((total,file)=>total+file.bytes,0));
+});
+
 function retainedWireSteps(workflow){
  const start=workflow.indexOf('\n  build:\n'),end=workflow.indexOf('\n  projection-mongodb:\n',start);
  assert(start>0&&end>start);

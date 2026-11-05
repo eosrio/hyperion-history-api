@@ -91,8 +91,8 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-contract.test.mjs",
-      "bytes": 21903,
-      "sha256": "1465e1a7a1c0d34f0ecdbff19ed16eaf8881067143a44c36f6fe37df525f2dcd"
+      "bytes": 22183,
+      "sha256": "be8b23a47077ebe17acae58e26d326ce1438b508d4ad797c4d77a6b4e11760a1"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-routing.json",

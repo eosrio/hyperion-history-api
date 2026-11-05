@@ -323,8 +323,8 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-contract.test.mjs",
-      "bytes": 21903,
-      "sha256": "1465e1a7a1c0d34f0ecdbff19ed16eaf8881067143a44c36f6fe37df525f2dcd"
+      "bytes": 22183,
+      "sha256": "be8b23a47077ebe17acae58e26d326ce1438b508d4ad797c4d77a6b4e11760a1"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-native-assembly.mjs",
@@ -744,7 +744,7 @@
     {
       "path": "tests/fixtures/engineering-profiles/all-cbfb-linux.json",
       "bytes": 14124,
-      "sha256": "690b6cd2e43cca1f9d79e23b2f040aee97fc94f831003d82a5935acf84216f1e"
+      "sha256": "5ecf9ad3f5ae32b7184c3b364be7ea3af1d68e5df0be5e40b60017a8eb15162d"
     },
     {
       "path": "tests/fixtures/engineering-profiles/current-cbfb-linux.json",
@@ -864,7 +864,7 @@
     {
       "path": "tests/unit/all-cbfb-source-admission.mjs",
       "bytes": 7902,
-      "sha256": "3d7e09c9588d213e113e88bbe1395ee77fb6f031530816d3a6192353c0ad2eb3"
+      "sha256": "a3f465c14bccf3323c8845e5011c13c81d2652142b8229945c1c2819ef7bbbdf"
     },
     {
       "path": "tests/unit/current-cbfb-source-admission-native.mjs",
