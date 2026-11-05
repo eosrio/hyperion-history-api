@@ -1418,8 +1418,8 @@
         },
         {
           "path": "src/indexer/protocol/abi-proof.ts",
-          "bytes": 38136,
-          "sha256": "82802a1c5a76b7c3137ae4f67e691bde98b400e4655a0da2fa8b89f7ce6fee57"
+          "bytes": 38577,
+          "sha256": "f3bd817f9332a58d9c0b7ced9d9f8b61e8fcd567b4b40976b7b388bfe0e9bb35"
         },
         {
           "path": "src/indexer/protocol/abi-reducer.ts",
@@ -3961,13 +3961,13 @@
           },
           {
             "path": "indexer/protocol/abi-proof.js",
-            "bytes": 35607,
-            "sha256": "5ac8c6e51caccbb1ac7a0427de98454e26d450bee1aaaf849b16792842473e9a"
+            "bytes": 35959,
+            "sha256": "5cf3e056ab86f8f9aae77f8d13fb64d84005a77c4aa49acd4c3b9f36724ab459"
           },
           {
             "path": "indexer/protocol/abi-proof.js.map",
-            "bytes": 32825,
-            "sha256": "9937d2479b679518ffa60c98ad40c6cbb9fece927ab04cb31e8481c5ec4a4472"
+            "bytes": 33070,
+            "sha256": "5930bde19e21b9a4655d468c1da99235c72f516f9ef6d48f01a0164b7563415f"
           },
           {
             "path": "indexer/protocol/abi-reducer.js",
@@ -4151,13 +4151,13 @@
           },
           {
             "path": "indexer/protocol/source-equivalence.js",
-            "bytes": 2450,
-            "sha256": "48d9357dee9cbb77da0078346a155074dba3411c8c7cadfc2537c31705eafe66"
+            "bytes": 3664,
+            "sha256": "f77dd5adcd637a3912a05877151797ed0a2bc9a7a566809de11d4ba4563ece2a"
           },
           {
             "path": "indexer/protocol/source-equivalence.js.map",
-            "bytes": 2116,
-            "sha256": "36d8e0124118e901ad9e62b5cf3a6eb536dea0af6ac75bae8e55ca25c6d92648"
+            "bytes": 3297,
+            "sha256": "bfddc9c217c090ebfd017be2d6da96ed135b2f607f43eded81997a3f183de85c"
           },
           {
             "path": "indexer/protocol/worker-attempt-client.js",

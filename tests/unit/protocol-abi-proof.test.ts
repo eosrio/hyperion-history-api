@@ -8,6 +8,7 @@ import {ProtocolAbiObservationStore,protocolAbiCaptureDigest,type ProtocolAbiObs
 import {ProtocolSourceBindingStore,type ProtocolSourceProfile} from '../../src/indexer/protocol/source-bindings.js';
 import {ProtocolAbiProofReader,ProtocolAbiProofUnavailableError,protocolAbiCertificateForControl,type ProtocolAbiProofSource} from '../../src/indexer/protocol/abi-proof.js';
 import {statefulAbiEpoch} from '../../src/indexer/projection/stateful-abi-epoch.js';
+import {ProofConsumerScope} from '../../src/indexer/protocol/proof-consumer-scope.js';
 import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
 
 const chainId='1'.repeat(64),transactionId='a'.repeat(64),chain='proof-fixture';
@@ -108,6 +109,108 @@ it('does not treat corrupt retained alias evidence as a canonical mismatch', asy
     const view=await reader.open(f.source(1),alias);
     f.memory.faults.read=(item:any,request:any)=>request.index===f.sources.index&&request.id===alias?{...item,_source:{invalid:true}}:item;
     await expect(reader.revalidate(view)).rejects.toMatchObject({code:'invalid'});delete f.memory.faults.read;
+});
+
+it('verifies a full immutable observation once per issued alias view without retaining its payload', async () => {
+    const f=await fixture();await seed(f);const next=publicationFacts(),selected=await f.append(2,next);
+    const original=(await f.sources.readSelection(selected.selectionId)).selection;
+    const alias=(await f.sources.prepareSelection({...original,readerRole:'bulk',readerSessionId:'read-cost',assignmentId:'assignment'})).id;
+    await f.sources.prepareObservationLink({...await f.sources.readObservationLink(selected.selectionId),selectionId:alias});
+    let reads=0;const originalRead=f.observations.read.bind(f.observations);
+    f.observations.read=async(id,signal)=>{reads++;return originalRead(id,signal);};
+    const reader=new ProtocolAbiProofReader({chainId,profile,store:f.store.asReadOnly(),sourceEquivalence:new ProtocolSourceEquivalence(f.sources,f.observations)});
+    const view=await reader.open(f.source(2),alias);expect(reads).toBe(1);
+    for(let index=0;index<4;index++) {
+        expect((await reader.action(view,next.actionInputs[3])).state.abiHex).toBe('bb');
+        await reader.occurrence(view,next.actionInputs[0]);await reader.revalidate(view);
+    }
+    expect(reads).toBe(1);
+    await reader.open(f.source(2),alias);expect(reads).toBe(2);
+    const independent=reader.asReadOnly();await independent.open(f.source(2),alias);expect(reads).toBe(3);
+    await expect(independent.revalidate(view)).rejects.toMatchObject({code:'invalid_proof'});
+    // The receipt proves prior immutable verification, not present storage readability.
+    // A new opening must still independently reject now-corrupt full observation bytes.
+    f.memory.faults.read=(item:any,request:any)=>request.index===f.observations.index?{...item,_source:{invalid:true}}:item;
+    await reader.revalidate(view);expect(reads).toBe(3);
+    await expect(reader.open(f.source(2),alias)).rejects.toMatchObject({code:'invalid'});expect(reads).toBe(4);
+    delete f.memory.faults.read;
+});
+
+it('keeps fresh link, capture, context and profile checks after immutable evidence warms', async () => {
+    const f=await fixture(),selected=await f.append(1),original=(await f.sources.readSelection(selected.selectionId)).selection;
+    const alias=(await f.sources.prepareSelection({...original,readerRole:'bulk',readerSessionId:'fresh-witnesses',assignmentId:'assignment'})).id;
+    await f.sources.prepareObservationLink({...await f.sources.readObservationLink(selected.selectionId),selectionId:alias});
+    const reader=new ProtocolAbiProofReader({chainId,profile,store:f.store.asReadOnly(),sourceEquivalence:new ProtocolSourceEquivalence(f.sources,f.observations)});
+    const view=await reader.open(f.source(1),alias),readSelection=f.sources.readSelection.bind(f.sources),readLink=f.sources.readObservationLink.bind(f.sources);
+    f.sources.readObservationLink=async(id,signal)=>{const value=await readLink(id,signal);return id===alias?{...value,observationDigest:'f'.repeat(64)}:value;};
+    expect((await unavailable(reader.revalidate(view))).code).toBe('source_not_canonical');f.sources.readObservationLink=readLink;
+    for(const mutate of [
+        (value:any)=>{value.selection.captureSha256='f'.repeat(64);},
+        (value:any)=>{value.context.schemaJson='{"changed":true}';},
+        (value:any)=>{value.context.protocol.profileId='other-profile';},
+        (value:any)=>{value.selection.source.previousBlockId='f'.repeat(64);},
+    ]) {
+        f.sources.readSelection=async(id,signal)=>{const value=await readSelection(id,signal);if(id!==alias)return value;const changed=structuredClone(value);mutate(changed);return changed;};
+        expect((await unavailable(reader.revalidate(view))).code).toBe('source_not_canonical');
+    }
+    f.sources.readSelection=readSelection;await reader.revalidate(view);
+});
+
+it('never adopts copied or foreign immutable evidence receipts', async () => {
+    const f=await fixture(),selected=await f.append(1),original=(await f.sources.readSelection(selected.selectionId)).selection;
+    const alias=(await f.sources.prepareSelection({...original,readerRole:'bulk',readerSessionId:'foreign-receipt',assignmentId:'assignment'})).id;
+    await f.sources.prepareObservationLink({...await f.sources.readObservationLink(selected.selectionId),selectionId:alias});
+    const head=(await f.coordinator.inspect()).head!,commit=await f.store.readCommit(head.commitId) as any;
+    const issuer=new ProtocolSourceEquivalence(f.sources,f.observations),foreign=new ProtocolSourceEquivalence(f.sources,f.observations);
+    const receipt=(await issuer.open(alias,selected.selectionId,commit))!;
+    expect(Object.isFrozen(receipt)).toBe(true);expect(Object.keys(receipt)).toEqual([]);
+    expect(await issuer.revalidate(receipt,alias,selected.selectionId,commit)).toBe(true);
+    expect(await foreign.revalidate(receipt,alias,selected.selectionId,commit)).toBe(false);
+    expect(await issuer.revalidate({...receipt},alias,selected.selectionId,commit)).toBe(false);
+});
+
+it('does not reuse incomplete immutable verification after a cancelled full read', async () => {
+    const f=await fixture(),selected=await f.append(1),original=(await f.sources.readSelection(selected.selectionId)).selection;
+    const alias=(await f.sources.prepareSelection({...original,readerRole:'bulk',readerSessionId:'cancel-full',assignmentId:'assignment'})).id;
+    await f.sources.prepareObservationLink({...await f.sources.readObservationLink(selected.selectionId),selectionId:alias});
+    let reads=0;const originalRead=f.observations.read.bind(f.observations);
+    f.observations.read=async(id,signal)=>{reads++;return originalRead(id,signal);};
+    const reader=new ProtocolAbiProofReader({chainId,profile,store:f.store.asReadOnly(),sourceEquivalence:new ProtocolSourceEquivalence(f.sources,f.observations)});
+    const entered=gate(),release=gate(),controller=new AbortController();let held=false;
+    f.memory.faults.beforeRead=async(request:any)=>{if(!held&&request.index===f.observations.index){held=true;entered.release();await release.promise;}};
+    const pending=reader.open(f.source(1),alias,{signal:controller.signal});await entered.promise;controller.abort();release.release();
+    expect((await unavailable(pending)).code).toBe('proof_cancelled');delete f.memory.faults.beforeRead;
+    const view=await reader.open(f.source(1),alias);expect(reads).toBe(2);await reader.revalidate(view);expect(reads).toBe(2);
+});
+
+it('cancels warmed alias verification during fresh source reads and fences its issuing attempt', async () => {
+    const f=await fixture(),selected=await f.append(1),original=(await f.sources.readSelection(selected.selectionId)).selection;
+    const alias=(await f.sources.prepareSelection({...original,readerRole:'bulk',readerSessionId:'cancel-evidence',assignmentId:'assignment'})).id;
+    await f.sources.prepareObservationLink({...await f.sources.readObservationLink(selected.selectionId),selectionId:alias});
+    const reader=new ProtocolAbiProofReader({chainId,profile,store:f.store.asReadOnly(),sourceEquivalence:new ProtocolSourceEquivalence(f.sources,f.observations)});
+    const view=await reader.open(f.source(1),alias),entered=gate(),release=gate(),controller=new AbortController();let held=false;
+    f.memory.faults.beforeRead=async(request:any)=>{if(!held&&request.index===f.sources.index){held=true;entered.release();await release.promise;}};
+    const pending=reader.revalidate(view,{signal:controller.signal});await entered.promise;controller.abort();release.release();
+    expect((await unavailable(pending)).code).toBe('proof_cancelled');delete f.memory.faults.beforeRead;
+    const scope=new ProofConsumerScope('original-alias-attempt');let scopedView!:typeof view;
+    await scope.run(async()=>{scopedView=await reader.open(f.source(1),alias);await reader.revalidate(scopedView);});
+    await scope.closeAndDrain();await expect(reader.revalidate(scopedView)).rejects.toMatchObject({code:'worker_attempt_fenced'});
+    const replacement=new ProofConsumerScope('replacement-alias-attempt');
+    await expect(replacement.run(()=>reader.revalidate(scopedView))).rejects.toMatchObject({code:'worker_attempt_fenced'});
+    await replacement.closeAndDrain();
+});
+
+it('retains the 64-read budget while warmed alias evidence is checked', async () => {
+    const f=await fixture(),selected=await f.append(1),original=(await f.sources.readSelection(selected.selectionId)).selection;
+    const alias=(await f.sources.prepareSelection({...original,readerRole:'bulk',readerSessionId:'budget-evidence',assignmentId:'assignment'})).id;
+    await f.sources.prepareObservationLink({...await f.sources.readObservationLink(selected.selectionId),selectionId:alias});
+    const reader=new ProtocolAbiProofReader({chainId,profile,store:f.store.asReadOnly(),sourceEquivalence:new ProtocolSourceEquivalence(f.sources,f.observations)});
+    const view=await reader.open(f.source(1),alias),entered=gate(),release=gate();let reads=0;
+    f.memory.faults.beforeRead=async(request:any)=>{if(request.index===f.sources.index){reads++;if(reads===64)entered.release();await release.promise;}};
+    const active=Array.from({length:64},()=>reader.revalidate(view)),settled=Promise.allSettled(active);
+    try {await entered.promise;expect((await unavailable(reader.revalidate(view))).code).toBe('proof_busy');}
+    finally {release.release();await settled;delete f.memory.faults.beforeRead;}
+    expect((await settled).every(value=>value.status==='fulfilled')).toBe(true);
 });
 
 /** Independent opaque ABI facts exercise proof selection; they do not qualify a Wire value codec. */
