@@ -34,22 +34,27 @@ jobs:
           bun check -p tsconfig.json
           bun check -p packages/backend-mongodb/tsconfig.json
           npm run build
-      - run: node scripts/qualification/indexed-schema-mongodb/all-cbfb-assembly.mjs --profile indexed-schema-all-cbfb-root-native-wire69-engineering-v1 > indexed-cbfb-native-source-${{ matrix.node }}.json
-      - run: node --test scripts/qualification/indexed-schema-mongodb/all-cbfb-assembly.test.mjs scripts/qualification/indexed-schema-mongodb/all-cbfb-native-offline.test.mjs scripts/qualification/indexed-schema-mongodb/all-cbfb-native-teardown.test.mjs
+      - run: |
+          mkdir -p out
+          node scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.mjs --profile indexed-schema-all-cbfb-root-native-wire34-engineering-v1 > out/indexed-wire34-cbfb-native-source-${{ matrix.node }}.json
+      - env:
+          HYPERION_NATIVE_RUNNER_SOURCE: scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-runner.mjs
+          HYPERION_NATIVE_CONTROLLER_SOURCE: scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-ci.mjs
+        run: node --test scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.test.mjs scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-offline.test.mjs scripts/qualification/indexed-schema-mongodb/all-cbfb-native-teardown.test.mjs scripts/qualification/indexed-schema-mongodb/wire34-cbfb-migration.test.mjs
       - run: npm run test:indexed:finite
         env:
           HYPERION_INDEXED_TEST_PROFILE: cbfb
       - run: npm run test:indexed:cbfb:package
         env:
           HYPERION_INDEXED_TEST_PROFILE: cbfb
-      - run: node scripts/qualification/indexed-schema-mongodb/all-cbfb-native-ci.mjs --profile indexed-schema-mongodb-all-cbfb-linux-gha-v1 indexed-cbfb-native-${{ matrix.node }}
+      - run: node scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-ci.mjs --profile indexed-schema-mongodb-wire34-cbfb-linux-gha-v1 out/indexed-wire34-cbfb-native-${{ matrix.node }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: indexed-cbfb-native-${{ matrix.node }}
+          name: indexed-wire34-cbfb-native-${{ matrix.node }}
           path: |
-            indexed-cbfb-native-source-${{ matrix.node }}.json
-            indexed-cbfb-native-${{ matrix.node }}/
+            out/indexed-wire34-cbfb-native-source-${{ matrix.node }}.json
+            out/indexed-wire34-cbfb-native-${{ matrix.node }}/
             out/indexed-packed-*/receipt.json
             out/indexed-packed-*/*.stdout
             out/indexed-packed-*/*.stderr

@@ -32,13 +32,13 @@
       },
       {
         "path": ".github/workflows/indexed-schema-finite.yml",
-        "bytes": 2004,
-        "sha256": "a6a038333aa750e9a08d4ad0b24fb8d6cdd8b6e4fe07b0f554ca831f00485f5c"
+        "bytes": 2150,
+        "sha256": "4af3985f8be136682ac954ad873857dd957e72a503904fb535538ba8a6df282b"
       },
       {
         "path": ".github/workflows/indexed-schema-native.yml",
-        "bytes": 2506,
-        "sha256": "2bc6a70db1c73e4e4befef7b0ac76c485a8ed3bdeec06e1685d33afbbfd966a4"
+        "bytes": 2928,
+        "sha256": "06c0279b1bdf9915eba9b370a39ec4fce36585d6e6ca4c4a4a1e32312b20d73b"
       },
       {
         "path": ".github/workflows/indexed-sdk49-finite-historical.yml",
@@ -1104,6 +1104,71 @@
         "path": "scripts/qualification/indexed-schema-mongodb/sdk49-ci-source-check.mjs",
         "bytes": 1902,
         "sha256": "3b1da993565ec2cb350d4fa8996d9c56257cdc13900cf39b563730662f017c07"
+      },
+      {
+        "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.json",
+        "bytes": 192940,
+        "sha256": "e881b6ad21002cea078c96263b1abc1707c80be4263f61152c0c344926190f33"
+      },
+      {
+        "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.mjs",
+        "bytes": 4340,
+        "sha256": "09fc9c70c80c7138e76135315ea625f9eb667f9b743f1b0e45123ea450be8f68"
+      },
+      {
+        "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.test.mjs",
+        "bytes": 1116,
+        "sha256": "c6b7313b7c0739ad93b9e6fb5f16ec8d1ea9eb7fe4969d5cd952bdc91110a1fc"
+      },
+      {
+        "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-ci.md",
+        "bytes": 2520,
+        "sha256": "c76f9e688733cd5e1cea8192c734d3737f3fbd59b3cf8be262a1813053928973"
+      },
+      {
+        "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-migration.test.mjs",
+        "bytes": 7149,
+        "sha256": "8594812d712600d69e37752e1ce942d4e4a457311f89478cbaa83bd172d1ca0a"
+      },
+      {
+        "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-assembly.mjs",
+        "bytes": 4493,
+        "sha256": "c7044351002b35ca712edb3b38ceb61fa6d708b0a0cbc012d386a55be93fae0b"
+      },
+      {
+        "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-ci.mjs",
+        "bytes": 10442,
+        "sha256": "bc2aaab95a57255159bd8c3071e411730841ed595e677669afc7f0dce4d59b94"
+      },
+      {
+        "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-contract.mjs",
+        "bytes": 11898,
+        "sha256": "6111681c2a58fa5e0d3bc795b5cfbce3d1e671beaf1b43310efe57ad41a377f0"
+      },
+      {
+        "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-offline.test.mjs",
+        "bytes": 8831,
+        "sha256": "c9221818661373aeb0ab1091de9d0053384de604f55486501c761e21e562c7b8"
+      },
+      {
+        "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-profile.json",
+        "bytes": 213027,
+        "sha256": "4b51a3f8634d78e37081184900366b196bfb907e2a3bfba565fefc05419ea804"
+      },
+      {
+        "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-routes.json",
+        "bytes": 11094,
+        "sha256": "ef095429758ca4d94872ab037060346345eb6273d0120bc841940458d16a630d"
+      },
+      {
+        "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-runner.mjs",
+        "bytes": 44823,
+        "sha256": "4e7790014a8f6f22fed425505d023d450110346476e4a3757e3ded29645aeb7e"
+      },
+      {
+        "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-preserved.json",
+        "bytes": 8860,
+        "sha256": "019d5e93f645ed2f735092e53ca729a6adcc2c994ada72ec113820fafd0ffbfb"
       },
       {
         "path": "scripts/qualification/measure-action-source-seal.mjs",
@@ -5436,7 +5501,7 @@
         "sha256": "1945027163c553cd08421dd1f8caa08fab025c44279883ed9e6c3dec0e8c6408"
       }
     ],
-    "totalBytes": 14448698,
+    "totalBytes": 14970799,
     "trackedPaths": [
       ".bun-version",
       ".gitattributes",
@@ -5842,6 +5907,19 @@
       "scripts/qualification/indexed-schema-mongodb/retained-wire-diagnostics.md",
       "scripts/qualification/indexed-schema-mongodb/sdk49-ci-routing.md",
       "scripts/qualification/indexed-schema-mongodb/sdk49-ci-source-check.mjs",
+      "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.json",
+      "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.mjs",
+      "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.test.mjs",
+      "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-ci.md",
+      "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-migration.test.mjs",
+      "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-assembly.mjs",
+      "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-ci.mjs",
+      "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-contract.mjs",
+      "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-offline.test.mjs",
+      "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-profile.json",
+      "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-routes.json",
+      "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-runner.mjs",
+      "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-preserved.json",
       "scripts/qualification/measure-action-source-seal.mjs",
       "scripts/qualification/native-node-runtime.mjs",
       "scripts/qualification/native-wire-io-evidence.py",
