@@ -1,6 +1,6 @@
 import {controlledAttemptLifecycle} from './worker-attempt-fixture.mjs';
 /** Original Wire frames through emitted reader/MainDS/DS/admission and the normal installed native provider.
- * Public admission remains disabled. This fixture explicitly enables its existing engineering seam;
+ * Public admission remains disabled;
  * broker confirms, cache and ES transports are controlled. No live-service or consensus qualification. */
 import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
@@ -70,7 +70,7 @@ function retained(memory, index, id) {
         Buffer.from(memory.documents.get(memory.key(index, chunk)).document.payload, 'base64'))).toString());
 }
 try {
-    const repo = 'P:/eosrio/hyperion-tools/out/wire-abi-pressure-liveness-20261105/current-seam/current';
+    const repo = fileURLToPath(repoUrl);
     const sourceFixture = join(repo, 'tests/fixtures/portable-state-worker');
     assert.equal(hash(readFileSync(join(sourceFixture, 'source-1-1480-20261020.tar.gz'))), '42d092f3ecf6f428ecdba4825580377acdd27f2818ce445d4f197719e6ab72b7');
     const extraction = spawnSync(process.platform === 'win32' ? 'python' : 'python3', [join(sourceFixture, 'prepare.py'), join(directory, 'capture')],
@@ -268,4 +268,3 @@ try {
     const ownedDirectory = resolve(directory); assert.equal(dirname(ownedDirectory), resolve(workspaceOut));
     assert.match(basename(ownedDirectory), /^hyperion-attempt-worker-original-/); rmSync(ownedDirectory, {recursive: true, force: true});
 }
-
