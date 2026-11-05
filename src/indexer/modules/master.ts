@@ -46,6 +46,7 @@ import {resolveSourceCreditCapacity, SourceCreditCapacityCoordinator, isSourceCr
     type SourceCreditCapacityReply, type SourceCreditCapacityOptions} from '../helpers/source-credit-capacity.js';
 import {loadChainProtocol} from '../protocol/selection.js';
 import {ProtocolAbiCoordinator} from '../protocol/abi-coordinator.js';
+import {DiskAbiHistoryCatalog} from '../protocol/disk-abi-history.js';
 import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
 import {ProtocolSourceBindingStore, type ProtocolSourcePosition} from '../protocol/source-bindings.js';
 import {ProtocolAbiObservationStore} from '../protocol/abi-observation-store.js';
@@ -830,8 +831,11 @@ export class HyperionMaster {
                     throw new Error('Qualification genesis requires a native genesis verifier');
 
             }
-            const coordinator = new ProtocolAbiCoordinator({chainId: this.manager.conn.chains[this.chain].chain_id,
-                profile: {id: selected.id, profileId: selected.provider.profileId, components: selected.components ?? []},
+            const chainId=this.manager.conn.chains[this.chain].chain_id;
+            const profile={id:selected.id,profileId:selected.provider.profileId,components:selected.components??[]};
+            const diskAbiHistory=this.conf.settings.protocol_abi_history
+                ?DiskAbiHistoryCatalog.fromConfiguration(this.conf.settings.protocol_abi_history,chainId,profile):undefined;
+            const coordinator = new ProtocolAbiCoordinator({chainId,profile,diskAbiHistory,
                 ownerId: randomUUID(), bindings: new ProtocolSourceBindingStore(this.esClient, this.chain, replicas),
                 observations: new ProtocolAbiObservationStore(this.esClient, this.chain, replicas),
                 store: new ProtocolAbiFrontierStore(this.esClient, this.chain, replicas),

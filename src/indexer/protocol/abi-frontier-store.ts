@@ -319,9 +319,7 @@ export class ProtocolAbiFrontierStore {
         return Object.assign(Object.create(null),value.accounts);
     }
 
-    async prepareState(previousRootId:string|null,updates:readonly ProtocolAbiAccountUpdate[],reset=false,checkpoint?:()=>Promise<void>):Promise<string|null> {
-        if(this.options.readOnly)throw new Error('Read-only ABI frontier cannot prepare state');
-        if(typeof reset!=='boolean'||(previousRootId!==null&&!validId('root',previousRootId)))throw new Error('Invalid ABI state root or reset');
+    private stateUpdates(updates:readonly ProtocolAbiAccountUpdate[]):ProtocolAbiAccountUpdate[] {
         const input=bounded(updates,{bytes:64*1024*1024,nodes:500000}).value;
         if(!Array.isArray(input))throw new Error('Invalid ABI state updates');
         if(input.length>10000)throw new ProtocolAbiFrontierLimitError('ABI state updates exceed bounded batch budget');
@@ -332,6 +330,29 @@ export class ProtocolAbiFrontierStore {
                     ||!Object.hasOwn(update.state,'account')||update.state.account!==update.account)))throw new Error('Invalid or duplicate ABI state update');
             seen.add(update.account);if(update.state!==null)bounded(update.state,limits['account-state']);
         }
+        return input;
+    }
+
+    /** Pure identity of a new sparse account root; read-only consumers can bind a
+     * disk baseline without creating state records or trusting an arbitrary root. */
+    stateRootIdFor(updates:readonly ProtocolAbiAccountUpdate[]):string|null {
+        const input=this.stateUpdates(updates),groups=new Map<string,Record<string,string>>();
+        for(const update of input){
+            if(update.state===null)continue;
+            const key=hash(update.account).slice(0,2);
+            let accounts=groups.get(key);if(!accounts){accounts=Object.create(null) as Record<string,string>;groups.set(key,accounts);}
+            accounts[update.account]=this.id(this.envelope('account-state',update.state));
+        }
+        if(!groups.size)return null;
+        const buckets:Record<string,string>=Object.create(null);
+        for(const [prefix,accounts] of groups)buckets[prefix]=this.id(this.envelope('bucket',{prefix,accounts}));
+        return this.id(this.envelope('root',{buckets}));
+    }
+
+    async prepareState(previousRootId:string|null,updates:readonly ProtocolAbiAccountUpdate[],reset=false,checkpoint?:()=>Promise<void>):Promise<string|null> {
+        if(this.options.readOnly)throw new Error('Read-only ABI frontier cannot prepare state');
+        if(typeof reset!=='boolean'||(previousRootId!==null&&!validId('root',previousRootId)))throw new Error('Invalid ABI state root or reset');
+        const input=this.stateUpdates(updates);
         if(checkpoint)await checkpoint();
         const buckets=reset?Object.create(null):await this.root(previousRootId);
         if(checkpoint)await checkpoint();

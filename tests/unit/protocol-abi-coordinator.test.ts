@@ -1,10 +1,12 @@
 import {describe,expect,it} from 'bun:test';
 import {createHash} from 'node:crypto';
-import {ProtocolAbiCoordinator} from '../../src/indexer/protocol/abi-coordinator.js';
+import {ProtocolAbiCoordinator, type ProtocolAbiCoordinatorOptions} from '../../src/indexer/protocol/abi-coordinator.js';
 import {ProtocolAbiFrontierStore} from '../../src/indexer/protocol/abi-frontier-store.js';
 import {ProtocolSourceBindingStore,type ProtocolSourceProfile} from '../../src/indexer/protocol/source-bindings.js';
-import {ProtocolAbiObservationStore,protocolAbiCaptureDigest,type ProtocolAbiObservationRecord} from '../../src/indexer/protocol/abi-observation-store.js';
+import {ProtocolAbiObservationStore,protocolAbiCaptureDigest,protocolAbiObservationJson,type ProtocolAbiObservationRecord} from '../../src/indexer/protocol/abi-observation-store.js';
 import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
+import {protocolAbiCertificateForControl} from '../../src/indexer/protocol/abi-proof.js';
+import {historicalAddressIdentity} from '../../src/indexer/protocol/abi-history.js';
 
 // These are independently assembled provider facts, not encoded Wire testnet captures.
 const chainId='1'.repeat(64),block=(number:number)=>number.toString(16).padStart(64,'0'),tx='a'.repeat(64);
@@ -15,12 +17,30 @@ const empty=()=>({schemaVersion:1 as const,actionInputs:[] as any[],deployments:
 const hash=(bytes:Uint8Array)=>createHash('sha256').update(bytes).digest('hex');
 const input=(ordinal:number,globalSequence:string,account='alpha',name='act',rawHex='07000000',origin=ordinal,receiver=account)=>
     ({transactionId:tx,actionOrdinal:ordinal,inputActionOrdinal:origin,receiver,account,name,rawHex,globalSequence,receiptAbiSequence:'0'});
-async function fixture(options:{maxPendingBlocks?:number;recoveryWindowBlocks?:number}={}){
+
+// A validated catalog is an explicit input port; these fixed contents model its
+// irreversible boundary independently of coordinator records or live selections.
+function diskCatalog(end=3,manifest='c'){
+    const catalogId='h45abihistory1:'+manifest.repeat(64),rowHash='d'.repeat(64);
+    const state={account:'alpha',present:true,abiHex:'aabb',protocol:profile,
+        source:{catalogId,observationId:'h45abidisk1:'+rowHash,chainId,blockNum:2,blockId:block(2),
+            inputSha256:rowHash,phase:'block-end' as const,deltaOrdinal:0}};
+    let valid=true;
+    return {
+        baseline:async()=>{if(!valid)throw new Error('catalog changed');return {catalogId,source:{chainId,blockNum:end,blockId:block(end),
+            previousBlockId:end===1?null:block(end-1)},coverageStart:1 as const,lastGlobalSequence:'10',profile,states:[state]};},
+        revalidate:async()=>{if(!valid)throw new Error('catalog changed');},
+        blockId:(number:number)=>number>=1&&number<=end?block(number):null,
+        matchesState:(value:unknown)=>protocolAbiObservationJson(value)===protocolAbiObservationJson(state),
+        invalidate:()=>{valid=false;}
+    };
+}
+async function fixture(options:Partial<ProtocolAbiCoordinatorOptions>={}){
     const memory=frontierMemoryClient(),client=memory.client as any;
     const bindings=new ProtocolSourceBindingStore(client,'fixture'),observations=new ProtocolAbiObservationStore(client,'fixture');
     const store=new ProtocolAbiFrontierStore(client,'fixture');
     const contextId=(await bindings.prepareContext({schemaVersion:1,chainId,protocol:profile,schemaJson})).id;
-    const make=(ownerId:string)=>new ProtocolAbiCoordinator({chainId,profile,ownerId,bindings,observations,store,...options});
+    const make=(ownerId:string,overrides:Partial<ProtocolAbiCoordinatorOptions>={})=>new ProtocolAbiCoordinator({chainId,profile,ownerId,bindings,observations,store,...options,...overrides});
     const coordinator=make('master-1');await coordinator.start();let session='session-a';
     let generation=(await coordinator.openSource(contextId,session)).generation;
     async function selected(number:number,identity=number,parent=number-1,facts=empty(),incomplete=false,headNumber=number,tracesHex='00'){
@@ -47,6 +67,120 @@ async function fixture(options:{maxPendingBlocks?:number;recoveryWindowBlocks?:n
 }
 
 describe('canonical ABI runtime coordinator',()=>{
+    it('activates one explicit disk baseline and reduces its first live successor with the sparse ABI state',async()=>{
+        const catalog=diskCatalog(),f=await fixture({diskAbiHistory:catalog} as any);
+        expect((await f.coordinator.inspect()).head).toMatchObject({blockNum:3,blockId:block(3),coverageStart:1,lastGlobalSequence:'10'});
+        const baseline=(await f.coordinator.inspect()).head!,stored:any=await f.store.readCommit(baseline.commitId);
+        expect(stored.kind).toBe('disk-abi-baseline');expect(stored.selectionId).toBeNull();expect(stored.observationId).toBeNull();
+        expect(stored.previousCommitId).toBeNull();expect(stored.bindings).toEqual([]);
+        const facts=empty();facts.actionInputs=[input(1,'11')];const next=await f.selected(4,4,3,facts);
+        await f.prepare(next);expect((await f.admit(next)).status).toBe('accepted');expect((await f.coordinator.drain()).committed).toBe(1);
+        const head=(await f.coordinator.inspect()).head!;expect(head).toMatchObject({blockNum:4,lastGlobalSequence:'11',coverageStart:1});
+        const live:any=await f.store.readCommit(head.commitId);expect(live.kind).toBe('canonical-abi-block');
+        expect(live.previousCommitId).toBe(baseline.commitId);expect(live.bindings).toHaveLength(1);
+        expect(await f.store.readAccountState(live.bindings[0].stateId)).toMatchObject({account:'alpha',abiHex:'aabb',source:{catalogId:'h45abihistory1:'+'c'.repeat(64)}});
+    });
+    it('keeps a valid live successor across restart and resumes after it rather than reapplying the baseline',async()=>{
+        const f=await fixture({diskAbiHistory:diskCatalog()} as any),facts=empty();facts.actionInputs=[input(1,'11')];
+        const first=await f.append(4,facts),before=(await f.coordinator.inspect()).head!;
+        const restarted=f.make('master-restarted');await restarted.start();
+        expect((await restarted.inspect()).head).toEqual(before);
+        await expect(f.coordinator.inspect()).rejects.toThrow('superseded');
+        const opened=await restarted.openSource(f.contextId,'session-b');expect(opened.resumeFromBlock).toBe(5);
+        f.session='session-b';const next=await f.selected(5);await f.prepare(next);
+        expect((await restarted.admit(next.selectionId,opened.generation)).status).toBe('accepted');
+        expect((await restarted.drain()).committed).toBe(1);expect((await restarted.inspect()).head!.blockNum).toBe(5);
+        expect(await restarted.currentlyAdmittedSource(first.selectionId,first.record.source,'session-a',f.generation)).toBe(false);
+    });
+    it('advances a matching old prefix once and refuses a catalog with conflicting retained block identity',async()=>{
+        const f=await fixture();await f.append(1);await f.append(2);
+        const catalog=diskCatalog(),adopted=f.make('catalog-owner',{diskAbiHistory:catalog} as any);await adopted.start();
+        expect((await adopted.inspect()).head).toMatchObject({blockNum:3,blockId:block(3)});
+        expect(await adopted.openSource(f.contextId,'session-b')).toMatchObject({resumeFromBlock:4});
+        const other=await fixture();await other.append(1);await other.append(2,empty(),20,1);
+        const conflicting=other.make('conflicting-owner',{diskAbiHistory:diskCatalog()} as any);
+        await expect(conflicting.start()).rejects.toThrow('conflicts with the retained canonical prefix');
+        expect((await other.coordinator.inspect()).head).toMatchObject({blockNum:2,blockId:block(20)});
+    });
+    it('rejects rollback through the irreversible boundary and can replace a reversible first successor',async()=>{
+        const f=await fixture({diskAbiHistory:diskCatalog()} as any),generation=f.generation;
+        const wrongParent=await f.selected(4,40,30);await f.prepare(wrongParent);
+        await expect(f.admit(wrongParent)).rejects.toThrow('forks below the irreversible disk ABI boundary');
+        expect((await f.coordinator.inspect()).generation).toBe(generation);
+        await f.append(4);await f.append(5);
+        const replacement=await f.selected(4,40,3);await f.prepare(replacement);
+        expect((await f.admit(replacement)).status).toBe('accepted');expect((await f.coordinator.drain()).committed).toBe(1);
+        expect((await f.coordinator.inspect()).head).toMatchObject({blockNum:4,blockId:block(40),coverageStart:1});
+        const covered=await f.selected(3,30,2);expect((await f.admit(covered)).status).toBe('stale');
+        expect((await f.coordinator.inspect()).head!.blockId).toBe(block(40));
+    });
+    it('keeps the old owner and cursor when catalog revalidation fails before activation',async()=>{
+        const f=await fixture();await f.append(1);const prior=await f.coordinator.inspect(),catalog=diskCatalog();catalog.invalidate();
+        const refused=f.make('bad-catalog-owner',{diskAbiHistory:catalog} as any);
+        await expect(refused.start()).rejects.toThrow('catalog changed');
+        expect(await f.coordinator.inspect()).toEqual(prior);
+    });
+    it('refuses pre-catalog progress at or beyond the cutoff without taking ownership or rewinding it',async()=>{
+        for(const completePrefix of [false,true]){
+            const f=await fixture();
+            if(completePrefix){await f.append(1);await f.append(2);await f.append(3);}
+            await f.append(4);const before=await f.coordinator.inspect();
+            const refused=f.make('unsafe-catalog-owner',{diskAbiHistory:diskCatalog()});
+            await expect(refused.start()).rejects.toThrow('catalog cutoff ahead of the retained head');
+            expect(await f.coordinator.inspect()).toEqual(before);
+        }
+        const equal=await fixture();await equal.append(3);const before=await equal.coordinator.inspect();
+        await expect(equal.make('equal-cutoff-owner',{diskAbiHistory:diskCatalog()}).start()).rejects.toThrow('matching catalog ancestry');
+        expect(await equal.coordinator.inspect()).toEqual(before);
+    });
+    it('keeps a matching catalog identity across incomplete tail commits and restart without restoring lost ABI knowledge',async()=>{
+        const f=await fixture({diskAbiHistory:diskCatalog()});await f.append(4,empty(),4,3,true);
+        const before=await f.coordinator.inspect(),stored:any=await f.store.readCommit(before.head!.commitId);
+        expect(stored.catalogId).toBe('h45abihistory1:'+'c'.repeat(64));expect(before.head!.coverageStart).toBeNull();
+        const restarted=f.make('catalog-gap-owner');await restarted.start();
+        expect((await restarted.inspect()).head).toEqual(before.head);expect((await restarted.inspect()).gap).toEqual(before.gap);
+        const opened=await restarted.openSource(f.contextId,'session-b');f.session='session-b';
+        const facts=empty();facts.actionInputs=[input(1,'11')];const next=await f.selected(5,5,4,facts);await f.prepare(next);
+        expect((await restarted.admit(next.selectionId,opened.generation)).status).toBe('accepted');await restarted.drain();
+        const live:any=await f.store.readCommit((await restarted.inspect()).head!.commitId);
+        expect(live.bindings[0].stateId).toBeNull();expect(live.coverageStart).toBe(5);expect(live.catalogId).toBe(stored.catalogId);
+    });
+    it('refuses missing or changed catalog configuration while preserving the current catalog-backed owner',async()=>{
+        for(const tail of [false,true]){
+            const f=await fixture({diskAbiHistory:diskCatalog()});if(tail)await f.append(4);
+            const before=await f.coordinator.inspect();
+            await expect(f.make('missing-catalog',{diskAbiHistory:undefined}).start()).rejects.toThrow('requires its configured disk ABI catalog');
+            expect(await f.coordinator.inspect()).toEqual(before);
+            await expect(f.make('foreign-catalog',{diskAbiHistory:diskCatalog(3,'e')}).start()).rejects.toThrow();
+            expect(await f.coordinator.inspect()).toEqual(before);
+        }
+    });
+    it('does not activate a sparse root if catalog custody changes while its immutable states are being prepared',async()=>{
+        const f=await fixture();await f.append(1);const before=await f.coordinator.inspect(),catalog=diskCatalog();let changed=false;
+        f.memory.faults.beforeWrite=(request:any)=>{if(!changed&&request.index===f.store.recordsIndex){changed=true;catalog.invalidate();}};
+        await expect(f.make('changed-during-prepare',{diskAbiHistory:catalog}).start()).rejects.toThrow('catalog changed');
+        delete f.memory.faults.beforeWrite;expect(changed).toBe(true);expect(await f.coordinator.inspect()).toEqual(before);
+    });
+    it('keeps the irreversible baseline when a later replacement has no parent in its reversible tail',async()=>{
+        const f=await fixture({diskAbiHistory:diskCatalog()});await f.append(4);await f.append(5);
+        const before=(await f.coordinator.inspect()).head!,replacement=await f.selected(5,50,30);await f.prepare(replacement);
+        await expect(f.admit(replacement)).rejects.toThrow('cannot rewind below the irreversible disk ABI boundary');
+        expect((await f.coordinator.inspect()).head).toEqual(before);expect((await f.coordinator.inspect()).gap?.code).toBe('fork_recovery_pending');
+    });
+    it('stops historical certificate work at the explicit baseline and publishes only live tail addresses',async()=>{
+        const errors:unknown[]=[],f=await fixture({diskAbiHistory:diskCatalog(),onHistoricalError:error=>errors.push(error),
+            historicalCertificates:{interfaceVersion:1,maxCommitsPerDrain:4,maxCommitBytesPerDrain:1024*1024,maxMillisecondsPerDrain:1000}});
+        await f.append(4);await f.append(5);await f.coordinator.drain();
+        const control=await f.coordinator.inspect(),certificate=protocolAbiCertificateForControl(control);
+        expect(errors).toEqual([]);expect(control.historical).toBeDefined();
+        expect(await f.store.readHistoricalCertificateAddress(historicalAddressIdentity(certificate,4))).toMatchObject({identity:{blockNum:4}});
+        await expect(f.store.readHistoricalCertificateAddress(historicalAddressIdentity(certificate,3))).rejects.toThrow();
+    });
+    it('does not publish an admitted tail block after the catalog changes',async()=>{
+        const catalog=diskCatalog(),f=await fixture({diskAbiHistory:catalog}),next=await f.selected(4);await f.prepare(next);await f.admit(next);
+        const before=await f.coordinator.inspect();catalog.invalidate();await expect(f.coordinator.drain()).rejects.toThrow('catalog changed');
+        expect(await f.coordinator.inspect()).toEqual(before);
+    });
     it('retains local source revocation across held fork recovery without additional storage reads',async()=>{
         const f=await fixture();await f.append(1);
         const calls=f.memory.calls.length,current=f.coordinator.retainSourceFence('session-a',f.generation);
