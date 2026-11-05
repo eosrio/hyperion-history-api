@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "reference": "0aabc47dcf8bd0804d4dcecb336c90fc02a9c89e",
+  "head": "af07febcbc1146f162817c3a84ec7cbbebd76114",
+  "tree": "8e9e6b433f2245fdeaab7b6ef13e7dfd54eb401f",
+  "reports": [
+    {
+      "file": "report-24.json",
+      "bytes": 399798,
+      "sha256": "39750b69303dba6ecd980237dd5f9aab793fb454a1cf7fe9d5b4599a7b559627",
+      "archive": "official-24.zip",
+      "artifactId": "13408438511",
+      "archiveSha256": "baf3a6468f3cb83d38b0e3239309811669fbcd1e39cf236daf18338ef457bcb5"
+    },
+    {
+      "file": "report-26.json",
+      "bytes": 399797,
+      "sha256": "3fa7018e515c797139c30cb6929d0eeff96b12eb7c081359d713c86e654ae11f",
+      "archive": "official-26.zip",
+      "artifactId": "13408208855",
+      "archiveSha256": "a3bcb2288d3127681e576bf8d415b44eb609bf0ccc6c91ddd444082ccfc9e03b"
+    }
+  ],
+  "runId": "42014752481",
+  "repository": "eosrio/hyperion-atomicassets-plugin"
+}

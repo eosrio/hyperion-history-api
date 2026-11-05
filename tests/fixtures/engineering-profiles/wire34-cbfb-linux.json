@@ -56,6 +56,11 @@
         "sha256": "7524cef8c388ed9d26470e7db17208502482f5064287f89e03f14e2dccb958a0"
       },
       {
+        "path": ".github/workflows/royalty-native-custody.yml",
+        "bytes": 3591,
+        "sha256": "2ccd03df451cf86057da868c962e46fcc768986971e1d42cce4c9b14b87d3d1e"
+      },
+      {
         "path": ".github/workflows/wire34-cbfb.yml",
         "bytes": 4163,
         "sha256": "67ec2a349257905a5501e766c19a293d1a74b7460dea0f4ec18163111c0929ee"
@@ -1644,6 +1649,116 @@
         "path": "scripts/qualification/retained-replay-rpc.ts",
         "bytes": 3050,
         "sha256": "dd87d78deb813064d25f153d0fba7d938a59187bc492949716da874bab6ee5c0"
+      },
+      {
+        "path": "scripts/qualification/royalty-native-custody/README.md",
+        "bytes": 1992,
+        "sha256": "8b806a98ccd6a68ef4b404d19a29b0c9a5ea4768f9c8263189dda421da12e268"
+      },
+      {
+        "path": "scripts/qualification/royalty-native-custody/admission.mjs",
+        "bytes": 2492,
+        "sha256": "265a4bf1d5930596ea58431687bf18388dc9c70f5452ba81465b01524c74fd47"
+      },
+      {
+        "path": "scripts/qualification/royalty-native-custody/budget.mjs",
+        "bytes": 650,
+        "sha256": "d041e5989c2318dee0fc1180ba0e9661adf129e0e8817fe922818ef32a6c136e"
+      },
+      {
+        "path": "scripts/qualification/royalty-native-custody/budget.test.mjs",
+        "bytes": 445,
+        "sha256": "5cf608db507baa51afa4e8e0c27586c15b25784e4fe3b17e3c933fba4ecc11fc"
+      },
+      {
+        "path": "scripts/qualification/royalty-native-custody/ci.mjs",
+        "bytes": 10497,
+        "sha256": "28e1f9ba668e55042f3862c686dee56801317cf384b4625506935154f5966859"
+      },
+      {
+        "path": "scripts/qualification/royalty-native-custody/contract.mjs",
+        "bytes": 1488,
+        "sha256": "c91f5b364355858fb67dc10d70450ddf4badbfbce325a2599aa82317c2ac0f78"
+      },
+      {
+        "path": "scripts/qualification/royalty-native-custody/contract.test.mjs",
+        "bytes": 2220,
+        "sha256": "8e0af07b7371494d2f0476ed92457d568a3460b0e1fdc83d59829600731d9f93"
+      },
+      {
+        "path": "scripts/qualification/royalty-native-custody/custody.mjs",
+        "bytes": 6075,
+        "sha256": "d61bcc48a4e5fd04acaaff1cb75f6dde8a84cb789ff13d1c0fe9aed47aff7db4"
+      },
+      {
+        "path": "scripts/qualification/royalty-native-custody/custody.test.mjs",
+        "bytes": 5430,
+        "sha256": "01c2a7ed125ddaeda82217d7201178e5cbd7da7f8e64d5bfa7dd18be367cc818"
+      },
+      {
+        "path": "scripts/qualification/royalty-native-custody/driver.mjs",
+        "bytes": 5404,
+        "sha256": "35c29ec160e99993bfb188cc0c9793da26cd9989c0955af05596ee29fcd95a04"
+      },
+      {
+        "path": "scripts/qualification/royalty-native-custody/driver.test.mjs",
+        "bytes": 632,
+        "sha256": "29e4cd2dd3c136eb6706c22c07b1bc7dbf96d1cfb24544c3f5be7774e6f8382f"
+      },
+      {
+        "path": "scripts/qualification/royalty-native-custody/host.mjs",
+        "bytes": 6830,
+        "sha256": "c059ad8dbaba3d44930de74b2c232dd3f658296a8e28e8fce52b4827f5e056e7"
+      },
+      {
+        "path": "scripts/qualification/royalty-native-custody/original.mjs",
+        "bytes": 2793,
+        "sha256": "7aded682dbf61edef7b10966e6d035120b0f4fc62277f4c509841a1d68b20552"
+      },
+      {
+        "path": "scripts/qualification/royalty-native-custody/original.test.mjs",
+        "bytes": 1769,
+        "sha256": "3bb298a7d9542d6f42dd9aef68bfb26080e35e12d687a88be206b3c903a65483"
+      },
+      {
+        "path": "scripts/qualification/royalty-native-custody/pair.mjs",
+        "bytes": 1904,
+        "sha256": "b5bd1e3a2c1a4e763330e13f5f27f7da5081f0a9f53419413a4ac778dc0c677c"
+      },
+      {
+        "path": "scripts/qualification/royalty-native-custody/pair.test.mjs",
+        "bytes": 1678,
+        "sha256": "2ee4b8894d54333787a4b06085c4b0dc2a2b4d62457ecb4787f614c67ecfd857"
+      },
+      {
+        "path": "scripts/qualification/royalty-native-custody/pg-pins.json",
+        "bytes": 918,
+        "sha256": "76c3f6c982f100a4bc90608f25fd3bc15e8cef7f1d82ddda790cb1c5de5dfa19"
+      },
+      {
+        "path": "scripts/qualification/royalty-native-custody/runner.mjs",
+        "bytes": 13996,
+        "sha256": "6224b0abc36c70ddf9ee3483793956b305576b2e037bb51afe190710064f6ab4"
+      },
+      {
+        "path": "scripts/qualification/royalty-native-custody/source.mjs",
+        "bytes": 1638,
+        "sha256": "aec66432cd6cac1e51bede2ed6c935817588e11fbead1386d0428236ff25ce82"
+      },
+      {
+        "path": "scripts/qualification/royalty-native-custody/source.test.mjs",
+        "bytes": 1394,
+        "sha256": "80b27c2eb518b15b02189304b2bb7eadec4c219ab8d4b867c6c193de559122b8"
+      },
+      {
+        "path": "scripts/qualification/royalty-native-custody/verify-artifacts.mjs",
+        "bytes": 6788,
+        "sha256": "ab2336e3b487d8004a4dcce1d56f1aa20e3939050a3b0349ebeb398be2613548"
+      },
+      {
+        "path": "scripts/qualification/royalty-native-custody/verify-artifacts.test.mjs",
+        "bytes": 7244,
+        "sha256": "5e2f769087cc71a37a11d02e6dc56aae144eeb65a35d402a914ffbe4ca8ffadd"
       },
       {
         "path": "scripts/qualification/stateful-complete-kind-mongodb/README.md",
@@ -5776,7 +5891,7 @@
         "sha256": "1945027163c553cd08421dd1f8caa08fab025c44279883ed9e6c3dec0e8c6408"
       }
     ],
-    "totalBytes": 16117092,
+    "totalBytes": 16204960,
     "trackedPaths": [
       ".bun-version",
       ".gitattributes",
@@ -5787,6 +5902,7 @@
       ".github/workflows/indexed-schema-native.yml",
       ".github/workflows/indexed-sdk49-finite-historical.yml",
       ".github/workflows/indexed-sdk49-native-historical.yml",
+      ".github/workflows/royalty-native-custody.yml",
       ".github/workflows/wire34-cbfb.yml",
       ".gitignore",
       "AGENTS.md",
@@ -6290,6 +6406,28 @@
       "scripts/qualification/recovery-custody.mjs",
       "scripts/qualification/replay-bulk-ledger.ts",
       "scripts/qualification/retained-replay-rpc.ts",
+      "scripts/qualification/royalty-native-custody/README.md",
+      "scripts/qualification/royalty-native-custody/admission.mjs",
+      "scripts/qualification/royalty-native-custody/budget.mjs",
+      "scripts/qualification/royalty-native-custody/budget.test.mjs",
+      "scripts/qualification/royalty-native-custody/ci.mjs",
+      "scripts/qualification/royalty-native-custody/contract.mjs",
+      "scripts/qualification/royalty-native-custody/contract.test.mjs",
+      "scripts/qualification/royalty-native-custody/custody.mjs",
+      "scripts/qualification/royalty-native-custody/custody.test.mjs",
+      "scripts/qualification/royalty-native-custody/driver.mjs",
+      "scripts/qualification/royalty-native-custody/driver.test.mjs",
+      "scripts/qualification/royalty-native-custody/host.mjs",
+      "scripts/qualification/royalty-native-custody/original.mjs",
+      "scripts/qualification/royalty-native-custody/original.test.mjs",
+      "scripts/qualification/royalty-native-custody/pair.mjs",
+      "scripts/qualification/royalty-native-custody/pair.test.mjs",
+      "scripts/qualification/royalty-native-custody/pg-pins.json",
+      "scripts/qualification/royalty-native-custody/runner.mjs",
+      "scripts/qualification/royalty-native-custody/source.mjs",
+      "scripts/qualification/royalty-native-custody/source.test.mjs",
+      "scripts/qualification/royalty-native-custody/verify-artifacts.mjs",
+      "scripts/qualification/royalty-native-custody/verify-artifacts.test.mjs",
       "scripts/qualification/stateful-complete-kind-mongodb/README.md",
       "scripts/qualification/stateful-complete-kind-mongodb/ci.mjs",
       "scripts/qualification/stateful-complete-kind-mongodb/command-hooks.mjs",
