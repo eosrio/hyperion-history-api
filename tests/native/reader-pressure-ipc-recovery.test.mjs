@@ -34,3 +34,11 @@ for(const lifecycle of ['shutdownStarted','mode_transition']) {
 test('transition retains newly ready reader and reconciles after transition',async()=>{const f=fixture();f.master.mode_transition=true;f.master.syncReaderPressure(f.first);assert.equal(f.deliveries.length,0);f.master.mode_transition=false;await f.master.queueMonitor.checkQueues({},100);assert.ok(f.deliveries.some(([role])=>role==='reader'));});
 for(const lifecycle of ['shutdownStarted','mode_transition']) test(`${lifecycle}: generic role IPC remains unchanged`,()=>{const f=fixture();f.master[lifecycle]=true;const messages=[];f.first.send=(message,cb)=>{messages.push(message);assert.equal(cb,undefined);};f.master.sendToRole('reader',{event:'stop'});assert.deepEqual(messages,[{event:'stop'}]);});
 test('transition retains failed current carrier for normal recovery after resuming',async()=>{const f=fixture(),callbacks=[];f.first.send=(_m,cb)=>callbacks.push(cb);f.master.syncReaderPressure(f.first);f.master.mode_transition=true;callbacks[0](Error('late'));assert.deepEqual(f.killed,[]);f.master.mode_transition=false;await f.master.queueMonitor.checkQueues({},100);assert.deepEqual(f.killed,['reader']);});
+
+test('retained shared backlog under limit releases synchronized physical readers on first valid sample',async()=>{
+ const f=combined();f.master.workerMap.push({worker_role:'ds_pool_worker',local_id:1});f.sizes.set('wire:ds_pool:1',12);
+ assert.equal(f.bulk.allowRequests,false);assert.equal(f.live.allowRequests,false);
+ await f.check();assert.equal(f.bulk.allowRequests,true);assert.equal(f.live.allowRequests,true);
+ const replacement=f.carrier('replacement');f.master.workerMap[0].wref=replacement;f.master.syncReaderPressure(replacement);
+ assert.equal(f.deliveries.at(-1)[1].paused,false);
+});
