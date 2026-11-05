@@ -5752,8 +5752,8 @@
       },
       {
         "path": "tests/unit/wire-canonical-bulk-regression.mjs",
-        "bytes": 28370,
-        "sha256": "45c435f27f3ce40a528eb56b0fac2495836b378cdbc5810b11dc6cac89933ae4"
+        "bytes": 28453,
+        "sha256": "332042b184516350dd62ffec047327e98154cc55641e06e629bae8f26cc3ece9"
       },
       {
         "path": "tests/unit/wire-genesis-seed-original.mjs",
@@ -5762,8 +5762,8 @@
       },
       {
         "path": "tests/unit/wire-historical-bulk-regression.mjs",
-        "bytes": 28503,
-        "sha256": "608bf2d34984ba4c537256da577a103af313bbb1a40a3d82cbead2b91cc3cfcf"
+        "bytes": 28586,
+        "sha256": "78b3f05374aa155807a7ae6dbd9b3de5c73fb00031c072b587f2f33ca33bad45"
       },
       {
         "path": "tests/unit/wire-managed-state-v2-native.mjs",
@@ -5966,7 +5966,7 @@
         "sha256": "1945027163c553cd08421dd1f8caa08fab025c44279883ed9e6c3dec0e8c6408"
       }
     ],
-    "totalBytes": 16488184,
+    "totalBytes": 16488350,
     "trackedPaths": [
       ".bun-version",
       ".gitattributes",
