@@ -553,6 +553,47 @@ describe('source-bound canonical ABI consumers',()=>{
         expect((await f.coordinator.inspect()).head!.blockNum).toBe(1);
     });
 
+    it('reopens fresh authority after a canonical head advances during opening',async()=>{
+        const f=await fixture();await seed(f);const reader=f.reader(),entered=gate(),release=gate();let held=false;
+        f.memory.faults.beforeRead=async(request:any)=>{
+            if(!held&&request.index===f.store.controlIndex){held=true;entered.release();await release.promise;}
+        };
+        const waiting=reader.waitForOpen(f.source(1),undefined,{timeoutMs:1000});
+        await entered.promise;await f.append(2);release.release();
+        const view=await waiting;delete f.memory.faults.beforeRead;
+        expect(view.source.blockNum).toBe(1);await reader.revalidate(view);
+        expect(f.memory.calls.filter((call:any)=>call.method==='get'&&call.request.index===f.store.controlIndex).length).toBeGreaterThan(2);
+    });
+
+    it('bounds repeated authority-change failures and stops on cancellation',async()=>{
+        for(const mode of ['timeout','cancel'] as const){
+            const f=await fixture();await seed(f);const reader=f.reader(),abort=new AbortController();
+            const original=reader.open.bind(reader);let attempts=0;
+            reader.open=async(...args)=>{
+                await original(...args);attempts++;
+                if(mode==='cancel'&&attempts===2)abort.abort();
+                throw new ProtocolAbiProofUnavailableError('authority_changed','injected concurrent root change');
+            };
+            try{
+                const error=await unavailable(reader.waitForOpen(f.source(1),undefined,
+                    {timeoutMs:mode==='timeout'?220:1000,signal:abort.signal}));
+                expect(error.code).toBe(mode==='timeout'?'proof_timeout':'proof_cancelled');
+                expect(attempts).toBeGreaterThanOrEqual(2);
+            }finally{reader.open=original;}
+        }
+    });
+
+    it('does not retry invalid or noncanonical source requests',async()=>{
+        const f=await fixture();await seed(f);const reader=f.reader();
+        for(const [source,code] of [[{...f.source(1),chainId:'bad'},'invalid_proof'],
+            [{...f.source(1),blockId:'f'.repeat(64)},'source_not_canonical']] as const){
+            let opens=0;const original=reader.open.bind(reader);
+            reader.open=async(...args)=>{opens++;return original(...args);};
+            try{expect((await unavailable(reader.waitForOpen(source))).code).toBe(code);expect(opens).toBe(1);}
+            finally{reader.open=original;}
+        }
+    });
+
     it('expires a bounded proof wait while the underlying storage read remains in flight',async()=>{
         const f=await fixture();await seed(f);const reader=f.reader(),entered=gate(),release=gate();let held=false;
         f.memory.faults.beforeRead=async(request:any)=>{

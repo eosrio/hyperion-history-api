@@ -369,7 +369,7 @@ export class ProtocolAbiProofReader {
                 }catch(error){
                     if(controller.signal.aborted)throw reason();
                     if(!(error instanceof ProtocolAbiProofUnavailableError)
-                        ||!['authority_unavailable','source_pending','certificate_unavailable','proof_busy'].includes(error.code))throw error;
+                        ||!['authority_unavailable','authority_changed','source_pending','certificate_unavailable','proof_busy'].includes(error.code))throw error;
                     try{await delay(50,undefined,{signal:controller.signal});}
                     catch(stopped){if(controller.signal.aborted)throw reason();throw stopped;}
                 }

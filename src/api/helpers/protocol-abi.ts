@@ -200,7 +200,7 @@ async function resolveNative(fastify: FastifyInstance, scope: object, metadata: 
         const membership = await reader.waitForOpen(metadata.source, metadata.selectionId, options);
         if (membership.nativeActionInterfaceVersion !== 1)
             throw unavailable('has no canonical native-classification epoch');
-        const view = await nativeReader.open(metadata.source, metadata.selectionId, options);
+        const view = await nativeReader.waitForOpen(metadata.source, metadata.selectionId, options);
         const decision = await nativeReader.authorize(view, metadata.input, options);
         if (decision.kind !== 'native') throw unavailable('does not select a supported native origin');
         const canonical = await nativeReader.metadata(decision.grant, options);

@@ -1,5 +1,6 @@
 import {expect, test} from 'bun:test';
 import Fastify from 'fastify';
+import {ProtocolNativeActionReader} from '../../src/indexer/protocol/native-authorization.js';
 import {createHash} from 'node:crypto';
 import {ProtocolActionConsumer, protectProtocolAction, protocolResponseForCache, validateProtocolCachedResponse,
     revalidateProtocolActionScope} from '../../src/api/helpers/protocol-abi.js';
@@ -41,6 +42,16 @@ async function fixture(options: {primitive?: string} = {}) {
     }
     return {...value, app, action};
 }
+
+test('native API uses the bounded native opening', async () => {
+    const source = await fixture(), original = ProtocolNativeActionReader.prototype.waitForOpen;
+    let calls = 0;
+    ProtocolNativeActionReader.prototype.waitForOpen = async function(...args) {calls++; return original.apply(this, args);};
+    try {
+        await protectProtocolAction(source.app, {}, await source.action(0));
+        expect(calls).toBe(1);
+    } finally {ProtocolNativeActionReader.prototype.waitForOpen = original; await source.app.close();}
+});
 
 test('synthetic host API keeps notification membership and independent identical native origins through grouping and derived cache', async () => {
     const source = await fixture();

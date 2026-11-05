@@ -95,7 +95,7 @@ test('native wait cannot turn an old canonical read into a grant after actual co
     const held = holdRead(fixture.client, request => request.index === fixture.frontier.controlIndex);
     const waiting = reader.waitForOpen(fixture.selected.source, fixture.selected.selectionId).catch(error => error);
     await held.entered; await fixture.append(2, 20, 1); held.release(); const error = await waiting; held.restore();
-    expect(error).toBeInstanceOf(ProtocolNativeActionUnavailableError); expect(error).toMatchObject({code: 'authority_changed'});
+    expect(error).toBeInstanceOf(ProtocolNativeActionUnavailableError); expect(error).toMatchObject({code: 'source_not_canonical'});
     await expect(reader.waitForOpen(fixture.selected.source, fixture.selected.selectionId)).rejects.toMatchObject({code: 'source_not_canonical'});
 });
 
