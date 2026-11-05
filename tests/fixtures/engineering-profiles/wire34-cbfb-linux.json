@@ -63,7 +63,7 @@
       {
         "path": ".github/workflows/wire-canonical-bulk.yml",
         "bytes": 2606,
-        "sha256": "b4cea22fbc035e0ae87f10e955c328d5135864f0f4966b655c962efac50c435c"
+        "sha256": "5db4cae4f549f04654f9324137bf9b6e20c93c48a77b880bef2f3d4907d5d7cb"
       },
       {
         "path": ".github/workflows/wire34-cbfb.yml",
@@ -4263,7 +4263,7 @@
       {
         "path": "tests/native/wire-canonical-bulk-workflow.test.mjs",
         "bytes": 1192,
-        "sha256": "0b554b763bb670fdf397b18ca2ddceec0ca2bb3f218a8389242144ccef760676"
+        "sha256": "2e96a0423395004dac1fb46e8c9c3e48bd656740d44bd1b69a93dc09d8e0b459"
       },
       {
         "path": "tests/native/wire34-cbfb-caller-routing.test.mjs",
