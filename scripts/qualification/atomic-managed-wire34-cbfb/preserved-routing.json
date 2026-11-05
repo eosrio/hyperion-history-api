@@ -114,7 +114,23 @@
       "historicalPath": "scripts/qualification/atomic-managed/runner.mjs",
       "currentPath": "scripts/qualification/atomic-managed-wire34-cbfb/runner.mjs",
       "historicalSha256": "b361e4c03244931a9a2813e3a0d6659a86a370b642276b11091f970a691aadbe",
-      "changes": []
+      "changes": [
+        {
+          "historical": "selectMongoDbRoyaltyEngineeringAssemblyV1",
+          "current": "selectMongoDbLinearHistoryEngineeringAssemblyV1",
+          "count": 2
+        },
+        {
+          "historical": "MONGODB_ROYALTY_ENGINEERING_PROFILE_V1",
+          "current": "MONGODB_LINEAR_HISTORY_ENGINEERING_PROFILE_V1",
+          "count": 2
+        },
+        {
+          "historical": "stateful-owner-indexed-query-v1/royalty-engineering",
+          "current": "stateful-owner-indexed-query-v1/linear-history-engineering",
+          "count": 1
+        }
+      ]
     },
     {
       "historicalPath": "scripts/qualification/atomic-managed/driver.mjs",

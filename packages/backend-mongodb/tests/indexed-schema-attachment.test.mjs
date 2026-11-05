@@ -4,11 +4,11 @@ import {createMongoDbStatefulIndexedAdapterV1} from '../dist/stateful-indexed-v1
 import {createMongoDbStatefulOwnerAdapterV2} from '../dist/stateful-owner-v2.js';
 import {createMongoDbStatefulCompleteKindAdapterV1} from '../dist/stateful-complete-kind-v1.js';
 import {selectMongoDbIndexedEngineeringAssemblyV1,MONGODB_INDEXED_ENGINEERING_PROFILE_V1} from '../dist/stateful-indexed-engineering-v1.js';
-import {selectMongoDbRoyaltyEngineeringAssemblyV1,MONGODB_ROYALTY_ENGINEERING_PROFILE_V1} from '../dist/stateful-indexed-royalty-engineering-v1.js';
+import {selectMongoDbLinearHistoryEngineeringAssemblyV1,MONGODB_LINEAR_HISTORY_ENGINEERING_PROFILE_V1} from '../dist/stateful-indexed-linear-history-engineering-v1.js';
 const testProfile=process.env.HYPERION_INDEXED_TEST_PROFILE;
 if(testProfile!==undefined&&testProfile!=='cbfb')throw Error('Unknown indexed test profile');
-const selectEngineering=testProfile==='cbfb'?selectMongoDbRoyaltyEngineeringAssemblyV1:selectMongoDbIndexedEngineeringAssemblyV1;
-const engineeringProfile=testProfile==='cbfb'?MONGODB_ROYALTY_ENGINEERING_PROFILE_V1:MONGODB_INDEXED_ENGINEERING_PROFILE_V1;
+const selectEngineering=testProfile==='cbfb'?selectMongoDbLinearHistoryEngineeringAssemblyV1:selectMongoDbIndexedEngineeringAssemblyV1;
+const engineeringProfile=testProfile==='cbfb'?MONGODB_LINEAR_HISTORY_ENGINEERING_PROFILE_V1:MONGODB_INDEXED_ENGINEERING_PROFILE_V1;
 import {prepared,model,totals,page} from './indexed-schema-fixture.mjs';
 async function attached(input={}){
  const s=await prepared({model:input.model??model()}),operations=[];

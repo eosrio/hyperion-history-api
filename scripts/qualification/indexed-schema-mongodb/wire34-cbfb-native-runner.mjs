@@ -17,7 +17,7 @@ export async function run(options){
  const [{MongoClient,Long,BSON},logical,ownerSdk,indexed,nativeOwner,nativeIndexed,nativeEngineering,modelNative,managed,nativeOwnerSdk]=await Promise.all([
   import('mongodb'),import('@eosrio/hyperion-sdk/projection-stateful'),import('@eosrio/hyperion-sdk/projection-stateful-owner-v2'),import('../../../packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist/projection-stateful-indexed-query-v1.js'),
   import('../../../packages/backend-mongodb/dist/stateful-complete-kind-v1.js'),import('../../../packages/backend-mongodb/dist/stateful-indexed-v1.js'),
-  import('../../../packages/backend-mongodb/dist/stateful-indexed-royalty-engineering-v1.js'),import('../../../packages/backend-mongodb/dist/stateful-indexed-model-v1.js'),
+  import('../../../packages/backend-mongodb/dist/stateful-indexed-linear-history-engineering-v1.js'),import('../../../packages/backend-mongodb/dist/stateful-indexed-model-v1.js'),
   import('../../../build/indexer/connections/stateful-complete-kind-client.js'),import('../../../packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist/projection-stateful-owner-v2.js')]);
  assert(!existsSync(options.output));mkdirSync(options.output,{recursive:true});
  const trace=[],samples=[],explains=[],cases=[],ledger=[],attestations=[],namespaces=new Map(),sessions=[],clients=[],reads=new NativeReadLedger(),pools=[],stops=[],captured=[],custody=new Map();
@@ -42,7 +42,7 @@ export async function run(options){
    {family:nativeOwnerSdk.STATEFUL_OWNER_FAMILY_V2,interfaceVersion:2,sourceInputVersions:[2],supported:nativeOwnerSdk.STATEFUL_OWNER_HOST_CAPABILITIES_V2,limits:received.projection.limits},base.capabilities);
   assert.equal(nativeCapturedOwner.digest,owner.digest);
   const declarations=await Promise.all(models.map(model=>indexed.captureIndexedDeclarationV1(nativeCapturedOwner,'owned-native-fixture-v1',model))),requirements=declarations.map(declaration=>({declaration,limits:PLAN.limits}));
-  const adapter=await nativeIndexed.createMongoDbStatefulIndexedAdapterV1({...config,declaration:owner},requirements,completeLimits,base),engineering=nativeEngineering.selectMongoDbRoyaltyEngineeringAssemblyV1(adapter,PLAN.assembly);
+  const adapter=await nativeIndexed.createMongoDbStatefulIndexedAdapterV1({...config,declaration:owner},requirements,completeLimits,base),engineering=nativeEngineering.selectMongoDbLinearHistoryEngineeringAssemblyV1(adapter,PLAN.assembly);
   const entries=await Promise.all(declarations.map(async declaration=>({declaration,native:await modelNative.receiveMongoIndexedModelV1(nativeCapturedOwner,declaration,PLAN.limits),collection:prefix+'_ix1_'+declaration.digest+'_r',coverage:prefix+'_ix1_'+declaration.digest+'_c',undo:prefix+'_ix1_'+declaration.digest+'_u'})));
   for(const entry of entries)namespaces.set(entry.collection,entry.declaration.digest);
   return {client,projection,owner,nativeCapturedOwner,config:{...config,declaration:owner},base,adapter,engineering,entries,identity:{id:prefix+'-owner',generation:'one'}};
@@ -89,7 +89,7 @@ export async function run(options){
   await dispatchCases({
    'default-profile-and-genuine-binding':async()=>{
     assert.deepEqual(state.adapter.indexedCapabilities.comparisonProfiles,[]);assert.deepEqual(state.adapter.indexedCapabilities.queryDeclarationDigests,[]);
-    assert.throws(()=>nativeEngineering.selectMongoDbRoyaltyEngineeringAssemblyV1(state.adapter,'current103'));
+    assert.throws(()=>nativeEngineering.selectMongoDbLinearHistoryEngineeringAssemblyV1(state.adapter,'current103'));
     const view={declarationDigest:state.owner.digest,backendId:options.database,generation:state.projection.definition.binding.generation,revision:hex(20),checkpoint:{blockNum:0,blockId:hex(0)}};
     await assert.rejects(state.adapter.indexedForModel(view,state.entries[0].declaration.digest,noCancel));
     for(const changes of [{client:admin},{databaseName:options.database+'_other'},{collectionPrefix:'foreign'},{receiptRetention:3},{operationTimeoutMS:4999}]){

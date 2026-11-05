@@ -1591,23 +1591,71 @@ export class HyperionMaster {
         return this.queueMonitor.getPressureSnapshot();
     }
 
+    private pressureReady?: WeakSet<Worker>;
+    private pressureDeliveries?: WeakMap<Worker, {pending: boolean; dirty: boolean; observed: boolean; failed: boolean; token: object}>;
+
+    private replacePressureCarrier(worker: Worker): void {
+        if (this.shutdownStarted || this.mode_transition) return;
+        if (!this.workerMap.some(value => value.wref === worker)) return;
+        hLog('Reader pressure carrier unavailable; requesting worker replacement');
+        try { worker.kill(); } catch (error) { hLog('Reader pressure worker termination failed:', error); }
+    }
+
+    private sendReaderPressure(worker: Worker): void {
+        if (this.shutdownStarted || this.mode_transition) return;
+        const definition = this.workerMap.find(value => value.wref === worker);
+        const role = definition?.worker_role;
+        if (!this.pressureReady?.has(worker) || (role !== 'reader' && role !== 'continuous_reader')) return;
+        const deliveries = this.pressureDeliveries ??= new WeakMap();
+        let state = deliveries.get(worker);
+        if (!state) { state = {pending: false, dirty: false, observed: false, failed: false, token: {}}; deliveries.set(worker, state); }
+        if (state.failed) return;
+        if (state.pending) { state.dirty = true; return; }
+        state.pending = true; state.dirty = false; state.observed = false;
+        const token = state.token = {};
+        const complete = (error: Error | null) => {
+            if (!this.workerMap.some(value => value.wref === worker) || deliveries.get(worker) !== state || state.token !== token || state.failed) return;
+            state.token = {}; // One callback owns each physical send, even if invoked twice.
+            state.pending = false;
+            if (error) { state.failed = true; this.replacePressureCarrier(worker); return; }
+            if (state.dirty) this.sendReaderPressure(worker);
+        };
+        try { worker.send({event: 'reader_pressure_state', paused: this.queueMonitor.isReaderPaused(role)}, complete); }
+        catch (error) { complete(error instanceof Error ? error : new Error(String(error))); }
+    }
+
     /** A newly forked reader stays closed until its current pressure state arrives. */
     syncReaderPressure(worker: Worker): void {
+        if (this.shutdownStarted) return;
         const definition = this.workerMap.find(value => value.wref === worker);
         const role = definition?.worker_role;
         if (role !== 'reader' && role !== 'continuous_reader') return;
-        try {
-            worker.send({event: 'reader_pressure_state', paused: this.queueMonitor.isReaderPaused(role)}, error => {
-                if (error) hLog('Reader pressure synchronization failed:', error);
-            });
-        } catch (error) { hLog('Reader pressure synchronization failed:', error); }
+        (this.pressureReady ??= new WeakSet()).add(worker);
+        this.sendReaderPressure(worker);
+    }
+
+    reconcileReaderPressure(): void {
+        if (this.shutdownStarted || this.mode_transition) return;
+        for (const definition of this.workerMap) {
+            const worker = definition.wref;
+            if (!worker || !this.pressureReady?.has(worker) || (definition.worker_role !== 'reader' && definition.worker_role !== 'continuous_reader')) continue;
+            const state = this.pressureDeliveries?.get(worker);
+            if (state?.failed) this.replacePressureCarrier(worker);
+            else if (state?.pending) {
+                if (state.observed) { state.failed = true; this.replacePressureCarrier(worker); }
+                else state.observed = true;
+            } else this.sendReaderPressure(worker);
+        }
     }
 
     sendToRole(role: string, payload: any) {
         this.workerMap
             .filter((value) => value.worker_role === role)
             .forEach((value) => {
-                value.wref?.send(payload);
+                if (!value.wref) return;
+                if ((role === 'reader' || role === 'continuous_reader') && payload?.source === 'queue-pressure' && (payload.event === 'pause' || payload.event === 'resume'))
+                    this.sendReaderPressure(value.wref);
+                else value.wref.send(payload);
             });
     }
 

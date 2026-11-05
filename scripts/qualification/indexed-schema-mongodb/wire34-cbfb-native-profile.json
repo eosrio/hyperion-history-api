@@ -3,8 +3,8 @@
   "profile": "indexed-schema-mongodb-wire34-cbfb-linux-gha-v1",
   "qualificationOnly": true,
   "base": "97edbdc56de9a2e54ff60769544e6e09a8d0a5aa",
-  "assembly": "indexed-royalty-sdk-cbfb-native-cf514-engineering-v1",
-  "baseAssemblySha256": "3091c112f0535ff1be7ab4ec89422d228dd76cab483588c6f7132c4c9dfc9c68",
+  "assembly": "indexed-linear-history-sdk-cbfb-native-1825-engineering-v1",
+  "baseAssemblySha256": "510a0d21a43c120ce09fb5288764fd5cc2e8ea9454394d0b6ad6b6f8c2192d23",
   "limits": {
     "readAttempts": 12,
     "responseRecords": 8,
@@ -53,8 +53,8 @@
     },
     {
       "path": ".github/workflows/build.yml",
-      "bytes": 29522,
-      "sha256": "e786da00011adf317a05fe6288da0da959b5be66468be6fbb3506933e37cfccc"
+      "bytes": 29622,
+      "sha256": "4f09f652ceb52a6a691631387985cdcbf490563da3f503cdadc2c1a2487e4cbc"
     },
     {
       "path": ".github/workflows/indexed-schema-finite.yml",
@@ -90,11 +90,6 @@
       "path": "package-lock.json",
       "bytes": 127154,
       "sha256": "17cd1173f5e381dd42e8e2b600ed92dc7bfba81951d455a4d0770ceef63e7fd1"
-    },
-    {
-      "path": "packages/backend-mongodb/INDEXED-ENGINEERING.json",
-      "bytes": 16369,
-      "sha256": "baab82a75413863272c1816c1c29785506d99a65157212cca76733a6bff9d34c"
     },
     {
       "path": "packages/backend-mongodb/dist/contract.js",
@@ -177,6 +172,11 @@
       "sha256": "ec4a4af6c2b2e7c5e6750ab827eadc51ffb5a4ed1289b9aff7ea560b771f8399"
     },
     {
+      "path": "packages/backend-mongodb/INDEXED-ENGINEERING.json",
+      "bytes": 16369,
+      "sha256": "baab82a75413863272c1816c1c29785506d99a65157212cca76733a6bff9d34c"
+    },
+    {
       "path": "packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist/internal/stateful-execution.js",
       "bytes": 8394,
       "sha256": "857438141d88144a16b4aaa88e7f43c348d237c9dff12e406a7fa43ba863a6d1"
@@ -228,18 +228,18 @@
     },
     {
       "path": "packages/backend-mongodb/tests/indexed-int64-membership.test.mjs",
-      "bytes": 4898,
-      "sha256": "9b624cd00f0f0c3efdce61a2988127b19179e895bc65bdaae77ce5664e964c3d"
+      "bytes": 5420,
+      "sha256": "9830b9ae708aece66a048fe3dfb80678ad6d90422f3dbf5134f83ffd1012f30c"
     },
     {
       "path": "packages/backend-mongodb/tests/indexed-schema-attachment.test.mjs",
-      "bytes": 7877,
-      "sha256": "96a66dcb63d5d24e74552fd7041afadf7230fdcf072fd55fc0ab8343f647dac8"
+      "bytes": 7910,
+      "sha256": "0e28b3ff6140079bd4f9ffbc4b6b21e7f6702f619c4c767d2914040083bf2e79"
     },
     {
       "path": "packages/backend-mongodb/tests/indexed-schema-owner.test.mjs",
-      "bytes": 10777,
-      "sha256": "8ce7862d9e9691cbe9ae6aa9fc48ebb838230ba3fb9ae337e44b23dab52bef64"
+      "bytes": 10810,
+      "sha256": "56a53813a3d5f71039b9b2cae854cbc4d674ea0437fe26568ff9a710342aa569"
     },
     {
       "path": "packages/backend-mongodb/tests/stateful-complete-kind-fixture.mjs",
@@ -462,16 +462,6 @@
       "sha256": "f108adec3f3100a7afedf3073b1de4e000ef246c506f07fa5dfc017aa7cfd9a0"
     },
     {
-      "path": "scripts/qualification/indexed-schema-mongodb/fixtures/9d8-explain/PROVENANCE.json",
-      "bytes": 814,
-      "sha256": "f36f21940d54f81b721906dfc20070d1ef95544a22062158355b2a7bfa18cb93"
-    },
-    {
-      "path": "scripts/qualification/indexed-schema-mongodb/fixtures/9d8-explain/README.md",
-      "bytes": 495,
-      "sha256": "de152733a8639662c2dadfcb7adac3a88b41b383a7e6b0ee07d9c16338e9ef3f"
-    },
-    {
       "path": "scripts/qualification/indexed-schema-mongodb/fixtures/9d8-explain/node24-explain.json",
       "bytes": 35105,
       "sha256": "3eb09515b7376c22ef5a10d3efc65deac1ab7923e8abce56a86b30e452efb9d6"
@@ -490,6 +480,16 @@
       "path": "scripts/qualification/indexed-schema-mongodb/fixtures/9d8-explain/node26-samples.json",
       "bytes": 10542,
       "sha256": "48f7d3e00a424aca0779ef488c007f65b10bc96c0881b525e7bcf8247d8bd1e3"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/fixtures/9d8-explain/PROVENANCE.json",
+      "bytes": 814,
+      "sha256": "f36f21940d54f81b721906dfc20070d1ef95544a22062158355b2a7bfa18cb93"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/fixtures/9d8-explain/README.md",
+      "bytes": 495,
+      "sha256": "de152733a8639662c2dadfcb7adac3a88b41b383a7e6b0ee07d9c16338e9ef3f"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-assembly.mjs",
@@ -563,13 +563,13 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.json",
-      "bytes": 192941,
-      "sha256": "780d004e7df79713d6ba84ce4d1a7b2cf89ead85f1fc65dcedb327602382ed49"
+      "bytes": 193983,
+      "sha256": "d3124aaf8720db705b24fd1343b70c2afa0d779e4a06dab79bbaf20e05b2bcb8"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.mjs",
-      "bytes": 4340,
-      "sha256": "09fc9c70c80c7138e76135315ea625f9eb667f9b743f1b0e45123ea450be8f68"
+      "bytes": 4480,
+      "sha256": "79994e94ecc2e6b4791733b9c9296321b7ca40a66e7d741c31c4dcae86a4b7c0"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.test.mjs",
@@ -578,8 +578,8 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-migration.test.mjs",
-      "bytes": 7149,
-      "sha256": "8594812d712600d69e37752e1ce942d4e4a457311f89478cbaa83bd172d1ca0a"
+      "bytes": 7520,
+      "sha256": "47e6821b7bc91ed60595635713511128952be2c8e6b2af97a4e2e52bd61e67a0"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-assembly.mjs",
@@ -593,23 +593,23 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-contract.mjs",
-      "bytes": 11898,
-      "sha256": "6111681c2a58fa5e0d3bc795b5cfbce3d1e671beaf1b43310efe57ad41a377f0"
+      "bytes": 11904,
+      "sha256": "c8cdd7bb63e78b1d233c7eb8304fc5f27242b34491404fd9b4292e320de5acb1"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-offline.test.mjs",
-      "bytes": 8831,
-      "sha256": "c9221818661373aeb0ab1091de9d0053384de604f55486501c761e21e562c7b8"
+      "bytes": 8837,
+      "sha256": "ae3ddd2644ac35a49846232593f9dde388b2fdd487f2f799b97bc6a4fbce5495"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-routes.json",
       "bytes": 11094,
-      "sha256": "d66409e5c916672c2dcdeb795b536858da71609bdc82a157e1a593467c63846d"
+      "sha256": "980c58c35228d0fd1dd42aacf0c276679b911b2963e7d10eaa06b4dffccc7d2d"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-runner.mjs",
-      "bytes": 44823,
-      "sha256": "4e7790014a8f6f22fed425505d023d450110346476e4a3757e3ded29645aeb7e"
+      "bytes": 44842,
+      "sha256": "5d0d0c79de1804a58c571674eb5692458593e3f6fb8b0f2fde1369d75b6782b6"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-preserved.json",
@@ -798,8 +798,8 @@
     },
     {
       "path": "scripts/qualification/worker-failure-diagnostics.mjs",
-      "bytes": 14597,
-      "sha256": "0badfd39a3eda49399dac9513f3be7ca462237b15f81ee6a4a472af528c34d89"
+      "bytes": 16592,
+      "sha256": "fa2e7211f77187554e02d2e6bb1e471854d5e83a5ef8f5996012743f97b5dfca"
     },
     {
       "path": "scripts/qualification/worker-fence-diagnostics.mjs",
@@ -5656,7 +5656,7 @@
     "observation": {
       "files": 147,
       "edges": 496,
-      "sha256": "bd53eca83cd5bb6913b58f5cd4d57d21d442e8d49f211e0a0e2b48bc72f60294"
+      "sha256": "098bba138bdc22e7018de583a14f30b3ec6b768e52b978e1f9a202e79e6fc26a"
     }
   },
   "provenance": {

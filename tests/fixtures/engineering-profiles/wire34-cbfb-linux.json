@@ -32,8 +32,8 @@
       },
       {
         "path": ".github/workflows/build.yml",
-        "bytes": 29522,
-        "sha256": "e786da00011adf317a05fe6288da0da959b5be66468be6fbb3506933e37cfccc"
+        "bytes": 29622,
+        "sha256": "4f09f652ceb52a6a691631387985cdcbf490563da3f503cdadc2c1a2487e4cbc"
       },
       {
         "path": ".github/workflows/indexed-schema-finite.yml",
@@ -57,8 +57,8 @@
       },
       {
         "path": ".github/workflows/wire34-cbfb.yml",
-        "bytes": 3833,
-        "sha256": "72f79b0c8765bdaa01c6ffd5e31066e1abfe386bc1c5eb09c2ba7e841fc44043"
+        "bytes": 4163,
+        "sha256": "67ec2a349257905a5501e766c19a293d1a74b7460dea0f4ec18163111c0929ee"
       },
       {
         "path": ".gitignore",
@@ -206,6 +206,11 @@
         "sha256": "baab82a75413863272c1816c1c29785506d99a65157212cca76733a6bff9d34c"
       },
       {
+        "path": "packages/backend-mongodb/LINEAR-HISTORY-ENGINEERING.json",
+        "bytes": 17475,
+        "sha256": "a50eacb04d58c02c05edf4ab27cd4c36b3d334a41e36812f3ec0a5173449ed08"
+      },
+      {
         "path": "packages/backend-mongodb/OPERATOR-LISTS.md",
         "bytes": 8759,
         "sha256": "9123eab8ef0b741cc3a2eb54cfbcf063b5439511d484468d0582a0f968f6213b"
@@ -232,8 +237,8 @@
       },
       {
         "path": "packages/backend-mongodb/package.json",
-        "bytes": 2139,
-        "sha256": "39a433a146dfd973e379ea1d56e247193be7923c4e1742556c8c9ceb26f3ece2"
+        "bytes": 2533,
+        "sha256": "5869f1e29e815085c8fd500dd3abd8233371ce66fd19a7685e168410e9402396"
       },
       {
         "path": "packages/backend-mongodb/scripts/check-package.mjs",
@@ -304,6 +309,11 @@
         "path": "packages/backend-mongodb/src/stateful-indexed-engineering-v1.ts",
         "bytes": 3136,
         "sha256": "5bec7fa05bd1eccf7c0ff14010bd099f8f48a292cf983acc78a812c7f2bae4fb"
+      },
+      {
+        "path": "packages/backend-mongodb/src/stateful-indexed-linear-history-engineering-v1.ts",
+        "bytes": 3099,
+        "sha256": "84905b0bc0bd0a3632c3ebf2a25cdafbaeecb86942d435754002e4c56ef1019b"
       },
       {
         "path": "packages/backend-mongodb/src/stateful-indexed-materialization-v1.ts",
@@ -387,13 +397,13 @@
       },
       {
         "path": "packages/backend-mongodb/tests/indexed-int64-membership.test.mjs",
-        "bytes": 4898,
-        "sha256": "9b624cd00f0f0c3efdce61a2988127b19179e895bc65bdaae77ce5664e964c3d"
+        "bytes": 5420,
+        "sha256": "9830b9ae708aece66a048fe3dfb80678ad6d90422f3dbf5134f83ffd1012f30c"
       },
       {
         "path": "packages/backend-mongodb/tests/indexed-schema-attachment.test.mjs",
-        "bytes": 7877,
-        "sha256": "96a66dcb63d5d24e74552fd7041afadf7230fdcf072fd55fc0ab8343f647dac8"
+        "bytes": 7910,
+        "sha256": "0e28b3ff6140079bd4f9ffbc4b6b21e7f6702f619c4c767d2914040083bf2e79"
       },
       {
         "path": "packages/backend-mongodb/tests/indexed-schema-cursor.test.mjs",
@@ -422,8 +432,8 @@
       },
       {
         "path": "packages/backend-mongodb/tests/indexed-schema-owner.test.mjs",
-        "bytes": 10777,
-        "sha256": "8ce7862d9e9691cbe9ae6aa9fc48ebb838230ba3fb9ae337e44b23dab52bef64"
+        "bytes": 10810,
+        "sha256": "56a53813a3d5f71039b9b2cae854cbc4d674ea0437fe26568ff9a710342aa569"
       },
       {
         "path": "packages/backend-mongodb/tests/operator-list-fixture.mjs",
@@ -657,18 +667,18 @@
       },
       {
         "path": "scripts/qualification/atomic-managed-wire34-cbfb/preserved-routing.json",
-        "bytes": 16566,
-        "sha256": "a548bd1931a835a5120089804fc2a57cc327169b8e3afe366c3beafe0c2c68ad"
+        "bytes": 17137,
+        "sha256": "2bd69db446e080e4b054170f96ffd619df7c886acac14b851c7720a675f2be13"
       },
       {
         "path": "scripts/qualification/atomic-managed-wire34-cbfb/profile.json",
-        "bytes": 543647,
-        "sha256": "4b0b9bd20366076c0ce57b8775f65f45598746c1f13698526815f0e647396ba7"
+        "bytes": 544747,
+        "sha256": "56f926f95ebd84ea0c3fca971c7d67f34c88683cefde1f99d3d8dcbadc460b91"
       },
       {
         "path": "scripts/qualification/atomic-managed-wire34-cbfb/runner.mjs",
-        "bytes": 13222,
-        "sha256": "b361e4c03244931a9a2813e3a0d6659a86a370b642276b11091f970a691aadbe"
+        "bytes": 13255,
+        "sha256": "54f691a78bd021542b2095e6e2d9cd2458f3c8ad455b2eb1feefb47feaeea851"
       },
       {
         "path": "scripts/qualification/atomic-managed/README.md",
@@ -1167,13 +1177,13 @@
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.json",
-        "bytes": 192941,
-        "sha256": "780d004e7df79713d6ba84ce4d1a7b2cf89ead85f1fc65dcedb327602382ed49"
+        "bytes": 193983,
+        "sha256": "d3124aaf8720db705b24fd1343b70c2afa0d779e4a06dab79bbaf20e05b2bcb8"
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.mjs",
-        "bytes": 4340,
-        "sha256": "09fc9c70c80c7138e76135315ea625f9eb667f9b743f1b0e45123ea450be8f68"
+        "bytes": 4480,
+        "sha256": "79994e94ecc2e6b4791733b9c9296321b7ca40a66e7d741c31c4dcae86a4b7c0"
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.test.mjs",
@@ -1192,8 +1202,8 @@
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-migration.test.mjs",
-        "bytes": 7149,
-        "sha256": "8594812d712600d69e37752e1ce942d4e4a457311f89478cbaa83bd172d1ca0a"
+        "bytes": 7520,
+        "sha256": "47e6821b7bc91ed60595635713511128952be2c8e6b2af97a4e2e52bd61e67a0"
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-assembly.mjs",
@@ -1207,28 +1217,28 @@
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-contract.mjs",
-        "bytes": 11898,
-        "sha256": "6111681c2a58fa5e0d3bc795b5cfbce3d1e671beaf1b43310efe57ad41a377f0"
+        "bytes": 11904,
+        "sha256": "c8cdd7bb63e78b1d233c7eb8304fc5f27242b34491404fd9b4292e320de5acb1"
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-offline.test.mjs",
-        "bytes": 8831,
-        "sha256": "c9221818661373aeb0ab1091de9d0053384de604f55486501c761e21e562c7b8"
+        "bytes": 8837,
+        "sha256": "ae3ddd2644ac35a49846232593f9dde388b2fdd487f2f799b97bc6a4fbce5495"
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-profile.json",
-        "bytes": 213027,
-        "sha256": "2a7dfed35a5da890a93eedef963c89dbdbfc2aea7c3c1e03fb2e6e0fff36e588"
+        "bytes": 213033,
+        "sha256": "205b2855ec4e11ad661c2a60313bde9f6503960f6c09ac0e775c77b9ab4ad9bb"
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-routes.json",
         "bytes": 11094,
-        "sha256": "d66409e5c916672c2dcdeb795b536858da71609bdc82a157e1a593467c63846d"
+        "sha256": "980c58c35228d0fd1dd42aacf0c276679b911b2963e7d10eaa06b4dffccc7d2d"
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-runner.mjs",
-        "bytes": 44823,
-        "sha256": "4e7790014a8f6f22fed425505d023d450110346476e4a3757e3ded29645aeb7e"
+        "bytes": 44842,
+        "sha256": "5d0d0c79de1804a58c571674eb5692458593e3f6fb8b0f2fde1369d75b6782b6"
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-preserved.json",
@@ -1767,8 +1777,8 @@
       },
       {
         "path": "scripts/qualification/wire34-cbfb/PLAN.md",
-        "bytes": 9348,
-        "sha256": "d22f1f0d2baf42de2ccf34f8e482bc2db78ca9546b3521ccb1beaad53a266fb5"
+        "bytes": 10004,
+        "sha256": "149fb23f9a48d09a99fd455175221728d703849de106c6355e086a7fbd366091"
       },
       {
         "path": "scripts/qualification/wire34-cbfb/build-parent-contract.mjs",
@@ -1777,8 +1787,8 @@
       },
       {
         "path": "scripts/qualification/wire34-cbfb/build-parent-routing.json",
-        "bytes": 80256,
-        "sha256": "67ed4f8dcd3d3d82ab143d05ddd101299b3b5f186528a0d3aa5ec0c6190d8c78"
+        "bytes": 81210,
+        "sha256": "e4f24f00d86c67f563cc7c874e3ede53330f27843e610980cceaf98673854959"
       },
       {
         "path": "scripts/qualification/wire34-cbfb/ci-child.mjs",
@@ -1787,8 +1797,8 @@
       },
       {
         "path": "scripts/qualification/wire34-cbfb/ci.mjs",
-        "bytes": 8737,
-        "sha256": "e190be0d95ef2765576afa1444941654e26d9293bc4b55145c13aaea6b0469d5"
+        "bytes": 10644,
+        "sha256": "6440c278e2e18fc3bce8d3bd385692b5920ef969bb887b43d8f1e3c932e27215"
       },
       {
         "path": "scripts/qualification/wire34-cbfb/cohort.json",
@@ -1827,8 +1837,8 @@
       },
       {
         "path": "scripts/qualification/worker-failure-diagnostics.mjs",
-        "bytes": 14597,
-        "sha256": "0badfd39a3eda49399dac9513f3be7ca462237b15f81ee6a4a472af528c34d89"
+        "bytes": 16592,
+        "sha256": "fa2e7211f77187554e02d2e6bb1e471854d5e83a5ef8f5996012743f97b5dfca"
       },
       {
         "path": "scripts/qualification/worker-fence-diagnostics.mjs",
@@ -2912,8 +2922,8 @@
       },
       {
         "path": "src/indexer/modules/master.ts",
-        "bytes": 117238,
-        "sha256": "9c5d66d86fc5e23105e329df8ae5f66e8f9075ffc6f9f040a442f28f6e028481"
+        "bytes": 120208,
+        "sha256": "733ed239cdfa0d844a0cdf36164d416745eccb3f2dc7dd804b7f428143996917"
       },
       {
         "path": "src/indexer/modules/parsers/3.2-parser.ts",
@@ -2927,8 +2937,8 @@
       },
       {
         "path": "src/indexer/modules/queueMonitor.ts",
-        "bytes": 8150,
-        "sha256": "e49917bd8052ec89da62fadb4492ac247eb1dd2bb032795f8df00a2457101458"
+        "bytes": 8581,
+        "sha256": "fa1deeb1211c72c6f24b05e8cb1410e5e1ab6479279a872bf7de662c8f715a25"
       },
       {
         "path": "src/indexer/modules/telegram.ts",
@@ -2997,8 +3007,8 @@
       },
       {
         "path": "src/indexer/projection/stateful-custody.ts",
-        "bytes": 2454,
-        "sha256": "4af331d4d688f6475c70f6b15a01e76bc88b5deec1d682328855fa56d607e9bc"
+        "bytes": 3139,
+        "sha256": "4988a04668e39ea1e2cd7e8d7fcac17e6e87c20389a969aa1ef082088b8158c1"
       },
       {
         "path": "src/indexer/projection/stateful-expectation.ts",
@@ -3102,8 +3112,8 @@
       },
       {
         "path": "src/indexer/protocol/immutable-bundle-store.ts",
-        "bytes": 27397,
-        "sha256": "dd02ede23c2b28bf812e2ed225fe58151cb71b3651a1ba056adf41f927ca5b9e"
+        "bytes": 29375,
+        "sha256": "c29313f1db7763ff077a3c6a4f088591fd141ccd5cad355b6ce35ae2e98cf05d"
       },
       {
         "path": "src/indexer/protocol/native-action-metadata.ts",
@@ -4041,14 +4051,19 @@
         "sha256": "2fb8440ae02a038ea287f527465f1b2f199493fa0db8f6f7774c0b852a9e7ce1"
       },
       {
+        "path": "tests/native/reader-pressure-ipc-recovery.test.mjs",
+        "bytes": 10435,
+        "sha256": "3ff56dfa7c529592939581f685b990a9265a0a45f74895954a96dd2229e63c35"
+      },
+      {
         "path": "tests/native/reader-pressure-observability.test.mjs",
-        "bytes": 5673,
-        "sha256": "ab3b0dc458a48fb058406916e6d7a04ac0a255ad67fa33a819d75e0e9fd9605f"
+        "bytes": 5986,
+        "sha256": "89912bce94765ec9eed914379b3b0901f2f5494964fbea6acc62485f50747459"
       },
       {
         "path": "tests/native/reader-startup-pressure.test.mjs",
-        "bytes": 5406,
-        "sha256": "d76bbce552612f4bc430677eff6d692f5ed39ddc9fcedf4f0844458b1804f875"
+        "bytes": 5434,
+        "sha256": "72947914ef58cb59cffbfa9c9810be16877069c99fe701d55cb7ee8fa477f7c2"
       },
       {
         "path": "tests/native/retained-workload-progress.mjs",
@@ -4094,6 +4109,11 @@
         "path": "tests/native/stateful-complete-kind-public-command.test.mjs",
         "bytes": 21650,
         "sha256": "5510a2ed73211311d9dd3bda34519abd9f553bf04fe0616ab18d03184dd26c21"
+      },
+      {
+        "path": "tests/native/stateful-custody-fractions.test.mjs",
+        "bytes": 7864,
+        "sha256": "1177b6f88c8d32bd4438f0b2b363e0ed4087ab28d01d2cfdefd02d670df5daaa"
       },
       {
         "path": "tests/native/stream-filter-parity.test.mjs",
@@ -4142,8 +4162,8 @@
       },
       {
         "path": "tests/native/wire34-linux-workflow.test.mjs",
-        "bytes": 21692,
-        "sha256": "59fe5c41ddb330d6482b5eaf65913e9de84e262c056a73b33862e0c5cd855e2a"
+        "bytes": 25952,
+        "sha256": "906bacbfbf1219c339c147d50dd138d7584ff76403774c1a358c78f0099fee36"
       },
       {
         "path": "tests/native/wire34-parent-integration.test.mjs",
@@ -5427,8 +5447,8 @@
       },
       {
         "path": "tests/unit/state-reader-live-backpressure.mjs",
-        "bytes": 40208,
-        "sha256": "7bdb5b0f9e6ecd2a048afe14e6af8d25c88d49c03723bdf3bbe4b95622957e4d"
+        "bytes": 40971,
+        "sha256": "662ad6bdb1f214dd684c4298163a39d250d1eed23b3559e5d0791f86facb5134"
       },
       {
         "path": "tests/unit/state-reader-live-backpressure.test.ts",
@@ -5691,14 +5711,19 @@
         "sha256": "50760b3d63e3a2e4782242a3436d77d9b148cca2cee62a8343dacdd832293241"
       },
       {
+        "path": "tests/unit/worker-failure-copied-env-vm.mjs",
+        "bytes": 3148,
+        "sha256": "292adba85647cfeb223416e2abb93af8aab408b9be532dc82e57ba091c2e4d7f"
+      },
+      {
         "path": "tests/unit/worker-failure-lineage.mjs",
         "bytes": 7585,
         "sha256": "91ef5e8963fb5341f4a5274d5ddd04eca122044502812d012aa3990bed076e36"
       },
       {
         "path": "tests/unit/worker-failure-lineage.test.ts",
-        "bytes": 2111,
-        "sha256": "9bc258dfb3b9b91ead4dd4caad68f885648ceddcb42a54401dc152ea3f3a6d9d"
+        "bytes": 2883,
+        "sha256": "2c6342d8ea17729b48ee29d6ebbc6fcc1bc3ddf450f915adfe0a01f136daf143"
       },
       {
         "path": "tests/unit/worker-failure-replacement.mjs",
@@ -5751,7 +5776,7 @@
         "sha256": "1945027163c553cd08421dd1f8caa08fab025c44279883ed9e6c3dec0e8c6408"
       }
     ],
-    "totalBytes": 16052653,
+    "totalBytes": 16117092,
     "trackedPaths": [
       ".bun-version",
       ".gitattributes",
@@ -5977,6 +6002,7 @@
       "package.json",
       "packages/backend-mongodb/.gitignore",
       "packages/backend-mongodb/INDEXED-ENGINEERING.json",
+      "packages/backend-mongodb/LINEAR-HISTORY-ENGINEERING.json",
       "packages/backend-mongodb/OPERATOR-LISTS.md",
       "packages/backend-mongodb/README.md",
       "packages/backend-mongodb/ROYALTY-ENGINEERING.json",
@@ -5997,6 +6023,7 @@
       "packages/backend-mongodb/src/stateful-indexed-cursor-v1.ts",
       "packages/backend-mongodb/src/stateful-indexed-engineering-internal.ts",
       "packages/backend-mongodb/src/stateful-indexed-engineering-v1.ts",
+      "packages/backend-mongodb/src/stateful-indexed-linear-history-engineering-v1.ts",
       "packages/backend-mongodb/src/stateful-indexed-materialization-v1.ts",
       "packages/backend-mongodb/src/stateful-indexed-model-v1.ts",
       "packages/backend-mongodb/src/stateful-indexed-royalty-engineering-v1.ts",
@@ -6746,6 +6773,7 @@
       "tests/native/protocol-staged-bundle-range.mjs",
       "tests/native/protocol-staged-bundle-read.test.mjs",
       "tests/native/reader-input-pressure.test.mjs",
+      "tests/native/reader-pressure-ipc-recovery.test.mjs",
       "tests/native/reader-pressure-observability.test.mjs",
       "tests/native/reader-startup-pressure.test.mjs",
       "tests/native/retained-workload-progress.mjs",
@@ -6757,6 +6785,7 @@
       "tests/native/stateful-complete-kind-host.test.mjs",
       "tests/native/stateful-complete-kind-metadata-profile.test.mjs",
       "tests/native/stateful-complete-kind-public-command.test.mjs",
+      "tests/native/stateful-custody-fractions.test.mjs",
       "tests/native/stream-filter-parity.test.mjs",
       "tests/native/stream-history-delivery.test.mjs",
       "tests/native/stream-request-lifecycle.test.mjs",
@@ -7077,6 +7106,7 @@
       "tests/unit/worker-end-controls.mjs",
       "tests/unit/worker-end-privacy.mjs",
       "tests/unit/worker-failure-controls.mjs",
+      "tests/unit/worker-failure-copied-env-vm.mjs",
       "tests/unit/worker-failure-lineage.mjs",
       "tests/unit/worker-failure-lineage.test.ts",
       "tests/unit/worker-failure-replacement.mjs",
@@ -10048,13 +10078,13 @@
       },
       {
         "path": "indexer/modules/master.js",
-        "bytes": 112219,
-        "sha256": "7d8a1d9a6bf3845274ae2f2c57a1b2323b51a0c2897fd03159bb10eeb7f0f456"
+        "bytes": 115436,
+        "sha256": "9092322dd0ac5543ae041aa62280719794a587c020a3419dbad2e5f978de63ac"
       },
       {
         "path": "indexer/modules/master.js.map",
-        "bytes": 92272,
-        "sha256": "b7b42403855b1f4388063e6effc5b59b4c8f1902e3c81bec4e34663883e738bc"
+        "bytes": 95320,
+        "sha256": "5b0f1fc18372d92e570caf88a7b6994df31079681cff620ab722f1c1feb49c5b"
       },
       {
         "path": "indexer/modules/parsers/3.2-parser.js",
@@ -10078,13 +10108,13 @@
       },
       {
         "path": "indexer/modules/queueMonitor.js",
-        "bytes": 7248,
-        "sha256": "ca92f14c720644754df5471098cfdcd300aa75395cb18f70a233f7e5d64938a8"
+        "bytes": 7791,
+        "sha256": "a8fb3470ea0f8ccd807a856436e949ca689438e8e7ad928185a4de9335d665de"
       },
       {
         "path": "indexer/modules/queueMonitor.js.map",
-        "bytes": 7594,
-        "sha256": "ad00907f36f91f8e3394bb9fe5d21636bb9be90e2dd8e1562b0f4d6e539193d4"
+        "bytes": 7898,
+        "sha256": "1a605e0f947e28803a4bf640ff2c838c72d9a0ea2ca3cfdbafb8ae394076661e"
       },
       {
         "path": "indexer/modules/telegram.js",
@@ -10218,13 +10248,13 @@
       },
       {
         "path": "indexer/projection/stateful-custody.js",
-        "bytes": 2245,
-        "sha256": "c1d7b01eeafa606c660154aec401ae3a9ade55ea2112e27764ee834c4108a0fb"
+        "bytes": 2948,
+        "sha256": "6c5ee62a437b6bde56df75df855d7f3d493e4b64e0bc4983c07f5b7b4f75a1f4"
       },
       {
         "path": "indexer/projection/stateful-custody.js.map",
-        "bytes": 1827,
-        "sha256": "cff52141bb081fb4335fd93b1dd392db807cbc2acb2bf6461d6dee3744b127a5"
+        "bytes": 2439,
+        "sha256": "2bd708bd95e1ce93aef2d3690f681694cdf25c14124dbbd91dc4d34f3f2424c4"
       },
       {
         "path": "indexer/projection/stateful-expectation.js",
@@ -10428,13 +10458,13 @@
       },
       {
         "path": "indexer/protocol/immutable-bundle-store.js",
-        "bytes": 26482,
-        "sha256": "c9621b6f9e07812ee39a9eb8e80195211317a61bde4ddf034fbd9636b588f45d"
+        "bytes": 28336,
+        "sha256": "99b729a964fe6cae9a1b1a713a688960ef74e46df8f67afb2530d385cbe9650f"
       },
       {
         "path": "indexer/protocol/immutable-bundle-store.js.map",
-        "bytes": 25719,
-        "sha256": "ced24796aa997d366769bf9962759757d9d5f1e7cd35eaea3f1a7867dde2aa78"
+        "bytes": 27321,
+        "sha256": "8314fab48e93c5a2a3cb0a13a42e80dface60aa7bc2a64335868ab67c06d55e7"
       },
       {
         "path": "indexer/protocol/native-action-metadata.js",
@@ -10982,6 +11012,21 @@
         "path": "stateful-indexed-engineering-v1.js.map",
         "bytes": 2904,
         "sha256": "1f26a545382bd7d963792d72138d0dedbe43cbe0a67c139c7404c1c306f1d85f"
+      },
+      {
+        "path": "stateful-indexed-linear-history-engineering-v1.d.ts",
+        "bytes": 525,
+        "sha256": "3b3fa7dc501ecfd13def3e91ffdeb44115b567ce4968c838cc10b53f7d83ab46"
+      },
+      {
+        "path": "stateful-indexed-linear-history-engineering-v1.js",
+        "bytes": 3245,
+        "sha256": "690c511494b7eb004b928a6b5f68f1d27935f684f0fdc9779c915a90ebfb7d5d"
+      },
+      {
+        "path": "stateful-indexed-linear-history-engineering-v1.js.map",
+        "bytes": 2933,
+        "sha256": "a19d8531f913d8f17a115659fdee66771d3378d32b9c2d078f5a7e58edc9609b"
       },
       {
         "path": "stateful-indexed-materialization-v1.d.ts",

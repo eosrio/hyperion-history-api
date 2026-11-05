@@ -47,11 +47,13 @@ export class HyperionQueueMonitor {
 
     private updateReader(role: 'reader' | 'continuous_reader', aboveLimit: boolean, canResume: boolean) {
         if (aboveLimit && !this.readingPaused[role]) {
-            this.master.sendToRole(role, {event: 'pause', source: 'queue-pressure'});
             this.readingPaused[role] = true;
+            try { this.master.sendToRole(role, {event: 'pause', source: 'queue-pressure'}); }
+            catch (error) { hLog(`Reader pressure delivery request failed for ${role}:`, error); }
         } else if (!aboveLimit && canResume && this.readingPaused[role]) {
-            this.master.sendToRole(role, {event: 'resume', source: 'queue-pressure'});
             this.readingPaused[role] = false;
+            try { this.master.sendToRole(role, {event: 'resume', source: 'queue-pressure'}); }
+            catch (error) { hLog(`Reader pressure delivery request failed for ${role}:`, error); }
         }
     }
 
@@ -111,9 +113,12 @@ export class HyperionQueueMonitor {
             // Unknown queue pressure must not release either reader.
             this.updateReader('reader', true, false);
             this.updateReader('continuous_reader', true, false);
-            hLog('Queue monitoring failed; readers paused:', error);
+            hLog('Queue monitoring failed; reader pause requested:', error);
         } finally {
             this.checking = false;
+            // Reconcile the current physical readers on the existing bounded
+            // poll cadence, including when startup synchronization was lost.
+            this.master.reconcileReaderPressure?.();
         }
     }
 

@@ -12,7 +12,7 @@ export function assertGenesisCoverage(coverage,model,owner,view){
 }
 
 export const PLAN=freeze({schemaVersion:1,scope:'synthetic-native-indexed-schema',
- profile:'indexed-schema-mongodb-wire34-cbfb-linux-gha-v1',assembly:'indexed-royalty-sdk-cbfb-native-cf514-engineering-v1',
+ profile:'indexed-schema-mongodb-wire34-cbfb-linux-gha-v1',assembly:'indexed-linear-history-sdk-cbfb-native-1825-engineering-v1',
  product:'49dfe804590ab5b9cb17df05ebc85eb8e6976b14',base:'97edbdc56de9a2e54ff60769544e6e09a8d0a5aa',
  sdk:'cbfb26694b90b52266d1e0b9b5dbf6f8389e736b',driver:'7.2.0',server:'8.0.34',comparison:'mongodb-simple-utf8-v1',
  operationMS:5000,transactionMS:15000,traceEvents:16384,evidenceBytes:32*1024*1024,runtimeVersions:['v24.22.1','v26.4.0'],

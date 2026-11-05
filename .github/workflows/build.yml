@@ -57,7 +57,7 @@ jobs:
       - name: Check explicit current profile, frozen historical predicates and workload boundaries
         run: node --test tests/native/wire34-cbfb-current-stateful-source-profile.test.mjs scripts/qualification/indexed-schema-mongodb/wire34-cbfb-build-contract.test.mjs scripts/qualification/indexed-schema-mongodb/wire34-cbfb-migration.test.mjs tests/native/wire34-cbfb-source-profile.test.mjs scripts/qualification/indexed-schema-mongodb/all-cbfb-native-teardown.test.mjs tests/native/wire34-cbfb-codec-profile.test.mjs tests/native/wire34-cbfb-source-tamper.test.mjs tests/native/wire34-cbfb-caller-routing.test.mjs tests/native/projection-manager-lifecycle.test.mjs tests/native/bounded-json-string-encoding.test.mjs scripts/qualification/operator-list-mongodb/cleanup-source-profile.test.mjs scripts/qualification/wire-source-snapshot.test.mjs
       - name: Check bounded canonical JSON and authentic protocol records on Node ${{ matrix.node-version }}
-        run: node --test tests/unit/bounded-json.test.mjs tests/native/bounded-json-protocol-records.test.mjs
+        run: node --test tests/unit/bounded-json.test.mjs tests/native/bounded-json-protocol-records.test.mjs tests/native/stateful-custody-fractions.test.mjs
       - name: Check all-CBFB stateful source and final publication on Node ${{ matrix.node-version }}
         run: |
           node --test tests/native/pinned-git-source.test.mjs
@@ -98,7 +98,7 @@ jobs:
       - name: Check explorer system contract metadata on Node ${{ matrix.node-version }}
         run: node --test tests/native/explorer-system-contract.test.mjs
       - name: Check independent reader input pressure on Node ${{ matrix.node-version }}
-        run: node --test tests/native/reader-input-pressure.test.mjs tests/native/reader-pressure-observability.test.mjs tests/native/reader-startup-pressure.test.mjs tests/native/live-reader-startup-checkpoint.test.mjs
+        run: node --test tests/native/reader-input-pressure.test.mjs tests/native/reader-pressure-observability.test.mjs tests/native/reader-startup-pressure.test.mjs tests/native/live-reader-startup-checkpoint.test.mjs tests/native/reader-pressure-ipc-recovery.test.mjs
       - name: Typecheck Elasticsearch qualification runner
         run: bun check -p scripts/qualification/tsconfig.json
       - name: Check retained Wire source and replay credits with native Node

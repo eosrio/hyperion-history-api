@@ -72,5 +72,5 @@ test('all-CBFB successor preserves exact original native workload, controller, t
   if(name==='contract')actual=actual.replace('indexed-schema-mongodb-all-cbfb-linux-gha-v1','indexed-schema-mongodb-cbfb-49dfe-linux-gha-v1');
   assert.equal(actual,read('./cbfb-native-'+name+'.mjs'),'Only explicit profile imports/identity and correct SDK metadata may differ: '+name);
  }
- assert.equal(PLAN.assembly,'indexed-royalty-sdk-cbfb-native-cf514-engineering-v1');
+ assert.equal(PLAN.assembly,'indexed-linear-history-sdk-cbfb-native-1825-engineering-v1');
 });

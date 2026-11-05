@@ -33,3 +33,13 @@ test('original scope assimilates thenables and getter failures once with unchang
     expect(await native('./worker-failure-thenable.mjs')).toMatchObject({passed: true,
         controlledLocalOnly: true, productionAuthority: false});
 }, 25000);
+
+// Pure VM harness: exercises the production diagnostic wrapper without workers or services.
+test('copied reader fork environment preserves physical replacement association', async () => {
+    const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node', '--no-warnings', '--experimental-vm-modules',
+        fileURLToPath(new URL('./worker-failure-copied-env-vm.mjs', import.meta.url))],
+    {stdout: 'pipe', stderr: 'pipe', timeout: 10000});
+    const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
+    expect({code, stderr}).toEqual({code: 0, stderr: ''});
+    expect(JSON.parse(stdout.trim())).toEqual({passed: true, controlledVmOnly: true, physicalFaultEvidence: false});
+});

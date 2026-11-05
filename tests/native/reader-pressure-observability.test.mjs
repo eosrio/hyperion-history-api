@@ -43,16 +43,17 @@ test('pressure snapshots reflect decisions, hysteresis, failures and are detache
  assert.deepEqual(body.reader_pressure,snapshot); assert.equal(calls,1);
  });
 
- test('failed sample is published even if pause IPC throws', async () => {
+ test('failed sample records both role intents even if pause IPC throws', async () => {
  const master={chain:'wire',conf:{scaling:{block_queue_limit:10,max_queue_limit:20,resume_trigger:5,max_autoscale:0}},
-  workerMap:[{worker_role:'reader'},{worker_role:'deserializer',worker_queue:'wire:blocks:1'}],
+  workerMap:[{worker_role:'reader'},{worker_role:'continuous_reader'},{worker_role:'deserializer',worker_queue:'wire:blocks:1'},{worker_role:'deserializer',worker_queue:'wire:live_blocks'}],
   manager:{async checkQueueSize(){return 0;}},sendToRole(){}};
  const monitor=new HyperionQueueMonitor(master); await monitor.checkQueues({},100);
- assert.equal(monitor.isReaderPaused('reader'),false);
- master.manager.checkQueueSize=async()=>{throw Error('metric failure');};
- master.sendToRole=()=>{throw Error('disconnected IPC');};
- await assert.rejects(monitor.checkQueues({},100),/disconnected IPC/);
+ assert.equal(monitor.isReaderPaused('reader'),false); assert.equal(monitor.isReaderPaused('continuous_reader'),false);
+ master.manager.checkQueueSize=async()=>{throw Error('metric failure');}; const attempts=[];
+ master.sendToRole=role=>{attempts.push(role);throw Error('disconnected IPC');};
+ await monitor.checkQueues({},100);
  const snapshot=monitor.getPressureSnapshot(); assert.equal(snapshot.status,'failed');
  assert.equal(snapshot.reason,'check_failed'); assert.deepEqual(snapshot.queues,[]);
- assert.equal(snapshot.checking,false); assert.equal(snapshot.queue_monitor_paused_roles.reader,false);
+ assert.equal(snapshot.checking,false); assert.deepEqual(attempts,['reader','continuous_reader']);
+ assert.deepEqual(snapshot.queue_monitor_paused_roles,{reader:true,continuous_reader:true}); // Intent only, not delivery acknowledgement.
  });

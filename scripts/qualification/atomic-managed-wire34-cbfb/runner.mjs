@@ -10,9 +10,9 @@ const json=(path,value)=>{const bytes=Buffer.from(JSON.stringify(value,null,2)+'
 export async function run(options){
  assert.equal(process.platform,'linux');assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(options.source,process.env.GITHUB_SHA);
  const admitted=admitManagedAssembly(options.atomicRoot);assert.equal(admitted.observationSha256,options.assemblySha256);
- const [{MongoClient,BSON},{selectMongoDbRoyaltyEngineeringAssemblyV1,MONGODB_ROYALTY_ENGINEERING_PROFILE_V1},{createManagedAtomicHost,MANAGED_MODELS},{runManagedAtomicDifferential},
+ const [{MongoClient,BSON},{selectMongoDbLinearHistoryEngineeringAssemblyV1,MONGODB_LINEAR_HISTORY_ENGINEERING_PROFILE_V1},{createManagedAtomicHost,MANAGED_MODELS},{runManagedAtomicDifferential},
   {monitorIndexed,verifyIndexedTrace,verifyCursorClosure},{default:AtomicPlugin},{limits}]=await Promise.all([
-  import('mongodb'),import('@eosrio/hyperion-backend-mongodb/stateful-owner-indexed-query-v1/royalty-engineering'),import('./host.mjs'),import('./driver.mjs'),
+  import('mongodb'),import('@eosrio/hyperion-backend-mongodb/stateful-owner-indexed-query-v1/linear-history-engineering'),import('./host.mjs'),import('./driver.mjs'),
   import('../indexed-schema-mongodb/cbfb-native-trace.mjs'),import(pathToFileURL(join(options.atomicRoot,'dist/index.js'))),import(pathToFileURL(join(options.atomicRoot,'tests/fixtures/config-component.mjs')))]);
  assert(!existsSync(options.output));mkdirSync(options.output,{recursive:true});
  const report={schemaVersion:1,profile:PROFILE,status:'running',source:options.source,assemblySha256:admitted.observationSha256,runtime:admitted.runtime,acceptance:PLAN.acceptance},
@@ -41,7 +41,7 @@ export async function run(options){
    async open(checkpoint){guard();assert([...published.values()].some(row=>row.view.checkpoint.blockNum===checkpoint.blockNum&&row.view.checkpoint.blockId===checkpoint.blockId));const proof=Object.freeze({checkpoint:structuredClone(checkpoint)});proofs.add(proof);return proof;},
    async assertStatefulView(proof,declaration){assert(proofs.has(proof));assert(published.has(declaration.digest+':'+proof.checkpoint.blockNum+':'+proof.checkpoint.blockId));},async revalidate(proof){guard();assert(proofs.has(proof));}};
   host=await createManagedAtomicHost({loader,chainId:'1'.repeat(64),configuration,mongo:client,client:{},source,profile:{id:PROFILE,profileId:'controlled-synthetic-only',components:[]},
-   probe:{currentSocket:()=>connection,probe:async()=>{guard();return true;}},selectEngineering:adapter=>selectMongoDbRoyaltyEngineeringAssemblyV1(adapter,MONGODB_ROYALTY_ENGINEERING_PROFILE_V1),persist,
+   probe:{currentSocket:()=>connection,probe:async()=>{guard();return true;}},selectEngineering:adapter=>selectMongoDbLinearHistoryEngineeringAssemblyV1(adapter,MONGODB_LINEAR_HISTORY_ENGINEERING_PROFILE_V1),persist,
    onQueryResult:row=>{answers.push(row);assert(answers.length<=128);},onReadEvent});
   assert.deepEqual(host.errors,[]);
   for(const entry of host.originals.values()){assert.deepEqual(entry.indexed.adapter.indexedCapabilities.queryDeclarationDigests,[]);assert.deepEqual(entry.indexed.adapter.indexedCapabilities.comparisonProfiles,[]);}

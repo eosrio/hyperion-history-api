@@ -5,14 +5,14 @@ import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {runInNewContext} from 'node:vm';
 import {EventEmitter} from 'node:events';
-import {CI_LIMITS,assertCIResources,phaseArguments} from '../../scripts/qualification/wire34-cbfb/ci.mjs';
+import {CI_LIMITS,assertCIResources,phaseArguments,assertIsolatedReceipt} from '../../scripts/qualification/wire34-cbfb/ci.mjs';
 const root=new URL('../../',import.meta.url),raw=path=>readFileSync(new URL(path,root),'utf8'),sha=s=>createHash('sha256').update(s).digest('hex');
 const workflow=raw('.github/workflows/wire34-cbfb.yml'),manifest=JSON.parse(raw('tests/fixtures/engineering-profiles/wire34-cbfb-linux.json'));
 function steps(text){return text.split('\n      - ').slice(1);}
 function byId(text,id){const rows=steps(text).filter(row=>row.includes('\n        id: '+id+'\n'));assert.equal(rows.length,1);return rows[0];}
 function condition(block){const match=block.match(/^        if: (.+)$/m);assert(match);return match[1];}
-function inspect(text){assert.match(text,/runs-on: ubuntu-22\.04/);assert.match(text,/node: \["24\.22\.1", "26\.4\.0"\]/);assert(text.includes('branches: ["feat/atomic-managed-all-cbfb-20261104"]'));assert.match(text,/workflow_dispatch:/);assert(text.includes('fail-fast: false'));assert(!text.includes('continue-on-error'));assert(text.includes('npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false'));assert(text.includes('npm ci --allow-git=all --ignore-scripts=false'));assert(text.includes('npm run typecheck')&&text.includes('npm run build')&&text.includes('bun check -p packages/backend-mongodb/tsconfig.json'));
- const retained=byId(text,'retained'),history=byId(text,'history'),cpu=byId(text,'cpu_diagnostic');assert(!/^        if:/m.test(retained));assert(retained.includes('ci.mjs retained')&&retained.includes('timeout-minutes: 5')&&!retained.includes('cpu-prof'));
+function inspect(text){assert.match(text,/runs-on: ubuntu-22\.04/);assert.match(text,/node: \["24\.22\.1", "26\.4\.0"\]/);assert(text.includes('branches: ["feat/atomic-managed-all-cbfb-20261104", "release/4.5"]'));assert.match(text,/workflow_dispatch:/);assert(text.includes('fail-fast: false'));assert(!text.includes('continue-on-error'));assert(text.includes('npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false'));assert(text.includes('npm ci --allow-git=all --ignore-scripts=false'));assert(text.includes('npm run typecheck')&&text.includes('npm run build')&&text.includes('bun check -p packages/backend-mongodb/tsconfig.json'));
+ const retained=byId(text,'retained'),history=byId(text,'history'),isolated=byId(text,'isolated_diagnostic'),cpu=byId(text,'cpu_diagnostic');assert.equal(condition(isolated),"always() && !cancelled() && steps.source_admission.outcome == 'success' && matrix.node == '26.4.0'");assert(isolated.includes('ci.mjs isolated')&&isolated.includes('timeout-minutes: 5'));assert(text.indexOf('id: history')<text.indexOf('id: isolated_diagnostic')&&text.indexOf('id: isolated_diagnostic')<text.indexOf('id: cpu_diagnostic'));assert(!/^        if:/m.test(retained));assert(retained.includes('ci.mjs retained')&&retained.includes('timeout-minutes: 5')&&!retained.includes('cpu-prof'));
  assert.equal(condition(history),"always() && !cancelled() && steps.source_admission.outcome == 'success'");assert(history.includes('ci.mjs history'));
  assert.equal(condition(cpu),"failure() && !cancelled() && steps.retained.outcome == 'failure'");assert(/\n        timeout-minutes: 4\n/.test(cpu)&&cpu.includes('ci.mjs cpu'));assert(text.indexOf('id: retained')<text.indexOf('id: history')&&text.indexOf('id: history')<text.indexOf('id: cpu_diagnostic'));
  const source=byId(text,'source_admission');assert(source.includes('source-check.mjs > out/wire34-linux/git.json'));assert(source.includes('--admit-wire34-cbfb > out/wire34-linux/source.json'));assert(source.includes('ci.mjs receipts'));
@@ -28,12 +28,12 @@ test('explicit passive inventory cannot conceal executable or configuration inpu
 test('source receipts retain actual GHA identity and legacy aliases are exact copies, not reconstructed metadata',()=>{const observed=checkScript(raw('scripts/qualification/wire34-cbfb/source-check.mjs'),manifest.sources.trackedPaths);assert.equal(observed.runId,'42');assert.equal(observed.runAttempt,'1');assert.equal(observed.job,'wire34-cbfb');const source=raw('scripts/qualification/wire34-cbfb/ci.mjs');assert(source.includes('constants.COPYFILE_EXCL'));assert(source.includes('assert.equal(sha(readFileSync(alias)),sha(raw))'));assert(source.includes("[exact,major+'.x']"));});
 test('one child preserves the exact fixtures and separate bounded diagnostic flags',()=>{for(const phase of ['retained','history']){const args=phaseArguments(phase,'unused');assert.deepEqual(args.slice(0,2),['--test','--test-isolation=none']);assert(!args.some(x=>x.includes('cpu-prof')));}assert(phaseArguments('retained','x').at(-1).endsWith('wire-managed-state-v2-native.mjs'));assert(phaseArguments('history','x').at(-1).endsWith('protocol-abi-history-native.mjs'));assert.deepEqual(phaseArguments('cpu','/owned/cpu').slice(0,2),['--cpu-prof','--cpu-prof-dir=/owned/cpu']);assert.equal(CI_LIMITS.deadlineMS,225000);assert.equal(CI_LIMITS.streamBytes,1048576);assert.equal(CI_LIMITS.cpuBytes,67108864);});
 test('resource guard refuses insufficient reserves and an unbounded runner envelope',()=>{const value={cpus:4,memoryTotalBytes:16*1024**3,memoryAvailableBytes:4*1024**3,diskAvailableBytes:8*1024**3};assert.doesNotThrow(()=>assertCIResources(value,'before'));assert.doesNotThrow(()=>assertCIResources(value,'after'));for(const changes of [{cpus:1},{cpus:64},{memoryTotalBytes:64*1024**3},{memoryAvailableBytes:1},{diskAvailableBytes:1}])assert.throws(()=>assertCIResources({...value,...changes},'before'));});
-function dispatchPhase(phase,receipts){
+function dispatchPhase(phase,receipts,version='24.19.0',failure){
  const source=raw('scripts/qualification/wire34-cbfb/ci.mjs'),start=source.indexOf('async function main(){'),end=source.indexOf('\nif(process.argv[1]',start);assert(start>0&&end>start);
  const calls=[],effects=[],root='/actual/cohort',output=root+'/out/wire34-linux';
- const context={assert,root,output,process:{argv:['node','ci.mjs',phase],env:{GITHUB_WORKSPACE:root}},runtime:()=>calls.push('runtime'),join:(...parts)=>parts.join('/'),realpathSync:path=>path,
+ const context={assert,assertIsolatedReceipt:(value,expected)=>assertIsolatedReceipt(JSON.parse(JSON.stringify(value)),expected),root,output,process:{argv:['node','ci.mjs',phase],env:{GITHUB_WORKSPACE:root},versions:{node:version}},runtime:()=>{calls.push('runtime');return undefined;},join:(...parts)=>parts.join('/'),realpathSync:path=>path,
   lstatSync:()=>({isDirectory:()=>true,isSymbolicLink:()=>false}),mkdirSync:path=>effects.push('mkdir:'+path),readFileSync:path=>{const name=path.slice(output.length+1);calls.push(name);assert(Object.hasOwn(receipts,name),'Missing prior '+name);return JSON.stringify(receipts[name]);},
-  runPhase:async selected=>{effects.push('runPhase:'+selected);if(selected==='cpu')effects.push('cpu-mkdir','cpu-spawn');}};
+  runPhase:async selected=>{effects.push('runPhase:'+selected);if(selected==='cpu')effects.push('cpu-mkdir','cpu-spawn');if(failure)throw failure;}};
  runInNewContext(source.slice(start,end)+'\nthis.dispatch=main;',context);return {run:()=>context.dispatch(),calls,effects};
 }
 const closedPhase=(phase,status='failed')=>({phase,status,code:status==='failed'?1:0,closed:true,stdoutEOF:true,stderrEOF:true});
@@ -65,7 +65,7 @@ test('spawn stream and byte-loss failures never become success',async()=>{let c=
 function phaseHarness({spawnReceiptFailure,writeFailure,ledgerFailure,intentFailure}={}){
  const child=fake((c,s)=>{if(s==='SIGTERM'||s==='SIGKILL')c.end();}),writes=[],closed=[],timers=new Map();let next=0,spawns=0;
  const context={assert,Buffer,AbortController,queueMicrotask,process:Object.assign(new EventEmitter(),{execPath:'/owned/node'}),root:'/actual/cohort',output:'/actual/cohort/out/wire34-linux',CI_LIMITS,phaseArguments,runtime:()=>({node:'v26.4.0',sha256:'a'.repeat(64)}),join:(...parts)=>parts.join('/'),mkdirSync:()=>{},openSync:()=>++next,fsyncSync:()=>{},closeSync:fd=>closed.push(fd),writeSync:(_fd,b,_offset,size)=>{if(writeFailure)throw writeFailure;return size??b.length;},writeJSON:(path,value)=>{if(path.endsWith('.intent.json')&&intentFailure)throw intentFailure;if(path.endsWith('.spawn.json')&&spawnReceiptFailure)throw spawnReceiptFailure;if(path.endsWith('/retained.json')&&ledgerFailure)throw ledgerFailure;writes.push({path,value:JSON.parse(JSON.stringify(value))});},spawn:()=>{spawns++;assert(writes.some(row=>row.path.endsWith('.intent.json')),'Intent before spawn');return child;},setTimeout:(fn,delay)=>{const id=++next;timers.set(id,{fn,delay});return id;},clearTimeout:id=>timers.delete(id),console:{error:()=>{}}};
- const helper=raw('scripts/qualification/wire34-cbfb/ci-child.mjs').replace(/^import .*;$/gm,'').replace('export async function','async function');const source=raw('scripts/qualification/wire34-cbfb/ci.mjs'),at=source.indexOf('async function runPhase('),end=source.indexOf('\nasync function main()',at);assert(at>=0&&end>at);runInNewContext(helper+'\n'+source.slice(at,end)+'\nthis.phase=runPhase;',context);
+ const helper=raw('scripts/qualification/wire34-cbfb/ci-child.mjs').replace(/^import .*;$/gm,'').replace('export async function','async function');const source=raw('scripts/qualification/wire34-cbfb/ci.mjs'),at=source.indexOf('async function runPhase('),end=source.indexOf('\nasync function main()',at);assert(at>=0&&end>at);runInNewContext(helper+'\n'+source.slice(at,end).replace('export function assertIsolatedReceipt','function assertIsolatedReceipt')+'\nthis.phase=runPhase;',context);
  return {run:()=>context.phase('retained'),child,writes,closed,spawns:()=>spawns};
 }
 test('actual phase records intent before spawn and retains closed undropped streams',async()=>{const h=phaseHarness(),p=h.run();h.child.stdout.emit('data',Buffer.from('hello'));h.child.end();await p;const row=h.writes.find(x=>x.path.endsWith('/retained.json')).value;assert.equal(row.status,'passed');assert(row.closed&&row.stdoutEOF&&row.stderrEOF);assert.equal(row.streamFilesClosed,2);assert.equal(row.streams.stdout.retained,5);assert.equal(row.streams.stdout.discarded,0);assert.equal(h.spawns(),1);});
@@ -91,4 +91,34 @@ test('actual receipt writer reports close-only failure and confirms successful f
  for(const closeFailure of [false,true]){const calls=[],secondary=new Error('close-only');const env={assert,Buffer,openSync:()=>{calls.push('open');return 7;},writeSync:(_fd,b)=>{calls.push('write');return b.length;},fsyncSync:()=>calls.push('fsync'),closeSync:()=>{calls.push('close');if(closeFailure)throw secondary;}};
   const run=()=>runInNewContext(source.slice(start,end)+'\nwriteJSON("owned.json",{value:1});',env);if(closeFailure)assert.throws(run,error=>error===secondary);else run();assert.deepEqual(calls,['open','write','fsync','close']);
  }
+});
+
+test('Wire34 workflow targets both current release and the prior stacked base without changing job bodies',()=>{
+ const trigger=workflow.slice(workflow.indexOf('on:\n'),workflow.indexOf('permissions:\n'));
+ assert.match(trigger,/branches: \["feat\/atomic-managed-all-cbfb-20261104", "release\/4\.5"\]/);
+ assert.throws(()=>inspect(workflow.replace(', "release/4.5"','')));
+ assert.throws(()=>inspect(workflow.replace('"feat/atomic-managed-all-cbfb-20261104", ','')));
+});
+
+const isolatedReceipt=(status='passed')=>({schemaVersion:1,qualificationOnly:true,phase:'isolated',status,spawnObserved:true,pid:123,closed:true,stdoutEOF:true,stderrEOF:true,streamFilesClosed:2,signal:null,code:status==='passed'?0:1,...(status==='failed'?{error:'Node fixture failed\nassertion'}:{}),args:phaseArguments('isolated','unused'),deadlineMS:CI_LIMITS.deadlineMS,innerRetainedDeadlineMS:180000,streams:{stdout:{discarded:0},stderr:{discarded:0}}});
+test('default isolation has the same retained source and closed diagnostic receipt is required on Node 26',async()=>{
+ assert.deepEqual(phaseArguments('isolated','unused'),['--test','tests/unit/wire-managed-state-v2-native.mjs']);
+ for(const status of ['passed','failed'])assert.doesNotThrow(()=>assertIsolatedReceipt(isolatedReceipt(status)));
+ for(const change of [{spawnObserved:false},{pid:null},{closed:false},{stdoutEOF:false},{stderrEOF:false},{streamFilesClosed:1},{signal:'SIGTERM'},{code:null},{error:'spawn error'}]){const r={...isolatedReceipt('failed'),...change};assert.throws(()=>assertIsolatedReceipt(r));}
+ for(const status of ['passed','failed']){const h=dispatchPhase('cpu',{'retained.json':closedPhase('retained'),'history.json':closedPhase('history'),'isolated.json':isolatedReceipt(status)},'26.4.0');await h.run();assert(h.effects.includes('cpu-spawn'));}
+ const h=dispatchPhase('cpu',{'retained.json':closedPhase('retained'),'history.json':closedPhase('history')},'26.4.0');await assert.rejects(h.run(),/Missing prior isolated/);assert.deepEqual(h.effects,[]);
+});
+
+test('isolated orchestrator retains failed workload evidence and rejects infrastructure or missing closure',async()=>{
+ const base={'retained.json':closedPhase('retained'),'history.json':closedPhase('history'),'isolated.json':isolatedReceipt('failed')};
+ let h=dispatchPhase('isolated',base,'26.4.0',new Error('Node fixture failed\nassertion'));await h.run();assert(h.effects.includes('runPhase:isolated'));
+ h=dispatchPhase('isolated',base,'26.4.0',new Error('spawn error'));await assert.rejects(h.run(),/spawn error/);
+ for(const bad of [{...base,'isolated.json':{...isolatedReceipt('failed'),streamFilesClosed:1}},{'retained.json':closedPhase('retained'),'history.json':closedPhase('history')}]){h=dispatchPhase('isolated',bad,'26.4.0',new Error('Node fixture failed\nassertion'));await assert.rejects(h.run());}
+ h=dispatchPhase('isolated',base,'24.19.0');await assert.rejects(h.run(),/Node 26 only/);
+});
+
+test('isolated receipt binds command and runtime identity and refuses foreign or partial streams',()=>{
+ const runtime={node:'v26.4.0',platform:'linux',arch:'x64',executable:'/node',sha256:'a'.repeat(64)},receipt={...isolatedReceipt(),command:'/node',runtime};
+ assert.doesNotThrow(()=>assertIsolatedReceipt(receipt,runtime));
+ for(const value of [{...receipt,command:'/other'},{...receipt,runtime:{...runtime,sha256:'b'.repeat(64)}},{...receipt,streams:{...receipt.streams,stdout:{discarded:1}}},{...receipt,fsyncError:'disk'}])assert.throws(()=>assertIsolatedReceipt(value,runtime));
 });

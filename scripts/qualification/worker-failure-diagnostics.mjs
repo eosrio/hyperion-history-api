@@ -146,6 +146,8 @@ export function installWorkerFailureDiagnostics({Pool, Reader, Projection, Worke
             observe(() => {
                 const trigger = launching.at(-1);
                 if (!trigger) return;
+                trigger.forked.push({worker: result, eligible: trigger.master.workerMap.filter(candidate =>
+                    candidate.wref === undefined && pendingDefinitions.get(trigger.master)?.has(candidate))});
                 const pending = pendingDefinitions.get(trigger.master), request = pending?.get(definition);
                 if (!request || request.master !== trigger.master || !trigger.master.workerMap.includes(definition)
                     || definition.wref !== undefined) return;
@@ -198,9 +200,33 @@ export function installWorkerFailureDiagnostics({Pool, Reader, Projection, Worke
                 }
             });
             if (!request) return relaunch.call(this, worker, definition, ...args);
-            launching.push(request);
+            const trigger = {...request, forked: []};
+            launching.push(trigger);
             try {return relaunch.call(this, worker, definition, ...args);}
-            finally {launching.pop();}
+            finally {
+                launching.pop();
+                // Reader forks receive a copied environment. After the original sweep has
+                // assigned wref, correlate only the exact returned Worker object to the
+                // still-pending original definition. Never inspect the fork environment.
+                observe(() => {
+                    const pending = pendingDefinitions.get(this);
+                    for (const candidate of this.workerMap) {
+                        const previous = pending?.get(candidate);
+                        if (!previous || previous.master !== this) continue;
+                        const matching = trigger.forked.filter(entry => entry.worker === candidate.wref && entry.eligible.includes(candidate));
+                        if (matching.length !== 1 || this.workerMap.filter(value => value.wref === candidate.wref).length !== 1) continue;
+                        pending.delete(candidate);
+                        const replacement = {...previous, triggerRequestId: trigger.id,
+                            replacementId: randomUUID(), worker: candidate.wref};
+                        replacements.set(candidate.wref, replacement);
+                        record('worker_replacement_forked', () => ({replacementId: replacement.replacementId,
+                            requestId: previous.id, triggerRequestId: trigger.id, disconnectId: previous.disconnect.id,
+                            logicalWorkerId: candidate.worker_id, role: candidate.worker_role,
+                            previous: previous.disconnect.identity, previousOwner: previous.previousOwner,
+                            child: workerIdentity(candidate.wref)}));
+                    }
+                });
+            }
         };
     }
     if (enabled.supervisor) {

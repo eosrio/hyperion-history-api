@@ -13,13 +13,38 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./stateful": {"types": "./dist/stateful.d.ts", "import": "./dist/stateful.js"},
-    "./stateful-owner-v2": {"types": "./dist/stateful-owner-v2.d.ts", "import": "./dist/stateful-owner-v2.js"},
-    "./stateful-owner-complete-kind-v1": {"types": "./dist/stateful-complete-kind-v1.d.ts", "import": "./dist/stateful-complete-kind-v1.js"},
-    "./stateful-owner-indexed-query-v1": {"types": "./dist/stateful-indexed-v1.d.ts", "import": "./dist/stateful-indexed-v1.js"},
-    "./stateful-owner-indexed-query-v1/engineering": {"types": "./dist/stateful-indexed-engineering-v1.d.ts", "import": "./dist/stateful-indexed-engineering-v1.js"},
-    "./stateful-owner-indexed-query-v1/royalty-engineering": {"types": "./dist/stateful-indexed-royalty-engineering-v1.d.ts", "import": "./dist/stateful-indexed-royalty-engineering-v1.js"},
-    "./operator-lists": {"types": "./dist/operator-lists.d.ts", "import": "./dist/operator-lists.js"}
+    "./stateful": {
+      "types": "./dist/stateful.d.ts",
+      "import": "./dist/stateful.js"
+    },
+    "./stateful-owner-v2": {
+      "types": "./dist/stateful-owner-v2.d.ts",
+      "import": "./dist/stateful-owner-v2.js"
+    },
+    "./stateful-owner-complete-kind-v1": {
+      "types": "./dist/stateful-complete-kind-v1.d.ts",
+      "import": "./dist/stateful-complete-kind-v1.js"
+    },
+    "./stateful-owner-indexed-query-v1": {
+      "types": "./dist/stateful-indexed-v1.d.ts",
+      "import": "./dist/stateful-indexed-v1.js"
+    },
+    "./stateful-owner-indexed-query-v1/engineering": {
+      "types": "./dist/stateful-indexed-engineering-v1.d.ts",
+      "import": "./dist/stateful-indexed-engineering-v1.js"
+    },
+    "./stateful-owner-indexed-query-v1/royalty-engineering": {
+      "types": "./dist/stateful-indexed-royalty-engineering-v1.d.ts",
+      "import": "./dist/stateful-indexed-royalty-engineering-v1.js"
+    },
+    "./operator-lists": {
+      "types": "./dist/operator-lists.d.ts",
+      "import": "./dist/operator-lists.js"
+    },
+    "./stateful-owner-indexed-query-v1/linear-history-engineering": {
+      "types": "./dist/stateful-indexed-linear-history-engineering-v1.d.ts",
+      "import": "./dist/stateful-indexed-linear-history-engineering-v1.js"
+    }
   },
   "files": [
     "dist/",
@@ -27,7 +52,8 @@
     "STATEFUL.md",
     "INDEXED-ENGINEERING.json",
     "ROYALTY-ENGINEERING.json",
-    "OPERATOR-LISTS.md"
+    "OPERATOR-LISTS.md",
+    "LINEAR-HISTORY-ENGINEERING.json"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",

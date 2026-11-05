@@ -24,7 +24,7 @@ export function readWire34SourceCensus(){
 }
 export function observeWire34CbfbAssembly(){
  const observation=observeCbfbAssembly();observation.profile=PROFILE;
- for(const path of ['scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.mjs','scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.test.mjs']){
+ for(const path of ['scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.mjs','scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.test.mjs','packages/backend-mongodb/src/stateful-indexed-linear-history-engineering-v1.ts','packages/backend-mongodb/LINEAR-HISTORY-ENGINEERING.json']){
   const bytes=readFileSync(new URL('../../../'+path,import.meta.url));observation.sources.push({path,bytes:bytes.length,sha256:sha(bytes)});
  }observation.sources.sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0);return observation;
 }

@@ -190,6 +190,21 @@ export class ImmutableProtocolBundleStore {
         signal?.throwIfAborted();
         if(this.options.readOnly)throw new Error('Read-only protocol bundles cannot prepare records');
         const bytes=Buffer.from(canonical(record,this.bounds.maximumBytes));
+        return this.prepareBytes(id,bytes,signal,scope);
+    }
+
+    /** Opaque candidate custody only; generic protocol records keep safe-integer canonicalization. */
+    async prepareCandidateBytes(id:string, input:Uint8Array, signal?:AbortSignal):Promise<FreshBundlePrepare> {
+        signal?.throwIfAborted();
+        if(this.options.readOnly)throw new Error('Read-only protocol bundles cannot prepare records');
+        if(this.kind!=='stateful-candidate-v2'||!/^h45statecandidate2:[0-9a-f]{64}:[0-9a-f]{64}$/.test(id)||!(input instanceof Uint8Array)) throw new Error('Invalid candidate custody bytes');
+        if (input.byteLength < 1 || input.byteLength > this.bounds.maximumBytes) throw new Error('Candidate custody exceeds raw byte bound');
+        return this.prepareBytes(id,Buffer.from(input),signal);
+    }
+
+    private async prepareBytes(id:string,bytes:Buffer,signal?:AbortSignal,scope=currentProofConsumerScope()):Promise<FreshBundlePrepare> {
+        signal?.throwIfAborted();
+        if(this.options.readOnly)throw new Error('Read-only protocol bundles cannot prepare records');
         const count = Math.ceil(bytes.length / this.bounds.chunkBytes);
         if (bytes.length > this.bounds.maximumBytes || count > this.bounds.maximumChunks) throw new Error('ABI observation exceeds bounded storage budget');
         await this.initialize(signal);
@@ -376,6 +391,21 @@ export class ImmutableProtocolBundleStore {
     }
 
     async read(id: string, signal?:AbortSignal): Promise<unknown> {
+        const {manifest,payloads,bytes}=await this.readParts(id,signal);
+        signal?.throwIfAborted();
+        return this.decodeRecord(id,manifest,payloads,bytes);
+    }
+
+    async readCandidateBytes(id:string,signal?:AbortSignal):Promise<Buffer> {
+        if(this.kind!=='stateful-candidate-v2'||!/^h45statecandidate2:[0-9a-f]{64}:[0-9a-f]{64}$/.test(id)) throw new Error('Invalid candidate custody bytes');
+        const {manifest,payloads,bytes}=await this.readParts(id,signal);
+        signal?.throwIfAborted();
+        const payload=Buffer.concat(payloads);
+        if(bytes!==manifest.byte_length||sha256(payload)!==manifest.digest) throw new ImmutableProtocolBundleReadError('invalid',id,'ABI observation bundle integrity mismatch');
+        return payload;
+    }
+
+    private async readParts(id:string,signal?:AbortSignal):Promise<{manifest:StoredDocument;payloads:Buffer[];bytes:number}> {
         await this.initialize(signal,this.options.rejectLifecycleOnRead===true);
         let manifest;
         try {manifest=(await this.get(id,signal))._source;} catch(error) {
@@ -397,6 +427,6 @@ export class ImmutableProtocolBundleStore {
             if (bytes > this.bounds.maximumBytes) throw new ImmutableProtocolBundleReadError('invalid',id,'ABI observation read exceeds bounded storage budget');
             payloads.push(payload);
         }
-        return this.decodeRecord(id, manifest, payloads, bytes);
+        return {manifest,payloads,bytes};
     }
 }

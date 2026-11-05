@@ -2,7 +2,7 @@ name: Wire34 CBFB Linux qualification
 on:
   workflow_dispatch:
   pull_request:
-    branches: ["feat/atomic-managed-all-cbfb-20261104"]
+    branches: ["feat/atomic-managed-all-cbfb-20261104", "release/4.5"]
 permissions:
   contents: read
 concurrency:
@@ -65,6 +65,11 @@ jobs:
         if: always() && !cancelled() && steps.source_admission.outcome == 'success'
         timeout-minutes: 5
         run: node scripts/qualification/wire34-cbfb/ci.mjs history
+      - name: Compare default process isolation on Node 26 (diagnostic only)
+        id: isolated_diagnostic
+        if: always() && !cancelled() && steps.source_admission.outcome == 'success' && matrix.node == '26.4.0'
+        timeout-minutes: 5
+        run: node scripts/qualification/wire34-cbfb/ci.mjs isolated
       - name: Capture separate CPU diagnostics only after retained acceptance failure
         id: cpu_diagnostic
         if: failure() && !cancelled() && steps.retained.outcome == 'failure'

@@ -24,10 +24,10 @@ test('current Wire34 graph is admitted separately and every frozen Wire69 gate s
 test('Wire34 native namespace changes only explicit imports, profile identity and runner path',()=>{
  for(const name of ['runner','ci','contract']){
   const current=read('wire34-cbfb-native-'+name+'.mjs'),original=read('all-cbfb-native-'+name+'.mjs');
-  const restored=current.replaceAll('./wire34-cbfb-native-','./all-cbfb-native-').replaceAll('indexed-schema-mongodb-wire34-cbfb-linux-gha-v1','indexed-schema-mongodb-all-cbfb-linux-gha-v1');
+  const restored=current.replaceAll('./wire34-cbfb-native-','./all-cbfb-native-').replaceAll('indexed-schema-mongodb-wire34-cbfb-linux-gha-v1','indexed-schema-mongodb-all-cbfb-linux-gha-v1').replaceAll('stateful-indexed-linear-history-engineering-v1.js','stateful-indexed-royalty-engineering-v1.js').replaceAll('selectMongoDbLinearHistoryEngineeringAssemblyV1','selectMongoDbRoyaltyEngineeringAssemblyV1').replaceAll('indexed-linear-history-sdk-cbfb-native-1825-engineering-v1','indexed-royalty-sdk-cbfb-native-cf514-engineering-v1');
   assert.equal(restored,original,'Every original native assertion/case/lifecycle operation is preserved: '+name);
  }
- assert.deepEqual({...PLAN,profile:priorPlan.profile},priorPlan);assert.equal(PLAN.cases.length,12);assert.equal(PLAN.fixture.childDeadlineMS,300000);
+ assert.deepEqual({...PLAN,profile:priorPlan.profile,assembly:priorPlan.assembly},priorPlan);assert.equal(PLAN.cases.length,12);assert.equal(PLAN.fixture.childDeadlineMS,300000);
 });
 test('active finite/native jobs change only declared profile routes and teardown source selections',()=>{
  for(const [path,original] of Object.entries(preserved.workflowSources)){

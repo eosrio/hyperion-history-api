@@ -5,11 +5,11 @@ import {captureIndexedRequestV1} from '@eosrio/hyperion-sdk/projection-stateful-
 import {createMongoDbStatefulOwnerAdapterV2} from '../dist/stateful-owner-v2.js';
 import {createMongoDbStatefulIndexedAdapterV1} from '../dist/stateful-indexed-v1.js';
 import {selectMongoDbIndexedEngineeringAssemblyV1,MONGODB_INDEXED_ENGINEERING_PROFILE_V1} from '../dist/stateful-indexed-engineering-v1.js';
-import {selectMongoDbRoyaltyEngineeringAssemblyV1,MONGODB_ROYALTY_ENGINEERING_PROFILE_V1} from '../dist/stateful-indexed-royalty-engineering-v1.js';
+import {selectMongoDbLinearHistoryEngineeringAssemblyV1,MONGODB_LINEAR_HISTORY_ENGINEERING_PROFILE_V1} from '../dist/stateful-indexed-linear-history-engineering-v1.js';
 const testProfile=process.env.HYPERION_INDEXED_TEST_PROFILE;
 if(testProfile!==undefined&&testProfile!=='cbfb')throw Error('Unknown indexed test profile');
-const selectEngineering=testProfile==='cbfb'?selectMongoDbRoyaltyEngineeringAssemblyV1:selectMongoDbIndexedEngineeringAssemblyV1;
-const engineeringProfile=testProfile==='cbfb'?MONGODB_ROYALTY_ENGINEERING_PROFILE_V1:MONGODB_INDEXED_ENGINEERING_PROFILE_V1;
+const selectEngineering=testProfile==='cbfb'?selectMongoDbLinearHistoryEngineeringAssemblyV1:selectMongoDbIndexedEngineeringAssemblyV1;
+const engineeringProfile=testProfile==='cbfb'?MONGODB_LINEAR_HISTORY_ENGINEERING_PROFILE_V1:MONGODB_INDEXED_ENGINEERING_PROFILE_V1;
 import {prepared,totals,schema,collection,hex,page,count,model} from './indexed-schema-fixture.mjs';
 import {ownerPort} from './indexed-schema-owner-port.mjs';
 async function setup(indexed=true,port=ownerPort(),logicalModel){

@@ -1,12 +1,14 @@
 import type {Client} from '@elastic/elasticsearch';
 import {captureStatefulOwnerCandidateV2, type StatefulCandidateStoreV2, type StatefulCandidateV2,
     type StatefulOwnerDeclarationV2} from '@eosrio/hyperion-sdk/projection-stateful-owner-v2';
+import {boundedCanonicalJson} from '../helpers/bounded-json.js';
 import {ImmutableProtocolBundleReadError, ImmutableProtocolBundleStore} from '../protocol/immutable-bundle-store.js';
 
 /** Fixed candidate custody uses the existing immutable bundle algorithm, never another progress journal. */
 export function createStatefulCandidateCustodyV2(client: Client, chain: string, replicas: number,
     declaration: StatefulOwnerDeclarationV2): StatefulCandidateStoreV2 {
     const maximumBytes = declaration.projection.limits.candidateBytes, chunkBytes = Math.min(512 * 1024, maximumBytes);
+    const canonicalCandidate = (value: unknown) => boundedCanonicalJson(value, {maximumBytes, numberPolicy: 'finite', errorPrefix: 'Candidate custody'});
     const store = new ImmutableProtocolBundleStore(client, chain, replicas, 'stateful-candidate-v2', 'stateful-candidates-v2',
         {chunkBytes, maximumBytes, maximumChunks: Math.ceil(maximumBytes / chunkBytes)});
     const address = (digest: string, sourceDigest: string) => {
@@ -16,7 +18,10 @@ export function createStatefulCandidateCustodyV2(client: Client, chain: string, 
     const load = async (digest: string, sourceDigest: string): Promise<StatefulCandidateV2 | null> => {
         const id = address(digest, sourceDigest);
         try {
-            const candidate = await captureStatefulOwnerCandidateV2(declaration, await store.read(id));
+            const bytes = await store.readCandidateBytes(id);
+            const value: unknown = JSON.parse(bytes.toString('utf8'));
+            const candidate = await captureStatefulOwnerCandidateV2(declaration, value);
+            if (!Buffer.from(canonicalCandidate(candidate)).equals(bytes)) throw new Error('Candidate custody is noncanonical');
             if (candidate.source.digest !== sourceDigest) throw new Error('Candidate custody source hash differs');
             return candidate;
         } catch (error) {
@@ -28,7 +33,10 @@ export function createStatefulCandidateCustodyV2(client: Client, chain: string, 
         load,
         async retain(input: StatefulCandidateV2) {
             const candidate = await captureStatefulOwnerCandidateV2(declaration, input);
-            await store.prepare(address(candidate.declarationDigest, candidate.source.digest), candidate);
+            const id = address(candidate.declarationDigest, candidate.source.digest);
+            const payload = Buffer.from(canonicalCandidate(candidate));
+            if (payload.length > maximumBytes) throw new Error('Candidate custody exceeds raw byte bound');
+            await store.prepareCandidateBytes(id, payload);
             const readback = await load(candidate.declarationDigest, candidate.source.digest);
             if (!readback || readback.digest !== candidate.digest) throw new Error('Candidate custody acknowledgement is unresolved');
         },

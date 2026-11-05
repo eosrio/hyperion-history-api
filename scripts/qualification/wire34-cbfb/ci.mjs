@@ -19,7 +19,7 @@ function writeJSON(path,value){
  if(failed)throw primary;
 }
 function runtime(){assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.RUNNER_OS,'Linux');assert.equal(process.env.HYPERION_NATIVE_SOURCE_PROFILE,STATEFUL_WIRE34_CBFB_SOURCE_PROFILE);const value={node:process.version,platform:process.platform,arch:process.arch,executable:process.execPath,sha256:sha(readFileSync(process.execPath))};assertWire34Runtime(value);return value;}
-export function phaseArguments(phase,cpu){assert(['retained','history','cpu'].includes(phase));return [...(phase==='cpu'?['--cpu-prof','--cpu-prof-dir='+cpu]:[]),'--test','--test-isolation=none',phase==='history'?'tests/unit/protocol-abi-history-native.mjs':'tests/unit/wire-managed-state-v2-native.mjs'];}
+export function phaseArguments(phase,cpu){assert(['retained','history','isolated','cpu'].includes(phase));return [...(phase==='cpu'?['--cpu-prof','--cpu-prof-dir='+cpu]:[]),'--test',...(phase==='isolated'?[]:['--test-isolation=none']),phase==='history'?'tests/unit/protocol-abi-history-native.mjs':'tests/unit/wire-managed-state-v2-native.mjs'];}
 async function runPhase(phase){const cpu=join(output,'cpu-original');if(phase==='cpu')mkdirSync(cpu,{recursive:false});const args=phaseArguments(phase,cpu),ledger={schemaVersion:1,qualificationOnly:true,phase,command:process.execPath,args,runtime:runtime(),deadlineMS:CI_LIMITS.deadlineMS,innerRetainedDeadlineMS:180000,closed:false,stdoutEOF:false,stderrEOF:false,streams:{stdout:{retained:0,discarded:0},stderr:{retained:0,discarded:0}}};
  writeJSON(join(output,phase+'.intent.json'),{...ledger,status:'before-spawn'});
  const fds={};try{for(const name of ['stdout','stderr'])fds[name]=openSync(join(output,phase+'.'+name),'wx');}catch(error){for(const fd of Object.values(fds))try{closeSync(fd);}catch{}throw error;}
@@ -39,12 +39,27 @@ async function runPhase(phase){const cpu=join(output,'cpu-original');if(phase===
  if(primary)throw primary;
 }
 
-async function main(){runtime();const phase=process.argv[2];assert(['before','after','receipts','retained','history','cpu'].includes(phase));assert.equal(realpathSync(root),realpathSync(process.env.GITHUB_WORKSPACE),'Actual GitHub workspace required');
+export function assertIsolatedReceipt(receipt,expectedRuntime){
+ assert(receipt&&receipt.schemaVersion===1&&receipt.phase==='isolated'&&receipt.qualificationOnly===true);if(expectedRuntime){assert.equal(receipt.command,expectedRuntime.executable);assert.deepEqual(receipt.runtime,expectedRuntime);}
+ assert(['passed','failed'].includes(receipt.status)&&receipt.spawnObserved===true&&Number.isSafeInteger(receipt.pid)&&receipt.pid>0);
+ assert(receipt.closed===true&&receipt.stdoutEOF===true&&receipt.stderrEOF===true&&receipt.streamFilesClosed===2);
+ assert(receipt.signal===null&&Number.isInteger(receipt.code)&&receipt.code>=0);
+ assert((receipt.status==='passed'&&receipt.code===0)||(receipt.status==='failed'&&receipt.code>0&&typeof receipt.error==='string'&&receipt.error.startsWith('Node fixture failed\n')));
+ assert(!receipt.fsyncError&&!receipt.closeError&&receipt.streams?.stdout?.discarded===0&&receipt.streams?.stderr?.discarded===0);
+ assert.deepEqual(receipt.args,phaseArguments('isolated','unused'));assert.equal(receipt.deadlineMS,CI_LIMITS.deadlineMS);assert.equal(receipt.innerRetainedDeadlineMS,180000);
+}
+async function main(){const currentRuntime=runtime();const phase=process.argv[2];assert(['before','after','receipts','retained','history','isolated','cpu'].includes(phase));assert.equal(realpathSync(root),realpathSync(process.env.GITHUB_WORKSPACE),'Actual GitHub workspace required');
  const parent=join(root,'out');if(phase==='before')mkdirSync(parent,{recursive:true});assert(lstatSync(parent).isDirectory()&&!lstatSync(parent).isSymbolicLink());if(phase==='before')mkdirSync(output,{recursive:false});assert(lstatSync(output).isDirectory()&&!lstatSync(output).isSymbolicLink());assert.equal(realpathSync(output),join(realpathSync(parent),'wire34-linux'));
  if(phase==='before'||phase==='after'){const value=resourceSnapshot();let failure;try{assertCIResources(value,phase);}catch(error){failure=String(error.message);}writeJSON(join(output,'resources-'+phase+'.json'),{...value,phase,limits:CI_LIMITS,status:failure?'failed':'passed',failure:failure??null});if(failure)throw new Error(failure);return;}
  if(phase==='receipts'){const aliases=[],exact=process.versions.node,major=exact.split('.')[0];for(const kind of ['git','source']){const original=join(output,kind+'.json'),raw=readFileSync(original);assert(lstatSync(original).isFile()&&!lstatSync(original).isSymbolicLink());for(const suffix of [exact,major+'.x']){const alias=join(root,'current-native-'+kind+'-'+suffix+'.json');copyFileSync(original,alias,constants.COPYFILE_EXCL);assert.equal(sha(readFileSync(alias)),sha(raw));aliases.push({path:alias,bytes:raw.length,sha256:sha(raw)});}}writeJSON(join(output,'receipt-aliases.json'),{schemaVersion:1,aliases});return;}
- const preceding=phase==='cpu'?['retained','history']:phase==='history'?['retained']:[];
- for(const priorPhase of preceding){const prior=JSON.parse(readFileSync(join(output,priorPhase+'.json')));assert(prior.closed===true&&prior.stdoutEOF===true&&prior.stderrEOF===true,'Prior owned '+priorPhase+' process/streams must be closed before next workload');}
- await runPhase(phase);
+ const preceding=phase==='cpu'?['retained','history',...(process.versions.node.startsWith('26.')?['isolated']:[])]:phase==='isolated'?['retained','history']:phase==='history'?['retained']:[];
+ for(const priorPhase of preceding){const prior=JSON.parse(readFileSync(join(output,priorPhase+'.json')));assert(prior.closed===true&&prior.stdoutEOF===true&&prior.stderrEOF===true,'Prior owned '+priorPhase+' process/streams must be closed before next workload');if(priorPhase==='isolated')assertIsolatedReceipt(prior,currentRuntime);}
+ if(phase==='isolated'){
+  assert(process.versions.node.startsWith('26.'),'Isolated comparison is Node 26 only');
+  let failure;try{await runPhase(phase);}catch(error){failure=error;}
+  const receipt=JSON.parse(readFileSync(join(output,'isolated.json')));assertIsolatedReceipt(receipt,currentRuntime);
+  if(failure&&(receipt.status!=='failed'||!String(failure?.message??failure).startsWith('Node fixture failed\n')))throw failure;
+  assert.equal(receipt.status,failure?'failed':'passed','Receipt must match actual phase outcome');
+ }else await runPhase(phase);
 }
 if(process.argv[1]&&pathToFileURL(resolve(process.argv[1])).href===import.meta.url)main().catch(error=>{console.error(String(error?.stack??error).slice(0,8192));process.exitCode=1;});

@@ -20,7 +20,7 @@ test('replacement reader starts gated, synchronizes current role pressure and ke
  try {
   reader=new Reader();assert.deepEqual(sent,[{event:'reader_pressure_ready'}]);const requests=[];reader.ship={connected:true};reader.send=(value)=>requests.push(value);
   reader.requestBlocks(42);reader.returnShipCredits(1,reader.shipCreditOwner());process.emit('message',{event:'pause'});assert.deepEqual(requests,[]);
-  const worker={send(msg){process.emit('message',msg);}},stale={send(){throw Error('retired worker must not receive a state');}};
+  const worker={send(msg,cb){process.emit('message',msg);cb?.(null);}},stale={send(){throw Error('retired worker must not receive a state');}};
   let size=20;const master=Object.assign(Object.create(HyperionMaster.prototype),{chain:'wire',conf:{scaling:{block_queue_limit:10,max_queue_limit:20,resume_trigger:5,max_autoscale:0}},
     workerMap:[{worker_role:'continuous_reader',wref:worker},{worker_role:'deserializer',worker_queue:'wire:live_blocks'},{worker_role:'ds_pool_worker',local_id:1}],manager:{async checkQueueSize(){return size;}},sendToRole(role,msg){if(role==='continuous_reader')worker.send(msg);}});
   master.queueMonitor=new HyperionQueueMonitor(master);master.syncReaderPressure(stale);master.syncReaderPressure(worker);
@@ -30,7 +30,7 @@ test('replacement reader starts gated, synchronizes current role pressure and ke
   process.emit('message',{event:'resume'});assert.equal(requests.filter(x=>x[0].startsWith('get_blocks_request_')).length,1);assert.deepEqual(requests.filter(x=>x[0]==='get_blocks_ack_request_v0'),[['get_blocks_ack_request_v0',{num_messages:1}]]);
   process.env.worker_role='reader';bulk=new Reader();const bulkRequests=[];bulk.ship={connected:true};bulk.send=value=>bulkRequests.push(value);
   bulk.requestBlocks(0);bulk.requestBlockRange(5,9);bulk.returnShipCredits(1,bulk.shipCreditOwner());assert.deepEqual(bulkRequests,[]);
-  const bulkWorker={send(msg){bulk.onIpcMessage(msg);}};size=20;master.workerMap=[{worker_role:'reader',wref:bulkWorker},{worker_role:'deserializer',worker_queue:'wire:blocks:1'},{worker_role:'ds_pool_worker',local_id:1}];
+  const bulkWorker={send(msg,cb){bulk.onIpcMessage(msg);cb?.(null);}};size=20;master.workerMap=[{worker_role:'reader',wref:bulkWorker},{worker_role:'deserializer',worker_queue:'wire:blocks:1'},{worker_role:'ds_pool_worker',local_id:1}];
   master.sendToRole=(role,msg)=>{if(role==='reader')bulkWorker.send(msg);};master.queueMonitor=new HyperionQueueMonitor(master);master.syncReaderPressure(bulkWorker);assert.deepEqual(bulkRequests,[]);await master.queueMonitor.checkQueues({},100);master.syncReaderPressure(bulkWorker);
   assert.deepEqual(bulkRequests,[]);size=0;await master.queueMonitor.checkQueues({},100);
   assert.equal(bulkRequests.filter(x=>x[0].startsWith('get_blocks_request_')).length,1);assert.equal(bulkRequests.find(x=>x[0].startsWith('get_blocks_request_'))[1].start_block_num,5);assert.equal(bulkRequests.filter(x=>x[0]==='get_blocks_ack_request_v0').length,1);
