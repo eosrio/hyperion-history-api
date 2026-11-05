@@ -2,7 +2,7 @@ import {ProtocolSourceEquivalence} from '../protocol/source-equivalence.js';
 import {ProtocolSourceBindingStore} from '../protocol/source-bindings.js';
 import {diskAbiHistoryOptions} from '../protocol/disk-abi-history-options.js';
 import {ProtocolAbiObservationStore} from '../protocol/abi-observation-store.js';
-import { cargo, queue } from "async";
+import { cargo } from "async";
 import { Channel, ConsumeMessage, Message } from "amqplib";
 import { join, resolve } from "path";
 import { existsSync, readdirSync, readFileSync } from "fs";
@@ -173,7 +173,7 @@ export default class DSPoolWorker extends HyperionWorker {
     }
 
     private handleActionProcessingFailure(error: any, _payload: ConsumeMessage[], callback: () => void) {
-        if (this.usesExtensionProtocol || this.actionSourceAdmissionEnabled) {
+        if (this.usesExtensionProtocol || this.actionSourceAdmissionEnabled || this.hasUnscopedDurablePublicationFailure()) {
             return this.exitForActionProcessing(error, _payload);
         }
         hLog('NackAll:', error);
@@ -184,7 +184,7 @@ export default class DSPoolWorker extends HyperionWorker {
     }
 
     private exitForActionProcessing(error: any, _payload: ConsumeMessage[]): never {
-        hLog('Protocol action processing failed; supervised replacement required:', error.message);
+        hLog('Action processing failed; supervised replacement required:', error?.message ?? String(error));
         this.ch_ready = false;
         this.consumerQueue.kill();
         return process.exit(1);
@@ -204,19 +204,7 @@ export default class DSPoolWorker extends HyperionWorker {
 
         this.consumerQueue = this.createConsumerQueue();
 
-        this.preIndexingQueue = queue((data: any, cb) => {
-            if (data.publish) {try {data.publish(); cb();} catch (error) {cb(error instanceof Error ? error : new Error(String(error)));} return;}
-            if (this.ch_ready && this.ch) {
-                try {
-                    this.workerBufferedPublication(this.ch, () => this.ch!.sendToQueue(data.queue, data.content, { headers: data.headers }));
-                } catch (e: any) {
-                    hLog(e.message);
-                }
-                cb();
-            } else {
-                hLog('Channel is not ready!');
-            }
-        }, 1);
+        this.preIndexingQueue = this.createDurableWorkerOutputQueue();
 
         this.processCustomABI();
 
@@ -859,6 +847,7 @@ export default class DSPoolWorker extends HyperionWorker {
                 Number.isSafeInteger(this.activeActionAdmission.traceOrdinal) ? this.activeActionAdmission.traceOrdinal : null, error.message);
             hLog('Action membership remains incomplete:', error.message);
         }
+        await this.flushDurableWorkerOutputs();
         if (this.actionSourceAdmissionEnabled) {
             await this.flushRedisBatch();
             {
@@ -1353,7 +1342,7 @@ export default class DSPoolWorker extends HyperionWorker {
                         this.protocolNativeCacheEntries.add({work, payload: Buffer.from(payload)});
                     }
                     this.actionDsCounter++;
-                    if (!admissionScope) this.pushToActionsQueue(payload, block_num);
+                    if (!admissionScope) await this.pushToActionsQueue(payload, block_num);
                     if (live === 'true') {
                         this.pushToActionStreamingQueue(payload, uniqueAction);
                     }
@@ -1403,7 +1392,7 @@ export default class DSPoolWorker extends HyperionWorker {
         }
     }
 
-    pushToActionsQueue(payload: any, block_num: number) {
+    async pushToActionsQueue(payload: any, block_num: number): Promise<void> {
         this.assertWorkerAttemptActive();
         if (this.conf.indexer.disable_indexing) return;
         const q = this.chain + ":index_actions:" + (this.act_emit_idx);
@@ -1411,32 +1400,9 @@ export default class DSPoolWorker extends HyperionWorker {
         if (this.act_emit_idx > (this.conf.scaling.ad_idx_queues)) {
             this.act_emit_idx = 1;
         }
-        // Hot path: publish directly via the AMQP channel. amqplib buffers
-        // internally and returns false on backpressure; the cargo wrapper
-        // around processMessages is the natural throttling point so we
-        // don't need a per-push async queue here. Fall back to the
-        // preIndexingQueue only when the channel isn't ready.
-        if (this.ch_ready && this.ch) {
-            try {
-                this.workerBufferedPublication(this.ch, () => this.ch!.sendToQueue(q, payload, { headers: { block_num } }));
-                return;
-            } catch (e: any) {
-                hLog(e.message);
-            }
-        }
-        // Channel temporarily unavailable — queue for the async worker
-        // which will retry once ch_ready returns true.
-        const publication = {
-            queue: q,
-            content: payload,
-            headers: { block_num }
-        };
-        const scope = currentProofConsumerScope();
-        const publish = scope?.bindCallback(() => {
-            if (!this.ch_ready || !this.ch) throw new Error('Original queued action publisher is unavailable');
-            return this.workerBufferedPublication(this.ch, () => this.ch!.sendToQueue(q, payload, {headers: {block_num}}));
-        });
-        void trackProofConsumerOperation(() => this.preIndexingQueue.push({...publication, ...(publish ? {publish} : {})})).catch(() => {});
+        // A local buffer handoff cannot authorize ACK of the original DS delivery.
+        // Failure retires/requeues that original delivery; never retry on a replacement publisher here.
+        await this.enqueueDurableWorkerOutput(this.preIndexingQueue, q, payload, {headers: {block_num}});
     }
 
     pushToActionStreamingQueue(payload: any, uniqueAction: any) {

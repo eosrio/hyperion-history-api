@@ -1,5 +1,5 @@
 import { HyperionWorker, ProtocolSourceCodecError, protocolSourceCapture } from "./hyperionWorker.js";
-import { cargo, queue } from 'async';
+import { cargo } from 'async';
 import { debugLog, hLog } from "../helpers/common_functions.js";
 import { createHash } from "crypto";
 import { Message, Options, type Channel } from "amqplib";
@@ -40,7 +40,7 @@ import {snapshotNativeGenesisFacts, zeroBlockId} from '../protocol/native-genesi
 import {ProtocolNativeObservationStore, protocolNativeObservationBounds,
     type ProtocolNativeObservationRecord} from '../protocol/native-observation-store.js';
 import {protocolNativeInputInventory, snapshotProtocolNativeDecisions} from '../protocol/native-observation-facts.js';
-import {currentProofConsumerScope, trackProofConsumerOperation} from '../protocol/proof-consumer-scope.js';
+import {currentProofConsumerScope} from '../protocol/proof-consumer-scope.js';
 
 class ProtocolProofStorageError extends Error {
     constructor(cause: unknown) {super('Canonical ABI proof storage failed', {cause});}
@@ -142,9 +142,6 @@ export default class MainDSWorker extends HyperionWorker {
 
     allowedDynamicContracts: Set<string> = new Set<string>();
 
-    backpressureQueue: any[] = [];
-    waitToSend = false;
-
     constructor() {
 
         super();
@@ -170,15 +167,7 @@ export default class MainDSWorker extends HyperionWorker {
             });
         }, this.conf.prefetch.block);
 
-        this.preIndexingQueue = queue((data: any, cb) => {
-            if (data.publish) {try {data.publish(); cb();} catch (error) {cb(error instanceof Error ? error : new Error(String(error)));} return;}
-            if (this.ch && this.ch_ready) {
-                this.workerBufferedPublication(this.ch, () => this.ch!.sendToQueue(data.queue, data.content, { headers: data.headers }));
-                cb();
-            } else {
-                hLog('Channel is not ready!');
-            }
-        }, 1);
+        this.preIndexingQueue = this.createDurableWorkerOutputQueue();
 
         this.events.on('loader_ready', () => {
             this.mLoader.appendDynamicContracts(this.allowedDynamicContracts);
@@ -268,9 +257,7 @@ export default class MainDSWorker extends HyperionWorker {
 
         if (this.ch) {
             this.ch_ready = true;
-            if (this.preIndexingQueue.paused) {
-                this.preIndexingQueue.resume();
-            }
+            if (this.preIndexingQueue.paused) this.preIndexingQueue.resume();
             this.ch.on('close', () => {
                 this.ch_ready = false;
                 this.preIndexingQueue.pause();
@@ -464,6 +451,8 @@ export default class MainDSWorker extends HyperionWorker {
             await this.observeFreshActionWrite(recorded);
             await revalidate();
         }
+        await this.flushDurableWorkerOutputs();
+        await revalidate();
         assertCurrent(); this.assertWorkerAttemptActive(); this.markWorkerAcknowledgementAttempt(); scope!.owner.consumer.ack(message);
     }
 
@@ -569,7 +558,8 @@ export default class MainDSWorker extends HyperionWorker {
             this.activeSourceDelivery = undefined; close?.(); }
     }
 
-    ackProtocolSourceDelivery(message: Message): void {
+    async ackProtocolSourceDelivery(message: Message): Promise<void> {
+        await this.flushDurableWorkerOutputs();
         const delivery = this.activeSourceDelivery;
         if (delivery?.message === message && delivery.channel && delivery.channel === this.ch && this.ch_ready) {
             this.assertWorkerAttemptActive(); this.markWorkerAcknowledgementAttempt(); delivery.channel.ack(message);
@@ -758,20 +748,6 @@ export default class MainDSWorker extends HyperionWorker {
                 if (this.actionSourceAdmissionEnabled) this.captureActionAdmissionDelivery(data, consumer);
                 if (this.usesProtocolSourceBindings) this.captureProtocolSourceDelivery(data, consumer);
                 this.consumerQueue.push(data).catch(console.log);
-            });
-            consumer.on('drain', () => {
-                if (consumer !== this.ch) return;
-                this.waitToSend = false;
-                while (this.backpressureQueue.length > 0) {
-                    const msg = this.backpressureQueue.shift();
-                    let status: boolean;
-                    try {status = msg.publish ? msg.publish() : this.controlledSendToQueue(msg.queue, msg.payload, msg.options);}
-                    catch (error) {msg.reject?.(error); continue;}
-                    msg.resolve?.();
-                    if (!status) {
-                        break;
-                    }
-                }
             });
         }
     }
@@ -1102,7 +1078,7 @@ export default class MainDSWorker extends HyperionWorker {
         this.local_block_count++;
     }
 
-    routeToPool(trace, headers, owner?: ActionPublicationOwner, canonicalPayload?: string) {
+    async routeToPool(trace, headers, owner?: ActionPublicationOwner, canonicalPayload?: string) {
 
         let first_action;
         if (trace['action_traces'][0] && trace['action_traces'][0].length === 2) {
@@ -1204,51 +1180,12 @@ export default class MainDSWorker extends HyperionWorker {
         const payload = canonicalPayload === undefined ? bufferFromJson(trace, true) : Buffer.from(canonicalPayload);
         if (owner) return this.publishAdmitted(owner, pool_queue, payload, headers);
 
-        if (!this.waitToSend) {
-            if (this.ch_ready) {
-                this.controlledSendToQueue(pool_queue, payload, { headers });
-                return true;
-            } else {
-                return false;
-            }
-        } else {
-            const scope = currentProofConsumerScope();
-            if (scope) {
-                const channel = this.ch, sent = Buffer.from(payload), options = {headers: structuredClone(headers)};
-                void scope.operation(() => new Promise<void>((resolve, reject) => {
-                    const publish = scope.bindCallback(() => {
-                        if (!channel || channel !== this.ch || !this.ch_ready) throw new Error('Original queued source publisher is unavailable');
-                        return this.controlledSendToQueue(pool_queue, sent, options);
-                    });
-                    const entry = {publish, resolve: () => {scope.signal.removeEventListener('abort', abort); resolve();},
-                        reject: (error: unknown) => {scope.signal.removeEventListener('abort', abort); reject(error);}};
-                    const abort = () => {
-                        const index = this.backpressureQueue.indexOf(entry); if (index !== -1) this.backpressureQueue.splice(index, 1);
-                        entry.reject(scope.signal.reason);
-                    };
-                    scope.signal.addEventListener('abort', abort, {once: true}); this.backpressureQueue.push(entry);
-                })).catch(() => {});
-            } else this.backpressureQueue.push({
-                queue: pool_queue,
-                payload: payload,
-                options: { headers }
-            });
-            return false;
-        }
+        return this.controlledSendToQueue(pool_queue, payload, {headers});
     }
 
-    controlledSendToQueue(pool_queue: string, payload: Buffer, options: Options.Publish): boolean {
-        this.assertWorkerAttemptActive();
-        if (this.ch) {
-            const enqueueResult = this.workerBufferedPublication(this.ch, () => this.ch!.sendToQueue(pool_queue, payload, options));
-            if (!enqueueResult) {
-                this.waitToSend = true;
-            }
-            return enqueueResult;
-        } else {
-            hLog("Channel was not created!");
-            return false;
-        }
+    async controlledSendToQueue(pool_queue: string, payload: Buffer, options: Options.Publish): Promise<boolean> {
+        await this.publishDurableWorkerOutput(pool_queue, payload, options);
+        return true;
     }
 
     // createSerialBuffer(inputArray: Uint8Array) {
@@ -1765,7 +1702,7 @@ export default class MainDSWorker extends HyperionWorker {
             const key2 = `${contractRowDelta.code}:*`;
             const key3 = `*:${contractRowDelta.table}`;
 
-            if (!deferDynamic) this.pushToDynamicTableQueue(contractRowDelta);
+            if (!deferDynamic) await this.pushToDynamicTableQueue(contractRowDelta);
 
             // strict code::table handlers
             if (this.tableHandlers[key]) {
@@ -1832,14 +1769,8 @@ export default class MainDSWorker extends HyperionWorker {
             this.stageProtocolPublication(() => undefined, 0); return Promise.resolve();
         }
         this.assertWorkerAttemptActive();
-        const attempt = currentProofConsumerScope(), channel = this.ch;
-        const queue = (value: QueuePayload) => {
-            const publish = attempt?.bindCallback(() => {
-                if (!channel || channel !== this.ch || !this.ch_ready) throw new Error('Original derived publisher is unavailable');
-                return this.workerBufferedPublication(channel, () => channel.sendToQueue(value.queue, value.content, {headers: value.headers}));
-            });
-            return trackProofConsumerOperation(() => this.preIndexingQueue.push({...value, ...(publish ? {publish} : {})}));
-        };
+        const queue = (value: QueuePayload) => this.enqueueDurableWorkerOutput(this.preIndexingQueue,
+            value.queue, value.content, {headers: value.headers});
         if (!this.protocolDerivedPublications?.getStore()) return queue(payload);
         const retained: QueuePayload = {queue: payload.queue, content: Buffer.from(payload.content),
             ...(payload.headers !== undefined ? {headers: structuredClone(payload.headers)} : {})};
@@ -1914,7 +1845,7 @@ export default class MainDSWorker extends HyperionWorker {
             data: jsonRow.data,
             ...(jsonRow['protocol'] ? {protocol: jsonRow['protocol']} : {})
         };
-        this.enqueueDerivedPublication({
+        const publication = this.enqueueDerivedPublication({
             queue: this.chain + ":index_dynamic:" + (this.dyn_emit_idx),
             content: bufferFromJson(doc),
             headers: {
@@ -1923,11 +1854,12 @@ export default class MainDSWorker extends HyperionWorker {
                 block_num: jsonRow.block_num,
                 present: jsonRow.present
             }
-        }).catch(console.log);
+        });
         this.dyn_emit_idx++;
         if (this.dyn_emit_idx > this.conf.scaling.dyn_idx_queues) {
             this.dyn_emit_idx = 1;
         }
+        return publication;
     }
 
     async pushToDeltaQueue(bufferData: any, block_num) {
@@ -2448,7 +2380,7 @@ export default class MainDSWorker extends HyperionWorker {
                         this.temp_delta_counter++;
                     }
                     await revalidate();
-                    this.pushToDynamicTableQueue(dynamicPayload);
+                    await this.pushToDynamicTableQueue(dynamicPayload);
                     scope.accepting = false;
                     if (scope.failure) throw scope.failure;
                     // Builtin handlers can await and call several core publication helpers.

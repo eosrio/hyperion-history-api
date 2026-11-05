@@ -5,7 +5,8 @@ import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
-import {controlledAttemptLifecycle} from './worker-attempt-fixture.mjs';
+import {controlledAttemptLifecycle as installAttemptLifecycle, controlledDurableOutputTransport} from './worker-attempt-fixture.mjs';
+function controlledAttemptLifecycle(worker, role) {controlledDurableOutputTransport(worker, role); installAttemptLifecycle(worker, role);}
 
 registerHooks({resolve(specifier,context,next){if(specifier.includes('node-abieos'))throw new Error('Wire imported the legacy addon');return next(specifier,context);}});
 const previous=process.cwd(),directory=mkdtempSync(join(tmpdir(),'hyperion-abi-frontier-'));

@@ -1,11 +1,12 @@
 import { Client } from "@elastic/elasticsearch";
 import { EventEmitter } from "events";
+import {queue as asyncQueue} from 'async';
 import type {ProtocolProvider, ProtocolShipSession, ProtocolComponent} from "@eosrio/hyperion-sdk/protocol";
 import {loadChainProtocol} from "../protocol/selection.js";
 import {ContractDecoder, protocolBytes, protocolNumber} from "../protocol/contract-cache.js";
 import {protocolAbiCaptureDigest, type ProtocolAbiObservationRecord} from '../protocol/abi-observation-store.js';
 import type {ProtocolSourcePosition} from '../protocol/source-bindings.js';
-import { Channel, ConfirmChannel } from "amqplib";
+import { Channel, ConfirmChannel, type Options } from "amqplib";
 
 import { HyperionConfig } from "../../interfaces/hyperionConfig.js";
 import { ConnectionManager } from "../connections/manager.class.js";
@@ -23,7 +24,7 @@ import { WorkerProfiler } from "../helpers/profiler.js";
 import {ActionSourceAdmissionStore} from '../history/action-source-admission.js';
 import {publishAdmittedAction, bindActionPublicationOwnerToScope, type ActionPublicationOwner} from '../history/action-confirmed-publication.js';
 import {createHash, randomUUID} from 'node:crypto';
-import {serialize} from 'node:v8';
+import {serialize, deserialize} from 'node:v8';
 import {WorkerProofDemandObserver} from '../history/action-proof-demand-enrollment.js';
 import type {Message} from 'amqplib';
 import {actionHistoryImmutableJson} from '../history/action-history-manifest.js';
@@ -32,6 +33,9 @@ import type {WorkerAttemptBinding, WorkerAttemptKind, WorkerAttemptRole} from '.
 import {currentProofConsumerScope, assertProofConsumerCapability, trackProofConsumerOperation} from '../protocol/proof-consumer-scope.js';
 
 const maximumProjectionInitializationAttempts = 4;
+const durablePublicationBounds = {maximumPending: 1024, maximumBytes: 128 * 1024 * 1024};
+interface DurableWorkerPublications {pending: Set<Promise<void>>; bytes: number; failure?: unknown}
+interface DurableWorkerPublication {queue: string; content: Buffer; headers: unknown; publish: () => Promise<void>; signal?: AbortSignal}
 
 // Broker-decoded headers may contain bytes, timestamps or undefined fields, unlike portable action JSON.
 function workerAttemptHeadersSha256(headers: unknown): string {
@@ -241,6 +245,89 @@ export abstract class HyperionWorker {
         else {this.markWorkerAcknowledgementAttempt(); retained.consumer.ack(message);}
     }
     assertWorkerAttemptActive(): void {currentProofConsumerScope()?.assertActive();}
+    private durablePublications?: WeakMap<object, DurableWorkerPublications>;
+    /** Unscoped legacy consumers must replace this physical owner after a failed required publication. */
+    protected hasUnscopedDurablePublicationFailure(): boolean {return !!this.durablePublications?.get(this)?.failure;}
+    protected createDurableWorkerOutputQueue() {
+        const waiting = new Set<(error: unknown) => void>();
+        const tasks = asyncQueue<DurableWorkerPublication>((task, callback) => {
+            Promise.resolve().then(task.publish).then(() => callback(), error => callback(error instanceof Error ? error : new Error(String(error))));
+        }, 1);
+        return {
+            get paused() {return tasks.paused;}, pause: () => tasks.pause(), resume: () => tasks.resume(),
+            kill: () => {for (const cancel of [...waiting]) cancel(new Error('Durable worker output queue was retired')); tasks.kill();},
+            push: (task: DurableWorkerPublication): Promise<void> => new Promise((resolve, reject) => {
+                const cleanup = () => {waiting.delete(cancel); task.signal?.removeEventListener('abort', abort);};
+                const cancel = (error: unknown) => {tasks.remove(entry => entry.data === task); cleanup(); reject(error);};
+                const abort = () => cancel(task.signal!.reason);
+                waiting.add(cancel);
+                task.signal?.addEventListener('abort', abort, {once: true});
+                if (task.signal?.aborted) {abort(); return;}
+                tasks.push(task, error => {
+                    cleanup();
+                    if (error) reject(error); else resolve();
+                });
+            })
+        };
+    }
+    private publicationGroup(): DurableWorkerPublications {
+        this.durablePublications ??= new WeakMap();
+        const key = currentProofConsumerScope() ?? this;
+        let group = this.durablePublications.get(key);
+        if (!group) {group = {pending: new Set(), bytes: 0}; this.durablePublications.set(key, group);}
+        return group;
+    }
+    /** Transport durability only. No action membership, projection or source-progress evidence is issued. */
+    publishDurableWorkerOutput(queue: string, payload: Buffer, options: Options.Publish = {}): Promise<void> {
+        return this.scheduleDurableWorkerOutput(queue, payload, options, task => task.publish());
+    }
+    protected enqueueDurableWorkerOutput(output: {push(task: DurableWorkerPublication): Promise<unknown>},
+                                         queue: string, payload: Buffer, options: Options.Publish = {}): Promise<void> {
+        return this.scheduleDurableWorkerOutput(queue, payload, options, task => output.push(task));
+    }
+    private scheduleDurableWorkerOutput(queue: string, payload: Buffer, options: Options.Publish,
+                                        dispatch: (task: DurableWorkerPublication) => Promise<unknown>): Promise<void> {
+        this.assertWorkerAttemptActive();
+        const group = this.publicationGroup();
+        if (group.failure) throw group.failure;
+        try {
+            // Preserve AMQP's typed headers while bounding and detaching them before asynchronous I/O.
+            workerAttemptHeadersSha256(options.headers ?? {});
+            const headers = serialize(options.headers ?? {}), bytes = payload.length + headers.length;
+            if (group.pending.size >= durablePublicationBounds.maximumPending || group.bytes + bytes > durablePublicationBounds.maximumBytes) {
+                const error = new Error('Worker durable publication budget exhausted'); group.failure ??= error; throw error;
+            }
+            const consumer = this.ch, publisher = this.cch;
+            if (!consumer || !publisher || !this.ch_ready || !this.cch_ready) throw new Error('Original durable worker publisher is unavailable');
+            const owner = bindActionPublicationOwnerToScope({consumer, publisher,
+                current: () => this.ch === consumer && this.cch === publisher && this.ch_ready && this.cch_ready});
+            const content = Buffer.from(payload), retainedOptions = {...options, headers: deserialize(headers)};
+            const operation = () => publishAdmittedAction(owner, queue, content, retainedOptions);
+            const publish = currentProofConsumerScope()?.bindCallback(operation) ?? operation;
+            let resolve!: (value: PromiseLike<void>) => void, reject!: (error: unknown) => void;
+            const publication = new Promise<void>((yes, no) => {resolve = yes; reject = no;});
+            // Register custody before async.queue can schedule a task or synchronously reject it.
+            group.bytes += bytes;
+            group.pending.add(publication);
+            void publication.then(() => {group.pending.delete(publication); group.bytes -= bytes;}, error => {
+                group.failure ??= error instanceof Error ? error : new Error(String(error));
+                group.pending.delete(publication); group.bytes -= bytes;
+            });
+            try {
+                resolve(trackProofConsumerOperation(async () => {await dispatch({queue, content, headers: retainedOptions.headers,
+                    publish, signal: currentProofConsumerScope()?.signal});}));
+            } catch (error) {reject(error);}
+            return publication;
+        } catch (error) {group.failure ??= error instanceof Error ? error : new Error(String(error)); throw error;}
+    }
+    /** Also covers host helpers whose promise a hook did not await; a failed output cannot be hidden. */
+    async flushDurableWorkerOutputs(): Promise<void> {
+        this.assertWorkerAttemptActive();
+        const group = this.publicationGroup();
+        while (group.pending.size) await Promise.allSettled([...group.pending]);
+        this.assertWorkerAttemptActive();
+        if (group.failure) throw group.failure;
+    }
     /** Observable backpressure after synchronous byte handoff; no physical flush or broker confirmation. */
     workerBufferedPublication(channel: Channel, send: () => boolean): boolean {
         const scope = currentProofConsumerScope(); if (!scope) return send();
