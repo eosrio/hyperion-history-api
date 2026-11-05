@@ -11,7 +11,7 @@ export function installWorkerFailureDiagnostics({Pool, Reader, Projection, Worke
     const rootContexts = new WeakMap(), roots = new WeakMap(), batches = new WeakMap(), readerDecisions = new WeakMap();
     const knownWorkers = new WeakSet(), disconnects = new WeakMap(), requests = new WeakMap(), replacements = new WeakMap();
     const pendingDefinitions = new WeakMap();
-    const launching = [];
+    const launching = [], sweeps = [];
     const observe = operation => {try {return operation();} catch {failed(); return undefined;}};
     const record = (event, snapshot) => {
         if (events++ >= maximumFailureEvents) {omitted++; failed(); return;}
@@ -146,21 +146,37 @@ export function installWorkerFailureDiagnostics({Pool, Reader, Projection, Worke
             observe(() => {
                 const trigger = launching.at(-1);
                 if (!trigger) return;
-                const pending = pendingDefinitions.get(trigger.master), request = pending?.get(definition);
-                if (!request || request.master !== trigger.master || !trigger.master.workerMap.includes(definition)
-                    || definition.wref !== undefined) return;
-                pending.delete(definition);
-                const replacement = {...request, triggerRequestId: trigger.id, replacementId: randomUUID(), worker: result};
-                replacements.set(result, replacement);
-                record('worker_replacement_forked', () => ({replacementId: replacement.replacementId, requestId: request.id,
-                    triggerRequestId: trigger.id, disconnectId: request.disconnect.id,
-                    logicalWorkerId: definition.worker_id, role: definition.worker_role,
-                    previous: request.disconnect.identity, previousOwner: request.previousOwner, child: workerIdentity(result)}));
+                const pending = pendingDefinitions.get(trigger.master), map = trigger.master.workerMap;
+                const associate = (original, expectedWorker) => {
+                    const request = pending?.get(original);
+                    if (!request || request.master !== trigger.master || request.definition !== original
+                        || !trigger.master.workerMap.includes(original) || original.wref !== expectedWorker) return;
+                    pending.delete(original);
+                    const replacement = {...request, triggerRequestId: trigger.id, replacementId: randomUUID(), worker: result};
+                    replacements.set(result, replacement);
+                    record('worker_replacement_forked', () => ({replacementId: replacement.replacementId, requestId: request.id,
+                        triggerRequestId: trigger.id, disconnectId: request.disconnect.id,
+                        logicalWorkerId: original.worker_id, role: original.worker_role,
+                        previous: request.disconnect.identity, previousOwner: request.previousOwner, child: workerIdentity(result)}));
+                };
+                if (map.includes(definition)) associate(definition, undefined);
+                else if (sweeps.at(-1) === trigger.master) queueMicrotask(() => observe(() => {
+                    // The master assigns its actual returned Worker before this observation.
+                    // The fork environment is never evidence of the definition's identity.
+                    const matches = trigger.master.workerMap.filter(candidate => candidate?.wref === result);
+                    if (matches.length === 1 && ['reader', 'continuous_reader'].includes(matches[0].worker_role))
+                        associate(matches[0], result);
+                }));
             });
             return result;
         };
     }
     if (enabled.master) {
+        const launch = Master.prototype.launchWorkers;
+        if (typeof launch === 'function') Master.prototype.launchWorkers = function(...args) {
+            sweeps.push(this);
+            try {return launch.apply(this, args);} finally {sweeps.pop();}
+        };
         const disconnect = Master.prototype.handleWorkerDisconnect, relaunch = Master.prototype.relaunchDisconnectedWorker;
         Master.prototype.handleWorkerDisconnect = function(worker, ...args) {
             let pending;

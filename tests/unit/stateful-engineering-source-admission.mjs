@@ -20,6 +20,7 @@ export const STATEFUL_HISTORY_API_SOURCE_PROFILE = 'stateful-owner-v2-7412889-69
 export const STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE = 'stateful-owner-v2-7412889-e691f44-isolated-genesis-engineering';
 export const STATEFUL_GENESIS_RPC_SOURCE_PROFILE = 'stateful-owner-v2-7412889-e691f44-genesis-rpc-engineering';
 export const STATEFUL_BATCH_SOURCE_PROFILE = 'stateful-owner-v2-7412889-e691f44-immutable-batch-engineering';
+export const STATEFUL_COMBINED_REPLAY_SOURCE_PROFILE = 'stateful-owner-v2-7412889-e691f44-replay-bulk-history-v1-engineering';
 export const STATEFUL_BULK_SOURCE_PROFILE = 'stateful-owner-v2-7412889-e691f44-immutable-bulk-engineering';
 export const STATEFUL_GENESIS_PREVIEW_WIRE_SOURCE = Object.freeze({
     commit:'e691f4471c6e5fdbe001e6709e88d48d33d8bf4c',tree:'375c411d7f76efb460ace846755821445dfb50ea',
@@ -28,6 +29,17 @@ export const STATEFUL_GENESIS_PREVIEW_WIRE_SOURCE = Object.freeze({
     nodeSha256:'a7d366f192b948d5ae0a4732fdf16789b9c82be67ff40e0387613332aa5bec0f',
     rustSha256:'41f968f3f2928b4a3ecbb01828b45c7b4aa4a64aa208c390230bb4f340447bbe',
     npmLockSha256:'a7bbbb10d86a698d23c44b0ec73774a72a3ec915d11ff5d51c0892dfc9553943',
+});
+export const STATEFUL_COMPLETE_KIND_WIRE32_API_SOURCE_PROFILE = 'stateful-owner-v2-7412889-e691f44-complete-kind-engineering';
+export const STATEFUL_COMPLETE_KIND_WIRE32_CACHE_API_SOURCE_PROFILE = 'stateful-owner-v2-7412889-e691f44-string-cache-v1-engineering';
+function wire32Profile(profile) {return profile === STATEFUL_COMBINED_REPLAY_SOURCE_PROFILE || profile === STATEFUL_COMPLETE_KIND_WIRE32_API_SOURCE_PROFILE || profile === STATEFUL_COMPLETE_KIND_WIRE32_CACHE_API_SOURCE_PROFILE;}
+export const STATEFUL_COMPLETE_KIND_WIRE32_SOURCE = Object.freeze({
+    commit: 'e691f4471c6e5fdbe001e6709e88d48d33d8bf4c', tree: '375c411d7f76efb460ace846755821445dfb50ea',
+    packageSha256: '9f5f8991e1786757fdf52a9cf3978d07ef0c7a6782aa6eed51b2fa479f102936',
+    descriptorSha256: 'fc2a98d25a471dbc2065cffe9930af56f8a7fc338095893e3f9062a3617c17ae',
+    nodeSha256: 'a7d366f192b948d5ae0a4732fdf16789b9c82be67ff40e0387613332aa5bec0f',
+    rustSha256: '41f968f3f2928b4a3ecbb01828b45c7b4aa4a64aa208c390230bb4f340447bbe',
+    npmLockSha256: 'a7bbbb10d86a698d23c44b0ec73774a72a3ec915d11ff5d51c0892dfc9553943',
 });
 export const STATEFUL_COMPLETE_KIND_CODEC_WIRE_SOURCE = Object.freeze({
     commit: '69a66064c077a405341f5aaf15e84b88b8d86ccb', tree: '97adfecdfd02d881493f950b2cf5a9a32d2a030b',
@@ -40,7 +52,7 @@ export const STATEFUL_COMPLETE_KIND_CODEC_WIRE_SOURCE = Object.freeze({
 /** The retained mapping fixture accepts only explicitly named, fully admitted sources. */
 export function assertMappingRetryWireSource(admission,components) {
     const expected=admission.profile===STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE?STATEFUL_COMPLETE_KIND_CODEC_WIRE_SOURCE.commit:
-        (admission.profile===STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE||admission.profile===STATEFUL_GENESIS_RPC_SOURCE_PROFILE||admission.profile===STATEFUL_BATCH_SOURCE_PROFILE||admission.profile===STATEFUL_BULK_SOURCE_PROFILE)?STATEFUL_GENESIS_PREVIEW_WIRE_SOURCE.commit:undefined;
+        (wire32Profile(admission.profile)||admission.profile===STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE||admission.profile===STATEFUL_GENESIS_RPC_SOURCE_PROFILE||admission.profile===STATEFUL_BATCH_SOURCE_PROFILE||admission.profile===STATEFUL_BULK_SOURCE_PROFILE)?STATEFUL_GENESIS_PREVIEW_WIRE_SOURCE.commit:undefined;
     assert(expected,'Mapping retry source profile not admitted');
     assert.equal(admission.wireRevision,expected,'Mapping retry admission source revision');
     assert(Array.isArray(components)&&components.length>0&&components.every(value=>value.sourceRevision===expected),
@@ -137,6 +149,27 @@ export const STATEFUL_BULK_CALLER_SOURCE = Object.freeze({
     sources:Object.freeze([...STATEFUL_BATCH_CALLER_SOURCE.sources.filter(([path])=>path!=='src/indexer/protocol/immutable-bundle-store.ts'),
         ['src/indexer/protocol/immutable-bundle-store.ts','55ddc2b6268282af087cee5a684768c30f8d04bde08895dce8ba7aace2970248']]),
 });
+export const STATEFUL_COMPLETE_KIND_WIRE32_CALLER_SOURCE = Object.freeze({
+    ...STATEFUL_COMPLETE_KIND_CODEC_CALLER_SOURCE,
+    commit: 'bca518ddfebf04c2af957832f2ad9c0582c17932',
+    packageSha256: '31b02c51777bab0b6c12fc3ee7a64b44629e009abf77ad4a32aecb00891c48ca',
+});
+export const STATEFUL_COMPLETE_KIND_WIRE32_CACHE_CALLER_SOURCE = Object.freeze({
+    ...STATEFUL_COMPLETE_KIND_WIRE32_CALLER_SOURCE,
+    helperSourceCommit: 'c1b98a52a872b6c070ada32243c8286607e86883', sha256: '7e7b6bf83b3fefb7db97d4ad8b8ada6261f44da11f57ee25f55d6ff3c29499b1',
+    sources: Object.freeze(STATEFUL_COMPLETE_KIND_WIRE32_CALLER_SOURCE.sources.map(([path, hash]) => path === 'src/indexer/helpers/bounded-json.ts'
+        ? [path, 'c6cd855e0ce68e708d5f966c13308e3a15f8e099e3ba771b84a9763595b5db28'] : [path, hash])),
+});
+export const STATEFUL_COMBINED_REPLAY_CALLER_SOURCE = Object.freeze({
+    ...STATEFUL_BULK_CALLER_SOURCE, commit:'2a5cbe117577412f5eb8b7995b34d1411901cc30',
+    helperSourceCommit:'c1b98a52a872b6c070ada32243c8286607e86883',
+    files:554,sha256:'63a6f08c20a14a319babacd9c44e7f61ebfe74b0877a7ab52bb08d765edec3ba',
+    sources:Object.freeze([...STATEFUL_BULK_CALLER_SOURCE.sources.filter(([path])=>
+        !["src/indexer/helpers/bounded-json.ts","src/indexer/protocol/abi-coordinator.ts","src/indexer/protocol/abi-frontier-store.ts"].includes(path)),
+        ["src/indexer/helpers/bounded-json.ts","c6cd855e0ce68e708d5f966c13308e3a15f8e099e3ba771b84a9763595b5db28"],
+        ["src/indexer/protocol/abi-coordinator.ts","c15d63975c1a2a88525a8a82dfd29d49ea6990926f0559f22cd07e056b68643f"],
+        ["src/indexer/protocol/abi-frontier-store.ts","25dbb6882ed3354a232c76c50388693489d47fa0bb7000c198908f941f6adc59"]]),
+});
 // Production source was committed before these additive qualification profiles.
 export const STATEFUL_METADATA_FIELDS_NATIVE_SOURCE = Object.freeze({
     commit: '0b51a20c3d9a9b95c39a713c89cad6d55c5103d4', tree: '686850ba3acb00fc1f9424dd300483b83f84c654',
@@ -146,13 +179,13 @@ const oldWire = '7167659e9c043cb3351074fcacb40200cc57f3a3', wire = '18d235e34a9b
 const sdk = '58d68c5cea81490bbb1c9a7736d633d465bab3ef';
 const metadataSdk = 'dd85ee590dcd1e359509c6c41ee99b541706b1f6';
 const completeKindSdk = '7412889a14c84342551fd864ea3ebfcf28849385';
-const codecProfile = profile => profile === STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE || profile === STATEFUL_HISTORY_API_SOURCE_PROFILE || profile === STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE || profile === STATEFUL_GENESIS_RPC_SOURCE_PROFILE || profile === STATEFUL_BATCH_SOURCE_PROFILE || profile === STATEFUL_BULK_SOURCE_PROFILE;
+const codecProfile = profile => wire32Profile(profile) || profile === STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE || profile === STATEFUL_HISTORY_API_SOURCE_PROFILE || profile === STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE || profile === STATEFUL_GENESIS_RPC_SOURCE_PROFILE || profile === STATEFUL_BATCH_SOURCE_PROFILE || profile === STATEFUL_BULK_SOURCE_PROFILE;
 const completeKindProfile = profile => profile === STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE || profile === STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE
     || profile === STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE || profile === STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE || codecProfile(profile);
 const completeKindNativeSource = profile => profile === STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE || codecProfile(profile) ? STATEFUL_COMPLETE_KIND_METADATA_NATIVE_SOURCE
     : profile === STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE ? STATEFUL_COMPLETE_KIND_EXECUTOR_NATIVE_SOURCE
     : profile === STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE ? STATEFUL_COMPLETE_KIND_COMMANDS_NATIVE_SOURCE : STATEFUL_COMPLETE_KIND_NATIVE_SOURCE;
-const completeKindCallerSource = profile => profile === STATEFUL_BULK_SOURCE_PROFILE ? STATEFUL_BULK_CALLER_SOURCE : profile === STATEFUL_BATCH_SOURCE_PROFILE ? STATEFUL_BATCH_CALLER_SOURCE : profile === STATEFUL_GENESIS_RPC_SOURCE_PROFILE ? STATEFUL_GENESIS_RPC_CALLER_SOURCE : profile === STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE ? STATEFUL_GENESIS_PREVIEW_CALLER_SOURCE : profile === STATEFUL_HISTORY_API_SOURCE_PROFILE ? STATEFUL_HISTORY_API_CALLER_SOURCE : codecProfile(profile) ? STATEFUL_COMPLETE_KIND_CODEC_CALLER_SOURCE : profile === STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE
+const completeKindCallerSource = profile => profile === STATEFUL_COMBINED_REPLAY_SOURCE_PROFILE ? STATEFUL_COMBINED_REPLAY_CALLER_SOURCE : profile === STATEFUL_COMPLETE_KIND_WIRE32_CACHE_API_SOURCE_PROFILE ? STATEFUL_COMPLETE_KIND_WIRE32_CACHE_CALLER_SOURCE : profile === STATEFUL_COMPLETE_KIND_WIRE32_API_SOURCE_PROFILE ? STATEFUL_COMPLETE_KIND_WIRE32_CALLER_SOURCE : profile === STATEFUL_BULK_SOURCE_PROFILE ? STATEFUL_BULK_CALLER_SOURCE : profile === STATEFUL_BATCH_SOURCE_PROFILE ? STATEFUL_BATCH_CALLER_SOURCE : profile === STATEFUL_GENESIS_RPC_SOURCE_PROFILE ? STATEFUL_GENESIS_RPC_CALLER_SOURCE : profile === STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE ? STATEFUL_GENESIS_PREVIEW_CALLER_SOURCE : profile === STATEFUL_HISTORY_API_SOURCE_PROFILE ? STATEFUL_HISTORY_API_CALLER_SOURCE : codecProfile(profile) ? STATEFUL_COMPLETE_KIND_CODEC_CALLER_SOURCE : profile === STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE
     ? STATEFUL_COMPLETE_KIND_METADATA_CALLER_SOURCE : STATEFUL_COMPLETE_KIND_CALLER_SOURCE;
 const fieldsProfile = profile => profile === STATEFUL_METADATA_FIELDS_API_SOURCE_PROFILE || profile === STATEFUL_METADATA_FIELDS_LEGACY_SOURCE_PROFILE;
 const metadataProfile = profile => profile === STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE || profile === STATEFUL_ACTION_METADATA_LEGACY_SOURCE_PROFILE || fieldsProfile(profile);
@@ -201,7 +234,7 @@ export function admitNativeApiSourceOptions(input = {}) {
     exact(pkg.json.name, '@eosrio/hyperion-wire-plugin', 'Wire package');
     const descriptor = read(resolve(root, 'dist/protocol-provider.json'));
     const node = read(resolve(root, 'dist/protocol-node-artifact.json')), rust = read(resolve(root, 'dist/protocol-rust-artifact.json'));
-    const codecWire = (profile===STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE||profile===STATEFUL_GENESIS_RPC_SOURCE_PROFILE||profile===STATEFUL_BATCH_SOURCE_PROFILE||profile===STATEFUL_BULK_SOURCE_PROFILE)?STATEFUL_GENESIS_PREVIEW_WIRE_SOURCE:codecProfile(profile) ? STATEFUL_COMPLETE_KIND_CODEC_WIRE_SOURCE : undefined;
+    const codecWire = (wire32Profile(profile)||profile===STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE||profile===STATEFUL_GENESIS_RPC_SOURCE_PROFILE||profile===STATEFUL_BATCH_SOURCE_PROFILE||profile===STATEFUL_BULK_SOURCE_PROFILE)?STATEFUL_GENESIS_PREVIEW_WIRE_SOURCE:codecProfile(profile) ? STATEFUL_COMPLETE_KIND_CODEC_WIRE_SOURCE : undefined;
     const selectedWire = profile === undefined || legacyProfile(profile) ? oldWire : codecWire?.commit ?? wire;
     for (const artifact of [node, rust]) {exact(artifact.json.sourceRevision, selectedWire, 'Wire source revision'); exact(artifact.json.sourceModified, false, 'modified Wire source');}
     const lock = read(fileURLToPath(new URL('../../package-lock.json', import.meta.url))).json;
@@ -233,6 +266,7 @@ export function admitNativeApiSourceOptions(input = {}) {
         return Object.freeze({nativeMarker, wireRevision: selectedWire, profile, ...runtime, wireTree: codecWire?.tree ?? '719a03aa0ea7b72d6a7411cfaaad78b05a1a8c4a',
             sdkTree: 'c486de0538bf33b4d7a199147e97ba763d731bab', nativeTree: nativeSource.tree,
             nativeSourceCommit: nativeSource.commit, callerSourceCommit: completeKindCallerSource(profile).commit,
+            ...([STATEFUL_COMPLETE_KIND_WIRE32_CACHE_API_SOURCE_PROFILE,STATEFUL_COMBINED_REPLAY_SOURCE_PROFILE].includes(profile) ? {callerHelperSourceCommit: completeKindCallerSource(profile).helperSourceCommit} : {}),
             ...(codecWire ? {descriptorSha256: descriptor.sha256, nodeSha256: node.sha256, rustSha256: rust.sha256} : {}),
             qualificationOnly: true});
     }
@@ -243,6 +277,35 @@ export function admitNativeApiSourceOptions(input = {}) {
         sdkTree: metadataProfile(profile) ? 'd9a8af0b8d284facca5d28b5905a1b5ffc911200' : '1f666cff5afe489b66e8a3729502b9a5978c5138',
         nativeTree: fieldsProfile(profile) ? STATEFUL_METADATA_FIELDS_NATIVE_SOURCE.tree : metadataProfile(profile) ? '8c97c35eaa7dd64785ecc6c3ef30da9ac6d4b025' : 'e1c51022e4478975538d0dd7d4d31f8ed63790b8',
         ...(fieldsProfile(profile) ? {nativeSourceCommit: STATEFUL_METADATA_FIELDS_NATIVE_SOURCE.commit} : {}), qualificationOnly: true});
+}
+
+// The composed runner verifies its current inputs; a prior standalone test is insufficient.
+const combinedManifestSha256 = '01a3c5c96ef9a6f961555776390335f0ee2c32d485a082180b2aaa0dc1e6b66b';
+function combinedRuntimeInputs(callerRoot) {
+    const manifest = read(resolve(callerRoot, 'docs/qualification/wire-combined-replay-source-profile.json'));
+    exact(manifest.sha256, combinedManifestSha256, 'composed runtime manifest bytes');
+    const rows = manifest.json.runtimeInputFiles;
+    exact(manifest.json.profile, STATEFUL_COMBINED_REPLAY_SOURCE_PROFILE, 'composed runtime manifest profile');
+    assert(Array.isArray(rows) && rows.length === 308, 'Composed runtime input count');
+    const root = realpathSync(callerRoot), seen = new Set(); let bytes = 0;
+    for (const row of rows) {
+        assert(Array.isArray(row) && row.length === 2, 'Composed runtime input row');
+        const [path, expected] = row;
+        assert(typeof path === 'string' && !isAbsolute(path) && !path.includes('\\')
+            && path.split('/').every(part => part !== '' && part !== '.' && part !== '..')
+            && !seen.has(path) && typeof expected === 'string' && /^[a-f0-9]{64}$/.test(expected),
+        'Composed runtime input path or digest');
+        seen.add(path);
+        const actualPath = realpathSync(resolve(root, path)), inner = relative(root, actualPath), info = statSync(actualPath);
+        assert(inner !== '..' && !inner.startsWith('..' + (process.platform === 'win32' ? '\\' : '/'))
+            && !isAbsolute(inner) && info.isFile(), 'Composed runtime input containment');
+        bytes += info.size; assert(info.size <= 4 * 1024 * 1024 && bytes <= 64 * 1024 * 1024, 'Composed runtime input byte bound');
+        exact(sha(readFileSync(actualPath)), expected, 'composed runtime input ' + path);
+    }
+    const digest = sha(JSON.stringify(rows));
+    exact(digest, 'f0b4ada670720b644e1b83b97017aa090f3983f4e20bfb63f83041718fc79a1d', 'composed runtime input aggregate');
+    exact(manifest.json.runtimeInputSha256, digest, 'composed runtime declared aggregate');
+    return {runtimeInputFiles: {files: rows.length, sha256: digest}, runtimeInputManifestSha256: manifest.sha256};
 }
 
 function coordinatedRuntime(profile) {
@@ -270,7 +333,8 @@ function coordinatedRuntime(profile) {
         exact(callerFiles.sha256, callerSource.sha256, 'complete-kind caller emissions');
         for (const [path, expected] of callerSource.sources)
             exact(sha(readFileSync(resolve(callerRoot, path))), expected, 'complete-kind Git-LF caller ' + path);
-        return {sdkFiles, nativeFiles, callerFiles};
+        const inputs = profile === STATEFUL_COMBINED_REPLAY_SOURCE_PROFILE ? combinedRuntimeInputs(callerRoot) : {};
+        return {sdkFiles, nativeFiles, callerFiles, ...inputs};
     }
     exact(sdkPackage.sha256, metadata ? 'dff953cf5e7fd64274aa5e3a60a7d760c6138e0bfee5eda1b85e53eafcd4fbf6'
         : '2e11db52cf8d150e30d165bafb962b50c6ad0cc764770714ea7fdca48a5e4684', 'SDK package');
