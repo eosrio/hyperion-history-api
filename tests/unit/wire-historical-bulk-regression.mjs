@@ -50,10 +50,12 @@ class ControlledPublisher extends EventEmitter {
     automatic = true;
     writable = true;
     sendToQueue(queue, payload, options, confirm) {
-        this.sent.push({queue, payload: Buffer.from(payload), options: structuredClone(options), confirm});
+        const record = {queue, payload: Buffer.from(payload), options: structuredClone(options), confirmed: false};
+        record.confirm = error => {if (!error) record.confirmed = true; confirm(error);};
+        this.sent.push(record);
         if (!this.automatic) return this.writable;
-        if (this.held) {this.entered?.(); this.held.then(() => confirm());}
-        else queueMicrotask(() => confirm()); return this.writable;
+        if (this.held) {this.entered?.(); this.held.then(() => record.confirm());}
+        else queueMicrotask(() => record.confirm()); return this.writable;
     }
 }
 function message(sent) {return {content: Buffer.from(sent.payload), properties: {headers: structuredClone(sent.options.headers)}, fields: {deliveryTag: 1}};}
@@ -134,6 +136,15 @@ try {
     Object.assign(loader, {handledActions: new Map(), handledDeltas: new Map(), parser, plugins: []});
     const readerConsumer = new ControlledConsumer(), mainConsumer = new ControlledConsumer(), poolConsumer = new ControlledConsumer();
     const readerPublisher = new ControlledPublisher(), mainPublisher = new ControlledPublisher(), poolPublisher = new ControlledPublisher();
+    for (const [consumer, publisher] of [[mainConsumer, mainPublisher], [poolConsumer, poolPublisher]]) {
+        consumer.onAck = () => {
+            assert.equal(consumer.sent.length, 0, 'consumer channel must not publish durable handoffs');
+            for (const record of publisher.sent) {
+                assert.equal(record.options.persistent, true); assert.equal(record.options.mandatory, true);
+                assert.equal(record.confirmed, true, 'publisher confirmation must precede consumer acknowledgement');
+            }
+        };
+    }
     const worker = (prototype, consumer, publisher) => {
         const value = Object.create(prototype);
         if (prototype === Main.prototype || prototype === Pool.prototype)
@@ -186,13 +197,13 @@ try {
     delete pool.pushToActionsQueue;
     assert.equal(reader.actionSourceAdmissionEnabled,false);assert.equal(main.actionSourceAdmissionEnabled,false);assert.equal(pool.actionSourceAdmissionEnabled,false);
     const prepareNormal=async bytes=>{
-        const before=readerPublisher.sent.length, mainBefore=mainConsumer.sent.length;
+        const before=readerPublisher.sent.length, mainBefore=mainPublisher.sent.length;
         assert.equal(await reader.onMessage(bytes),'block');await ticks();assert.equal(readerPublisher.sent.length,before+1);
         const raw=readerPublisher.sent.at(-1), delivery=message(raw);assert.ok(raw.payload.equals(bytes));
         const sourceSelectionId=raw.options.headers[protocolSourceSelectionHeader];assert.ok(sourceSelectionId);
         (controlledAttemptLifecycle(main,'deserializer'),main).captureProtocolSourceDelivery(delivery,mainConsumer);
         await parser.parseMessage(main,[delivery]);await draining;assert.equal(mainConsumer.acked.at(-1),delivery);
-        return {sourceSelectionId,messages:mainConsumer.sent.slice(mainBefore).map(message)};
+        return {sourceSelectionId,messages:mainPublisher.sent.slice(mainBefore).map(message)};
     };
     let prepared,livePrepared;
     for(let number=1;number<=288;number++){
@@ -228,9 +239,9 @@ try {
     const partialReader=new ProtocolAbiProofReader({chainId,profile,store:partialStore.asReadOnly(),maxAncestryBlocks:256,historicalCertificates:true});
     await assert.rejects(()=>partialReader.openHistorical(31,{source:canonicalSource,selectionId:livePrepared.sourceSelectionId}));
     console.log(JSON.stringify({control:'actual-partial-coverage',coverageStart:partialControl.head.coverageStart,historicalRoot:false}));
-    const tampered=message(readerPublisher.sent.find(x=>x.options.headers[protocolSourceSelectionHeader]===prepared.sourceSelectionId));tampered.content[0]^=1;const beforeTamper=mainConsumer.sent.length;
+    const tampered=message(readerPublisher.sent.find(x=>x.options.headers[protocolSourceSelectionHeader]===prepared.sourceSelectionId));tampered.content[0]^=1;const beforeTamper=mainPublisher.sent.length;
     (controlledAttemptLifecycle(main,'deserializer'),main).captureProtocolSourceDelivery(tampered,mainConsumer);
-    await parser.parseMessage(main,[tampered]);assert.equal(mainConsumer.sent.length,beforeTamper);
+    await parser.parseMessage(main,[tampered]);assert.equal(mainPublisher.sent.length,beforeTamper);
     assert.ok(events.some(e=>e.event==='ds_error'&&e.data?.type==='protocol_source_incomplete'&&e.data?.code==='protocol_source_invalid'));
     console.log(JSON.stringify({control:'changed-original-frame',quarantined:true,downstreamPublications:0}));
     if(mode==='disabled')delete config.settings.protocol_abi_coordination.historical_certificates;
@@ -238,7 +249,7 @@ try {
     const started=Date.now();let finished;poolConsumer.deliver(prepared.messages[0]);const drained=pool.consumerQueue.drain().then(()=>{finished=Date.now();});await new Promise(resolve=>setTimeout(resolve,100));const pendingAfter100ms=poolConsumer.acked.length===before;await drained;
     const elapsed=finished-started,settled=poolConsumer.acked.length-before;assert.equal(settled,1);
     const diagnostic=events.find(e=>e.event==='ds_error'&&e.data?.type==='protocol_action_incomplete'&&e.data?.blockNum===31);
-    const output=poolConsumer.sent.map(x=>JSON.parse(x.payload.toString()));
+    const output=poolPublisher.sent.map(x=>JSON.parse(x.payload.toString()));
     if(mode==='disabled'){assert.ok(output.length>0);assert.ok(output.every(x=>x.protocol?.status==='incomplete'));console.log(JSON.stringify({control:'historical-disabled',dsAck:settled,incomplete:output.length}));}
     else {
     const {ProtocolActionConsumer}=await import(new URL('build/api/helpers/protocol-abi.js',repoUrl));
