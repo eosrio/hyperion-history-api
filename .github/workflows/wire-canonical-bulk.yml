@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   pull_request:
     branches: ["release/4.5", "codex/wire-release-integration"]
-    paths: ["src/**", "packages/backend-mongodb/**", "tests/unit/wire-*bulk-regression.mjs", "tests/unit/protocol-abi-proof.test.ts", "tests/native/wire-canonical-bulk-workflow.test.mjs", "tests/fixtures/**", "scripts/qualification/**", "package*.json", ".github/workflows/wire-canonical-bulk.yml"]
+    paths: ["src/**", "packages/backend-mongodb/**", "tests/unit/wire-*bulk-regression.mjs", "tests/unit/protocol-abi-proof.test.ts", "tests/unit/protocol-abi-coordinator.test.ts", "tests/unit/protocol-native-genesis.test.ts", "tests/unit/wire-genesis-seed-original.mjs", "tests/native/protocol-genesis-seed.test.mjs", "tests/native/live-reader-startup-checkpoint.test.mjs", "docs/protocol-abi-frontier.md", "tests/native/wire-canonical-bulk-workflow.test.mjs", "tests/fixtures/**", "scripts/qualification/**", "package*.json", ".github/workflows/wire-canonical-bulk.yml"]
 permissions:
   contents: read
 jobs:
@@ -46,7 +46,12 @@ jobs:
         run: node --test tests/native/wire-canonical-bulk-workflow.test.mjs
       - name: Verify proof invariants and captured source
         run: |
-          bun test tests/unit/protocol-abi-proof.test.ts
+          bun test tests/unit/protocol-abi-proof.test.ts tests/unit/protocol-abi-coordinator.test.ts tests/unit/protocol-native-genesis.test.ts
+          node --test tests/native/protocol-genesis-seed.test.mjs tests/native/live-reader-startup-checkpoint.test.mjs
+          node tests/unit/wire-genesis-seed-original.mjs normal
+          node tests/unit/wire-genesis-seed-original.mjs missing-trace2
+          node tests/unit/wire-genesis-seed-original.mjs missing-genesis-block
+          node tests/unit/wire-genesis-seed-original.mjs missing-genesis-deltas
           node tests/unit/wire-canonical-bulk-regression.mjs normal
           node tests/unit/wire-historical-bulk-regression.mjs normal
           node tests/unit/wire-historical-bulk-regression.mjs disabled
