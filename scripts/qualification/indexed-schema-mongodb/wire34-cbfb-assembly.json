@@ -1489,8 +1489,8 @@
       },
       {
         "path": "src/indexer/workers/ds-pool.ts",
-        "bytes": 87341,
-        "sha256": "f83a0eda4a0a7f221d5ad60a3b149445ed62d67d2242529012ba398fd57c015a"
+        "bytes": 87429,
+        "sha256": "94db170eb8d95262bdf1665f996b7977bf54575d82ac1853b2b6e3beceec7a88"
       },
       {
         "path": "src/indexer/workers/hyperionWorker.ts",
@@ -4182,13 +4182,13 @@
         },
         {
           "path": "indexer/workers/ds-pool.js",
-          "bytes": 87957,
-          "sha256": "3fe4ec53012c17f1855622047f3265eafdcd2c8fa78bf6895d4c063bb4637311"
+          "bytes": 88045,
+          "sha256": "50b1c3547b9334c14f4d63d8176b0d61e657a89a9c6608052d2c6bf58644a964"
         },
         {
           "path": "indexer/workers/ds-pool.js.map",
-          "bytes": 68423,
-          "sha256": "da83dcf3add7970debc1955dca8831dcaef3f692828e3494395739f63e096619"
+          "bytes": 68585,
+          "sha256": "ec3f5b8bb83e2de7a709d21b5c53b2a8cc27fdaf50d0d36a9aab4d9c1cb9c7ae"
         },
         {
           "path": "indexer/workers/hyperionWorker.js",
