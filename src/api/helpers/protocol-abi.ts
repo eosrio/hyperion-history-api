@@ -52,6 +52,7 @@ export class ProtocolActionConsumer {
         this.reader = new ProtocolAbiProofReader({chainId, profile,
             sourceEquivalence: new ProtocolSourceEquivalence(new ProtocolSourceBindingStore(host.elastic,chain,host.manager.config.settings.es_replicas ?? 0,{readOnly:true}),
                 new ProtocolAbiObservationStore(host.elastic,chain,host.manager.config.settings.es_replicas ?? 0,undefined,{readOnly:true})),
+            historicalCertificates: host.manager.config.settings.protocol_abi_coordination?.historical_certificates !== undefined,
             maxAncestryBlocks: host.manager.config.settings.protocol_abi_coordination?.recovery_window_blocks,
             store: new ProtocolAbiFrontierStore(host.elastic, chain, host.manager.config.settings.es_replicas ?? 0, {readOnly: true})});
         this.nativeReader = selected.provider.nativeActions ? new ProtocolNativeActionReader({chainId, profile,

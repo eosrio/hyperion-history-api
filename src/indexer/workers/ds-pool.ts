@@ -545,6 +545,7 @@ export default class DSPoolWorker extends HyperionWorker {
             store: new ProtocolAbiFrontierStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0, {readOnly: true}),
             sourceEquivalence: new ProtocolSourceEquivalence(new ProtocolSourceBindingStore(this.client,this.chain,this.conf.settings.es_replicas ?? 0,{readOnly:true}),
                 new ProtocolAbiObservationStore(this.client,this.chain,this.conf.settings.es_replicas ?? 0,undefined,{readOnly:true})),
+            historicalCertificates: this.conf.settings.protocol_abi_coordination?.historical_certificates !== undefined,
             requireAttemptScope: this.workerAttemptScopeRequired,
             maxAncestryBlocks: this.conf.settings.protocol_abi_coordination?.recovery_window_blocks});
     }

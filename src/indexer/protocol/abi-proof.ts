@@ -269,10 +269,14 @@ export class ProtocolAbiProofReader {
         requireProof(json({blockNum:commit.source.blockNum,blockId:commit.source.blockId,commitId:certificate.head.commitId,
             stateRootId:commit.stateRootId,lastGlobalSequence:commit.lastGlobalSequence,coverageStart:commit.coverageStart})===json(certificate.head),
             'Historical settled head differs from its immutable commit');
-        if(source&&(source.chainId!==this.options.chainId||source.blockNum!==blockNum||source.blockId!==commit.source.blockId)
-            ||selectionId!==undefined&&selectionId!==commit.selectionId)unavailable('source_not_canonical','Historical source selection differs');
+        if(source&&(source.chainId!==this.options.chainId||source.blockNum!==blockNum||source.blockId!==commit.source.blockId))
+            unavailable('source_not_canonical','Historical source selection differs');
         if(commit.status!=='complete'||commit.coverageStart!==1)unavailable('source_incomplete','Historical source lacks complete genesis coverage');
-        const view=freeze(copy({certificateId:address.certificateId,commitId:certificate.head.commitId,selectionId:commit.selectionId,
+        if(selectionId!==undefined&&selectionId!==commit.selectionId && (!this.options.sourceEquivalence
+            || !await this.retained(()=>this.options.sourceEquivalence!.matches(selectionId,commit.selectionId,commit,signal),'retained_data_unavailable',signal)))
+            unavailable('source_not_canonical','Historical source selection differs');
+        await active();
+        const view=freeze(copy({certificateId:address.certificateId,commitId:certificate.head.commitId,selectionId:selectionId??commit.selectionId,
             source:commit.source,bindings:commit.bindings,...(commit.nativeActionInterfaceVersion===1?{nativeActionInterfaceVersion:1 as const}:{})}));
         this.issued.set(view,{certificate:freeze(copy(certificate)),commit:freeze(copy(commit)),scope:currentProofConsumerScope(),
             historicalCertificateId:address.certificateId});
