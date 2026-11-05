@@ -81,9 +81,14 @@
           "historical": "    strategy:\n      matrix:\n        node-version: [\"24.22.1\", \"26.4.0\"]",
           "current": "    strategy:\n      fail-fast: false\n      matrix:\n        node-version: [\"24.22.1\", \"26.4.0\"]",
           "count": 1
+        },
+        {
+          "historical": "      - name: Check retained Wire managed state and historical source authority on Node ${{ matrix.node-version }}\n        run: |\n          mkdir \"$RUNNER_TEMP/retained-wire-cpu\"\n          node --cpu-prof --cpu-prof-dir=\"$RUNNER_TEMP/retained-wire-cpu\" --test tests/unit/wire-managed-state-v2-native.mjs\n          node --test tests/unit/protocol-abi-history-native.mjs\n      - name: Retain retained Wire CPU samples\n        if: always()\n        uses: actions/upload-artifact@v4\n        with:\n          name: retained-wire-cpu-${{ matrix.node-version }}\n          path: ${{ runner.temp }}/retained-wire-cpu/*.cpuprofile\n          if-no-files-found: warn\n",
+          "current": "      - name: Check retained Wire managed state on Node ${{ matrix.node-version }}\n        id: retained_wire_acceptance\n        run: node --test tests/unit/wire-managed-state-v2-native.mjs\n      - name: Capture retained Wire CPU diagnostics after acceptance failure on Node ${{ matrix.node-version }}\n        id: retained_wire_cpu_diagnostic\n        if: failure() && !cancelled() && steps.retained_wire_acceptance.outcome == 'failure'\n        timeout-minutes: 4\n        run: |\n          mkdir \"$RUNNER_TEMP/retained-wire-cpu\"\n          node --cpu-prof --cpu-prof-dir=\"$RUNNER_TEMP/retained-wire-cpu\" --test tests/unit/wire-managed-state-v2-native.mjs\n      - name: Retain retained Wire CPU samples\n        if: always() && steps.retained_wire_acceptance.outcome == 'failure'\n        uses: actions/upload-artifact@v4\n        with:\n          name: retained-wire-cpu-${{ matrix.node-version }}\n          path: ${{ runner.temp }}/retained-wire-cpu/*.cpuprofile\n          if-no-files-found: warn\n      - name: Check historical Wire source authority on Node ${{ matrix.node-version }}\n        run: node --test tests/unit/protocol-abi-history-native.mjs\n",
+          "count": 1
         }
       ],
-      "currentSha256": "8bf001d030c5e96444be79a3e8d08cfcc757e9629a862deb82eda7d7950ff785"
+      "currentSha256": "be9e34c4db554c44fe340458beef53483389e78cb4ddf8d1ab98884bf0970244"
     },
     {
       "path": ".github/workflows/indexed-schema-finite.yml",

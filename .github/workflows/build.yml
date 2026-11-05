@@ -62,18 +62,25 @@ jobs:
           node tests/unit/portable-state-owner-v2.mjs
           node tests/unit/stateful-host-native.mjs
           node tests/unit/all-cbfb-source-admission-native.mjs
-      - name: Check retained Wire managed state and historical source authority on Node ${{ matrix.node-version }}
+      - name: Check retained Wire managed state on Node ${{ matrix.node-version }}
+        id: retained_wire_acceptance
+        run: node --test tests/unit/wire-managed-state-v2-native.mjs
+      - name: Capture retained Wire CPU diagnostics after acceptance failure on Node ${{ matrix.node-version }}
+        id: retained_wire_cpu_diagnostic
+        if: failure() && !cancelled() && steps.retained_wire_acceptance.outcome == 'failure'
+        timeout-minutes: 4
         run: |
           mkdir "$RUNNER_TEMP/retained-wire-cpu"
           node --cpu-prof --cpu-prof-dir="$RUNNER_TEMP/retained-wire-cpu" --test tests/unit/wire-managed-state-v2-native.mjs
-          node --test tests/unit/protocol-abi-history-native.mjs
       - name: Retain retained Wire CPU samples
-        if: always()
+        if: always() && steps.retained_wire_acceptance.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: retained-wire-cpu-${{ matrix.node-version }}
           path: ${{ runner.temp }}/retained-wire-cpu/*.cpuprofile
           if-no-files-found: warn
+      - name: Check historical Wire source authority on Node ${{ matrix.node-version }}
+        run: node --test tests/unit/protocol-abi-history-native.mjs
       - name: Check Fastify request admission and state route compatibility on Node ${{ matrix.node-version }}
         run: node --test --test-timeout=15000 tests/native/fastify-compatibility.test.mjs
       - name: Check complete-kind query/client and final-publication controls

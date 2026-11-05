@@ -11,7 +11,7 @@ import {ALL_CBFB_PROFILE,freeze,sha} from '../../scripts/qualification/indexed-s
 export const STATEFUL_ALL_CBFB_SOURCE_PROFILE=ALL_CBFB_PROFILE;
 const root=fileURLToPath(new URL('../../',import.meta.url));
 const expectedRaw=readFileSync(new URL('../fixtures/engineering-profiles/all-cbfb-linux.json',import.meta.url));
-assert.equal(sha(expectedRaw),'29c851dfce89c7cd91b5febf05f1a33d0cf18bcbbc12c35bb9acdf49fd210ed9','Exact all-CBFB manifest required');
+assert.equal(sha(expectedRaw),'690b6cd2e43cca1f9d79e23b2f040aee97fc94f831003d82a5935acf84216f1e','Exact all-CBFB manifest required');
 export const ALL_CBFB_MANIFEST=freeze(JSON.parse(expectedRaw));
 const expected=ALL_CBFB_MANIFEST,exact=(value,pin,label)=>assert.deepEqual(value,pin,'Unqualified all-CBFB '+label);
 const read=path=>{const stat=lstatSync(path);assert(stat.isFile()&&!stat.isSymbolicLink()&&stat.size<=4*1024*1024);const bytes=readFileSync(path);assert.equal(bytes.length,stat.size);return bytes;};

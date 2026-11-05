@@ -177,3 +177,54 @@ test('managed Atomic and indexed native workflows select the same explicit Ubunt
  assert.equal(runner('.github/workflows/atomic-managed.yml'),'ubuntu-22.04');
  assert.equal(runner('.github/workflows/indexed-schema-native.yml'),'ubuntu-22.04');
 });
+
+function retainedWireSteps(workflow){
+ const start=workflow.indexOf('\n  build:\n'),end=workflow.indexOf('\n  projection-mongodb:\n',start);
+ assert(start>0&&end>start);
+ const main=workflow.slice(start,end),steps=main.split(/(?=^      - )/m).slice(1);
+ const selected=id=>{const found=steps.filter(step=>step.includes('\n        id: '+id+'\n'));assert.equal(found.length,1);return found[0];};
+ const acceptance=selected('retained_wire_acceptance'),diagnostic=selected('retained_wire_cpu_diagnostic');
+ const upload=steps.find(step=>step.startsWith('      - name: Retain retained Wire CPU samples\n'));
+ const historical=steps.find(step=>step.includes('run: node --test tests/unit/protocol-abi-history-native.mjs\n'));
+ assert(upload&&historical);assert(!main.includes('continue-on-error:'),'The original failed step must remain failed');
+ const command=step=>/^        run: ([^\n]+)$/m.exec(step)?.[1];
+ assert.equal(command(acceptance),'node --test tests/unit/wire-managed-state-v2-native.mjs');
+ assert(!/^        if:/m.test(acceptance),'Retained acceptance must use the normal success prerequisite');
+ assert.match(raw('tests/unit/wire-managed-state-v2-native.mjs'),/\{timeout:\s*180000\}/,'The original fixture deadline remains 180 seconds');
+ assert.match(diagnostic,/^        timeout-minutes: 4$/m);
+ assert.equal(diagnostic.split('        run: |\n')[1],
+  '          mkdir "$RUNNER_TEMP/retained-wire-cpu"\n'+
+  '          node --cpu-prof --cpu-prof-dir="$RUNNER_TEMP/retained-wire-cpu" --test tests/unit/wire-managed-state-v2-native.mjs\n');
+ assert.match(upload,/^          if-no-files-found: warn$/m,'An absent diagnostic never creates another failure');
+ assert.match(upload,/^          path: \$\{\{ runner.temp \}\}\/retained-wire-cpu\/\*\.cpuprofile$/m);
+ assert.equal(command(historical),'node --test tests/unit/protocol-abi-history-native.mjs');
+ assert(steps.indexOf(acceptance)<steps.indexOf(diagnostic)&&steps.indexOf(diagnostic)<steps.indexOf(upload)
+  &&steps.indexOf(upload)<steps.indexOf(historical),'Keep acceptance, diagnostic and historical operations distinct and ordered');
+ const condition=step=>{const value=/^        if: ([^\n]+)$/m.exec(step)?.[1];assert(value);return value;};
+ const enabled=(step,outcome,{failed=outcome==='failure',cancelled=false}={})=>runInNewContext(condition(step),{
+  failure:()=>failed,cancelled:()=>cancelled,always:()=>true,steps:{retained_wire_acceptance:{outcome}}});
+ for(const outcome of ['success','failure','cancelled','skipped']){
+  assert.equal(enabled(diagnostic,outcome),outcome==='failure','CPU work follows only the original failed acceptance');
+  assert.equal(enabled(upload,outcome),outcome==='failure','Successful acceptance has no CPU artifact obligation');
+ }
+ assert.equal(enabled(diagnostic,'skipped',{failed:true}),false,'An unrelated failure must not start this diagnostic');
+ assert.equal(enabled(diagnostic,'failure',{cancelled:true}),false,'Cancellation must not start another fixture');
+ return {acceptance,diagnostic,upload};
+}
+
+test('retained Wire acceptance remains unprofiled and failed verdicts survive failure-only CPU diagnostics',()=>{
+ retainedWireSteps(raw('.github/workflows/build.yml'));
+});
+
+test('retained Wire CI controls reject profiled acceptance, masked failures and unconditional diagnostics or artifacts',()=>{
+ const workflow=raw('.github/workflows/build.yml'),{acceptance,diagnostic,upload}=retainedWireSteps(workflow);
+ for(const [before,after]of [
+  [acceptance,acceptance.replace('node --test','node --cpu-prof --test')],
+  [acceptance,acceptance.replace('        id:', '        continue-on-error: true\n        id:')],
+  [diagnostic,diagnostic.replace("steps.retained_wire_acceptance.outcome == 'failure'",'true')],
+  [diagnostic,diagnostic.replace('!cancelled() && ','')],
+  [diagnostic,diagnostic.replace('timeout-minutes: 4','timeout-minutes: 10')],
+  [upload,upload.replace(" && steps.retained_wire_acceptance.outcome == 'failure'",'')],
+  [upload,upload.replace('if-no-files-found: warn','if-no-files-found: error')],
+ ])assert.throws(()=>retainedWireSteps(workflow.replace(before,after)));
+});
