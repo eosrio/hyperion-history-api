@@ -543,7 +543,7 @@ export class ProtocolAbiProofReader {
             await disk.catalog.assertSchema(context.schemaJson);
             const link=await this.retained(()=>disk.bindings.readObservationLink(selectionId,signal),undefined,signal);
             const record=await this.retained(()=>disk.observations.read(link.observationId,signal),undefined,signal);
-            requireProof(record.source.blockId===source.blockId&&record.source.blockNum===source.blockNum&&record.source.chainId===source.chainId
+            requireProof(json(record.source)===json({...position,inputSha256:selected.captureSha256})
                 &&record.capture.schemaJson===context.schemaJson&&this.sameProfile(record.protocol)
                 &&hash(Buffer.from(json(record)))===link.observationDigest,'Catalog observation differs from original source');
             if(record.observation.status==='native-genesis'){

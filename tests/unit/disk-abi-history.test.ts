@@ -86,6 +86,9 @@ test('actual proof reader and API consumer resolve covered original input withou
     const host:any={manager:{chain:f.chain,conn:{chains:{[f.chain]:{chain_id:chainId}}},config:{settings:{protocol_abi_history:f.config}}},elastic:f.memory.client};
     const consumer=new ProtocolActionConsumer(host,{id:profile.id,provider:{profileId:profile.profileId},components:profile.components} as any);
     const apiView=await consumer.reader.open(f.source,f.selected);expect((await consumer.reader.action(apiView,f.action)).state.abiHex).toBe('bb');
+    const mismatched=await f.select('same-block-different-capture','e'.repeat(64),'a'.repeat(64));
+    await expect(reader.open(f.source,mismatched)).rejects.toMatchObject({code:'invalid_proof'});
+    await expect(consumer.reader.open(f.source,mismatched)).rejects.toMatchObject({code:'invalid_proof'});
     const cancelled=new AbortController();cancelled.abort();await expect(reader.open(f.source,f.selected,{signal:cancelled.signal})).rejects.toMatchObject({code:'proof_cancelled'});
 });
 
