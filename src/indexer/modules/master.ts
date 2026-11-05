@@ -362,13 +362,10 @@ export class HyperionMaster {
                 this.sendPendingRepairRanges();
             },
             kill_worker: (_worker: Worker, msg: WorkerMessage) => {
-                for (let workersKey in cluster.workers) {
-                    const w = cluster.workers[workersKey];
-                    if (msg.id && w && w.id === parseInt(msg.id)) {
-                        const idx = this.workerMap.findIndex((value) => value.worker_id === w.id);
-                        this.workerMap.splice(idx, 1);
-                        w.kill();
-                    }
+                const idx = this.workerMap.findIndex(value => value.worker_id === Number(msg.id));
+                if (idx !== -1 && this.workerMap[idx].wref) {
+                    const [definition] = this.workerMap.splice(idx, 1);
+                    definition.wref!.kill();
                 }
             },
             completed: (_worker: Worker, msg: WorkerMessage) => {
@@ -521,12 +518,14 @@ export class HyperionMaster {
                 hLog(worker.id, msg);
             },
             config_reloaded: (worker: Worker, msg: WorkerMessage) => {
-                hLog(`Worker ${worker.id} reloaded configuration`);
-                if (this.pendingReloadPromises.has(worker.id)) {
-                    const resolve = this.pendingReloadPromises.get(worker.id);
+                const workerId = this.workerMap.find(value => value.wref === worker)?.worker_id;
+                if (workerId === undefined) return;
+                hLog(`Worker ${workerId} reloaded configuration`);
+                if (this.pendingReloadPromises.has(workerId)) {
+                    const resolve = this.pendingReloadPromises.get(workerId);
                     if (resolve) {
                         resolve();
-                        this.pendingReloadPromises.delete(worker.id);
+                        this.pendingReloadPromises.delete(workerId);
                     }
                 }
             }
@@ -1066,11 +1065,13 @@ export class HyperionMaster {
         let launchedCount = 0;
         this.workerMap.forEach((wrk: HyperionWorkerDef) => {
             if (!wrk.wref && wrk.worker_id) {
-                wrk.wref = cluster.fork(wrk);
-                wrk.wref.id = wrk.worker_id;
-                wrk.wref.on('message', (msg) => {
-                    if (wrk.wref) {
-                        this.handleMessage(wrk.wref, msg);
+                const worker = cluster.fork(wrk);
+                wrk.wref = worker;
+                // Node owns Worker.id and uses it to remove exited registry entries.
+                // Hyperion's logical slot ID remains in wrk.worker_id and the child env.
+                worker.on('message', (msg) => {
+                    if (wrk.wref === worker) {
+                        this.handleMessage(worker, msg);
                     }
                 });
                 if (wrk.worker_role === 'ds_pool_worker' && wrk.local_id) {
@@ -1902,9 +1903,9 @@ export class HyperionMaster {
 
     private handleWorkerDisconnect(worker: any) {
         if (!this.mode_transition && !this.shutdownStarted) {
-            const workerReference = this.workerMap.find((value) => value.worker_id === worker.id);
+            const workerReference = this.workerMap.find((value) => value.wref === worker);
             if (workerReference) {
-                hLog(`The worker #${worker.id} has disconnected, attempting to re-launch in 5 seconds...`);
+                hLog(`The worker #${workerReference.worker_id} (cluster ${worker.id}) has disconnected, attempting to re-launch in 5 seconds...`);
                 workerReference.wref = undefined;
                 if (!workerReference.failures) {
                     workerReference.failures = 0;
