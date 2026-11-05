@@ -22,8 +22,13 @@ export class HyperionQueueMonitor {
     private checking = false;
     private sample: PressureSample = {status: 'missing', sampled_at: null, reason: 'not_sampled', queues: [], scopes: null};
 
+    // The sample is the last completed check, not a liveness guarantee. Role flags
+    // describe this monitor's decisions, not manual or other reader pause sources.
     getPressureSnapshot() {
-        return { ...this.sample, status: this.checking && this.sample.status === 'current' ? 'stale' as const : this.sample.status, checking: this.checking, queue_monitor_paused_roles: {...this.readingPaused},
+        const sampledAt = this.sample.sampled_at === null ? NaN : Date.parse(this.sample.sampled_at);
+        const age = Date.now() - sampledAt;
+        const sample_age_ms = Number.isFinite(age) && age >= 0 ? age : null;
+        return { ...this.sample, sample_age_ms, status: this.checking && this.sample.status === 'current' ? 'stale' as const : this.sample.status, checking: this.checking, queue_monitor_paused_roles: {...this.readingPaused},
             queues: this.sample.queues.map(queue => ({...queue})),
             scopes: this.sample.scopes ? {...this.sample.scopes} : null };
     }
@@ -102,10 +107,10 @@ export class HyperionQueueMonitor {
             this.sample = {status: 'current', sampled_at: new Date().toISOString(), reason: null, queues: observations,
                 scopes: {bulk: hasBulk, live: hasLive, shared: [...queues.values()].some(item => item.scope === 'shared')}};
         } catch (error) {
+            this.sample = {status: 'failed', sampled_at: new Date().toISOString(), reason, queues: [], scopes: null};
             // Unknown queue pressure must not release either reader.
             this.updateReader('reader', true, false);
             this.updateReader('continuous_reader', true, false);
-            this.sample = {status: 'failed', sampled_at: new Date().toISOString(), reason, queues: [], scopes: null};
             hLog('Queue monitoring failed; readers paused:', error);
         } finally {
             this.checking = false;
