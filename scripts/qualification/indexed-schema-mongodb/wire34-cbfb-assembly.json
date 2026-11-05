@@ -269,8 +269,8 @@
       },
       {
         "path": "src/api/helpers/protocol-abi.ts",
-        "bytes": 31796,
-        "sha256": "c8c2c502bc1688242ba06ae9b87dea54c7a06d677cb7cf1e71335829bfb5a28f"
+        "bytes": 32511,
+        "sha256": "dc58b48f1a9816085c395ac5d0de1226c2b61e5d00b65ec6bc232c3506611b8f"
       },
       {
         "path": "src/api/helpers/protocol-action-output.ts",
@@ -1379,8 +1379,8 @@
       },
       {
         "path": "src/indexer/protocol/abi-proof.ts",
-        "bytes": 36431,
-        "sha256": "628c9f75da12688d7ac8bc5486e02ff8b02812ca666c7fb012ffc7a21292eb59"
+        "bytes": 38577,
+        "sha256": "f3bd817f9332a58d9c0b7ced9d9f8b61e8fcd567b4b40976b7b388bfe0e9bb35"
       },
       {
         "path": "src/indexer/protocol/abi-reducer.ts",
@@ -1489,8 +1489,8 @@
       },
       {
         "path": "src/indexer/workers/ds-pool.ts",
-        "bytes": 87851,
-        "sha256": "7eef2cfaa2816bb0ba130dc60213b844363a7402b6b76c075059560d812f2305"
+        "bytes": 88511,
+        "sha256": "dda5b2708079abc74d0f89a354c17eb5f69240bb1714be91b772b8f7ea404c0a"
       },
       {
         "path": "src/indexer/workers/hyperionWorker.ts",
@@ -1702,13 +1702,13 @@
         },
         {
           "path": "api/helpers/protocol-abi.js",
-          "bytes": 30224,
-          "sha256": "881f132af5e6d9267a9f0259f13946b5ab61116712234ae586a704ec6d87727a"
+          "bytes": 30942,
+          "sha256": "0d8575663a2c5d77fa8849751c09e713241ee2c66cb26c7db84fa40a7d0b4ca3"
         },
         {
           "path": "api/helpers/protocol-abi.js.map",
-          "bytes": 29091,
-          "sha256": "d82ce35d3b1ca6f23be34c63c78fed4345dd025121ece560735cacbaea523cc6"
+          "bytes": 29643,
+          "sha256": "6934061f40651e6d62d10b0dae16389f6f400528b5eaaec9680a694f625b8176"
         },
         {
           "path": "api/helpers/protocol-action-output.js",
@@ -3922,13 +3922,13 @@
         },
         {
           "path": "indexer/protocol/abi-proof.js",
-          "bytes": 33967,
-          "sha256": "08f8fa513adc3cd7844368fa016ad4c16c88d8ebed51753fb0b6dd800b4bb815"
+          "bytes": 35959,
+          "sha256": "5cf3e056ab86f8f9aae77f8d13fb64d84005a77c4aa49acd4c3b9f36724ab459"
         },
         {
           "path": "indexer/protocol/abi-proof.js.map",
-          "bytes": 31419,
-          "sha256": "b05b4b28cd17534ec1c6c675f47a56fba48f9abdbc40fdff915e4b8127e92312"
+          "bytes": 33070,
+          "sha256": "5930bde19e21b9a4655d468c1da99235c72f516f9ef6d48f01a0164b7563415f"
         },
         {
           "path": "indexer/protocol/abi-reducer.js",
@@ -4111,6 +4111,16 @@
           "sha256": "5916342dcb6f2fcf900eebdaf8f631c374178feda75f48c4d008a62c7b1fcb0a"
         },
         {
+          "path": "indexer/protocol/source-equivalence.js",
+          "bytes": 3664,
+          "sha256": "f77dd5adcd637a3912a05877151797ed0a2bc9a7a566809de11d4ba4563ece2a"
+        },
+        {
+          "path": "indexer/protocol/source-equivalence.js.map",
+          "bytes": 3297,
+          "sha256": "bfddc9c217c090ebfd017be2d6da96ed135b2f607f43eded81997a3f183de85c"
+        },
+        {
           "path": "indexer/protocol/worker-attempt-client.js",
           "bytes": 18793,
           "sha256": "11c9a595af29d1f4b7d277e83ca48ec4633367a96fd2520c258537913fad547c"
@@ -4142,13 +4152,13 @@
         },
         {
           "path": "indexer/workers/ds-pool.js",
-          "bytes": 88704,
-          "sha256": "cc89398613ace9f7f9c7ff84020da8197c1d188f16058dc51d5256964ec8a917"
+          "bytes": 89367,
+          "sha256": "0188706269dcf00e67f6904e39cc053e914e56dfc858de35048d40d9490687c5"
         },
         {
           "path": "indexer/workers/ds-pool.js.map",
-          "bytes": 69180,
-          "sha256": "0960b0da28cea84efa2a411106843be1b216b9c480528e7f240f057fd488fb7e"
+          "bytes": 69722,
+          "sha256": "d384359fb3444f751bd8c4fa4605dba8bdf233698cea8ab554dc136a76c58606"
         },
         {
           "path": "indexer/workers/hyperionWorker.js",

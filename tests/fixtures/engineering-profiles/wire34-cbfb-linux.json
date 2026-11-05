@@ -61,6 +61,11 @@
         "sha256": "2ccd03df451cf86057da868c962e46fcc768986971e1d42cce4c9b14b87d3d1e"
       },
       {
+        "path": ".github/workflows/wire-canonical-bulk.yml",
+        "bytes": 2606,
+        "sha256": "5db4cae4f549f04654f9324137bf9b6e20c93c48a77b880bef2f3d4907d5d7cb"
+      },
+      {
         "path": ".github/workflows/wire34-cbfb.yml",
         "bytes": 4163,
         "sha256": "67ec2a349257905a5501e766c19a293d1a74b7460dea0f4ec18163111c0929ee"
@@ -677,8 +682,8 @@
       },
       {
         "path": "scripts/qualification/atomic-managed-wire34-cbfb/profile.json",
-        "bytes": 544747,
-        "sha256": "56f926f95ebd84ea0c3fca971c7d67f34c88683cefde1f99d3d8dcbadc460b91"
+        "bytes": 545157,
+        "sha256": "1b2029e9f5b3db0699405e8f08a90010b3fd1875d73942f1d2fee1464750d032"
       },
       {
         "path": "scripts/qualification/atomic-managed-wire34-cbfb/runner.mjs",
@@ -1182,8 +1187,8 @@
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.json",
-        "bytes": 193983,
-        "sha256": "d3124aaf8720db705b24fd1343b70c2afa0d779e4a06dab79bbaf20e05b2bcb8"
+        "bytes": 194373,
+        "sha256": "ef17593bf6030cda9ad7f41dc2eb2144d0413a4be234e1e9fd066c68df28621a"
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.mjs",
@@ -1233,7 +1238,7 @@
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-profile.json",
         "bytes": 213033,
-        "sha256": "205b2855ec4e11ad661c2a60313bde9f6503960f6c09ac0e775c77b9ab4ad9bb"
+        "sha256": "f6ae1c20d2f9796e3789e7fe8627db717d4346ce99fef91bac816b7a36efb796"
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-routes.json",
@@ -2012,8 +2017,8 @@
       },
       {
         "path": "src/api/helpers/protocol-abi.ts",
-        "bytes": 31796,
-        "sha256": "c8c2c502bc1688242ba06ae9b87dea54c7a06d677cb7cf1e71335829bfb5a28f"
+        "bytes": 32511,
+        "sha256": "dc58b48f1a9816085c395ac5d0de1226c2b61e5d00b65ec6bc232c3506611b8f"
       },
       {
         "path": "src/api/helpers/protocol-action-output.ts",
@@ -3182,8 +3187,8 @@
       },
       {
         "path": "src/indexer/protocol/abi-proof.ts",
-        "bytes": 36431,
-        "sha256": "628c9f75da12688d7ac8bc5486e02ff8b02812ca666c7fb012ffc7a21292eb59"
+        "bytes": 38577,
+        "sha256": "f3bd817f9332a58d9c0b7ced9d9f8b61e8fcd567b4b40976b7b388bfe0e9bb35"
       },
       {
         "path": "src/indexer/protocol/abi-reducer.ts",
@@ -3276,6 +3281,11 @@
         "sha256": "192ee3feb15f38f6bb7fa0d20766746abadacd18060dbbfc6219751cc1004f65"
       },
       {
+        "path": "src/indexer/protocol/source-equivalence.ts",
+        "bytes": 4141,
+        "sha256": "ce0961450bce9f31ff3f51a9e3a0c3b507b6ee0b6f98d88a0bab5ff2c988d5d6"
+      },
+      {
         "path": "src/indexer/protocol/worker-attempt-client.ts",
         "bytes": 19955,
         "sha256": "dabbb1e05efe59d96893c9998caf08bb7e20f0b23869c466a2fa4e51cf936df2"
@@ -3292,8 +3302,8 @@
       },
       {
         "path": "src/indexer/workers/ds-pool.ts",
-        "bytes": 87851,
-        "sha256": "7eef2cfaa2816bb0ba130dc60213b844363a7402b6b76c075059560d812f2305"
+        "bytes": 88511,
+        "sha256": "dda5b2708079abc74d0f89a354c17eb5f69240bb1714be91b772b8f7ea404c0a"
       },
       {
         "path": "src/indexer/workers/hyperionWorker.ts",
@@ -4251,6 +4261,11 @@
         "sha256": "8ffeb64e2e791c74efdb7748e0411425cc0d1bbc085eac55bbc6cb93d0ba5791"
       },
       {
+        "path": "tests/native/wire-canonical-bulk-workflow.test.mjs",
+        "bytes": 1192,
+        "sha256": "2e96a0423395004dac1fb46e8c9c3e48bd656740d44bd1b69a93dc09d8e0b459"
+      },
+      {
         "path": "tests/native/wire34-cbfb-caller-routing.test.mjs",
         "bytes": 5508,
         "sha256": "8f45934205acbf86027671b07a58c67a60ce3bf54c55aad6f27ee3018afbbf30"
@@ -5197,8 +5212,8 @@
       },
       {
         "path": "tests/unit/protocol-abi-proof.test.ts",
-        "bytes": 43553,
-        "sha256": "29e00bb3a807096b03b7994453c8f2076252fd0aae79260ec67ea29cb94cfbbf"
+        "bytes": 57825,
+        "sha256": "ac62f5c454f10a416030434f6b6ff733f198ff89eca93544229d02a7a463ffd0"
       },
       {
         "path": "tests/unit/protocol-abi-reducer.test.ts",
@@ -5701,6 +5716,16 @@
         "sha256": "9002d67f3e2ec6b8c8c4286cd39c9935963d4bd94712400a1b92495a5b20b62f"
       },
       {
+        "path": "tests/unit/wire-canonical-bulk-regression.mjs",
+        "bytes": 27668,
+        "sha256": "9bd4df10faebcecbc4cc22ed1ca03d55c6f24603445fd40a54cbb69fc160ddbf"
+      },
+      {
+        "path": "tests/unit/wire-historical-bulk-regression.mjs",
+        "bytes": 27801,
+        "sha256": "e133436d230c64174392cc5ab475e14ba7d6fa4dc042240535fca654dec90a90"
+      },
+      {
         "path": "tests/unit/wire-managed-state-v2-native.mjs",
         "bytes": 8350,
         "sha256": "5974ee79517a3a0c510a60615c77c81f08517ce8e9d488c109d9db34f126fe5d"
@@ -5891,7 +5916,7 @@
         "sha256": "1945027163c553cd08421dd1f8caa08fab025c44279883ed9e6c3dec0e8c6408"
       }
     ],
-    "totalBytes": 16204960,
+    "totalBytes": 16286961,
     "trackedPaths": [
       ".bun-version",
       ".gitattributes",
@@ -5903,6 +5928,7 @@
       ".github/workflows/indexed-sdk49-finite-historical.yml",
       ".github/workflows/indexed-sdk49-native-historical.yml",
       ".github/workflows/royalty-native-custody.yml",
+      ".github/workflows/wire-canonical-bulk.yml",
       ".github/workflows/wire34-cbfb.yml",
       ".gitignore",
       "AGENTS.md",
@@ -6731,6 +6757,7 @@
       "src/indexer/protocol/search.ts",
       "src/indexer/protocol/selection.ts",
       "src/indexer/protocol/source-bindings.ts",
+      "src/indexer/protocol/source-equivalence.ts",
       "src/indexer/protocol/worker-attempt-client.ts",
       "src/indexer/protocol/worker-attempt-supervisor.ts",
       "src/indexer/workers/deserializer.ts",
@@ -6928,6 +6955,7 @@
       "tests/native/stream-history-delivery.test.mjs",
       "tests/native/stream-request-lifecycle.test.mjs",
       "tests/native/trace-opaque-serialization.test.mjs",
+      "tests/native/wire-canonical-bulk-workflow.test.mjs",
       "tests/native/wire34-cbfb-caller-routing.test.mjs",
       "tests/native/wire34-cbfb-codec-profile.test.mjs",
       "tests/native/wire34-cbfb-current-stateful-source-profile.test.mjs",
@@ -7218,6 +7246,8 @@
       "tests/unit/wire-backlog-prototype.mjs",
       "tests/unit/wire-broker-channel-errors.mjs",
       "tests/unit/wire-broker-handoff-receipts.mjs",
+      "tests/unit/wire-canonical-bulk-regression.mjs",
+      "tests/unit/wire-historical-bulk-regression.mjs",
       "tests/unit/wire-managed-state-v2-native.mjs",
       "tests/unit/wire-replay-fixture.test.ts",
       "tests/unit/wire-replay-outputs.test.ts",
@@ -8286,13 +8316,13 @@
       },
       {
         "path": "api/helpers/protocol-abi.js",
-        "bytes": 30224,
-        "sha256": "881f132af5e6d9267a9f0259f13946b5ab61116712234ae586a704ec6d87727a"
+        "bytes": 30942,
+        "sha256": "0d8575663a2c5d77fa8849751c09e713241ee2c66cb26c7db84fa40a7d0b4ca3"
       },
       {
         "path": "api/helpers/protocol-abi.js.map",
-        "bytes": 29091,
-        "sha256": "d82ce35d3b1ca6f23be34c63c78fed4345dd025121ece560735cacbaea523cc6"
+        "bytes": 29643,
+        "sha256": "6934061f40651e6d62d10b0dae16389f6f400528b5eaaec9680a694f625b8176"
       },
       {
         "path": "api/helpers/protocol-action-output.js",
@@ -10506,13 +10536,13 @@
       },
       {
         "path": "indexer/protocol/abi-proof.js",
-        "bytes": 33967,
-        "sha256": "08f8fa513adc3cd7844368fa016ad4c16c88d8ebed51753fb0b6dd800b4bb815"
+        "bytes": 35959,
+        "sha256": "5cf3e056ab86f8f9aae77f8d13fb64d84005a77c4aa49acd4c3b9f36724ab459"
       },
       {
         "path": "indexer/protocol/abi-proof.js.map",
-        "bytes": 31419,
-        "sha256": "b05b4b28cd17534ec1c6c675f47a56fba48f9abdbc40fdff915e4b8127e92312"
+        "bytes": 33070,
+        "sha256": "5930bde19e21b9a4655d468c1da99235c72f516f9ef6d48f01a0164b7563415f"
       },
       {
         "path": "indexer/protocol/abi-reducer.js",
@@ -10695,6 +10725,16 @@
         "sha256": "5916342dcb6f2fcf900eebdaf8f631c374178feda75f48c4d008a62c7b1fcb0a"
       },
       {
+        "path": "indexer/protocol/source-equivalence.js",
+        "bytes": 3664,
+        "sha256": "f77dd5adcd637a3912a05877151797ed0a2bc9a7a566809de11d4ba4563ece2a"
+      },
+      {
+        "path": "indexer/protocol/source-equivalence.js.map",
+        "bytes": 3297,
+        "sha256": "bfddc9c217c090ebfd017be2d6da96ed135b2f607f43eded81997a3f183de85c"
+      },
+      {
         "path": "indexer/protocol/worker-attempt-client.js",
         "bytes": 18793,
         "sha256": "11c9a595af29d1f4b7d277e83ca48ec4633367a96fd2520c258537913fad547c"
@@ -10726,13 +10766,13 @@
       },
       {
         "path": "indexer/workers/ds-pool.js",
-        "bytes": 88704,
-        "sha256": "cc89398613ace9f7f9c7ff84020da8197c1d188f16058dc51d5256964ec8a917"
+        "bytes": 89367,
+        "sha256": "0188706269dcf00e67f6904e39cc053e914e56dfc858de35048d40d9490687c5"
       },
       {
         "path": "indexer/workers/ds-pool.js.map",
-        "bytes": 69180,
-        "sha256": "0960b0da28cea84efa2a411106843be1b216b9c480528e7f240f057fd488fb7e"
+        "bytes": 69722,
+        "sha256": "d384359fb3444f751bd8c4fa4605dba8bdf233698cea8ab554dc136a76c58606"
       },
       {
         "path": "indexer/workers/hyperionWorker.js",

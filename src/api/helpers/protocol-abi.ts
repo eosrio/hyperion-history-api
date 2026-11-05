@@ -1,3 +1,6 @@
+import {ProtocolSourceEquivalence} from '../../indexer/protocol/source-equivalence.js';
+import {ProtocolSourceBindingStore} from '../../indexer/protocol/source-bindings.js';
+import {ProtocolAbiObservationStore} from '../../indexer/protocol/abi-observation-store.js';
 import {createHash} from 'node:crypto';
 import type {FastifyInstance, FastifyRequest} from 'fastify';
 import {loadChainProtocol} from '../../indexer/protocol/selection.js';
@@ -47,6 +50,9 @@ export class ProtocolActionConsumer {
         if (!chainId) throw unavailable('Configured chain identity is unavailable');
         const profile = {id: selected.id, profileId: selected.provider.profileId, components: selected.components ?? []};
         this.reader = new ProtocolAbiProofReader({chainId, profile,
+            sourceEquivalence: new ProtocolSourceEquivalence(new ProtocolSourceBindingStore(host.elastic,chain,host.manager.config.settings.es_replicas ?? 0,{readOnly:true}),
+                new ProtocolAbiObservationStore(host.elastic,chain,host.manager.config.settings.es_replicas ?? 0,undefined,{readOnly:true})),
+            historicalCertificates: host.manager.config.settings.protocol_abi_coordination?.historical_certificates !== undefined,
             maxAncestryBlocks: host.manager.config.settings.protocol_abi_coordination?.recovery_window_blocks,
             store: new ProtocolAbiFrontierStore(host.elastic, chain, host.manager.config.settings.es_replicas ?? 0, {readOnly: true})});
         this.nativeReader = selected.provider.nativeActions ? new ProtocolNativeActionReader({chainId, profile,

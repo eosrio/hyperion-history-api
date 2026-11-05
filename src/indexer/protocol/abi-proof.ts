@@ -1,3 +1,4 @@
+import type {ProtocolSourceEquivalence,ProtocolSourceEquivalenceReceipt} from './source-equivalence.js';
 import {createHash} from 'node:crypto';
 import {currentProofConsumerScope, assertProofConsumerCapability, trackProofConsumerOperation, proofConsumerSignal, type ProofConsumerScope} from './proof-consumer-scope.js';
 import {setTimeout as delay} from 'node:timers/promises';
@@ -43,6 +44,7 @@ export interface ProtocolAbiProofReaderOptions {
     readonly requireAttemptScope?:boolean;
     /** Internal opt-in exact historical-address port; unchanged recent ancestry remains bounded. */
     readonly historicalCertificates?:boolean;
+    readonly sourceEquivalence?:ProtocolSourceEquivalence;
 }
 export class ProtocolAbiProofUnavailableError extends Error {
     readonly statusCode=503;
@@ -55,14 +57,15 @@ export interface ProtocolAbiHeadCertificate {
     ownerId:string;generation:string;head:Head;
 }
 interface CanonicalCommit {
-    source:ProtocolSourcePosition;previousCommitId:string|null;selectionId:string;
+    source:ProtocolSourcePosition;previousCommitId:string|null;selectionId:string;observationId:string|null;observationDigest:string|null;
     status:'complete'|'incomplete';stateRootId:string|null;bindings:ProtocolAbiProofBinding[];
     coverageStart:number|null;lastGlobalSequence:string|null;
     nativeGenesis?:ProtocolNativeGenesisCoverage;
     nativeActionInterfaceVersion?:1;
 }
 interface HistoricalActivation {rootId:string;certificateId:string;anchor:ProtocolAbiHeadCertificate['head']}
-interface Issued {certificate:ProtocolAbiHeadCertificate;commit:CanonicalCommit;scope?:ProofConsumerScope;historicalCertificateId?:string}
+interface Issued {certificate:ProtocolAbiHeadCertificate;commit:CanonicalCommit;scope?:ProofConsumerScope;historicalCertificateId?:string;
+    sourceEvidence?:ProtocolSourceEquivalenceReceipt}
 type OriginalActionInput=Omit<ProtocolAbiActionInput,'inputActionOrdinal'> & {inputActionOrdinal?:number};
 const hex64=/^[0-9a-f]{64}$/;
 const text=(value:unknown):value is string=>typeof value==='string'&&value.length>0&&value.length<=256&&value.isWellFormed();
@@ -114,7 +117,7 @@ export class ProtocolAbiProofReader {
     asReadOnly():ProtocolAbiProofReader {
         return new ProtocolAbiProofReader({chainId:this.options.chainId,profile:this.profile,
             store:this.options.store.asReadOnly(),maxAncestryBlocks:this.maximumAncestry,requireAttemptScope:this.options.requireAttemptScope,
-            historicalCertificates:this.options.historicalCertificates});
+            historicalCertificates:this.options.historicalCertificates,sourceEquivalence:this.options.sourceEquivalence});
     }
     private consume<T>(view:ProtocolAbiProofView|undefined, operation:()=>Promise<T>):Promise<T> {
         const issued=view&&this.issued.get(view),scope=issued?issued.scope:currentProofConsumerScope(this.options.requireAttemptScope);
@@ -220,12 +223,17 @@ export class ProtocolAbiProofReader {
             child=commit;commitId=commit.previousCommitId;
         }
         requireProof(commit&&commit.source.blockNum===source.blockNum,'Requested ABI source was not resolved');
-        if(commit.source.blockId!==source.blockId||(selectionId!==undefined&&selectionId!==commit.selectionId))
-            unavailable('source_not_canonical','Requested ABI source selection is not canonical');
+        if(commit.source.blockId!==source.blockId) unavailable('source_not_canonical','Requested ABI source selection is not canonical');
+        let sourceEvidence:ProtocolSourceEquivalenceReceipt|undefined;
+        if(selectionId!==undefined&&selectionId!==commit.selectionId) {
+            const evidence=this.options.sourceEquivalence&&await this.retained(()=>this.options.sourceEquivalence!.open(selectionId,commit!.selectionId,commit!,signal),'retained_data_unavailable',signal);
+            if(!evidence)unavailable('source_not_canonical','Requested ABI source selection is not canonical');
+            sourceEvidence=evidence;
+        }
         if(commit.status!=='complete')unavailable('source_incomplete','Requested ABI source has incomplete knowledge');
-        const view=freeze(copy({certificateId,commitId,selectionId:commit.selectionId,source:commit.source,bindings:commit.bindings,
+        const view=freeze(copy({certificateId,commitId,selectionId:selectionId??commit.selectionId,source:commit.source,bindings:commit.bindings,
             ...(commit.nativeActionInterfaceVersion===1?{nativeActionInterfaceVersion:1 as const}:{})}));
-        this.issued.set(view,{certificate:freeze(copy(certificate)),commit:freeze(copy(commit)),scope:currentProofConsumerScope()});
+        this.issued.set(view,{certificate:freeze(copy(certificate)),commit:freeze(copy(commit)),scope:currentProofConsumerScope(),sourceEvidence});
         await this.revalidate(view,{signal});return view;
         });
     }
@@ -265,13 +273,20 @@ export class ProtocolAbiProofReader {
         requireProof(json({blockNum:commit.source.blockNum,blockId:commit.source.blockId,commitId:certificate.head.commitId,
             stateRootId:commit.stateRootId,lastGlobalSequence:commit.lastGlobalSequence,coverageStart:commit.coverageStart})===json(certificate.head),
             'Historical settled head differs from its immutable commit');
-        if(source&&(source.chainId!==this.options.chainId||source.blockNum!==blockNum||source.blockId!==commit.source.blockId)
-            ||selectionId!==undefined&&selectionId!==commit.selectionId)unavailable('source_not_canonical','Historical source selection differs');
+        if(source&&(source.chainId!==this.options.chainId||source.blockNum!==blockNum||source.blockId!==commit.source.blockId))
+            unavailable('source_not_canonical','Historical source selection differs');
         if(commit.status!=='complete'||commit.coverageStart!==1)unavailable('source_incomplete','Historical source lacks complete genesis coverage');
-        const view=freeze(copy({certificateId:address.certificateId,commitId:certificate.head.commitId,selectionId:commit.selectionId,
+        let sourceEvidence:ProtocolSourceEquivalenceReceipt|undefined;
+        if(selectionId!==undefined&&selectionId!==commit.selectionId) {
+            const evidence=this.options.sourceEquivalence&&await this.retained(()=>this.options.sourceEquivalence!.open(selectionId,commit.selectionId,commit,signal),'retained_data_unavailable',signal);
+            if(!evidence)unavailable('source_not_canonical','Historical source selection differs');
+            sourceEvidence=evidence;
+        }
+        await active();
+        const view=freeze(copy({certificateId:address.certificateId,commitId:certificate.head.commitId,selectionId:selectionId??commit.selectionId,
             source:commit.source,bindings:commit.bindings,...(commit.nativeActionInterfaceVersion===1?{nativeActionInterfaceVersion:1 as const}:{})}));
         this.issued.set(view,{certificate:freeze(copy(certificate)),commit:freeze(copy(commit)),scope:currentProofConsumerScope(),
-            historicalCertificateId:address.certificateId});
+            historicalCertificateId:address.certificateId,sourceEvidence});
         await this.revalidate(view,{signal});return view;
         });
     }
@@ -340,10 +355,19 @@ export class ProtocolAbiProofReader {
         return this.consume(view,async()=>{
         signal=proofConsumerSignal(signal);
         const issued=this.issued.get(view);if(!issued)unavailable('invalid_proof','ABI proof view was not issued by this reader');
-        const current=await this.authority(signal),prior=issued.certificate;
+        let current=await this.authority(signal);const prior=issued.certificate;
         if(current.ownerId!==prior.ownerId||current.generation!==prior.generation||current.head.blockNum<prior.head.blockNum
             ||(current.head.blockNum===prior.head.blockNum&&json(current.head)!==json(prior.head)))
             unavailable('authority_changed','Canonical ABI authority changed during consumption');
+        if(view.selectionId!==issued.commit.selectionId) {
+            if(!issued.sourceEvidence||!this.options.sourceEquivalence || !await this.retained(()=>this.options.sourceEquivalence!.revalidate(issued.sourceEvidence!,view.selectionId,issued.commit.selectionId,issued.commit,signal),'retained_data_unavailable',signal))
+                unavailable('source_not_canonical','Requested ABI source evidence changed during consumption');
+            const fresh=await this.authority(signal);
+            if(fresh.ownerId!==current.ownerId||fresh.generation!==current.generation||fresh.head.blockNum<current.head.blockNum
+                ||fresh.head.blockNum===current.head.blockNum&&json(fresh.head)!==json(current.head))
+                unavailable('authority_changed','Canonical ABI authority changed during source verification');
+            current=fresh;
+        }
         if(opening&&current.head.blockNum-issued.commit.source.blockNum>this.maximumAncestry)
             if(!issued.historicalCertificateId)unavailable('ancestry_unavailable','Requested ABI source is outside verified ancestry');
         if(issued.historicalCertificateId) {
