@@ -88,6 +88,28 @@ it('rejects a new alias opening if canonical head crosses the ancestry bound dur
     expect((await unavailable(pending)).code).toBe('ancestry_unavailable');delete f.memory.faults.beforeRead;
 });
 
+it('revokes an alias when a replacement fork arrives during retained evidence read', async () => {
+    const f=await fixture();await f.append(1);const second=await f.append(2);
+    const original=(await f.sources.readSelection(second.selectionId)).selection;
+    const alias=(await f.sources.prepareSelection({...original,readerRole:'bulk',readerSessionId:'bulk-fork',assignmentId:'assignment'})).id;
+    await f.sources.prepareObservationLink({...await f.sources.readObservationLink(second.selectionId),selectionId:alias});
+    const reader=new ProtocolAbiProofReader({chainId,profile,store:f.store.asReadOnly(),sourceEquivalence:new ProtocolSourceEquivalence(f.sources,f.observations)});
+    const view=await reader.open(f.source(2),alias),entered=gate(),release=gate();let held=false;
+    f.memory.faults.beforeRead=async(request:any)=>{if(!held&&request.index===f.sources.index){held=true;entered.release();await release.promise;}};
+    const pending=reader.revalidate(view);await entered.promise;await f.admit(await f.selected(2,facts(),20,1));release.release();
+    expect((await unavailable(pending)).code).toBe('authority_changed');delete f.memory.faults.beforeRead;
+});
+
+it('does not treat corrupt retained alias evidence as a canonical mismatch', async () => {
+    const f=await fixture(),first=await f.append(1);const original=(await f.sources.readSelection(first.selectionId)).selection;
+    const alias=(await f.sources.prepareSelection({...original,readerRole:'bulk',readerSessionId:'bulk-corrupt',assignmentId:'assignment'})).id;
+    await f.sources.prepareObservationLink({...await f.sources.readObservationLink(first.selectionId),selectionId:alias});
+    const reader=new ProtocolAbiProofReader({chainId,profile,store:f.store.asReadOnly(),sourceEquivalence:new ProtocolSourceEquivalence(f.sources,f.observations)});
+    const view=await reader.open(f.source(1),alias);
+    f.memory.faults.read=(item:any,request:any)=>request.index===f.sources.index&&request.id===alias?{...item,_source:{invalid:true}}:item;
+    await expect(reader.revalidate(view)).rejects.toMatchObject({code:'invalid'});delete f.memory.faults.read;
+});
+
 /** Independent opaque ABI facts exercise proof selection; they do not qualify a Wire value codec. */
 async function fixture(){
     const memory=frontierMemoryClient(),client=memory.client as any;
