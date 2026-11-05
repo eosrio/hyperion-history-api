@@ -10,5 +10,9 @@ test('coupled bulk workflow runs both Node majors on the release and parent rout
  assert.match(source,/paths: .*"tests\/native\/wire34-cbfb-codec-profile\.test\.mjs"/);
  assert.ok(source.indexOf('--admit-wire34-cbfb')<source.indexOf('node --test tests/native/wire34-cbfb-codec-profile.test.mjs'));
  assert.ok(source.indexOf('node --test tests/native/wire34-cbfb-codec-profile.test.mjs')<source.indexOf('bun test tests/unit/protocol-abi-proof.test.ts'));
+ for(const path of ['tests/unit/source-credit-capacity.test.ts','tests/unit/state-reader-live-backpressure*','docs/performance/source-credit-capacity.md'])assert.ok(source.includes('"'+path+'"'));
+ const capacity='bun test tests/unit/source-credit-capacity.test.ts tests/unit/state-reader-live-backpressure.test.ts';
+ assert.ok(source.includes(capacity));assert.ok(source.indexOf('--admit-wire34-cbfb')<source.indexOf(capacity));
+ assert.ok(source.indexOf(capacity)<source.indexOf('bun test tests/unit/protocol-abi-proof.test.ts'));
  assert.doesNotMatch(source,/continue-on-error/);
 });

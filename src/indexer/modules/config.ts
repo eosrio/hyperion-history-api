@@ -97,14 +97,18 @@ export class ConfigurationModule {
         }
     }
 
-    loadConfigJson() {
+    loadConfigJson(validate?: (configuration: HyperionConfig) => void) {
         const configFile = getConfigPath();
         if (configFile) {
             const data = readFileSync(configFile).toString();
+            let validationFailed = false;
             try {
-                this.config = JSON.parse(data);
+                const next = JSON.parse(data);
+                try {validate?.(next);} catch (error) {validationFailed = true; throw error;}
+                this.config = next;
                 this.processConfig();
             } catch (e) {
+                if (validationFailed) throw e;
                 console.log(`Failed to Load configuration file ${configFile}`);
                 console.log(e);
                 process.exit(1);

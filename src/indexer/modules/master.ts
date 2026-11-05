@@ -42,6 +42,8 @@ import { HyperionIndexerMonitor } from './indexerMonitor.js';
 import { HyperionLifecycleManager } from './lifecycleManager.js';
 import { HyperionModuleLoader } from './loader.js';
 import { HyperionQueueMonitor } from './queueMonitor.js';
+import {resolveSourceCreditCapacity, SourceCreditCapacityCoordinator, isSourceCreditCapacityRequest,
+    type SourceCreditCapacityReply, type SourceCreditCapacityOptions} from '../helpers/source-credit-capacity.js';
 import {loadChainProtocol} from '../protocol/selection.js';
 import {ProtocolAbiCoordinator} from '../protocol/abi-coordinator.js';
 import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
@@ -65,6 +67,37 @@ import { IPermission } from '../../interfaces/table-permissions.js';
 interface ActionLibAnchor {readonly worker: Worker; readonly blockNum: number; readonly blockId: string}
 
 export class HyperionMaster {
+    private sourceCreditCapacity?: SourceCreditCapacityCoordinator<Worker>;
+    private sourceCreditOptions?: SourceCreditCapacityOptions | null;
+    private sourceCreditRestartRequired = false;
+    private sourceCreditConfiguration(): SourceCreditCapacityOptions | null {
+        if (this.sourceCreditOptions === undefined) this.sourceCreditOptions = this.conf?.settings?.source_credit_capacity === undefined
+            ? null : resolveSourceCreditCapacity(this.conf) ?? null;
+        return this.sourceCreditOptions;
+    }
+    private assertSourceCreditConfigurationUnchanged(configuration: HyperionConfig): void {
+        const next = configuration.settings?.source_credit_capacity === undefined ? null : resolveSourceCreditCapacity(configuration) ?? null;
+        if (JSON.stringify(next) !== JSON.stringify(this.sourceCreditConfiguration()))
+            throw new Error('Source-credit configuration changed; controlled restart required');
+    }
+    private handleSourceCreditCapacity(worker: Worker, message: WorkerMessage): void {
+        if (!isSourceCreditCapacityRequest(message)) return;
+        let data: SourceCreditCapacityReply['data'];
+        try {
+            const options = this.sourceCreditConfiguration();
+            this.assertSourceCreditConfigurationUnchanged(this.conf);
+            if (!options || this.shutdownStarted || this.mode_transition
+                || !this.workerMap.some(value => value.wref === worker && value.worker_role === 'continuous_reader'))
+                throw new Error('Source-credit capacity lacks a current qualification reader');
+            this.sourceCreditCapacity ??= new SourceCreditCapacityCoordinator(options);
+            if (!this.sourceCreditCapacity.matches(options)) throw new Error('Source-credit configuration changed; controlled restart required');
+            data = {ok: true, result: this.sourceCreditCapacity.update(worker, message.data)};
+        } catch (error) {data = {ok: false, error: String((error as Error)?.message ?? error).slice(0, 512)};}
+        try {worker.send({event: 'source_credit_capacity_reply', mId: message.mId, data} satisfies SourceCreditCapacityReply,
+            error => {if (error) this.replacePressureCarrier(worker);});}
+        catch {this.replacePressureCarrier(worker);}
+    }
+    getSourceCreditCapacitySnapshot() {return this.sourceCreditCapacity?.snapshot() ?? null;}
     private statefulProbes?: StatefulWorkerProbeBroker<Worker>;
     async probeStatefulOwner(target: string, signal: AbortSignal): Promise<boolean> {
         const configuration = resolveStatefulOwnerConfigurationV2(this.conf.features.stateful_owner_v2, this.conf.features.portable_state);
@@ -346,6 +379,7 @@ export class HyperionMaster {
         }
 
         this.conf = this.cm.config;
+        this.sourceCreditConfiguration(); // Capture valid opt-in before clients and keep it fixed for this master lifetime.
 
         if (this.conf.settings.use_global_agent) {
             const require = createRequire(import.meta.url);
@@ -424,6 +458,7 @@ export class HyperionMaster {
 
     initHandlerMap() {
         this.msgHandlerMap = {
+            source_credit_capacity_request: (worker: Worker, message: WorkerMessage) => {this.handleSourceCreditCapacity(worker, message);},
             reader_pressure_ready: (worker: Worker) => { this.syncReaderPressure(worker); },
             protocol_abi_coordinator_request: async (worker: Worker, msg: WorkerMessage) => {
                 await this.handleProtocolAbiCoordinatorRequest(worker, msg);
@@ -906,7 +941,11 @@ export class HyperionMaster {
             const db = this.manager.mongodbClient.db(`${this.manager.conn.mongodb.database_prefix}_${this.manager.chain}`);
 
             try {
-                this.cm.loadConfigJson();
+                this.cm.loadConfigJson(next => {
+                    try {this.assertSourceCreditConfigurationUnchanged(next);}
+                    catch (error) {this.sourceCreditRestartRequired = true; throw error;}
+                });
+                this.sourceCreditRestartRequired = false;
                 this.conf = this.cm.config;
 
                 // After loading config
@@ -920,7 +959,7 @@ export class HyperionMaster {
                 hLog(`Failed to load configuration: ${error.message}`);
                 return {
                     success: false,
-                    message: 'Failed to load configuration.'
+                    message: this.sourceCreditRestartRequired ? String(error.message).slice(0, 512) : 'Failed to load configuration.'
                 };
             }
 
@@ -1473,9 +1512,15 @@ export class HyperionMaster {
         this.workerMap.forEach((wrk: HyperionWorkerDef) => {
             if (!wrk.wref && wrk.worker_id && !wrk.reader_incomplete) {
                 const reader = wrk.worker_role === 'reader' || wrk.worker_role === 'continuous_reader';
-                const worker = cluster.fork(reader ? {...wrk, reader_pressure_sync: 'true'} : wrk);
+                if (reader && this.sourceCreditRestartRequired) {
+                    hLog('Reader replacement awaits restored source-credit configuration or controlled master restart');
+                    return;
+                }
+                const worker = cluster.fork(reader ? {...wrk, reader_pressure_sync: 'true',
+                    reader_source_credit_capacity: JSON.stringify(this.sourceCreditConfiguration())} : wrk);
                 wrk.wref = worker;
                 worker.id = wrk.worker_id;
+                if (reader && this.sourceCreditConfiguration()) worker.once('exit', () => this.sourceCreditCapacity?.exited(worker));
                 if (wrk.worker_role && ['deserializer', 'ds_pool_worker', 'projection'].includes(wrk.worker_role))
                     this.attemptSupervisor.attach(worker, wrk.worker_role as WorkerAttemptRole);
                 if (wrk.worker_role === 'projection') {

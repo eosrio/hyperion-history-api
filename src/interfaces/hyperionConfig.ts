@@ -58,6 +58,8 @@ export interface TieredIndexAllocationSettings {
 }
 
 export interface MainSettings {
+    /** Qualification-only encoded SHiP source-credit reservations; downstream/projection accounting is separate. */
+    source_credit_capacity?: import('../indexer/helpers/source-credit-capacity.js').SourceCreditCapacityConfiguration;
     /** Executable protocol selection is fixed for the worker lifetime. */
     protocol?: import("../indexer/protocol/selection.js").ChainProtocolConfiguration;
     reader_recovery_window_blocks?: number;
@@ -432,6 +434,8 @@ const TieredIndexAllocationSettingsSchema = z.object({
 });
 
 export const HyperionSettingsConfigSchema = z.object({
+    source_credit_capacity: z.object({interface_version: z.literal(1), qualification_only: z.literal(true),
+        maximum_ingress_bytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER)}).strict().optional(),
     protocol: z.discriminatedUnion('provider', [
         z.object({provider: z.literal('antelope')}).strict(),
         z.object({provider: z.literal('extension'), package: z.string().regex(/^(?:@[a-z0-9_.-]+\/)?[a-z0-9_.-]+$/),

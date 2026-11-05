@@ -4,7 +4,7 @@
   "qualificationOnly": true,
   "base": "97edbdc56de9a2e54ff60769544e6e09a8d0a5aa",
   "assembly": "indexed-linear-history-sdk-cbfb-native-1825-engineering-v1",
-  "baseAssemblySha256": "af7104a9c4c1eb1e8dc1eef3418a56fb52a180909beff8e7a0ffd01e7b64c51a",
+  "baseAssemblySha256": "cad5affc1c92eaac50ca081c929c2113061c164e73806f2b5d552916b6eaa91e",
   "limits": {
     "readAttempts": 12,
     "responseRecords": 8,
@@ -92,6 +92,11 @@
       "sha256": "17cd1173f5e381dd42e8e2b600ed92dc7bfba81951d455a4d0770ceef63e7fd1"
     },
     {
+      "path": "packages/backend-mongodb/INDEXED-ENGINEERING.json",
+      "bytes": 16369,
+      "sha256": "baab82a75413863272c1816c1c29785506d99a65157212cca76733a6bff9d34c"
+    },
+    {
       "path": "packages/backend-mongodb/dist/contract.js",
       "bytes": 7247,
       "sha256": "a550fa7e3e0237192c871c8aa53cee871762e13c0a1386aa1971fd463b4e6e6c"
@@ -170,11 +175,6 @@
       "path": "packages/backend-mongodb/dist/storage.js",
       "bytes": 7524,
       "sha256": "ec4a4af6c2b2e7c5e6750ab827eadc51ffb5a4ed1289b9aff7ea560b771f8399"
-    },
-    {
-      "path": "packages/backend-mongodb/INDEXED-ENGINEERING.json",
-      "bytes": 16369,
-      "sha256": "baab82a75413863272c1816c1c29785506d99a65157212cca76733a6bff9d34c"
     },
     {
       "path": "packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist/internal/stateful-execution.js",
@@ -462,6 +462,16 @@
       "sha256": "f108adec3f3100a7afedf3073b1de4e000ef246c506f07fa5dfc017aa7cfd9a0"
     },
     {
+      "path": "scripts/qualification/indexed-schema-mongodb/fixtures/9d8-explain/PROVENANCE.json",
+      "bytes": 814,
+      "sha256": "f36f21940d54f81b721906dfc20070d1ef95544a22062158355b2a7bfa18cb93"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/fixtures/9d8-explain/README.md",
+      "bytes": 495,
+      "sha256": "de152733a8639662c2dadfcb7adac3a88b41b383a7e6b0ee07d9c16338e9ef3f"
+    },
+    {
       "path": "scripts/qualification/indexed-schema-mongodb/fixtures/9d8-explain/node24-explain.json",
       "bytes": 35105,
       "sha256": "3eb09515b7376c22ef5a10d3efc65deac1ab7923e8abce56a86b30e452efb9d6"
@@ -480,16 +490,6 @@
       "path": "scripts/qualification/indexed-schema-mongodb/fixtures/9d8-explain/node26-samples.json",
       "bytes": 10542,
       "sha256": "48f7d3e00a424aca0779ef488c007f65b10bc96c0881b525e7bcf8247d8bd1e3"
-    },
-    {
-      "path": "scripts/qualification/indexed-schema-mongodb/fixtures/9d8-explain/PROVENANCE.json",
-      "bytes": 814,
-      "sha256": "f36f21940d54f81b721906dfc20070d1ef95544a22062158355b2a7bfa18cb93"
-    },
-    {
-      "path": "scripts/qualification/indexed-schema-mongodb/fixtures/9d8-explain/README.md",
-      "bytes": 495,
-      "sha256": "de152733a8639662c2dadfcb7adac3a88b41b383a7e6b0ee07d9c16338e9ef3f"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/native-assembly.mjs",
@@ -563,8 +563,8 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.json",
-      "bytes": 194374,
-      "sha256": "013047ca7f4a918aa92b4ff309284307bb27a2752472b47d07a9edd9bce08124"
+      "bytes": 194770,
+      "sha256": "e75e6d7876306cb2487b4c7190de09daaca2879c81c1375b8b45d411aa84f45c"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.mjs",
@@ -5656,7 +5656,7 @@
     "observation": {
       "files": 147,
       "edges": 496,
-      "sha256": "b026e1de7f4fdc29b5bdf28ec4d63a91caecf5f33f0aeb7f381865aa37042d40"
+      "sha256": "d5db6c8688fd9e1df06e8acf4cdebe965f1f9bd5047adb5c1f3c5da7ca1eaa46"
     }
   },
   "provenance": {
