@@ -553,16 +553,21 @@ describe('source-bound canonical ABI consumers',()=>{
         expect((await f.coordinator.inspect()).head!.blockNum).toBe(1);
     });
 
-    it('reopens fresh authority after a canonical head advances during opening',async()=>{
+    it('reopens fresh authority after an owner changes during opening',async()=>{
         const f=await fixture();await seed(f);const reader=f.reader(),entered=gate(),release=gate();let held=false;
-        f.memory.faults.beforeRead=async(request:any)=>{
+        const original=reader.open.bind(reader),failures:string[]=[];let attempts=0;
+        reader.open=async(...args)=>{attempts++;try{return await original(...args);}catch(error){
+            if(error instanceof ProtocolAbiProofUnavailableError)failures.push(error.code);throw error;
+        }};
+        f.memory.faults.read=async(result:any,request:any)=>{
             if(!held&&request.index===f.store.controlIndex){held=true;entered.release();await release.promise;}
+            return result;
         };
         const waiting=reader.waitForOpen(f.source(1),undefined,{timeoutMs:1000});
-        await entered.promise;await f.append(2);release.release();
-        const view=await waiting;delete f.memory.faults.beforeRead;
+        await entered.promise;await f.replaceOwner('master-two','reader-two');await f.append(2);release.release();
+        const view=await waiting;delete f.memory.faults.read;
+        expect(failures).toEqual(['authority_changed']);expect(attempts).toBe(2);
         expect(view.source.blockNum).toBe(1);await reader.revalidate(view);
-        expect(f.memory.calls.filter((call:any)=>call.method==='get'&&call.request.index===f.store.controlIndex).length).toBeGreaterThan(2);
     });
 
     it('bounds repeated authority-change failures and stops on cancellation',async()=>{

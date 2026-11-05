@@ -5252,8 +5252,8 @@
       },
       {
         "path": "tests/unit/protocol-abi-proof.test.ts",
-        "bytes": 60299,
-        "sha256": "690231a2495dd58d95fa011eb7bb8e66ca4dec04fdbde4a07bbe589d4af7447a"
+        "bytes": 60604,
+        "sha256": "e884c4a20ff5df09157044c8e85b2368c63e83ba52256bf6bad27e40eba6b8ba"
       },
       {
         "path": "tests/unit/protocol-abi-reducer.test.ts",
@@ -5986,7 +5986,7 @@
         "sha256": "1945027163c553cd08421dd1f8caa08fab025c44279883ed9e6c3dec0e8c6408"
       }
     ],
-    "totalBytes": 16526430,
+    "totalBytes": 16526735,
     "trackedPaths": [
       ".bun-version",
       ".gitattributes",
