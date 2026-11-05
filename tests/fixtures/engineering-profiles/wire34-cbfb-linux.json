@@ -1782,8 +1782,8 @@
       },
       {
         "path": "scripts/qualification/wire34-cbfb/ci.mjs",
-        "bytes": 8620,
-        "sha256": "f4f76880f98789a195e79c1b6852565da6b06cb4827dcf4fa4ef27a906b720d8"
+        "bytes": 8737,
+        "sha256": "e190be0d95ef2765576afa1444941654e26d9293bc4b55145c13aaea6b0469d5"
       },
       {
         "path": "scripts/qualification/wire34-cbfb/cohort.json",
@@ -4107,8 +4107,8 @@
       },
       {
         "path": "tests/native/wire34-linux-workflow.test.mjs",
-        "bytes": 18644,
-        "sha256": "d3cb3890fac995a5e2d0f2a2f9b7a893d3a1fcd756e84b55e0b0e7085c19cb63"
+        "bytes": 21692,
+        "sha256": "59fe5c41ddb330d6482b5eaf65913e9de84e262c056a73b33862e0c5cd855e2a"
       },
       {
         "path": "tests/native/wire34-parent-integration.test.mjs",
@@ -5696,7 +5696,7 @@
         "sha256": "1945027163c553cd08421dd1f8caa08fab025c44279883ed9e6c3dec0e8c6408"
       }
     ],
-    "totalBytes": 15982396,
+    "totalBytes": 15985561,
     "trackedPaths": [
       ".bun-version",
       ".gitattributes",

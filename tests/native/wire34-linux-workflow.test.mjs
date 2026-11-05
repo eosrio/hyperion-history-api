@@ -28,6 +28,35 @@ test('explicit passive inventory cannot conceal executable or configuration inpu
 test('source receipts retain actual GHA identity and legacy aliases are exact copies, not reconstructed metadata',()=>{const observed=checkScript(raw('scripts/qualification/wire34-cbfb/source-check.mjs'),manifest.sources.trackedPaths);assert.equal(observed.runId,'42');assert.equal(observed.runAttempt,'1');assert.equal(observed.job,'wire34-cbfb');const source=raw('scripts/qualification/wire34-cbfb/ci.mjs');assert(source.includes('constants.COPYFILE_EXCL'));assert(source.includes('assert.equal(sha(readFileSync(alias)),sha(raw))'));assert(source.includes("[exact,major+'.x']"));});
 test('one child preserves the exact fixtures and separate bounded diagnostic flags',()=>{for(const phase of ['retained','history']){const args=phaseArguments(phase,'unused');assert.deepEqual(args.slice(0,2),['--test','--test-isolation=none']);assert(!args.some(x=>x.includes('cpu-prof')));}assert(phaseArguments('retained','x').at(-1).endsWith('wire-managed-state-v2-native.mjs'));assert(phaseArguments('history','x').at(-1).endsWith('protocol-abi-history-native.mjs'));assert.deepEqual(phaseArguments('cpu','/owned/cpu').slice(0,2),['--cpu-prof','--cpu-prof-dir=/owned/cpu']);assert.equal(CI_LIMITS.deadlineMS,225000);assert.equal(CI_LIMITS.streamBytes,1048576);assert.equal(CI_LIMITS.cpuBytes,67108864);});
 test('resource guard refuses insufficient reserves and an unbounded runner envelope',()=>{const value={cpus:4,memoryTotalBytes:16*1024**3,memoryAvailableBytes:4*1024**3,diskAvailableBytes:8*1024**3};assert.doesNotThrow(()=>assertCIResources(value,'before'));assert.doesNotThrow(()=>assertCIResources(value,'after'));for(const changes of [{cpus:1},{cpus:64},{memoryTotalBytes:64*1024**3},{memoryAvailableBytes:1},{diskAvailableBytes:1}])assert.throws(()=>assertCIResources({...value,...changes},'before'));});
+function dispatchPhase(phase,receipts){
+ const source=raw('scripts/qualification/wire34-cbfb/ci.mjs'),start=source.indexOf('async function main(){'),end=source.indexOf('\nif(process.argv[1]',start);assert(start>0&&end>start);
+ const calls=[],effects=[],root='/actual/cohort',output=root+'/out/wire34-linux';
+ const context={assert,root,output,process:{argv:['node','ci.mjs',phase],env:{GITHUB_WORKSPACE:root}},runtime:()=>calls.push('runtime'),join:(...parts)=>parts.join('/'),realpathSync:path=>path,
+  lstatSync:()=>({isDirectory:()=>true,isSymbolicLink:()=>false}),mkdirSync:path=>effects.push('mkdir:'+path),readFileSync:path=>{const name=path.slice(output.length+1);calls.push(name);assert(Object.hasOwn(receipts,name),'Missing prior '+name);return JSON.stringify(receipts[name]);},
+  runPhase:async selected=>{effects.push('runPhase:'+selected);if(selected==='cpu')effects.push('cpu-mkdir','cpu-spawn');}};
+ runInNewContext(source.slice(start,end)+'\nthis.dispatch=main;',context);return {run:()=>context.dispatch(),calls,effects};
+}
+const closedPhase=(phase,status='failed')=>({phase,status,code:status==='failed'?1:0,closed:true,stdoutEOF:true,stderrEOF:true});
+test('actual main admits original phases in order and permits closed failed history before separate CPU diagnostics',async()=>{
+ for(const phase of ['retained','history','cpu']){
+  const h=dispatchPhase(phase,{'retained.json':closedPhase('retained'),'history.json':closedPhase('history')});await h.run();
+  assert.deepEqual(h.calls,['runtime',...(phase==='retained'?[]:phase==='history'?['retained.json']:['retained.json','history.json'])]);
+  assert.deepEqual(h.effects,['runPhase:'+phase,...(phase==='cpu'?['cpu-mkdir','cpu-spawn']:[])]);
+ }
+ for(const status of ['passed','failed']){const h=dispatchPhase('cpu',{'retained.json':closedPhase('retained'),'history.json':closedPhase('history',status)});await h.run();assert(h.effects.includes('cpu-spawn'));}
+});
+test('actual main refuses missing retained or history receipt before any next-phase effect',async()=>{
+ for(const phase of ['history','cpu'])for(const missing of phase==='cpu'?['retained','history']:['retained']){
+  const receipts={'retained.json':closedPhase('retained'),'history.json':closedPhase('history')};delete receipts[missing+'.json'];
+  const h=dispatchPhase(phase,receipts);await assert.rejects(h.run(),new RegExp('Missing prior '+missing));assert.deepEqual(h.effects,[]);
+ }
+});
+test('actual main requires strict closure and both EOF flags for every preceding owned phase before effects',async()=>{
+ for(const phase of ['history','cpu'])for(const prior of phase==='cpu'?['retained','history']:['retained'])for(const field of ['closed','stdoutEOF','stderrEOF'])for(const value of [false,undefined,1,'true']){
+  const receipts={'retained.json':closedPhase('retained'),'history.json':closedPhase('history')};receipts[prior+'.json'][field]=value;
+  const h=dispatchPhase(phase,receipts);await assert.rejects(h.run(),new RegExp('Prior owned '+prior+' process/streams'));assert.deepEqual(h.effects,[]);
+ }
+});
 function fake(action){const c=new EventEmitter();c.stdout=new EventEmitter();c.stderr=new EventEmitter();c.pid=123;c.kills=[];for(const s of [c.stdout,c.stderr])s.destroy=()=>s.emit('close');c.kill=signal=>{c.kills.push(signal);action?.(c,signal);return true;};c.end=(code=0,signal=null)=>{c.stdout.emit('end');c.stderr.emit('end');c.stdout.emit('close');c.stderr.emit('close');c.emit('close',code,signal);};return c;}
 function childHarness(child){const timers=new Map();let id=0;const source=raw('scripts/qualification/wire34-cbfb/ci-child.mjs');assert.equal(sha(source),'ac80a7edb551660796d5b1f1a17aa93b3bbee3c1a761d2a9d6fdf0591bebe9e2');const context={assert,Buffer,spawn:()=>child,setTimeout:(fn,delay)=>{const key=++id;timers.set(key,{fn,delay});return key;},clearTimeout:key=>timers.delete(key)};runInNewContext(source.replace(/^import .*;$/gm,'').replace('export async function','async function')+'\nthis.run=runChild;',context);return {run:options=>context.run('node',[],options),fire:delay=>{const row=[...timers].find(([,v])=>v.delay===delay);assert(row,'Expected mock timer');timers.delete(row[0]);row[1].fn();},timers};}
 test('reviewed child helper accepts only zero exit with both actual EOF and close',async()=>{let c=fake(),h=childHarness(c),p=h.run();c.end();await p;assert.equal(h.timers.size,0);c=fake();h=childHarness(c);p=h.run();c.end(2);await assert.rejects(p,/Node fixture failed/);c=fake();h=childHarness(c);p=h.run();c.emit('close',0,null);await assert.rejects(p,/incomplete/);});
