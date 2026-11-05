@@ -21,6 +21,16 @@ async function dataError(promise:Promise<unknown>,code:string,kind:string) {
 function fixture(replicas=0){const memory=frontierMemoryClient(replicas);return {memory,store:new ProtocolAbiFrontierStore(memory.client as any,'fixture',replicas)};}
 
 describe('ABI frontier durable storage',()=>{
+    it('computes a sparse baseline identity without storage access and matches its durable materialization',async()=>{
+        const {store,memory}=fixture(),updates=['__proto__','constructor','alice'].map(account=>({account,state:state(account)}));
+        const calls=memory.calls.length,root=store.asReadOnly().stateRootIdFor(updates);
+        expect(root).toMatch(/^h45abiroot1:/);expect(memory.calls).toHaveLength(calls);
+        expect(store.stateRootIdFor([...updates].reverse())).toBe(root);
+        expect(await store.prepareState(null,updates)).toBe(root);
+        expect(store.stateRootIdFor([])).toBeNull();expect(store.stateRootIdFor([{account:'alice',state:null}])).toBeNull();
+        expect(store.stateRootIdFor([{account:'alice',state:state('alice','ff')}])).not.toBe(root);
+        expect(()=>store.stateRootIdFor([...updates,updates[0]])).toThrow('duplicate');
+    });
     it('creates strict independent indices and reads commits and control across restart without search',async()=>{
         const {store,memory}=fixture(1);expect(await store.readControl()).toBeNull();
         const written=await store.compareAndSet(null,control());expect(written.value).toEqual(control());

@@ -187,6 +187,7 @@ export function statefulApiRegistryFactory(fastify: FastifyInstance, loader: Hyp
             const profile = {id: selected.id, profileId: selected.provider.profileId, components: selected.components ?? []};
             const source = new PortableProjectionSource({client: manager.elasticsearchClient, chain: manager.chain, chainId, profile, provider: selected.provider,
                 maxAncestryBlocks: manager.config.settings.protocol_abi_coordination?.recovery_window_blocks,
+                diskAbiHistory:manager.config.settings.protocol_abi_history,
                 historicalCertificates: manager.config.settings.protocol_abi_coordination?.historical_certificates !== undefined,
                 replicas: manager.config.settings.es_replicas ?? 0});
             return StatefulProjectionRegistryV2.create({chainId, configuration, mongo: manager.mongodbClient, client: manager.elasticsearchClient, source, profile,

@@ -17,6 +17,7 @@ mock.module('../../src/indexer/workers/hyperionWorker.js', () => ({
         usesExtensionProtocol = false;
         actionSourceAdmissionEnabled = false;
         captureWorkerAttemptDelivery() {}
+        createDurableWorkerOutputQueue() {return {kill() {}};}
     },
     ProtocolSourceCodecError: class extends Error {}, protocolSourceCapture: Symbol('controlled-source-capture')
 }));

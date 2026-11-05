@@ -23,7 +23,7 @@ test('Wire34 operator-list metadata binds exact current emissions and distinct r
  assert.equal(operatorAssembly.profile,profile);assert.deepEqual(operatorAssembly.pins,DESCRIPTOR.observation.pins);
  assert.deepEqual(Object.keys(operatorAssembly.trees),Object.keys(actual.emissions));
  for(const [name,rows]of Object.entries(actual.emissions))assert.deepEqual(operatorAssembly.trees[name],{path:paths[name],files:rows.length,sha256:sha(JSON.stringify(rows)),textLF:false});
- assert.deepEqual(Object.fromEntries(Object.entries(operatorAssembly.trees).map(([name,value])=>[name,value.files])),{rootBuild:556,nativeBuild:69,rootSDK:37,nativeSDK:37});
+ assert.deepEqual(Object.fromEntries(Object.entries(operatorAssembly.trees).map(([name,value])=>[name,value.files])),{rootBuild:560,nativeBuild:69,rootSDK:37,nativeSDK:37});
  assert(new Set(operatorAssembly.sourceFiles.map(row=>row.path)).size===operatorAssembly.sourceFiles.length);
  for(const row of operatorAssembly.sourceFiles){const bytes=readFileSync(new URL('../../'+row.path,import.meta.url));assert.equal(bytes.length,row.bytes,row.path);assert.equal(sha(bytes),row.sha256,row.path);}
  assert.deepEqual(operatorAssembly.ciIdentitySourcePaths,['tests/unit/wire34-cbfb-source-admission.mjs','tests/fixtures/engineering-profiles/wire34-cbfb-linux.json']);

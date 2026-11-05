@@ -1,5 +1,6 @@
 import {ProtocolSourceEquivalence} from '../../indexer/protocol/source-equivalence.js';
 import {ProtocolSourceBindingStore} from '../../indexer/protocol/source-bindings.js';
+import {diskAbiHistoryOptions} from '../../indexer/protocol/disk-abi-history-options.js';
 import {ProtocolAbiObservationStore} from '../../indexer/protocol/abi-observation-store.js';
 import {createHash} from 'node:crypto';
 import type {FastifyInstance, FastifyRequest} from 'fastify';
@@ -50,6 +51,8 @@ export class ProtocolActionConsumer {
         if (!chainId) throw unavailable('Configured chain identity is unavailable');
         const profile = {id: selected.id, profileId: selected.provider.profileId, components: selected.components ?? []};
         this.reader = new ProtocolAbiProofReader({chainId, profile,
+            diskHistory:diskAbiHistoryOptions(host.manager.config.settings.protocol_abi_history,host.elastic,chain,chainId,
+                profile,selected.provider,host.manager.config.settings.es_replicas??0),
             sourceEquivalence: new ProtocolSourceEquivalence(new ProtocolSourceBindingStore(host.elastic,chain,host.manager.config.settings.es_replicas ?? 0,{readOnly:true}),
                 new ProtocolAbiObservationStore(host.elastic,chain,host.manager.config.settings.es_replicas ?? 0,undefined,{readOnly:true})),
             historicalCertificates: host.manager.config.settings.protocol_abi_coordination?.historical_certificates !== undefined,

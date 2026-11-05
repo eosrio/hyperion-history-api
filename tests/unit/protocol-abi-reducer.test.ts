@@ -39,6 +39,20 @@ const reset = (result: ProtocolAbiBlockReduction, code?: string): void => {
 };
 
 describe('canonical block ABI occurrence reduction', () => {
+    it('requires exact catalog validation for disk-derived prior states and preserves their distinct provenance', async () => {
+        const input=facts();input.actionInputs=[action(1,'10')];
+        const before=priorState('alice','abcd');before.source={...before.source,
+            catalogId:'h45abihistory1:'+'7'.repeat(64),observationId:'h45abidisk1:'+'8'.repeat(64)};
+        reset(await reduceProtocolAbiBlock(record(input),async()=>before,'9'),'protocol_abi_invalid_account_state');
+        const verify=(state:ProtocolAbiAccountState)=>JSON.stringify(state)===JSON.stringify(before);
+        const result=complete(await reduceProtocolAbiBlock(record(input),async()=>before,'9',undefined,verify));
+        expect(result.bindings[0].state).toMatchObject({account:'alice',present:true,abiHex:'abcd',source:before.source});
+        expect(result.bindings[0].state!.source.catalogId).toBe(before.source.catalogId);
+        const altered={...before,abiHex:'ffff'};
+        reset(await reduceProtocolAbiBlock(record(input),async()=>altered,'9',undefined,verify),'protocol_abi_invalid_account_state');
+        reset(await reduceProtocolAbiBlock(record(input),async()=>({...before,source:{...before.source,catalogId:undefined}}),'9',undefined,verify),
+            'protocol_abi_invalid_account_state');
+    });
     it('keeps unknown inputs unknown, without treating an absent delta row as account absence', async () => {
         const input = facts();input.actionInputs = [action(1, '10'), action(2, '11')];let resolutions = 0;
         const result = complete(await reduceProtocolAbiBlock(record(input), async () => {resolutions++;return null;}));

@@ -11,6 +11,8 @@ interface ProtocolAbiAccountSourceBase {
     readonly blockNum: number;
     readonly blockId: string;
     readonly inputSha256: string;
+    /** Explicit immutable disk-catalog provenance; ordinary observation IDs never imply this authority. */
+    readonly catalogId?: string;
 }
 
 export type ProtocolAbiAccountSource = ProtocolAbiAccountSourceBase & (
@@ -130,7 +132,8 @@ function incomplete(code: string, message: string): ProtocolAbiBlockReduction {
  */
 export async function reduceProtocolAbiBlock(record: ProtocolAbiObservationRecord, resolveAccount: ProtocolAbiAccountResolver,
                                             priorLastGlobalSequence?: string | null,
-                                            verifyNativeGenesis?: ProtocolNativeGenesisVerifier): Promise<ProtocolAbiBlockReduction> {
+                                            verifyNativeGenesis?: ProtocolNativeGenesisVerifier,
+                                            verifyDiskState?: (state:ProtocolAbiAccountState)=>boolean): Promise<ProtocolAbiBlockReduction> {
     try {
         try {protocolAbiObservationJson(record);} catch {
             throw new InvalidAbiReduction('protocol_abi_invalid_record', 'Invalid portable ABI observation record');
@@ -220,14 +223,19 @@ export async function reduceProtocolAbiBlock(record: ProtocolAbiObservationRecor
             requireFact(supplied && supplied.account === account && typeof supplied.present === 'boolean' && typeof supplied.abiHex === 'string'
                 && hex(supplied.abiHex), 'Resolver returned an incompatible account state', 'protocol_abi_invalid_account_state');
             const stateProtocol = immutableProfile(supplied.protocol), source = supplied.source;
+            const diskState=source?.catalogId!==undefined;
             requireFact(sameProfile(stateProtocol, protocol) && source && source.chainId === position.chainId
                 && uint32(source.blockNum, 1) && source.blockNum < position.blockNum && hex64.test(source.blockId)
-                && hex64.test(source.inputSha256) && /^h45abi1:[0-9a-f]{64}$/.test(source.observationId)
+                && hex64.test(source.inputSha256)
+                && (diskState ? /^h45abihistory1:[0-9a-f]{64}$/.test(source.catalogId!)
+                    && /^h45abidisk1:[0-9a-f]{64}$/.test(source.observationId) && verifyDiskState?.(supplied)===true
+                    : /^h45abi1:[0-9a-f]{64}$/.test(source.observationId))
                 && (source.blockNum !== position.blockNum - 1 || source.blockId === previousBlockId),
                 'Resolver returned foreign or future ABI provenance', 'protocol_abi_invalid_account_state');
             let detachedSource: ProtocolAbiAccountSource;
             const sourceBase: ProtocolAbiAccountSourceBase = {observationId: source.observationId, chainId: source.chainId,
-                blockNum: source.blockNum, blockId: source.blockId, inputSha256: source.inputSha256};
+                blockNum: source.blockNum, blockId: source.blockId, inputSha256: source.inputSha256,
+                ...(diskState?{catalogId:source.catalogId}:{})};
             if (source.phase === 'native-effect') {
                 requireFact(supplied.present && source.action && hex64.test(source.action.transactionId) && uint32(source.action.actionOrdinal, 1),
                     'Invalid native ABI source anchor', 'protocol_abi_invalid_account_state');

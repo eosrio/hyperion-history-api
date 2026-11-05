@@ -8,6 +8,7 @@ import {HyperionWorker, protocolSourceCapture} from './hyperionWorker.js';
 import {createHash, randomUUID} from 'node:crypto';
 import {ProtocolSourceBindingStore, protocolSourceSelectionHeader, type ProtocolSourcePosition} from '../protocol/source-bindings.js';
 import {ProtocolAbiCoordinatorRpc} from '../protocol/abi-coordinator-rpc.js';
+import {DiskAbiHistoryCatalog} from '../protocol/disk-abi-history.js';
 import {debugLog, hLog} from '../helpers/common_functions.js';
 import {RabbitQueueDef} from '../definitions/index-queues.js';
 import {LiveReaderCheckpoint, ReaderConfirmRange} from '../helpers/reader-progress.js';
@@ -92,6 +93,7 @@ export default class StateReader extends HyperionWorker {
     private publisherFailure?: string;
     private finishing = false;
     private liveCheckpoint?: LiveReaderCheckpoint;
+    private readonly diskAbiHistoryConfiguration=structuredClone(this.conf.settings.protocol_abi_history);
     private stageOneDistQueue: QueueObject<any>;
     private pendingDistribution?: {publisher: ConfirmChannel; resume: () => void};
     private blockReadingQueue: QueueObject<any>;
@@ -1185,7 +1187,13 @@ export default class StateReader extends HyperionWorker {
                 frameSha256: createHash('sha256').update(frame).digest('hex'), captureSha256: capture.captureSha256,
                 head: position(result.head), irreversible: position(result.last_irreversible)});
             this.assertCurrentIngress(context.generation);
-            if (this.isLiveReader) await this.admitCoordinatorSelection(selection.id, context.readerSessionId, context.generation);
+            if (this.isLiveReader) {
+                const catalog=DiskAbiHistoryCatalog.fromConfiguration(this.diskAbiHistoryConfiguration,this.chainId,
+                    {id:this.protocolId,profileId:this.protocol.profileId,components:this.protocolComponents??[]});
+                if(catalog){await catalog.assertSchema(context.schemaJson);const covered=await catalog.covers(capture.source);
+                    this.assertCurrentIngress(context.generation);if(covered)return {[protocolSourceSelectionHeader]:selection.id};}
+                await this.admitCoordinatorSelection(selection.id, context.readerSessionId, context.generation);
+            }
             return {[protocolSourceSelectionHeader]: selection.id};
         } finally { stop(); }
     }

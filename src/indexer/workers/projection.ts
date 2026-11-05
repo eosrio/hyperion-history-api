@@ -60,6 +60,7 @@ export default class ProjectionWorker extends HyperionWorker {
             const sourceOptions = {client: this.client, chain: this.chain, chainId: this.chainId,
                 profile: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
                 provider: this.protocol, replicas: this.conf.settings.es_replicas ?? 0,
+                diskAbiHistory:this.conf.settings.protocol_abi_history,
                 requireAttemptScope: this.workerAttemptScopeRequired,
                 maxAncestryBlocks: this.conf.settings.protocol_abi_coordination?.recovery_window_blocks};
             const source = new PortableProjectionSource(sourceOptions);

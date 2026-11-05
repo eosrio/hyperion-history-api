@@ -34,7 +34,7 @@ function fixture() {
     advanceOne() {assert(callbacks.length, 'Expected a retained fake timer'); callbacks.shift().fn();}
   };
   const base = {
-    Buffer, console: {log() {}, error() {}}, hLog() {}, debugLog() {},
+    Buffer, structuredClone, console: {log() {}, error() {}}, hLog() {}, debugLog() {},
     setTimeout: fn => clock.set(fn), clearTimeout: token => clock.clear(token),
     setInterval() {throw Error('Unexpected real interval boundary');},
     clearInterval() {}, performance: {now: () => 0},

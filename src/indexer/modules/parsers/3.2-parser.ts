@@ -220,8 +220,9 @@ export default class HyperionParser extends BaseParser {
                 if (worker.actionSourceAdmissionEnabled) {
                     await worker.ackAdmittedSourceDelivery(message);
                 } else if (worker.usesExtensionProtocol) {
-                    worker.ackProtocolSourceDelivery(message);
+                    await worker.ackProtocolSourceDelivery(message);
                 } else if (worker.ch && worker.ch_ready) {
+                    await worker.flushDurableWorkerOutputs();
                     worker.settleOriginalWorkerDelivery(message);
                 }
             } catch (e) {

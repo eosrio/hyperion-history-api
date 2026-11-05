@@ -9,6 +9,7 @@ import {protocolAbiCertificateForControl} from './abi-proof.js';
 import {validNativeGenesisCoverage, type ProtocolNativeGenesisCoverage, type ProtocolNativeGenesisVerifier} from './native-genesis.js';
 import {resolveProtocolAbiHistory, historicalAddressIdentity, historicalAddressId, historicalRootCertificate,
     type ProtocolAbiHistoryOptions, type ProtocolAbiHistoricalAddress} from './abi-history.js';
+import {isProtocolHex} from './hex.js';
 
 type Head = {blockNum:number;blockId:string;commitId:string;stateRootId:string|null;
     lastGlobalSequence:string|null;coverageStart:number|null};
@@ -20,16 +21,28 @@ export interface ProtocolAbiCoordinatorControl {
     historical?:{interfaceVersion:1;addressRootId:string;activationCertificateId:string;anchor:Head};
 }
 interface Commit {
-    schemaVersion:1; kind:'canonical-abi-block'; chainId:string; profile:ProtocolSourceProfile; generation:string;
-    previousCommitId:string|null; selectionId:string; observationId:string|null; observationDigest:string|null;
+    schemaVersion:1; kind:'canonical-abi-block'|'disk-abi-baseline'; chainId:string; profile:ProtocolSourceProfile; generation:string;
+    previousCommitId:string|null; selectionId:string|null; observationId:string|null; observationDigest:string|null;
     source:ProtocolSourcePosition; status:'complete'|'incomplete'; reason:Gap|null;
     stateRootId:string|null; lastGlobalSequence:string|null; coverageStart:number|null;
     nativeGenesis?:ProtocolNativeGenesisCoverage;
     nativeActionInterfaceVersion?:1;
+    catalogId?:string;
     bindings:Array<{transactionId:string;actionOrdinal:number;inputActionOrdinal:number;receiver:string;account:string;
         name:string;globalSequence:string;receiptAbiSequence:string;rawSha256:string;stateId:string|null}>;
 }
 interface Version {value:ProtocolAbiCoordinatorControl;seqNo:number;primaryTerm:number}
+export interface ProtocolAbiDiskBaseline {
+    catalogId:string;source:ProtocolSourcePosition;coverageStart:1;lastGlobalSequence:string|null;
+    profile:ProtocolSourceProfile;states:readonly ProtocolAbiAccountState[];
+}
+/** A validated immutable catalog, not a caller-supplied replacement for live source selection. */
+export interface ProtocolAbiDiskHistory {
+    baseline():Promise<ProtocolAbiDiskBaseline>;
+    revalidate():Promise<void>;
+    matchesState(state:ProtocolAbiAccountState):boolean;
+    blockId(blockNum:number):string|null|undefined|Promise<string|null|undefined>;
+}
 export interface ProtocolAbiCoordinatorOptions {
     chainId:string; profile:ProtocolSourceProfile; ownerId:string; bindings:ProtocolSourceBindingStore;
     observations:ProtocolAbiObservationStore; store:ProtocolAbiFrontierStore;
@@ -41,6 +54,7 @@ export interface ProtocolAbiCoordinatorOptions {
     nativeActionInterfaceVersion?:1;
     historicalCertificates?:ProtocolAbiHistoryOptions;
     onHistoricalError?:(error:unknown)=>void;
+    diskAbiHistory?:ProtocolAbiDiskHistory;
 }
 export class ProtocolAbiCoordinatorStaleError extends Error {
     constructor(message='Protocol ABI source was superseded'){super(message);this.name='ProtocolAbiCoordinatorStaleError';}
@@ -82,6 +96,7 @@ export class ProtocolAbiCoordinator {
     private readonly historicalQueue=new Map<string,ProtocolAbiHistoricalAddress>();
     /** Process-local evidence of successful live-source CAS admissions, never a restart cursor. */
     private readonly recentSelections=new Map<string,{source:ProtocolSourcePosition;generation:string;readerSessionId:string}>();
+    private diskBaseline?:Promise<{value:ProtocolAbiDiskBaseline;stateRootId:string|null}>;
 
     constructor(private readonly options:ProtocolAbiCoordinatorOptions) {
         if(!hex64.test(options.chainId)||!text(options.ownerId))throw new Error('Invalid ABI coordinator identity');
@@ -103,6 +118,40 @@ export class ProtocolAbiCoordinator {
         const result=this.serial.then(action);this.serial=result.then(()=>undefined,()=>undefined);return result;
     }
     private sameProfile(value:ProtocolSourceProfile):boolean {return json(value)===json(this.profile);}
+    private async preparedDiskBaseline():Promise<{value:ProtocolAbiDiskBaseline;stateRootId:string|null}|undefined> {
+        const catalog=this.options.diskAbiHistory;if(!catalog)return undefined;
+        this.diskBaseline??=(async()=>{
+            await catalog.revalidate();const value=copy(await catalog.baseline());
+            if(!id('h45abihistory1',value.catalogId)||value.coverageStart!==1||!this.sameProfile(value.profile)
+                ||value.source?.chainId!==this.options.chainId||!uint32(value.source.blockNum)||value.source.blockNum<1
+                ||!hex64.test(value.source.blockId)||(value.source.previousBlockId!==null&&!hex64.test(value.source.previousBlockId))
+                ||value.source.blockNum===1&&value.source.previousBlockId!==null
+                ||value.source.blockNum>1&&!hex64.test(value.source.previousBlockId??'')
+                ||value.lastGlobalSequence!==null&&(!/^[1-9][0-9]{0,19}$/.test(value.lastGlobalSequence)
+                    ||BigInt(value.lastGlobalSequence)>0xffffffffffffffffn)
+                ||!Array.isArray(value.states)||value.states.length>10000)
+                throw new InvalidPreparedObservation('Invalid disk ABI baseline');
+            if(await catalog.blockId(value.source.blockNum)!==value.source.blockId
+                ||value.source.blockNum>1&&await catalog.blockId(value.source.blockNum-1)!==value.source.previousBlockId)
+                throw new InvalidPreparedObservation('Disk ABI baseline block identity differs from catalog');
+            const seen=new Set<string>();
+            for(const state of value.states){
+                if(!state||!text(state.account)||seen.has(state.account)||!this.sameProfile(state.protocol)
+                    ||typeof state.present!=='boolean'||typeof state.abiHex!=='string'||!isProtocolHex(state.abiHex)
+                    ||state.source?.catalogId!==value.catalogId||state.source.chainId!==this.options.chainId
+                    ||!uint32(state.source.blockNum)||state.source.blockNum<1||state.source.blockNum>value.source.blockNum
+                    ||!id('h45abidisk1',state.source.observationId)||!hex64.test(state.source.inputSha256)
+                    ||!catalog.matchesState(state)||await catalog.blockId(state.source.blockNum)!==state.source.blockId)
+                    throw new InvalidPreparedObservation('Disk ABI baseline contains an unvalidated account state');
+                seen.add(state.account);
+            }
+            await catalog.revalidate();
+            const stateRootId=await this.options.store.prepareState(null,value.states.map(state=>({account:state.account,state})),false,
+                ()=>catalog.revalidate());
+            await catalog.revalidate();return {value,stateRootId};
+        })();
+        return this.diskBaseline;
+    }
     private assertEpoch(epoch:number):void {if(epoch!==this.sourceEpoch)throw new ProtocolAbiCoordinatorStaleError();}
     private rememberSelection(id:string,source:ProtocolSourcePosition,generation:string,readerSessionId:string):void {
         this.recentSelections.delete(id);
@@ -171,20 +220,42 @@ export class ProtocolAbiCoordinator {
         if(this.started)throw new Error('ABI coordinator owner may only be acquired once');
         const stored=await this.options.store.readControl();
         const previous=stored?this.validateControl(stored.value):null;
+        const disk=await this.preparedDiskBaseline();
         if(this.options.qualificationGenesisStart&&previous&&!this.sameProfile(previous.profile))
             throw new Error('Qualification genesis cannot adopt a different ABI profile');
         let head=previous&&this.sameProfile(previous.profile)?previous.head:null;
+        let retainedCommit:Commit|undefined;
         let replayFromBlock=previous&&this.sameProfile(previous.profile)?previous.replayFromBlock
             :this.options.qualificationGenesisStart?1:null;
         let reason=previous?.gap??null;
         if(previous&&!this.sameProfile(previous.profile))reason=gap('protocol_profile_changed','ABI knowledge requires initialization under the installed profile',null);
         if(head){
-            try {const commit=await this.readCommit(head.commitId);if(json(this.head(commit,head.commitId))!==json(head))throw new InvalidPreparedObservation('Stored head does not match its immutable commit');}
+            try {const commit=await this.readCommit(head.commitId);if(json(this.head(commit,head.commitId))!==json(head))throw new InvalidPreparedObservation('Stored head does not match its immutable commit');retainedCommit=commit;}
             catch(error){if(!dataUnavailable(error))throw error;head=null;replayFromBlock=previous!.head!.blockNum;
                 reason=gap('retained_frontier_unavailable',String((error as Error).message),previous!.head!.blockNum);}
         }
+        const generation=randomUUID();
+        if(disk){
+            const catalog=this.options.diskAbiHistory!,boundary=disk.value.source;
+            const retained=head??(previous&&this.sameProfile(previous.profile)?previous.head:null);
+            if(retained&&retained.blockNum<=boundary.blockNum&&await catalog.blockId(retained.blockNum)!==retained.blockId)
+                throw new InvalidPreparedObservation('Disk ABI catalog conflicts with the retained canonical prefix');
+            if(retained&&retained.blockNum>=boundary.blockNum&&(!head||retainedCommit?.catalogId!==disk.value.catalogId))
+                throw new Error('Disk ABI activation cannot replace advanced progress without matching catalog ancestry; use a catalog cutoff ahead of the retained head');
+            if(!head||head.blockNum<boundary.blockNum){
+                const commit:Commit={schemaVersion:1,kind:'disk-abi-baseline',chainId:this.options.chainId,profile:this.profile,generation,
+                    previousCommitId:null,selectionId:null,observationId:null,observationDigest:null,
+                    source:disk.value.source,status:'complete',reason:null,stateRootId:disk.stateRootId,
+                    lastGlobalSequence:disk.value.lastGlobalSequence,coverageStart:1,bindings:[],catalogId:disk.value.catalogId,
+                    ...(this.options.nativeActionInterfaceVersion===1?{nativeActionInterfaceVersion:1 as const}:{})};
+                const prepared=await this.options.store.prepareCommit(commit);
+                if(json(await this.readCommit(prepared.id))!==json(commit))throw new Error('Disk ABI baseline readback differs');
+                await catalog.revalidate();head=this.head(commit,prepared.id);reason=null;replayFromBlock=null;
+            }
+            await catalog.revalidate();
+        }
         const value:ProtocolAbiCoordinatorControl={schemaVersion:1,chainId:this.options.chainId,profile:this.profile,ownerId:this.options.ownerId,
-            generation:randomUUID(),revision:(previous?.revision??-1)+1,source:null,head,pending:[],phase:'awaiting-source',gap:reason,replayFromBlock};
+            generation,revision:(previous?.revision??-1)+1,source:null,head,pending:[],phase:'awaiting-source',gap:reason,replayFromBlock};
         const receipt=await this.options.store.compareAndSet(stored,value);
         this.known={...receipt,value:this.validateControl(receipt.value)};this.started=true;
     });}
@@ -237,8 +308,17 @@ export class ProtocolAbiCoordinator {
                 return {status:'accepted',generation};
             }
             const source=selection.source;
+            const disk=await this.preparedDiskBaseline();this.assertEpoch(epoch);
+            if(disk){
+                await this.options.diskAbiHistory!.revalidate();this.assertEpoch(epoch);
+                if(source.blockNum<=disk.value.source.blockNum)return {status:'stale',generation};
+                if(source.blockNum===disk.value.source.blockNum+1&&source.previousBlockId!==disk.value.source.blockId)
+                    throw new Error('Live source forks below the irreversible disk ABI boundary');
+            }
             if(version.value.head?.blockNum===source.blockNum&&version.value.head.blockId===source.blockId){
                 const committed=await this.readCommit(version.value.head.commitId);
+                if(committed.kind!=='canonical-abi-block'||committed.selectionId===null)
+                    throw new Error('Disk ABI baseline is not an ordinary live source selection');
                 const original=(await this.options.bindings.readSelection(committed.selectionId)).selection;
                 this.assertEpoch(epoch);
                 // A new SHIP head/LIB envelope may replay the same raw source. Different traces,
@@ -308,7 +388,9 @@ export class ProtocolAbiCoordinator {
         for(let distance=0;head&&distance<=this.recoveryWindow;distance++){
             if(head.blockNum===source.blockNum-1&&head.blockId===source.previousBlockId)return {head,pending:[],gap:restoredGap};
             if(distance===this.recoveryWindow)break;
-            try {const commit=await this.readCommit(head.commitId);head=commit.previousCommitId?this.head(await this.readCommit(commit.previousCommitId),commit.previousCommitId):null;}
+            try {const commit=await this.readCommit(head.commitId);
+                if(commit.kind==='disk-abi-baseline')throw new Error('Fork recovery cannot rewind below the irreversible disk ABI boundary');
+                head=commit.previousCommitId?this.head(await this.readCommit(commit.previousCommitId),commit.previousCommitId):null;}
             catch(error){if(!dataUnavailable(error))throw error;break;}
         }
         return {head:null,pending:[],gap:gap('source_ancestry_unavailable','Replacement parent is outside retained verified recovery coverage; ABI knowledge restarts UNKNOWN',source.blockNum)};
@@ -318,6 +400,26 @@ export class ProtocolAbiCoordinator {
         stateRootId:commit.stateRootId,lastGlobalSequence:commit.lastGlobalSequence,coverageStart:commit.coverageStart};}
     private async readCommit(commitId:string):Promise<Commit> {
         const value=await this.options.store.readCommit(commitId) as Commit;
+        if(value?.kind==='disk-abi-baseline'){
+            if(!this.options.diskAbiHistory)throw new Error('Retained ABI progress requires its configured disk ABI catalog');
+            const disk=await this.preparedDiskBaseline();
+            if(!disk||value.schemaVersion!==1||value.chainId!==this.options.chainId||!this.sameProfile(value.profile)
+                ||!text(value.generation)||value.previousCommitId!==null||value.selectionId!==null||value.observationId!==null
+                ||value.observationDigest!==null||value.catalogId!==disk.value.catalogId||json(value.source)!==json(disk.value.source)
+                ||value.status!=='complete'||value.reason!==null||value.stateRootId!==disk.stateRootId
+                ||value.coverageStart!==1||value.lastGlobalSequence!==disk.value.lastGlobalSequence
+                ||!Array.isArray(value.bindings)||value.bindings.length!==0||value.nativeGenesis!==undefined
+                ||value.nativeActionInterfaceVersion!==undefined&&value.nativeActionInterfaceVersion!==1)
+                throw new InvalidPreparedObservation('Invalid immutable disk ABI baseline');
+            await this.options.diskAbiHistory!.revalidate();this.validateHead(this.head(value,commitId));return value;
+        }
+        if(value?.catalogId!==undefined){
+            if(!this.options.diskAbiHistory)throw new Error('Retained ABI progress requires its configured disk ABI catalog');
+            const disk=await this.preparedDiskBaseline();
+            if(value.catalogId!==disk!.value.catalogId||value.source?.blockNum<=disk!.value.source.blockNum)
+                throw new Error('Retained ABI progress belongs to a different disk ABI catalog');
+            await this.options.diskAbiHistory.revalidate();
+        }
         if(!value||value.schemaVersion!==1||value.kind!=='canonical-abi-block'||value.chainId!==this.options.chainId||!this.sameProfile(value.profile)
             ||!text(value.generation)||!id('h45srcsel1',value.selectionId)||!value.source||value.source.chainId!==this.options.chainId
             ||!uint32(value.source.blockNum)||value.source.blockNum<1||!hex64.test(value.source.blockId)
@@ -361,6 +463,7 @@ export class ProtocolAbiCoordinator {
                 previousCommitId:control.head?.commitId??null,selectionId:selectedId,observationId:link.observationId,observationDigest:link.observationDigest,
                 source:selected.source,status:complete?'complete':'incomplete',reason,stateRootId,
                 lastGlobalSequence:value.lastGlobalSequence,coverageStart:complete?(control.head?.coverageStart??selected.source.blockNum):null,bindings,
+                ...(this.options.diskAbiHistory?{catalogId:(await this.preparedDiskBaseline())!.value.catalogId}:{}),
                 ...(this.options.nativeActionInterfaceVersion===1?{nativeActionInterfaceVersion:1 as const}:{}),
                 ...(value.status==='complete'&&value.nativeGenesis?{nativeGenesis:value.nativeGenesis}:{})};
             const prepared=await this.options.store.prepareCommit(commit);
@@ -505,6 +608,11 @@ export class ProtocolAbiCoordinator {
             } else if(commit.source.blockNum+1!==walk.child.source.blockNum||commit.source.blockId!==walk.child.source.previousBlockId
                 ||walk.child.previousCommitId!==commitId)throw new Error('Historical ABI ancestry is not complete and contiguous');
             if(commit.status!=='complete'||commit.coverageStart!==1)throw new Error('Historical ABI ancestry lacks complete genesis coverage');
+            if(commit.kind==='disk-abi-baseline'){
+                // Covered prefix queries use the immutable catalog; the live address
+                // walk stops at its validated boundary instead of inventing prefix commits.
+                walk.child=commit;walk.nextCommitId=null;break;
+            }
             if(commit.source.blockNum===1&&(commit.previousCommitId!==null||commit.source.previousBlockId!==null))
                 throw new Error('Historical ABI genesis linkage differs');
             if(commit.source.blockNum>1&&!commit.previousCommitId)throw new Error('Historical ABI ancestry ended before genesis');
@@ -525,6 +633,7 @@ export class ProtocolAbiCoordinator {
         const epoch=this.sourceEpoch;
         try {return await this.run(async()=>{
             let version=await this.owned(),committed=0;this.assertEpoch(epoch);
+            if(this.options.diskAbiHistory){await this.options.diskAbiHistory.revalidate();this.assertEpoch(epoch);}
             while(version.value.source&&version.value.phase!=='recovering'&&version.value.pending.length&&committed<this.maximumPending){
                 const selectedId=version.value.pending[0],selected=await this.selection(selectedId,version.value);this.assertEpoch(epoch);
                 if(version.value.head&&(selected.source.blockNum!==version.value.head.blockNum+1||selected.source.previousBlockId!==version.value.head.blockId))
@@ -542,7 +651,8 @@ export class ProtocolAbiCoordinator {
                         let state=accounts.get(account);
                         if(!state){state=this.options.store.readAccount(version.value.head?.stateRootId??null,account) as Promise<ProtocolAbiAccountState|null>;accounts.set(account,state);}
                         return state;
-                    },version.value.head?.lastGlobalSequence??null,this.options.verifyNativeGenesis);
+                    },version.value.head?.lastGlobalSequence??null,this.options.verifyNativeGenesis,
+                    this.options.diskAbiHistory?state=>this.options.diskAbiHistory!.matchesState(state):undefined);
                 } catch(error){
                     if(!dataUnavailable(error))throw error;
                     reduction={status:'incomplete',reset:true,bindings:[],updates:[],lastGlobalSequence:null,
