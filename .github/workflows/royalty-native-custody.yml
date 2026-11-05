@@ -2,7 +2,7 @@ name: Royalty template native driver custody
 on:
   workflow_dispatch:
   pull_request:
-    branches: ["release/4.5", "test/indexed-native-mongodb-415"]
+    branches: ["release/4.5", "test/indexed-native-mongodb-415", "codex/wire-release-integration"]
     paths: ["scripts/qualification/royalty-native-custody/**", "src/**", "packages/backend-mongodb/**", "package*.json", ".github/workflows/royalty-native-custody.yml"]
 permissions:
   contents: read
