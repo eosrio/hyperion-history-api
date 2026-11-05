@@ -61,7 +61,7 @@ export interface MainSettings {
     /** Executable protocol selection is fixed for the worker lifetime. */
     protocol?: import("../indexer/protocol/selection.js").ChainProtocolConfiguration;
     reader_recovery_window_blocks?: number;
-    protocol_abi_coordination?: {max_pending_blocks?: number; recovery_window_blocks?: number;
+    protocol_abi_coordination?: {max_pending_blocks?: number; recovery_window_blocks?: number; qualification_genesis_start?: true;
         historical_certificates?: {interface_version: 1; max_commits_per_drain: number; max_commit_bytes_per_drain: number; max_ms_per_drain: number}};
     use_global_agent?: boolean;
     process_prefix?: string;
@@ -439,6 +439,7 @@ export const HyperionSettingsConfigSchema = z.object({
     ]).optional(),
     reader_recovery_window_blocks: z.number().int().positive().optional(),
     protocol_abi_coordination: z.object({
+        qualification_genesis_start: z.literal(true).optional(),
         max_pending_blocks: z.number().int().min(1).max(4096).optional(),
         recovery_window_blocks: z.number().int().min(1).max(4096).optional(),
         historical_certificates: z.object({
