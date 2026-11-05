@@ -1195,7 +1195,8 @@ export class HyperionMaster {
             // live block reader
             this.liveReader = this.addWorker({
                 worker_role: 'continuous_reader',
-                worker_last_processed_block: _head,
+                // A request seed is not a confirmed publication checkpoint.
+                worker_start_block: _head,
                 ws_router: '',
                 validated_ship_servers: JSON.stringify(this.validatedShipServers)
             });
