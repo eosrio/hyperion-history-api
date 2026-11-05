@@ -212,7 +212,8 @@ describe('canonical ABI runtime coordinator',()=>{
             historicalCertificates:{interfaceVersion:1,maxCommitsPerDrain:4,maxCommitBytesPerDrain:1024*1024,maxMillisecondsPerDrain:1000,allowPendingWork:true}});
         const first=await f.selected(4),blocked=await f.selected(5);await f.prepare(first);await f.admit(first);await f.admit(blocked);
         const prepare=f.store.prepareHistoricalAddressRoot.bind(f.store);let failed=false;
-        f.store.prepareHistoricalAddressRoot=async (...args:any[])=>{if(!failed){failed=true;throw new Error('controlled partial map failure');}return prepare(...args as Parameters<typeof prepare>);};
+        f.store.prepareHistoricalAddressRoot=async (...args:any[])=>{const value=await prepare(...args as Parameters<typeof prepare>);
+            if(!failed){failed=true;throw new Error('controlled failure after immutable map preparation');}return value;};
         await f.coordinator.drain();expect(failed).toBe(true);expect((f.coordinator as any).historicalCompleted).toBeUndefined();
         expect((await f.coordinator.inspect()).historical).toBeUndefined();expect(errors.length).toBeGreaterThan(0);
         await f.coordinator.drain();expect((await f.coordinator.inspect()).historical).toBeDefined();
@@ -225,10 +226,11 @@ describe('canonical ABI runtime coordinator',()=>{
         const f=await fixture({diskAbiHistory:diskCatalog(),historicalCertificates:{interfaceVersion:1,maxCommitsPerDrain:4,
             maxCommitBytesPerDrain:1024*1024,maxMillisecondsPerDrain:1000,allowPendingWork:true}});
         const first=await f.selected(4),blocked=await f.selected(5);await f.prepare(first);await f.admit(first);await f.admit(blocked);
-        const publish=f.store.prepareHistoricalAddressRoot.bind(f.store);let now=0,entered=false;
+        const publish=f.store.prepareHistoricalAddressRoot.bind(f.store),read=f.store.readHistoricalCertificateAddress.bind(f.store);let now=0,entered=false,inside=false;
         const clock=spyOn(performance,'now').mockImplementation(()=>now);
-        f.store.prepareHistoricalAddressRoot=async (...args:any[])=>{entered=true;now=2000;return publish(...args as Parameters<typeof publish>);};
-        try {await f.coordinator.drain();} finally {clock.mockRestore();f.store.prepareHistoricalAddressRoot=publish;}
+        f.store.prepareHistoricalAddressRoot=async (...args:any[])=>{inside=true;try{return await publish(...args as Parameters<typeof publish>);}finally{inside=false;}};
+        f.store.readHistoricalCertificateAddress=async(...args)=>{const value=await read(...args);if(inside){entered=true;now=2000;}return value;};
+        try {await f.coordinator.drain();} finally {clock.mockRestore();f.store.prepareHistoricalAddressRoot=publish;f.store.readHistoricalCertificateAddress=read;}
         expect(entered).toBe(true);expect((await f.coordinator.inspect()).historical).toBeUndefined();
         expect((f.coordinator as any).historicalCompleted).toBeUndefined();
         await f.coordinator.drain();expect((await f.coordinator.inspect()).historical).toBeDefined();
@@ -236,6 +238,39 @@ describe('canonical ABI runtime coordinator',()=>{
         await f.coordinator.revokeSource('session-a');
         expect((f.coordinator as any).historicalCompleted).toBeUndefined();
         expect((await f.coordinator.inspect()).historical).toBeUndefined();
+    });
+    it('keeps the default admission yield while opt-in history finishes its bounded quantum before queued admission',async()=>{
+        for(const allowPendingWork of [false,true]){
+            const f=await fixture({diskAbiHistory:diskCatalog(),historicalCertificates:{interfaceVersion:1,maxCommitsPerDrain:4,
+                maxCommitBytesPerDrain:1024*1024,maxMillisecondsPerDrain:1000,...(allowPendingWork?{allowPendingWork:true as const}:{})}});
+            const first=await f.selected(4);await f.prepare(first);await f.admit(first);
+            const read=f.store.readCommit.bind(f.store),extend=(f.coordinator as any).extendHistorical.bind(f.coordinator);
+            let inside=false,injected=false,admission:ReturnType<typeof f.coordinator.admit>|undefined;
+            (f.coordinator as any).extendHistorical=async(...args:any[])=>{inside=true;try{return await extend(...args);}finally{inside=false;}};
+            f.store.readCommit=async(...args)=>{const value=await read(...args);if(inside&&!injected){injected=true;admission=f.coordinator.admit(first.selectionId,f.generation);}return value;};
+            await f.coordinator.drain();expect(injected).toBe(true);expect((await admission!).status).toBe('accepted');
+            if(allowPendingWork)expect((await f.coordinator.inspect()).historical).toBeDefined();
+            else expect((await f.coordinator.inspect()).historical).toBeUndefined();
+        }
+    });
+    it('fences opted-in history during an awaited read and clears its completed anchor before fork recovery',async()=>{
+        const f=await fixture({diskAbiHistory:diskCatalog(),historicalCertificates:{interfaceVersion:1,maxCommitsPerDrain:4,
+            maxCommitBytesPerDrain:1024*1024,maxMillisecondsPerDrain:1000,allowPendingWork:true}});
+        await f.append(4);await f.coordinator.drain();expect((f.coordinator as any).historicalCompleted).toBeDefined();
+        const next=await f.selected(5);await f.prepare(next);await f.admit(next);
+        const read=f.store.readCommit.bind(f.store),extend=(f.coordinator as any).extendHistorical.bind(f.coordinator);
+        let inside=false,injected=false,revoked:ReturnType<typeof f.coordinator.revokeSource>|undefined,continued=0;
+        (f.coordinator as any).extendHistorical=async(...args:any[])=>{inside=true;try{return await extend(...args);}finally{inside=false;}};
+        f.store.readCommit=async(...args)=>{const value=await read(...args);if(inside&&!injected){injected=true;revoked=f.coordinator.revokeSource('session-a');
+            f.memory.faults.beforeRead=()=>{if(inside)continued++;};f.memory.faults.beforeWrite=()=>{if(inside)continued++;};}return value;};
+        await f.coordinator.drain();expect(injected).toBe(true);expect(await revoked!).toBe(true);
+        delete f.memory.faults.beforeRead;delete f.memory.faults.beforeWrite;f.store.readCommit=read;
+        expect(continued).toBe(0);expect((f.coordinator as any).historicalCompleted).toBeUndefined();
+        expect((await f.coordinator.inspect()).historical).toBeUndefined();
+        const opened=await f.coordinator.openSource(f.contextId,'session-b');f.session='session-b';f.generation=opened.generation;
+        const fork=await f.selected(5,50,4);await f.prepare(fork);await f.admit(fork);
+        expect((f.coordinator as any).historicalCompleted).toBeUndefined();await f.coordinator.drain();
+        expect((await f.coordinator.inspect()).head!.blockId).toBe(block(50));
     });
     it('does not publish an admitted tail block after the catalog changes',async()=>{
         const catalog=diskCatalog(),f=await fixture({diskAbiHistory:catalog}),next=await f.selected(4);await f.prepare(next);await f.admit(next);
@@ -500,5 +535,3 @@ describe('canonical ABI runtime coordinator',()=>{
         expect(await restarted.openSource(f.contextId,'session-c')).toMatchObject({resumeFromBlock:101});
     });
 });
-
-
