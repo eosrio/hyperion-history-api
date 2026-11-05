@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   pull_request:
     branches: ["release/4.5", "codex/wire-release-integration"]
-    paths: ["src/**", "packages/backend-mongodb/**", "tests/unit/wire-*bulk-regression.mjs", "tests/unit/protocol-abi-proof.test.ts", "tests/unit/protocol-abi-coordinator.test.ts", "tests/unit/protocol-native-genesis.test.ts", "tests/unit/wire-genesis-seed-original.mjs", "tests/native/protocol-genesis-seed.test.mjs", "tests/native/live-reader-startup-checkpoint.test.mjs", "docs/protocol-abi-frontier.md", "tests/native/wire-canonical-bulk-workflow.test.mjs", "tests/fixtures/**", "scripts/qualification/**", "package*.json", ".github/workflows/wire-canonical-bulk.yml"]
+    paths: ["src/**", "packages/backend-mongodb/**", "tests/unit/wire-*bulk-regression.mjs", "tests/unit/protocol-abi-proof.test.ts", "tests/unit/protocol-abi-coordinator.test.ts", "tests/unit/protocol-native-genesis.test.ts", "tests/unit/wire-genesis-seed-original.mjs", "tests/native/protocol-genesis-seed.test.mjs", "tests/native/live-reader-startup-checkpoint.test.mjs", "docs/protocol-abi-frontier.md", "tests/native/wire-canonical-bulk-workflow.test.mjs", "tests/native/wire34-cbfb-codec-profile.test.mjs", "tests/fixtures/**", "scripts/qualification/**", "package*.json", ".github/workflows/wire-canonical-bulk.yml"]
 permissions:
   contents: read
 jobs:
@@ -42,6 +42,8 @@ jobs:
           mkdir -p out/wire-canonical-bulk
           node scripts/qualification/wire34-cbfb/source-check.mjs > out/wire-canonical-bulk/source.json
           node tests/unit/wire34-cbfb-source-admission.mjs --admit-wire34-cbfb > out/wire-canonical-bulk/runtime.json
+      - name: Check current Wire34 codec profile
+        run: node --test tests/native/wire34-cbfb-codec-profile.test.mjs
       - name: Check workflow contract
         run: node --test tests/native/wire-canonical-bulk-workflow.test.mjs
       - name: Verify proof invariants and captured source

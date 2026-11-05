@@ -62,8 +62,8 @@
       },
       {
         "path": ".github/workflows/wire-canonical-bulk.yml",
-        "bytes": 3381,
-        "sha256": "b7d1a2218824b2dfa324847108f57c526fe0327abf4dfbc64c6510f519ab0af9"
+        "bytes": 3554,
+        "sha256": "d8de89f65c5e2f9e02c08c28c08e4be31f2da43533bd0b8853e2479ddc2e47d0"
       },
       {
         "path": ".github/workflows/wire34-cbfb.yml",
@@ -4267,8 +4267,8 @@
       },
       {
         "path": "tests/native/wire-canonical-bulk-workflow.test.mjs",
-        "bytes": 1664,
-        "sha256": "fffc2176ccbdce93f23e62a7bcda66f98c91ad5fecb3fddf6e608dd94df52a6b"
+        "bytes": 1983,
+        "sha256": "1d57783c686eef3e3271e971188c017fd3c0a14e2c8c98737b397b2667a8c073"
       },
       {
         "path": "tests/native/wire34-cbfb-caller-routing.test.mjs",
@@ -4278,7 +4278,7 @@
       {
         "path": "tests/native/wire34-cbfb-codec-profile.test.mjs",
         "bytes": 8312,
-        "sha256": "8e2d9e2ca899925524383e8a215ada783fb1fd780f40ccac312351a4b9427be9"
+        "sha256": "ffe5e0906ff4a0e30f0d3d343d1b9d6cfd6b147c7f27852e6aef6ffb01321929"
       },
       {
         "path": "tests/native/wire34-cbfb-current-stateful-source-profile.test.mjs",
@@ -5926,7 +5926,7 @@
         "sha256": "1945027163c553cd08421dd1f8caa08fab025c44279883ed9e6c3dec0e8c6408"
       }
     ],
-    "totalBytes": 16324544,
+    "totalBytes": 16325036,
     "trackedPaths": [
       ".bun-version",
       ".gitattributes",
