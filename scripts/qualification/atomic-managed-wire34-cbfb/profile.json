@@ -308,8 +308,8 @@
         },
         {
           "path": "src/api/helpers/protocol-abi.ts",
-          "bytes": 32813,
-          "sha256": "c7c4685e5a6e0a0328c827f8c6296f30b276be84fa337fc1c68f017a3e51d703"
+          "bytes": 32820,
+          "sha256": "d7a584e34cc9b65508b1b04b3a35a13fc56a36cfdd2c89b3b1a3121a4c683e15"
         },
         {
           "path": "src/api/helpers/protocol-action-output.ts",
@@ -1273,8 +1273,8 @@
         },
         {
           "path": "src/indexer/modules/master.ts",
-          "bytes": 125482,
-          "sha256": "1e1ca8b722c990e1d9e6bd02cfd6b3275921205ddcd95a4ca083101c23eca8f1"
+          "bytes": 125682,
+          "sha256": "8b142c962ad37e03ec93c1bdbf2be596d761bcc479234231eeef48fd0bed8b06"
         },
         {
           "path": "src/indexer/modules/parsers/3.2-parser.ts",
@@ -1418,8 +1418,8 @@
         },
         {
           "path": "src/indexer/protocol/abi-proof.ts",
-          "bytes": 47573,
-          "sha256": "f319e4b3fbbe7d1bb0c99738dfc530c3505bf4f80534a7b92c117a9d8ba13f3b"
+          "bytes": 47593,
+          "sha256": "5e3c2a1b9b443aae0b62c994fd16aaaaf9e81da7b25266e6a049a1283a4bad5f"
         },
         {
           "path": "src/indexer/protocol/abi-reducer.ts",
@@ -1741,13 +1741,13 @@
           },
           {
             "path": "api/helpers/protocol-abi.js",
-            "bytes": 31238,
-            "sha256": "083a630ba60f047e3c6c1020d95494e2cf2c7a0686e200d8b08fcef265a8f275"
+            "bytes": 31245,
+            "sha256": "5c791173e21a4aa7f1f47bf1cf38db493d5cfdf80520dd22e3f4ce9a2a097624"
           },
           {
             "path": "api/helpers/protocol-abi.js.map",
             "bytes": 29899,
-            "sha256": "52b9eb9066d6f0120812802ebbd08839e0daebc587a7e87dc225a1d6d89aeb54"
+            "sha256": "0079c13eb3d25de224747dc6ad203b8617311b5cd68d5a256e0b089cf6856c31"
           },
           {
             "path": "api/helpers/protocol-action-output.js",
@@ -3681,13 +3681,13 @@
           },
           {
             "path": "indexer/modules/master.js",
-            "bytes": 120621,
-            "sha256": "0a99661d969b6a3890c8547a6205c1eba90f72b934426775c653bc1522d22524"
+            "bytes": 120840,
+            "sha256": "838b0009975ef0a9252849099840cf96746bdbc8bff598df95345fc2af963836"
           },
           {
             "path": "indexer/modules/master.js.map",
-            "bytes": 99373,
-            "sha256": "6d2668ee3ea75c6d6ca8ff4bbab8116d884fa94918e0abe93e79f6be3bc06621"
+            "bytes": 99400,
+            "sha256": "34060b7c2405b4c49d62b24ad0e64c59eb3d877ce30b1a527d76cbb3dc9af2d6"
           },
           {
             "path": "indexer/modules/parsers/3.2-parser.js",
@@ -3971,13 +3971,13 @@
           },
           {
             "path": "indexer/protocol/abi-proof.js",
-            "bytes": 45793,
-            "sha256": "da1419e70c1f0a1db652abf402fbbd59e584fc63e2fffdb3d624f0942fc9d876"
+            "bytes": 45814,
+            "sha256": "95763f389af7b9f13e6d7fab7db6727522b7a18a79ab4205696a0efda849faf6"
           },
           {
             "path": "indexer/protocol/abi-proof.js.map",
-            "bytes": 42457,
-            "sha256": "bcf523ce045aacebfa6ce0e352ad6930ff9e379837ead2d33b59436fa5afa2b5"
+            "bytes": 42469,
+            "sha256": "67346391081dd4c55b29c77c12f134525e69da0f217e7cedc193335981d5ae10"
           },
           {
             "path": "indexer/protocol/abi-reducer.js",

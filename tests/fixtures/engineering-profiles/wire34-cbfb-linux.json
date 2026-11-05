@@ -683,7 +683,7 @@
       {
         "path": "scripts/qualification/atomic-managed-wire34-cbfb/profile.json",
         "bytes": 546404,
-        "sha256": "82ba81ffd62fb4f253060401330be81ce1d2bd4a3d1154e8a64366a058618a0c"
+        "sha256": "ab27bc745ef50ce9a96d1f2232d0474c8a277f3a367a4cbd951d88fd6be48fe1"
       },
       {
         "path": "scripts/qualification/atomic-managed-wire34-cbfb/runner.mjs",
@@ -1188,7 +1188,7 @@
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.json",
         "bytes": 195560,
-        "sha256": "9d80db66da454a1d941f4800111e3951b318a1cd41d7686d92ffe199b706c4b1"
+        "sha256": "ee2850c8b1ae06ec3f02a35d69016dea68006ba0babeba69ae754e7a39e701fc"
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.mjs",
@@ -1238,7 +1238,7 @@
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-profile.json",
         "bytes": 213033,
-        "sha256": "4b43037d0241b7536035692dc9255d17f25951af37410684124512b5ad49a74c"
+        "sha256": "6c8fc7d32ae41a19c62ce1a93a84e0137297b6945ae4084a5d69f889a65dd563"
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-routes.json",
@@ -2017,8 +2017,8 @@
       },
       {
         "path": "src/api/helpers/protocol-abi.ts",
-        "bytes": 32813,
-        "sha256": "c7c4685e5a6e0a0328c827f8c6296f30b276be84fa337fc1c68f017a3e51d703"
+        "bytes": 32820,
+        "sha256": "d7a584e34cc9b65508b1b04b3a35a13fc56a36cfdd2c89b3b1a3121a4c683e15"
       },
       {
         "path": "src/api/helpers/protocol-action-output.ts",
@@ -3047,8 +3047,8 @@
       },
       {
         "path": "src/indexer/modules/master.ts",
-        "bytes": 125482,
-        "sha256": "1e1ca8b722c990e1d9e6bd02cfd6b3275921205ddcd95a4ca083101c23eca8f1"
+        "bytes": 125682,
+        "sha256": "8b142c962ad37e03ec93c1bdbf2be596d761bcc479234231eeef48fd0bed8b06"
       },
       {
         "path": "src/indexer/modules/parsers/3.2-parser.ts",
@@ -3192,8 +3192,8 @@
       },
       {
         "path": "src/indexer/protocol/abi-proof.ts",
-        "bytes": 47573,
-        "sha256": "f319e4b3fbbe7d1bb0c99738dfc530c3505bf4f80534a7b92c117a9d8ba13f3b"
+        "bytes": 47593,
+        "sha256": "5e3c2a1b9b443aae0b62c994fd16aaaaf9e81da7b25266e6a049a1283a4bad5f"
       },
       {
         "path": "src/indexer/protocol/abi-reducer.ts",
@@ -5252,8 +5252,8 @@
       },
       {
         "path": "tests/unit/protocol-abi-proof.test.ts",
-        "bytes": 57825,
-        "sha256": "ac62f5c454f10a416030434f6b6ff733f198ff89eca93544229d02a7a463ffd0"
+        "bytes": 60604,
+        "sha256": "e884c4a20ff5df09157044c8e85b2368c63e83ba52256bf6bad27e40eba6b8ba"
       },
       {
         "path": "tests/unit/protocol-abi-reducer.test.ts",
@@ -5317,8 +5317,8 @@
       },
       {
         "path": "tests/unit/protocol-native-api-host.test.ts",
-        "bytes": 14441,
-        "sha256": "ff7bbc31c01be896f748f5ca13d7be5b15bade4a9e8d649168b3b8e8088ea4c9"
+        "bytes": 15069,
+        "sha256": "e83a8e7e6da1e2353fdf21212b20f42305acb7def5ebdafecd208c6dd946619e"
       },
       {
         "path": "tests/unit/protocol-native-api-source.mjs",
@@ -5357,8 +5357,8 @@
       },
       {
         "path": "tests/unit/protocol-native-certificate-wait.test.ts",
-        "bytes": 8799,
-        "sha256": "74f9e143ef5bab4432dc68453d77781259ccc25b6ef1fe546fb37a20ff5e39ab"
+        "bytes": 8802,
+        "sha256": "0f2a3b12484455f24e8b1aff0e830198ab8e520e3a5f28731758a1f942970fbb"
       },
       {
         "path": "tests/unit/protocol-native-consumer-isolation.mjs",
@@ -5951,6 +5951,16 @@
         "sha256": "af24b017456492afc52f5b126ed2554633529acd6ac2fe103d43597a22cc6f9a"
       },
       {
+        "path": "tests/unit/worker-registry-fixture.mjs",
+        "bytes": 9768,
+        "sha256": "e57e85ddca5503654c15e4e1626618143ca450566bc16709962306096bf89b66"
+      },
+      {
+        "path": "tests/unit/worker-registry.test.ts",
+        "bytes": 951,
+        "sha256": "952222dc001fb4bd499ecf1b955acfa8a2920887c6a9e484bfe90405cb627c2a"
+      },
+      {
         "path": "tests/unit/worker-rejection-provenance.mjs",
         "bytes": 16533,
         "sha256": "a9535d76e8954e2e82316ece5d0e74343df1f504efaca5b84d2ce372e0b3a758"
@@ -5976,7 +5986,7 @@
         "sha256": "1945027163c553cd08421dd1f8caa08fab025c44279883ed9e6c3dec0e8c6408"
       }
     ],
-    "totalBytes": 16512379,
+    "totalBytes": 16526735,
     "trackedPaths": [
       ".bun-version",
       ".gitattributes",
@@ -7356,6 +7366,8 @@
       "tests/unit/worker-fence-callbacks.mjs",
       "tests/unit/worker-fence-origin.mjs",
       "tests/unit/worker-fence-origin.test.ts",
+      "tests/unit/worker-registry-fixture.mjs",
+      "tests/unit/worker-registry.test.ts",
       "tests/unit/worker-rejection-provenance.mjs",
       "tests/unit/worker-rejection-provenance.test.ts",
       "tsconfig.json",
@@ -8400,13 +8412,13 @@
       },
       {
         "path": "api/helpers/protocol-abi.js",
-        "bytes": 31238,
-        "sha256": "083a630ba60f047e3c6c1020d95494e2cf2c7a0686e200d8b08fcef265a8f275"
+        "bytes": 31245,
+        "sha256": "5c791173e21a4aa7f1f47bf1cf38db493d5cfdf80520dd22e3f4ce9a2a097624"
       },
       {
         "path": "api/helpers/protocol-abi.js.map",
         "bytes": 29899,
-        "sha256": "52b9eb9066d6f0120812802ebbd08839e0daebc587a7e87dc225a1d6d89aeb54"
+        "sha256": "0079c13eb3d25de224747dc6ad203b8617311b5cd68d5a256e0b089cf6856c31"
       },
       {
         "path": "api/helpers/protocol-action-output.js",
@@ -10340,13 +10352,13 @@
       },
       {
         "path": "indexer/modules/master.js",
-        "bytes": 120621,
-        "sha256": "0a99661d969b6a3890c8547a6205c1eba90f72b934426775c653bc1522d22524"
+        "bytes": 120840,
+        "sha256": "838b0009975ef0a9252849099840cf96746bdbc8bff598df95345fc2af963836"
       },
       {
         "path": "indexer/modules/master.js.map",
-        "bytes": 99373,
-        "sha256": "6d2668ee3ea75c6d6ca8ff4bbab8116d884fa94918e0abe93e79f6be3bc06621"
+        "bytes": 99400,
+        "sha256": "34060b7c2405b4c49d62b24ad0e64c59eb3d877ce30b1a527d76cbb3dc9af2d6"
       },
       {
         "path": "indexer/modules/parsers/3.2-parser.js",
@@ -10630,13 +10642,13 @@
       },
       {
         "path": "indexer/protocol/abi-proof.js",
-        "bytes": 45793,
-        "sha256": "da1419e70c1f0a1db652abf402fbbd59e584fc63e2fffdb3d624f0942fc9d876"
+        "bytes": 45814,
+        "sha256": "95763f389af7b9f13e6d7fab7db6727522b7a18a79ab4205696a0efda849faf6"
       },
       {
         "path": "indexer/protocol/abi-proof.js.map",
-        "bytes": 42457,
-        "sha256": "bcf523ce045aacebfa6ce0e352ad6930ff9e379837ead2d33b59436fa5afa2b5"
+        "bytes": 42469,
+        "sha256": "67346391081dd4c55b29c77c12f134525e69da0f217e7cedc193335981d5ae10"
       },
       {
         "path": "indexer/protocol/abi-reducer.js",
