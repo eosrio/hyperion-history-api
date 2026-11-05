@@ -59,6 +59,28 @@ test('catalog rejects wrong pins and revokes issued data views after artifact re
     await writeFile(join(f.directory,'blocks.bin'),Buffer.alloc(128));await expect(catalog.revalidate()).rejects.toThrow('changed or replaced');
 });
 
+test('self ABI deployment binds its original and notification to the prior ABI despite the new receipt sequence',async()=>{
+    const row=deploy(2,'9007199254740994','bb','1');row.action.actionOrdinal=1;
+    const f=await artifact([final('alpha',1,'aa'),row]),catalog=keep(new DiskAbiHistoryCatalog(f.config,chainId,profile));
+    const original=input('9007199254740994','1');expect((await catalog.actionState(original,2))?.abiHex).toBe('aa');
+    expect((await catalog.actionState(input('9007199254740995','1',3),2))?.abiHex).toBe('bb');
+    expect(await catalog.actionState({...original,transactionId:'b'.repeat(64)},2)).toBeNull();
+    const retained=await retainedFixture();
+    const record:any=await retained.observations.read((await retained.bindings.readObservationLink(retained.selected)).observationId);
+    record.observation.facts.actionInputs=[original,{...original,actionOrdinal:2,inputActionOrdinal:1,receiver:'observer',globalSequence:'9007199254740995'},input('9007199254740996','1',3)];
+    const prepared=await retained.observations.prepare({...record,capture:{...record.capture,tracesHex:'04'},
+        source:{...record.source,inputSha256:protocolAbiCaptureDigest(retained.source,{...record.capture,tracesHex:'04'})}});
+    const contextId=(await retained.bindings.readSelection(retained.selected)).selection.contextId;
+    const selected=(await retained.bindings.prepareSelection({schemaVersion:1,contextId,readerSessionId:'self',readerRole:'bulk',assignmentId:'self',source:retained.source,
+        captureSha256:protocolAbiCaptureDigest(retained.source,{...record.capture,tracesHex:'04'}),frameSha256:'a'.repeat(64),head:{blockNum:4,blockId:block(4)},irreversible:{blockNum:4,blockId:block(4)}})).id;
+    await retained.bindings.prepareObservationLink({schemaVersion:1,selectionId:selected,observationId:prepared.id,observationDigest:prepared.digest});
+    const options={...retained.options,catalog},reader=new ProtocolAbiProofReader({chainId,profile,store:new ProtocolAbiFrontierStore(retained.memory.client as any,retained.chain,0,{readOnly:true}),diskHistory:options});
+    const view=await reader.open(retained.source,selected);
+    expect((await reader.action(view,record.observation.facts.actionInputs[0])).state.abiHex).toBe('aa');
+    expect((await reader.action(view,record.observation.facts.actionInputs[1])).state.abiHex).toBe('aa');
+    expect((await reader.action(view,record.observation.facts.actionInputs[2])).state.abiHex).toBe('bb');
+});
+
 async function retainedFixture(actionInputs?:any[]){
     const f=await artifact([final('alpha',1,'aa'),deploy(2,'9007199254740993','bb','1')]),memory=frontierMemoryClient(),chain='disk-proof';
     const bindings=new ProtocolSourceBindingStore(memory.client as any,chain),observations=new ProtocolAbiObservationStore(memory.client as any,chain);

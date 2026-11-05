@@ -184,7 +184,14 @@ export class DiskAbiHistoryCatalog {
     async actionState(input:ProtocolAbiActionInput,blockNum:number):Promise<ProtocolAbiAccountState|null> {
         const value=await this.data();requireData(uint(blockNum,1)&&blockNum<=value.manifest.endBlock,'ABI action is outside covered range');
         const selected=this.select(value,input.account,blockNum,input.globalSequence);
-        return selected&&selected.epoch.abiSequence===input.receiptAbiSequence?selected.state:null;
+        if(!selected)return null;
+        if(selected.epoch.abiSequence===input.receiptAbiSequence)return selected.state;
+        // A self ABI deployment executes under the prior ABI, but its receipt already contains the new sequence.
+        const self=value.epochs.get(input.account)?.find(({epoch})=>epoch.blockNum===blockNum&&epoch.phase==='deployment'
+            &&epoch.action!.globalSequence===input.globalSequence&&epoch.action!.transactionId===input.transactionId
+            &&epoch.action!.actionOrdinal===input.actionOrdinal&&input.actionOrdinal===input.inputActionOrdinal&&input.receiver===input.account);
+        return self&&self.epoch.abiSequence===input.receiptAbiSequence
+            &&BigInt(self.epoch.abiSequence)===BigInt(selected.epoch.abiSequence)+1n?selected.state:null;
     }
     async baseline():Promise<DiskAbiHistoryBaseline> {const value=await this.data();await this.revalidateLoaded(value);
         return freeze({catalogId:this.catalogId,source:await this.source(value.manifest.endBlock),coverageStart:1 as const,
