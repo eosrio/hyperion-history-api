@@ -2,7 +2,7 @@ name: Managed Atomic Wire34 CBFB MongoDB
 on:
   workflow_dispatch:
   pull_request:
-    branches: ["main", "test/indexed-native-mongodb-415", "feat/indexed-int64-tested-49dfe-20261104"]
+    branches: ["main", "test/indexed-native-mongodb-415", "feat/indexed-int64-tested-49dfe-20261104", "feat/atomic-managed-all-cbfb-20261104", "release/4.5"]
     paths: ["src/**", "packages/backend-mongodb/**", "scripts/qualification/atomic-managed-wire34-cbfb/**", "tests/native/atomic-managed-wire34-cbfb*", "package*.json", ".github/workflows/atomic-managed-wire34-cbfb.yml"]
 jobs:
   managed-atomic:

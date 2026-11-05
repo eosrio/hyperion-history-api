@@ -275,3 +275,32 @@ test('every actual full Git census writes only ignored evidence until clean-sour
   assert.equal(copies.length,3);const major=version.split('.')[0];for(const kind of ['git','source'])assert(files.get(`current-native-${kind}-${major}.x.json`).equals(files.get(`current-native-${kind}-${version}.json`)));
  }
 });
+
+// PR441's real stacked base and full changed-file list were independently read from GitHub at e15b9043.
+// These witnesses are from that full PR diff; the latest README-only amendment is not its scope.
+const actualPR441Witnesses=['.github/workflows/build.yml','.github/workflows/atomic-managed-wire34-cbfb.yml',
+ 'scripts/qualification/atomic-managed-wire34-cbfb/profile.json','tests/native/atomic-managed-wire34-cbfb-migration.test.mjs'];
+function inspectCurrentPrRoute(path,workflow,target,changed){
+ const start=workflow.indexOf('  pull_request:\n');assert(start>0,path+' requires an actual PR trigger');
+ const filter=workflow.slice(start+'  pull_request:\n'.length).split(/\n(?=  [A-Za-z_-]+:|[A-Za-z_-]+:)/)[0];
+ assert(!/^    (?:branches-ignore|paths-ignore):/m.test(filter),'Explicit exclusions need separate review');
+ const branchMatch=/^    branches: (\[[^\n]+\])$/m.exec(filter);assert(branchMatch,path+' requires explicit current branch routing');
+ const branches=JSON.parse(branchMatch[1]);assert.equal(branches.filter(branch=>branch===target).length,1,path+' must admit '+target+' exactly once');
+ const pathMatch=/^    paths: (\[[^\n]+\])$/m.exec(filter);if(/^    paths:/m.test(filter))assert(pathMatch,'Unsupported current paths layout');
+ const patterns=pathMatch?JSON.parse(pathMatch[1]):[];assert(patterns.every(pattern=>typeof pattern==='string'&&!pattern.startsWith('!')));
+ assert(patterns.length===0||changed.some(file=>patterns.some(pattern=>matchesGlob(file,pattern))),path+' must match actual PR changed paths');
+ return{filter,branches,patterns,branchLine:branchMatch[0],pathLine:pathMatch?.[0]};
+}
+for(const target of ['feat/atomic-managed-all-cbfb-20261104','release/4.5'])test('actual current Build and managed PR routes admit '+target+' with actual changed-path witnesses',()=>{
+ for(const path of ['.github/workflows/build.yml','.github/workflows/atomic-managed-wire34-cbfb.yml']){
+  const workflow=actual(path),route=inspectCurrentPrRoute(path,workflow,target,actualPR441Witnesses);
+  assert(workflow.includes(path.endsWith('/build.yml')?'\n  build:\n':'\n  managed-atomic:\n'));
+  const removed=workflow.replace(route.branchLine,'    branches: '+JSON.stringify(route.branches.filter(branch=>branch!==target)));
+  assert.throws(()=>inspectCurrentPrRoute(path,removed,target,actualPR441Witnesses),/must admit/);
+  if(route.pathLine){
+   assert.throws(()=>inspectCurrentPrRoute(path,workflow.replace(route.pathLine,'    paths: ["unrelated/**"]'),target,actualPR441Witnesses),/must match actual PR changed paths/);
+   inspectCurrentPrRoute(path,workflow,target,['.github/workflows/atomic-managed-wire34-cbfb.yml']);
+   assert.throws(()=>inspectCurrentPrRoute(path,workflow,target,['unrelated/only.txt']),/must match actual PR changed paths/);
+  }
+ }
+});

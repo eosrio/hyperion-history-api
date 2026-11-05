@@ -11,8 +11,8 @@
     },
     {
       "path": ".github/workflows/build.yml",
-      "bytes": 28855,
-      "sha256": "81672b66e41aad083fe0600e999040f5229583407b58d7abb8f09ef16f20f55d"
+      "bytes": 28896,
+      "sha256": "96e68cae186e4501f2cd7a6596fa59e61e5efd8a3677c036ef4700f5c240a1b2"
     },
     {
       "path": ".github/workflows/indexed-schema-finite.yml",

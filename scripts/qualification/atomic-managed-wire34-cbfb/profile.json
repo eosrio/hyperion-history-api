@@ -12992,8 +12992,8 @@
       },
       {
         "path": "preserved-routing.json",
-        "bytes": 16197,
-        "sha256": "6c8839d31d2209f6e075083e61b6b53671117878865ebc63be50dce399267a38"
+        "bytes": 16566,
+        "sha256": "a548bd1931a835a5120089804fc2a57cc327169b8e3afe366c3beafe0c2c68ad"
       },
       {
         "path": "runner.mjs",
@@ -13004,8 +13004,8 @@
     "controls": [
       {
         "path": ".github/workflows/atomic-managed-wire34-cbfb.yml",
-        "bytes": 3010,
-        "sha256": "8345aebcf6c97bdc9b739cfc5f0b1e1d62492bfec279d571f7ca733b8d3f2059"
+        "bytes": 3066,
+        "sha256": "9f12ceb5d428c3becd64793ae429b1b10c9f408cd2852547652dc788444c3c74"
       },
       {
         "path": "tests/native/atomic-managed-wire34-cbfb-sdk-boundary.test.mjs",

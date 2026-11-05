@@ -53,8 +53,8 @@
     },
     {
       "path": ".github/workflows/build.yml",
-      "bytes": 28855,
-      "sha256": "81672b66e41aad083fe0600e999040f5229583407b58d7abb8f09ef16f20f55d"
+      "bytes": 28896,
+      "sha256": "96e68cae186e4501f2cd7a6596fa59e61e5efd8a3677c036ef4700f5c240a1b2"
     },
     {
       "path": ".github/workflows/indexed-schema-finite.yml",
@@ -604,7 +604,7 @@
     {
       "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-routes.json",
       "bytes": 11094,
-      "sha256": "ce67d654380b15a74fc903254128b70b2c4d7a533295a000165c7e25a45a06f1"
+      "sha256": "1928df437745ac7e9bc8d1042680c3f0aed5b6c9a4d524f63eeb6289677d955c"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-runner.mjs",
@@ -5656,7 +5656,7 @@
     "observation": {
       "files": 147,
       "edges": 496,
-      "sha256": "dd7fe95a9e2308f58a18b8ca0f0a8009d4a4b3aa17fd03f7da6251c765325de5"
+      "sha256": "0a1ccb5249744a09c6b1981c02a350bf225c5bc627aa5587738388122915eb4d"
     }
   },
   "provenance": {

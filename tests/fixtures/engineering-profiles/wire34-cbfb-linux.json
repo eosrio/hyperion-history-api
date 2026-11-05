@@ -22,8 +22,8 @@
       },
       {
         "path": ".github/workflows/atomic-managed-wire34-cbfb.yml",
-        "bytes": 3010,
-        "sha256": "8345aebcf6c97bdc9b739cfc5f0b1e1d62492bfec279d571f7ca733b8d3f2059"
+        "bytes": 3066,
+        "sha256": "9f12ceb5d428c3becd64793ae429b1b10c9f408cd2852547652dc788444c3c74"
       },
       {
         "path": ".github/workflows/atomic-managed.yml",
@@ -32,8 +32,8 @@
       },
       {
         "path": ".github/workflows/build.yml",
-        "bytes": 28855,
-        "sha256": "81672b66e41aad083fe0600e999040f5229583407b58d7abb8f09ef16f20f55d"
+        "bytes": 28896,
+        "sha256": "96e68cae186e4501f2cd7a6596fa59e61e5efd8a3677c036ef4700f5c240a1b2"
       },
       {
         "path": ".github/workflows/indexed-schema-finite.yml",
@@ -652,13 +652,13 @@
       },
       {
         "path": "scripts/qualification/atomic-managed-wire34-cbfb/preserved-routing.json",
-        "bytes": 16197,
-        "sha256": "6c8839d31d2209f6e075083e61b6b53671117878865ebc63be50dce399267a38"
+        "bytes": 16566,
+        "sha256": "a548bd1931a835a5120089804fc2a57cc327169b8e3afe366c3beafe0c2c68ad"
       },
       {
         "path": "scripts/qualification/atomic-managed-wire34-cbfb/profile.json",
         "bytes": 543647,
-        "sha256": "a626b7d0aebfd3634113b18bc8753f9e8d3ca9d21eebe79d990b9d13ac1e7771"
+        "sha256": "4b0b9bd20366076c0ce57b8775f65f45598746c1f13698526815f0e647396ba7"
       },
       {
         "path": "scripts/qualification/atomic-managed-wire34-cbfb/runner.mjs",
@@ -1177,8 +1177,8 @@
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-build-contract.test.mjs",
-        "bytes": 27841,
-        "sha256": "b02dc97acfabb05f091d0bc1142d0f49d756501028a55d6f69823fe66513b30f"
+        "bytes": 30628,
+        "sha256": "509b92c5d2ad40e821972ea18b9ca9df32489c97750900364bc9f8ba4f046694"
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-ci.md",
@@ -1213,12 +1213,12 @@
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-profile.json",
         "bytes": 213027,
-        "sha256": "c2e732fb9a231e9bb6d82b57781d35ecbfbe7f79f4eb96d094a1f8a7f19ed2e0"
+        "sha256": "d09c7c00b1cc515b64590bab5d489bce181e051d0f35ec095a46657d6ac6b1e7"
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-routes.json",
         "bytes": 11094,
-        "sha256": "ce67d654380b15a74fc903254128b70b2c4d7a533295a000165c7e25a45a06f1"
+        "sha256": "1928df437745ac7e9bc8d1042680c3f0aed5b6c9a4d524f63eeb6289677d955c"
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-runner.mjs",
@@ -1772,8 +1772,8 @@
       },
       {
         "path": "scripts/qualification/wire34-cbfb/build-parent-routing.json",
-        "bytes": 76421,
-        "sha256": "9f6213e55d4dfa9b7c1ac801823ef241da7265aed6c89519dbe8194310c9f0ec"
+        "bytes": 79409,
+        "sha256": "0377e1af260d7dcc98b04866491753ee6ca5eb98dfda172e25822dba1e4be5e8"
       },
       {
         "path": "scripts/qualification/wire34-cbfb/ci-child.mjs",
@@ -5696,7 +5696,7 @@
         "sha256": "1945027163c553cd08421dd1f8caa08fab025c44279883ed9e6c3dec0e8c6408"
       }
     ],
-    "totalBytes": 15976155,
+    "totalBytes": 15982396,
     "trackedPaths": [
       ".bun-version",
       ".gitattributes",

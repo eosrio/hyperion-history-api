@@ -293,6 +293,11 @@
           "historical": "tests/native/atomic-managed-wire34-cbfb-migration.test.mjs\n",
           "current": "tests/native/atomic-managed-wire34-cbfb-migration.test.mjs tests/native/wire34-parent-integration.test.mjs\n",
           "count": 1
+        },
+        {
+          "historical": "    branches: [\"main\", \"test/indexed-native-mongodb-415\", \"feat/indexed-int64-tested-49dfe-20261104\"]",
+          "current": "    branches: [\"main\", \"test/indexed-native-mongodb-415\", \"feat/indexed-int64-tested-49dfe-20261104\", \"feat/atomic-managed-all-cbfb-20261104\", \"release/4.5\"]",
+          "count": 1
         }
       ]
     }
