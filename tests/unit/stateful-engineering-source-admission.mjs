@@ -19,6 +19,8 @@ import {STATEFUL_CURRENT_CBFB_SOURCE_PROFILE, admitCurrentCbfbSourceOptions} fro
 export {STATEFUL_CURRENT_CBFB_SOURCE_PROFILE};
 import {STATEFUL_ALL_CBFB_SOURCE_PROFILE, admitAllCbfbSourceOptions} from './all-cbfb-source-admission.mjs';
 export {STATEFUL_ALL_CBFB_SOURCE_PROFILE};
+import {STATEFUL_WIRE34_CBFB_SOURCE_PROFILE, admitWire34CbfbSourceOptions} from './wire34-cbfb-source-admission.mjs';
+export {STATEFUL_WIRE34_CBFB_SOURCE_PROFILE};
 
 export const STATEFUL_ENGINEERING_API_SOURCE_PROFILE = 'stateful-owner-v2-18d235e-engineering';
 export const STATEFUL_ACTION_METADATA_API_SOURCE_PROFILE = 'stateful-owner-v2-dd85ee5-18d235e-engineering';
@@ -139,6 +141,8 @@ export function admitNativeApiSourceOptions(input = {}) {
         && value.enumerable && Object.hasOwn(value, 'value')), 'Qualification default-path override refused');
     const nativeMarker = properties.nativeMarker?.value ?? true, profile = properties.engineeringSourceProfile?.value;
     assert(typeof nativeMarker === 'boolean');
+    if (profile === STATEFUL_WIRE34_CBFB_SOURCE_PROFILE)
+        return admitWire34CbfbSourceOptions({nativeMarker, engineeringSourceProfile: profile});
     if (profile === STATEFUL_ALL_CBFB_SOURCE_PROFILE)
         return admitAllCbfbSourceOptions({nativeMarker, engineeringSourceProfile: profile});
     if (profile === STATEFUL_CURRENT_CBFB_SOURCE_PROFILE)
@@ -266,6 +270,7 @@ export function admitNativeSourceEnvironment() {
 }
 export function admitCoordinatedNativeSourceOptions(options = {}) {
     const admission = admitNativeApiSourceOptions(options);
+    if (admission.profile === STATEFUL_WIRE34_CBFB_SOURCE_PROFILE) return admission;
     if (admission.profile === STATEFUL_ALL_CBFB_SOURCE_PROFILE) return admission;
     if (admission.profile === STATEFUL_CURRENT_CBFB_SOURCE_PROFILE) return admission;
     if (admission.profile === STATEFUL_SDK49_SOURCE_PROFILE) return admission;
@@ -294,4 +299,12 @@ export function admitCoordinatedNativeSourceOptions(options = {}) {
     exact(localFiles.sha256, legacy ? 'cd5f6c2a8e4f4c520b01b533fe294a8d7c8cd0428d847be2e50ee84b0bbfebb3'
         : 'df919dbdbfe8eb6c0b0f05a7f4b4ddabf42095d9da1e2621d0adba250fd3b7cc', 'Wire runtime SDK emissions');
     return Object.freeze({...admission, sdkRevision: selectedSdk, wireSdkRevision, ...runtime, wireSdkFiles: localFiles});
+}
+
+// Explicit retained-fixture cohort selection; historical/default admission predicates above stay unchanged.
+export function retainedWireSourceProfile() {
+    const selected = process.env.HYPERION_NATIVE_SOURCE_PROFILE;
+    assert(selected === undefined || selected === '' || selected === STATEFUL_ALL_CBFB_SOURCE_PROFILE
+        || selected === STATEFUL_WIRE34_CBFB_SOURCE_PROFILE, 'Unknown retained Wire source profile');
+    return selected === STATEFUL_WIRE34_CBFB_SOURCE_PROFILE ? selected : STATEFUL_ALL_CBFB_SOURCE_PROFILE;
 }

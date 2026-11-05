@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "qualificationOnly": true,
+  "status": "local-source-candidate-not-executed-on-linux",
+  "consumerBase": "7b53542111709cf8b225b381077e498e25bc5d61",
+  "includedMetadataCorrection": "a093b7e2c3eb7d7c17b79605e1528fc54e9fa014",
+  "profile": "stateful-all-cbfb-root-native-wire34-linux-engineering-v1",
+  "rootSDK": "cbfb26694b90b52266d1e0b9b5dbf6f8389e736b",
+  "nativeSDK": "cbfb26694b90b52266d1e0b9b5dbf6f8389e736b",
+  "wire": {"commit": "1e7547ff52740ecaa88d7867d3ec887a2febaa58", "tree": "be879185c104e218a0f18e0af79affd2434b5509", "sdk": "58d68c5cea81490bbb1c9a7736d633d465bab3ef"},
+  "retainedArchive": "42d092f3ecf6f428ecdba4825580377acdd27f2818ce445d4f197719e6ab72b7",
+  "retainedRange": [1, 1480],
+  "retainedDeadlineMS": 180000,
+  "baseline": {"consumer": "7b53542111709cf8b225b381077e498e25bc5d61", "wire": "69a66064c077a405341f5aaf15e84b88b8d86ccb", "profile": "stateful-all-cbfb-root-native-wire69-linux-engineering-v1"},
+  "baselineObservation": "Root reports unprofiled retained acceptance timed out at180000ms on bothNode24/26; profiler-only explanation is disproved. Historical failed evidence remains separate.",
+  "pairedLinuxAcceptance": "pending-root-review-and-execution",
+  "throughputOrParityClaim": false,
+  "physicalWire121": {"consumer": "29bf6d07454fdadd9fed351c70a706d65031c8a6", "wire": "e691f4471c6e5fdbe001e6709e88d48d33d8bf4c", "status": "unchanged-frozen-separate-cohort"},
+  "activation": "none",
+  "consumerDefaultBranchRepin": "not-published"
+}
