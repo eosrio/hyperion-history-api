@@ -1234,8 +1234,8 @@
       },
       {
         "path": "src/indexer/modules/master.ts",
-        "bytes": 125362,
-        "sha256": "e71c78e5dc2729dab5d98effccec79b56999cc8f770b4c52a2c9107ced3ee8b1"
+        "bytes": 125482,
+        "sha256": "1e1ca8b722c990e1d9e6bd02cfd6b3275921205ddcd95a4ca083101c23eca8f1"
       },
       {
         "path": "src/indexer/modules/parsers/3.2-parser.ts",
@@ -1354,8 +1354,8 @@
       },
       {
         "path": "src/indexer/protocol/abi-coordinator.ts",
-        "bytes": 54963,
-        "sha256": "f059cd174b1c267cfaf87ceacc7250db9c60916f23ecbefc07d9ce1707eea24e"
+        "bytes": 57166,
+        "sha256": "1ae06227029d8eae38a512bf02bde96b25d280185f6aa3508cb58defcbeab985"
       },
       {
         "path": "src/indexer/protocol/abi-frontier-store.ts",
@@ -1364,8 +1364,8 @@
       },
       {
         "path": "src/indexer/protocol/abi-history.ts",
-        "bytes": 4384,
-        "sha256": "7efd4b54f6004615cf75b37c4951b4ed9b298b1bf2f933e4249d644fdc2c5a15"
+        "bytes": 4633,
+        "sha256": "e69b076050104164f58c2b33e504d7e7a2523382108eccac5bd4635fb8b5593a"
       },
       {
         "path": "src/indexer/protocol/abi-observation-facts.ts",
@@ -1484,8 +1484,8 @@
       },
       {
         "path": "src/indexer/workers/deserializer.ts",
-        "bytes": 135807,
-        "sha256": "f5f9e727f51f65016bc5364d3940e7b535588e85afc2b3d7b17350b213299613"
+        "bytes": 135925,
+        "sha256": "b074c0646f021b0bfcdc091336a034eeabee53f445e43ed398068aba8ddb98e2"
       },
       {
         "path": "src/indexer/workers/ds-pool.ts",
@@ -1544,8 +1544,8 @@
       },
       {
         "path": "src/interfaces/hyperionConfig.ts",
-        "bytes": 21059,
-        "sha256": "c8b3c3f723250ac99d0e8594b46ca962f1112e73835c6a2bd08bf4d610d7485d"
+        "bytes": 21145,
+        "sha256": "e25b410d1ec3c22b09134d0dc8aef2ef9982909814000455d6a83f2e0c2d67bd"
       },
       {
         "path": "src/interfaces/hyperionConnections.ts",
@@ -3642,13 +3642,13 @@
         },
         {
           "path": "indexer/modules/master.js",
-          "bytes": 120501,
-          "sha256": "91ad70f0577214fc696af0e096f9aa8ffffea664b7847c66adf7245be089b9e4"
+          "bytes": 120621,
+          "sha256": "0a99661d969b6a3890c8547a6205c1eba90f72b934426775c653bc1522d22524"
         },
         {
           "path": "indexer/modules/master.js.map",
-          "bytes": 99250,
-          "sha256": "55c1b8b59a9102bd5acdde00255f4bb0161b87528a1512e64cb0323c6cb75eba"
+          "bytes": 99373,
+          "sha256": "6d2668ee3ea75c6d6ca8ff4bbab8116d884fa94918e0abe93e79f6be3bc06621"
         },
         {
           "path": "indexer/modules/parsers/3.2-parser.js",
@@ -3882,13 +3882,13 @@
         },
         {
           "path": "indexer/protocol/abi-coordinator.js",
-          "bytes": 54655,
-          "sha256": "221fdb142919f0e0cefa0ea3e066f5706034b840f9b94aa024bd87d610f60ec6"
+          "bytes": 57010,
+          "sha256": "00a00b912d7b17cf47b3b41c1fbb84828c7790d6b460a1d29a076507cbd57c58"
         },
         {
           "path": "indexer/protocol/abi-coordinator.js.map",
-          "bytes": 50074,
-          "sha256": "7b3790ea83aebf86870534a951e1c8b3baf3f7bd1da2c3fad1f3bce0052f7907"
+          "bytes": 52080,
+          "sha256": "b12fe8cda462763b6c05d11f52df750416798d7736b3a4652ad6a5eeffcfe1c2"
         },
         {
           "path": "indexer/protocol/abi-frontier-store.js",
@@ -3902,13 +3902,13 @@
         },
         {
           "path": "indexer/protocol/abi-history.js",
-          "bytes": 3060,
-          "sha256": "6a2ec11491879aac692f91f4c08eba188fd091ee24db802d19fabde1cd8db7f8"
+          "bytes": 3185,
+          "sha256": "11d11e1a29a364e2eb1a62d15b829310622f86da7812adec928d623d81f13b23"
         },
         {
           "path": "indexer/protocol/abi-history.js.map",
-          "bytes": 2664,
-          "sha256": "b7e920ae9ce492cb3a7907e1907c1e9c5334c6efc5e8ce133490e794f19a2059"
+          "bytes": 2786,
+          "sha256": "f0f7b1e5f829c09f52582e8aff9df0e3cfb7dfc4b54772a18504690469cdb937"
         },
         {
           "path": "indexer/protocol/abi-observation-facts.js",
@@ -4172,13 +4172,13 @@
         },
         {
           "path": "indexer/workers/deserializer.js",
-          "bytes": 132653,
-          "sha256": "e01fb941fe3d20c4d532dc957cc5c53df24a58274d7b417b9c0ba64f560af150"
+          "bytes": 132774,
+          "sha256": "00071bcb6c3463c3e7febc2ac5c62122b93923d7f087855f71c3d58345f8d2cd"
         },
         {
           "path": "indexer/workers/deserializer.js.map",
-          "bytes": 103777,
-          "sha256": "c83d5ed4e3d4499c4440aa94efe529905f39163abe1b600561061232b7b7bb9e"
+          "bytes": 103854,
+          "sha256": "ed096a6b97614218e5fc868f70ada088b28aa9cb1c935c69837339a688cc9782"
         },
         {
           "path": "indexer/workers/ds-pool.js",
@@ -4292,13 +4292,13 @@
         },
         {
           "path": "interfaces/hyperionConfig.js",
-          "bytes": 10586,
-          "sha256": "54acfee9cf452d873b4ef69b92cdb4e94ce35c4cab37b84dcf64587b9e86a54c"
+          "bytes": 10646,
+          "sha256": "584b78b03de761e04a0255826683ec2d15dd6a2761e7d241c34cbe8f8a0f6a13"
         },
         {
           "path": "interfaces/hyperionConfig.js.map",
-          "bytes": 12178,
-          "sha256": "a0dff5cdda9619ca6b56e484c4b7f12df595d4d085d4af9f8e343cfd11f62dd7"
+          "bytes": 12241,
+          "sha256": "530b099da8784c5afbeae4df98552dd2420e0d4b0da5bf1818f9020df7d2acf9"
         },
         {
           "path": "interfaces/hyperionConnections.js",
