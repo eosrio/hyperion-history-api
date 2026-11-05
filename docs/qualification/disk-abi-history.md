@@ -75,7 +75,7 @@ map, previously decoded native actions become temporarily unavailable and delaye
 worker openings retain explicit raw/incomplete output. The block Explorer then
 shows its chain-header fallback because `/v1/trace_api/get_block` returns 503.
 
-Configure the indexer and API consistently. The initial Wire catch-up profile is:
+Configure the indexer and API consistently. The measured Wire catch-up profile is:
 
 ```json
 {
@@ -84,7 +84,7 @@ Configure the indexer and API consistently. The initial Wire catch-up profile is
     "recovery_window_blocks": 256,
     "historical_certificates": {
       "interface_version": 1,
-      "max_commits_per_drain": 256,
+      "max_commits_per_drain": 32,
       "max_commit_bytes_per_drain": 16777216,
       "max_ms_per_drain": 3000,
       "allow_pending_work": true
@@ -121,3 +121,16 @@ Qualification separately measures the configured maintenance budget under load.
 The regression controls cover sustained pending work, repeated queue overflow,
 all tail addresses beyond 256 blocks, actual MainDS/API reader openings, map
 preparation failure, deadline expiry, and source/owner fencing.
+
+On Hyperion-3, the v1 profile with 256 entries and a 3000 ms deadline did not
+activate a historical root within three minutes, despite 200 prepared addresses.
+A separately versioned v2 profile used 32 entries, the same 16 MiB and 3000 ms
+budgets, 128 pending blocks and the 256-block recovery window. With active source
+artifact `e405eafdcf02edcd9776d41269805126fee7cde4`, a root was observed on
+2026-11-05 at 22:34:49, about 20 seconds after the 22:34:29 restart. A post-cutoff
+block 2950583 / global sequence 5522976, over 275
+blocks behind the head, returned decoded actions, transaction and trace-block
+responses with HTTP 200. One `authority_changed` 503 occurred during root growth;
+a retry returned 200. Full-tail coverage, backfill and repair of incomplete
+records remain pending. This observation does not qualify CPU behavior or
+MongoDB/AtomicAssets parity.
