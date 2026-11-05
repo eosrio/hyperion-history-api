@@ -14,7 +14,7 @@ import {ProtocolNativeObservationStore} from '../../indexer/protocol/native-obse
 import {protocolImmutableJson} from '../../indexer/protocol/immutable-bundle-store.js';
 import {parseProtocolNativeActionMetadata} from '../../indexer/protocol/native-action-metadata.js';
 import {isProtocolHex} from '../../indexer/protocol/hex.js';
-import {assertProtocolProofRequestActive, withProtocolProofRequest} from './protocol-proof-request.js';
+import {assertProtocolProofRequestActive, protocolProofScope, withProtocolProofRequest} from './protocol-proof-request.js';
 import {assertNativeDerivedOutput, nativeResponseOutputs, nativeSourceOutput, type NativeOutputEvidence} from './protocol-action-output.js';
 
 type ActionMetadata = ProtocolActionProofMetadata | ProtocolNativeActionProofMetadata;
@@ -90,6 +90,7 @@ function unavailable(message: string): ProtocolAbiProofUnavailableError {
 }
 
 function requestProofs(request: object) {
+    request = protocolProofScope(request);
     let value = requests.get(request);
     if (!value) {value = {actions: [], views: [], classifications: [], native: []}; requests.set(request, value);}
     return value;
@@ -377,7 +378,7 @@ export function protocolResponseForReturn(fastify: FastifyInstance, route: strin
 export async function revalidateProtocolActionScope(fastify: FastifyInstance, scope: object,
     output?: {readonly body: any; readonly route: string}): Promise<void> {
     assertProtocolProofRequestActive(scope);
-    const proofs = requests.get(scope);
+    const proofs = requests.get(protocolProofScope(scope));
     if (!proofs) return;
     // Capture all actual source/output obligations before the first await. Provider callbacks can still
     // hold earlier public actions, but no callback receives these detached outgoing snapshots.

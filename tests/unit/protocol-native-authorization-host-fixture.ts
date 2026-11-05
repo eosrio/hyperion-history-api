@@ -61,6 +61,7 @@ export interface HostFixtureOptions {
     mutateBlock?: (value: any) => void;
     maxAncestryBlocks?: number;
     nativeActionInterfaceVersion?: 1;
+    historicalCertificates?: boolean;
 }
 
 /** Synthetic protocol/source and ES transport only. All canonical commits/certificates come from the actual coordinator. */
@@ -70,7 +71,8 @@ export async function nativeAuthorizationFixture(options: HostFixtureOptions = {
     const frontier = new ProtocolAbiFrontierStore(client, chain), nativeStore = new ProtocolNativeObservationStore(client, chain);
     const contextId = (await bindings.prepareContext({schemaVersion: 1, chainId, protocol: profile, schemaJson})).id;
     const makeCoordinator = (ownerId: string) => new ProtocolAbiCoordinator({chainId, profile, ownerId, bindings, observations, store: frontier,
-        nativeActionInterfaceVersion: options.nativeActionInterfaceVersion});
+        nativeActionInterfaceVersion: options.nativeActionInterfaceVersion,
+        ...(options.historicalCertificates ? {historicalCertificates:{interfaceVersion:1,maxCommitsPerDrain:4,maxCommitBytesPerDrain:1048576,maxMillisecondsPerDrain:1000}} : {})});
     let coordinator = makeCoordinator('host-owner-one'), sessionId = 'host-reader-one';
     await coordinator.start(); let generation = (await coordinator.openSource(contextId, sessionId)).generation;
     const calls = {observe: 0, decode: 0, encode: 0, contract: 0, closed: 0, handshakes: [] as unknown[]};
@@ -140,7 +142,8 @@ export async function nativeAuthorizationFixture(options: HostFixtureOptions = {
     }
     await append(1); const selected = await append(2);
     const proofs = () => new ProtocolAbiProofReader({chainId, profile, store: new ProtocolAbiFrontierStore(client, chain, 0, {readOnly: true}),
-        ...(options.maxAncestryBlocks === undefined ? {} : {maxAncestryBlocks: options.maxAncestryBlocks})});
+        ...(options.maxAncestryBlocks === undefined ? {} : {maxAncestryBlocks: options.maxAncestryBlocks}),
+        ...(options.historicalCertificates ? {historicalCertificates:true} : {})});
     const reader = (overrides: any = {}) => new ProtocolNativeActionReader({chainId, profile, provider,
         store: new ProtocolNativeObservationStore(client, chain, 0, undefined, {readOnly: true}), proofReader: proofs(), ...overrides});
     async function replaceOwner() {

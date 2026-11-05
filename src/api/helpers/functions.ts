@@ -5,8 +5,8 @@ import _ from "lodash";
 import {Socket} from "socket.io";
 import {checkMetaFilter, hLog} from "../../indexer/helpers/common_functions.js";
 import {StreamActionsRequest, StreamDeltasRequest, StreamTypeMap} from "../../interfaces/stream-requests.js";
-import {protectProtocolAction, protocolActionsForStream, protocolResponseForCache, protocolResponseForReturn, validateProtocolCachedResponse} from './protocol-abi.js';
-import {createProtocolStreamScope} from './protocol-proof-request.js';
+import {isExtensionActionResponse, protectProtocolAction, protocolActionsForStream, protocolResponseForCache, protocolResponseForReturn, validateProtocolCachedResponse} from './protocol-abi.js';
+import {assertProtocolProofRequestActive, createProtocolStreamScope, withProtocolProofTransaction} from './protocol-proof-request.js';
 import {assertCompleteActionSearch, normalizeActionSearchSources} from './action-search.js';
 import {assertProtocolProjectionReady, assertProtocolRouteReady} from './protocol-state-readiness.js';
 import {assertProtocolActionRequestReady, assertProtocolActionStreamReady} from './protocol-action-query.js';
@@ -923,11 +923,11 @@ export function addApiRoute(
     });
 }
 
-export async function getCachedResponse(server: FastifyInstance, route: string, key: any) {
+export async function getCachedResponse(server: FastifyInstance, route: string, key: any, serializedKey?: string) {
     const chain = server.manager.chain;
     let resp, hash;
     if (server.manager.config.api.enable_caching) {
-        [resp, hash] = await getCacheByHash(server.redis, 'sequences-v1:' + route + JSON.stringify(key), chain);
+        [resp, hash] = await getCacheByHash(server.redis, 'sequences-v1:' + route + (serializedKey ?? JSON.stringify(key)), chain);
         if (resp) {
             resp = JSON.parse(resp);
             resp['cached'] = true;
@@ -982,6 +982,33 @@ function cachedCountMatchesContract(route: string, response: any): boolean {
 export async function timedQuery(
     queryFunction: (fastify: FastifyInstance, request: FastifyRequest) => Promise<any>,
     fastify: FastifyInstance, request: FastifyRequest, route: string): Promise<any> {
+    const t0 = process.hrtime.bigint();
+    // Routes may parse a string POST body in place. Every retry addresses the original
+    // cache input, and no callback receives a mutable reference to this key.
+    const cacheKey = JSON.stringify(request.method === 'POST' ? request.body : request.query) ?? 'undefined';
+    const execute = () => timedQueryAttempt(queryFunction, fastify, request, route, cacheKey);
+    // Retry the whole HTTP query, shaping and detached-output fence. A failed attempt
+    // cannot retain its grants, partially shaped actions, response or cache write.
+    const extension = isExtensionActionResponse(fastify, route);
+    const result = extension
+        ? await withProtocolProofTransaction(request, execute) : await execute();
+    if (extension) assertProtocolProofRequestActive(request);
+    if (result.cache) setCacheByHash(fastify, result.cache.hash, result.cache.response, result.cache.EX);
+    const response = result.response;
+    if (response) {
+        response['query_time_ms'] = bigint2Milliseconds(process.hrtime.bigint() - t0);
+        if (result.lastIndexedBlock) {
+            response['last_indexed_block'] = result.lastIndexedBlockNumber;
+            response['last_indexed_block_time'] = result.lastIndexedBlockTime;
+        }
+        return response;
+    }
+    return {};
+}
+
+async function timedQueryAttempt(
+    queryFunction: (fastify: FastifyInstance, request: FastifyRequest) => Promise<any>,
+    fastify: FastifyInstance, request: FastifyRequest, route: string, cacheKey: string) {
     assertProtocolRouteReady(fastify, route);
     assertProtocolActionRequestReady(fastify, request, route);
 
@@ -993,15 +1020,12 @@ export async function timedQuery(
 
     const query = request.query as any;
 
-    // get reference time in nanoseconds
-    const t0 = process.hrtime.bigint();
-
     // check for cached data, return the response hash if caching is enabled
     const [cachedResponse, hash] = await getCachedResponse(
         fastify,
         fastify.manager.config.settings?.protocol?.provider === 'extension'
             ? `${request.method}:${request.routeOptions.url ?? request.url.split('?')[0]}` : route,
-        request.method === 'POST' ? request.body : query
+        request.method === 'POST' ? request.body : query, cacheKey
     );
 
     let lastIndexedBlockNumber: number | null = null;
@@ -1017,13 +1041,7 @@ export async function timedQuery(
 
     if (cachedResponse && !query["ignoreCache"] && cachedCountMatchesContract(route, cachedResponse)
         && await validateProtocolCachedResponse(fastify, request, route, cachedResponse)) {
-        // add cached query time
-        cachedResponse['query_time_ms'] = bigint2Milliseconds(process.hrtime.bigint() - t0);
-        if (lastIndexedBlock) {
-            cachedResponse['last_indexed_block'] = lastIndexedBlockNumber;
-            cachedResponse['last_indexed_block_time'] = lastIndexedBlockTime;
-        }
-        return cachedResponse;
+        return {response: cachedResponse, lastIndexedBlock, lastIndexedBlockNumber, lastIndexedBlockTime};
     }
 
     // call query function
@@ -1031,26 +1049,8 @@ export async function timedQuery(
     const cacheResponse = await protocolResponseForCache(fastify, request, route, response);
     response = protocolResponseForReturn(fastify, route, cacheResponse);
 
-    // save response to cache
-    if (hash) {
-        let EX: number | undefined = undefined;
-        if (defaultRouteCacheMap[route]) {
-            EX = defaultRouteCacheMap[route];
-        }
-        setCacheByHash(fastify, hash, cacheResponse, EX);
-    }
-
-    // add normal query time
-    if (response) {
-        response['query_time_ms'] = bigint2Milliseconds(process.hrtime.bigint() - t0);
-        if (lastIndexedBlock) {
-            response['last_indexed_block'] = lastIndexedBlockNumber;
-            response['last_indexed_block_time'] = lastIndexedBlockTime;
-        }
-        return response;
-    } else {
-        return {};
-    }
+    return {response, lastIndexedBlock, lastIndexedBlockNumber, lastIndexedBlockTime,
+        ...(hash ? {cache: {hash, response: cacheResponse, EX: defaultRouteCacheMap[route] as number | undefined}} : {})};
 }
 
 export function chainApiHandler(fastify: FastifyInstance) {
