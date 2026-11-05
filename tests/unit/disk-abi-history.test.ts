@@ -59,14 +59,14 @@ test('catalog rejects wrong pins and revokes issued data views after artifact re
     await writeFile(join(f.directory,'blocks.bin'),Buffer.alloc(128));await expect(catalog.revalidate()).rejects.toThrow('changed or replaced');
 });
 
-async function retainedFixture(){
+async function retainedFixture(actionInputs?:any[]){
     const f=await artifact([final('alpha',1,'aa'),deploy(2,'9007199254740993','bb','1')]),memory=frontierMemoryClient(),chain='disk-proof';
     const bindings=new ProtocolSourceBindingStore(memory.client as any,chain),observations=new ProtocolAbiObservationStore(memory.client as any,chain);
     const contextId=(await bindings.prepareContext({schemaVersion:1,chainId,protocol:profile,schemaJson})).id;
     const source={chainId,blockNum:2,blockId:block(2),previousBlockId:block(1)},capture={kind:'unattested-ship-result-sections-v1' as const,schemaJson,blockHex:'01',tracesHex:'02',deltasHex:'03'};
     const captureSha256=protocolAbiCaptureDigest(source,capture),action=input('9007199254740994','1');
     const record={schemaVersion:1 as const,protocol:profile,source:{...source,inputSha256:captureSha256},capture,
-        observation:{status:'observed' as const,facts:{schemaVersion:1,actionInputs:[action],deployments:[],finalStates:[]}}};
+        observation:{status:'observed' as const,facts:{schemaVersion:1,actionInputs:actionInputs??[action],deployments:[],finalStates:[]}}};
     const prepared=await observations.prepare(record);
     const select=async(session:string,frameSha256='d'.repeat(64),captureSha=captureSha256)=>{
         const selected=(await bindings.prepareSelection({schemaVersion:1,contextId,readerSessionId:session,readerRole:'bulk',assignmentId:session,
@@ -111,6 +111,19 @@ test('publication refuses unknown durability receipts and cannot repair them thr
     await expect(publishDiskAbiSource(f.options,f.bindings,f.selected,()=>{})).rejects.toThrow();
     delete f.memory.faults.receipt;await publishDiskAbiSource(f.options,f.bindings,f.selected,()=>{});
     expect((await f.bindings.readPublishedSource(chainId,block(2))).selectionId).toBe(f.selected);
+});
+
+test('disk bindings enforce the reducer first-receiver and notification graph',async()=>{
+    const original=input('9007199254740994','1'),notification={...original,actionOrdinal:2,inputActionOrdinal:1,receiver:'notified',globalSequence:'9007199254740995'};
+    for(const changes of[{account:'beta'},{name:'other'},{rawHex:'02'},{transactionId:'b'.repeat(64)},{globalSequence:'9007199254740993'},
+        {receiver:'alpha'},{inputActionOrdinal:2}]){
+        const f=await retainedFixture([original,{...notification,...changes}]);
+        const reader=new ProtocolAbiProofReader({chainId,profile,store:new ProtocolAbiFrontierStore(f.memory.client as any,f.chain,0,{readOnly:true}),diskHistory:f.options});
+        await expect(reader.open(f.source,f.selected)).rejects.toMatchObject({code:'invalid_proof'});
+    }
+    const f=await retainedFixture([original,notification]),reader=new ProtocolAbiProofReader({chainId,profile,
+        store:new ProtocolAbiFrontierStore(f.memory.client as any,f.chain,0,{readOnly:true}),diskHistory:f.options});
+    const view=await reader.open(f.source,f.selected);expect((await reader.action(view,notification)).state.account).toBe('alpha');
 });
 
 test('one catalog baseline carries exact state into first live tail block and survives canonical fork recovery',async()=>{

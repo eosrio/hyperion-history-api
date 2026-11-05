@@ -467,7 +467,7 @@ export class ProtocolAbiProofReader {
         signal=proofConsumerSignal(signal);
         const binding=this.actionBinding(view,input,signal);
         const disk=this.diskIssued.get(view);
-        if(disk){const state=disk.states.get(binding.stateId??'');if(!state?.present||!state.abiHex)unavailable('abi_state_unavailable','Catalog ABI state is unknown, absent or empty');
+        if(disk){const state=disk.states.get(binding.stateId??'');if(!state?.present||!state.abiHex||state.account!==binding.account)unavailable('abi_state_unavailable','Catalog ABI state is unknown, absent or empty');
             await this.revalidate(view,{signal});return freeze({binding,state});}
         if(!binding.stateId)unavailable('abi_state_unavailable','Action input ABI state is unknown');
         const state=this.state(await this.retained(()=>this.options.store.readAccountState(binding.stateId!,signal),undefined,signal),view,binding.account);
@@ -552,14 +552,17 @@ export class ProtocolAbiProofReader {
             }else {
             if(record.observation.status!=='observed')unavailable('source_incomplete','Catalog source ABI observations are incomplete');
             const facts=record.observation.facts;assertProtocolAbiObservationFacts(facts);
-            const origins=new Map<string,ProtocolAbiAccountState|null>(),seen=new Set<string>();let prior=0n;
+            const origins=new Map<string,{input:ProtocolAbiActionInput;state:ProtocolAbiAccountState|null}>(),seen=new Set<string>();let prior=0n;
             for(const input of [...facts.actionInputs].sort((a,b)=>BigInt(a.globalSequence)<BigInt(b.globalSequence)?-1:1)){
                 requireProof(BigInt(input.globalSequence)>prior,'Catalog source has duplicate receipt sequence');prior=BigInt(input.globalSequence);
                 const own=input.transactionId+':'+input.actionOrdinal,origin=input.transactionId+':'+input.inputActionOrdinal;
                 requireProof(!seen.has(own),'Catalog source has duplicate action');seen.add(own);
                 let state:ProtocolAbiAccountState|null;
-                if(input.actionOrdinal===input.inputActionOrdinal){state=await disk.catalog.actionState(input,source.blockNum);origins.set(origin,state);}
-                else {requireProof(origins.has(origin),'Catalog source notification lacks its original input');state=origins.get(origin)!;}
+                if(input.actionOrdinal===input.inputActionOrdinal){requireProof(input.receiver===input.account,'Catalog notification cannot claim first-receiver identity');
+                    state=await disk.catalog.actionState(input,source.blockNum);origins.set(origin,{input,state});}
+                else {const original=origins.get(origin);requireProof(original&&input.receiver!==input.account
+                    &&original.input.account===input.account&&original.input.name===input.name&&original.input.rawHex===input.rawHex
+                    &&BigInt(original.input.globalSequence)<BigInt(input.globalSequence),'Catalog notification differs from its original input');state=original.state;}
                 const {rawHex,...rest}=input,stateId=state?state.source.observationId:null;if(stateId)states.set(stateId,state);
                 bindings.push({...rest,rawSha256:hash(Buffer.from(rawHex,'hex')),stateId});
             }
