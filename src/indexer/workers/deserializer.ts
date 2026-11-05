@@ -100,10 +100,12 @@ export default class MainDSWorker extends HyperionWorker {
             this.processMessages(payload).then(() => {
                 cb();
             }).catch((err) => {
-                hLog('NACK ALL', err.message);
-                if (this.ch && this.ch_ready) {
-                    this.ch.nackAll();
-                }
+                // In-transit deliveries can arrive after nackAll and local queue
+                // removal. Replace this owner before any stale tag can resume.
+                hLog('Block deserialization failed; supervised replacement required:', err.message);
+                this.ch_ready = false;
+                this.consumerQueue.kill();
+                return process.exit(1);
             });
         }, this.conf.prefetch.block);
 
