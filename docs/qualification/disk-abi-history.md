@@ -65,3 +65,59 @@ Wire genesis/blocks 2–4, and catalog-to-live-tail fork recovery. These are com
 controls with controlled transports, not evidence that Hyperion-3 has synced or that
 MongoDB/AtomicAssets parity is qualified. Activation and live replay acceptance are
 recorded separately.
+
+## Historical serving after the catalog cutoff (#456)
+
+The fixed catalog covers its irreversible prefix. Retained tail actions also need
+the historical certificate-address map once they are more than the ordinary
+256-block verified ancestry window behind the canonical ABI head. Without that
+map, previously decoded native actions become temporarily unavailable and delayed
+worker openings retain explicit raw/incomplete output. The block Explorer then
+shows its chain-header fallback because `/v1/trace_api/get_block` returns 503.
+
+Configure the indexer and API consistently. The initial Wire catch-up profile is:
+
+```json
+{
+  "protocol_abi_coordination": {
+    "max_pending_blocks": 128,
+    "recovery_window_blocks": 256,
+    "historical_certificates": {
+      "interface_version": 1,
+      "max_commits_per_drain": 256,
+      "max_commit_bytes_per_drain": 16777216,
+      "max_ms_per_drain": 3000,
+      "allow_pending_work": true
+    }
+  }
+}
+```
+
+`allow_pending_work` explicitly permits one bounded historical quantum after the
+normal live drain. Existing source ownership, generation, epoch, ancestry and
+activated-root CAS checks still apply. The absent option retains idle-only history
+maintenance and yields to queued live admissions. MainDS, action-pool and API
+readers all select the same historical path when configured.
+
+The commit and byte budgets bound the verified backward walk and the pending
+address queue. The deadline is checked around storage operations; already-issued
+I/O retains its normal durability ownership. During a walk, the bounded queue is
+reserved for that walk. Newer live heads remain ordinarily certified and are
+covered by the next incremental walk. A completed scheduling anchor advances only
+after queued addresses have been activated. It supplies no query membership:
+readers always verify the current activated immutable root and exact certificates.
+Source epoch, owner or generation changes discard this volatile progress.
+
+Apply the configuration with the reviewed release using a controlled single-writer
+restart. Confirm an activated current root covers an old post-cutoff action and
+that its transaction and trace-block routes return decoded history after the head
+advances beyond 256 blocks. Previously decoded stored documents need no rewrite.
+Raw/incomplete documents require bounded replay of their post-cutoff source range,
+using the normal source-equivalence checks and deterministic action IDs. This
+repairs the affected tail independently of the older Elasticsearch history and
+the catalog prefix.
+
+Qualification separately measures the configured maintenance budget under load.
+The regression controls cover sustained pending work, repeated queue overflow,
+all tail addresses beyond 256 blocks, actual MainDS/API reader openings, map
+preparation failure, deadline expiry, and source/owner fencing.

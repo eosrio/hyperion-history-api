@@ -9,14 +9,17 @@ export interface ProtocolAbiHistoryOptions {
     readonly maxCommitsPerDrain: number;
     readonly maxCommitBytesPerDrain: number;
     readonly maxMillisecondsPerDrain: number;
+    /** Explicit catch-up scheduling; the same source authority and work budgets still apply. */
+    readonly allowPendingWork?:true;
 }
 export function resolveProtocolAbiHistory(value: ProtocolAbiHistoryOptions | undefined): ProtocolAbiHistoryOptions | undefined {
     if (value === undefined) return undefined;
-    if (!value || Object.keys(value).sort().join(',') !== 'interfaceVersion,maxCommitBytesPerDrain,maxCommitsPerDrain,maxMillisecondsPerDrain'
+    if (!value || Object.keys(value).filter(key=>key!=='allowPendingWork').sort().join(',') !== 'interfaceVersion,maxCommitBytesPerDrain,maxCommitsPerDrain,maxMillisecondsPerDrain'
         || value.interfaceVersion !== 1
         || !Number.isSafeInteger(value.maxCommitsPerDrain) || value.maxCommitsPerDrain < 1 || value.maxCommitsPerDrain > 256
         || !Number.isSafeInteger(value.maxCommitBytesPerDrain) || value.maxCommitBytesPerDrain < 1024 || value.maxCommitBytesPerDrain > 128 * 1024 * 1024
-        || !Number.isSafeInteger(value.maxMillisecondsPerDrain) || value.maxMillisecondsPerDrain < 1 || value.maxMillisecondsPerDrain > 30_000)
+        || !Number.isSafeInteger(value.maxMillisecondsPerDrain) || value.maxMillisecondsPerDrain < 1 || value.maxMillisecondsPerDrain > 30_000
+        || value.allowPendingWork!==undefined&&value.allowPendingWork!==true)
         throw new Error('Invalid explicit historical ABI source budget');
     return Object.freeze({...value});
 }

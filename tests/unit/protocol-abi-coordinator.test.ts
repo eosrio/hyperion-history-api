@@ -1,4 +1,4 @@
-import {describe,expect,it} from 'bun:test';
+import {describe,expect,it,spyOn} from 'bun:test';
 import {createHash} from 'node:crypto';
 import {ProtocolAbiCoordinator, type ProtocolAbiCoordinatorOptions} from '../../src/indexer/protocol/abi-coordinator.js';
 import {ProtocolAbiFrontierStore} from '../../src/indexer/protocol/abi-frontier-store.js';
@@ -175,6 +175,67 @@ describe('canonical ABI runtime coordinator',()=>{
         expect(errors).toEqual([]);expect(control.historical).toBeDefined();
         expect(await f.store.readHistoricalCertificateAddress(historicalAddressIdentity(certificate,4))).toMatchObject({identity:{blockNum:4}});
         await expect(f.store.readHistoricalCertificateAddress(historicalAddressIdentity(certificate,3))).rejects.toThrow();
+    });
+    it('keeps default history behind pending work but allows bounded opt-in progress',async()=>{
+        for(const allowPendingWork of [false,true]){
+            const budget={interfaceVersion:1 as const,maxCommitsPerDrain:1,maxCommitBytesPerDrain:1024*1024,maxMillisecondsPerDrain:1000,...(allowPendingWork?{allowPendingWork:true as const}:{})};
+            const f=await fixture({diskAbiHistory:diskCatalog(),historicalCertificates:budget});
+            const first=await f.selected(4),blocked=await f.selected(5);await f.prepare(first);
+            expect((await f.admit(first)).status).toBe('accepted');expect((await f.admit(blocked)).status).toBe('accepted');
+            let reads=0;const read=f.store.readCommit.bind(f.store);
+            f.store.readCommit=async (...args:any[])=>{reads++;return read(...args as [string]);};
+            expect(await f.coordinator.drain()).toEqual({committed:1,pending:1});
+            const before=reads;await f.coordinator.drain();
+            if(allowPendingWork){expect(reads-before).toBeLessThanOrEqual(1);expect((await f.coordinator.inspect()).historical).toBeDefined();}
+            else expect((await f.coordinator.inspect()).historical).toBeUndefined();
+            await f.prepare(blocked);await f.coordinator.drain();
+            for(let n=0;n<8;n++)await f.coordinator.drain();
+            const control=await f.coordinator.inspect(),certificate=protocolAbiCertificateForControl(control);
+            expect(await f.store.readHistoricalCertificateAddress(historicalAddressIdentity(certificate,4))).toMatchObject({identity:{blockNum:4}});
+        }
+    });
+    it('uses a completed disk baseline only as a scheduling floor for the first live tail',async()=>{
+        const f=await fixture({diskAbiHistory:diskCatalog(),historicalCertificates:{interfaceVersion:1,maxCommitsPerDrain:4,
+            maxCommitBytesPerDrain:1024*1024,maxMillisecondsPerDrain:1000,allowPendingWork:true}});
+        const tail=await f.selected(4);await f.admit(tail);await f.coordinator.drain();const baseline=await f.coordinator.inspect();
+        expect((f.coordinator as any).historicalCompleted?.head).toEqual(baseline.head);
+        expect(baseline.historical).toBeUndefined();
+        await f.prepare(tail);await f.coordinator.drain();
+        for(let n=0;n<4;n++)await f.coordinator.drain();
+        const control=await f.coordinator.inspect(),commit:any=await f.store.readCommit(control.head!.commitId);
+        expect(commit.previousCommitId).toBe(baseline.head!.commitId);
+        expect(await f.store.readHistoricalCertificateAddress(historicalAddressIdentity(protocolAbiCertificateForControl(control),4))).toMatchObject({identity:{blockNum:4}});
+        await expect(f.store.readHistoricalCertificateAddress(historicalAddressIdentity(protocolAbiCertificateForControl(control),3))).rejects.toThrow();
+    });
+    it('does not complete a historical walk after partial map preparation and retries it',async()=>{
+        const errors:unknown[]=[],f=await fixture({diskAbiHistory:diskCatalog(),onHistoricalError:error=>errors.push(error),
+            historicalCertificates:{interfaceVersion:1,maxCommitsPerDrain:4,maxCommitBytesPerDrain:1024*1024,maxMillisecondsPerDrain:1000,allowPendingWork:true}});
+        const first=await f.selected(4),blocked=await f.selected(5);await f.prepare(first);await f.admit(first);await f.admit(blocked);
+        const prepare=f.store.prepareHistoricalAddressRoot.bind(f.store);let failed=false;
+        f.store.prepareHistoricalAddressRoot=async (...args:any[])=>{if(!failed){failed=true;throw new Error('controlled partial map failure');}return prepare(...args as Parameters<typeof prepare>);};
+        await f.coordinator.drain();expect(failed).toBe(true);expect((f.coordinator as any).historicalCompleted).toBeUndefined();
+        expect((await f.coordinator.inspect()).historical).toBeUndefined();expect(errors.length).toBeGreaterThan(0);
+        await f.coordinator.drain();expect((await f.coordinator.inspect()).historical).toBeDefined();
+        expect((f.coordinator as any).historicalCompleted?.head.blockNum).toBe(4);
+        const replacement=f.make('replacement-owner');await replacement.start();
+        expect((replacement as any).historicalCompleted).toBeUndefined();
+        expect((await replacement.inspect()).historical).toBeUndefined();
+    });
+    it('does not complete or activate a map when its work deadline expires',async()=>{
+        const f=await fixture({diskAbiHistory:diskCatalog(),historicalCertificates:{interfaceVersion:1,maxCommitsPerDrain:4,
+            maxCommitBytesPerDrain:1024*1024,maxMillisecondsPerDrain:1000,allowPendingWork:true}});
+        const first=await f.selected(4),blocked=await f.selected(5);await f.prepare(first);await f.admit(first);await f.admit(blocked);
+        const publish=f.store.prepareHistoricalAddressRoot.bind(f.store);let now=0,entered=false;
+        const clock=spyOn(performance,'now').mockImplementation(()=>now);
+        f.store.prepareHistoricalAddressRoot=async (...args:any[])=>{entered=true;now=2000;return publish(...args as Parameters<typeof publish>);};
+        try {await f.coordinator.drain();} finally {clock.mockRestore();f.store.prepareHistoricalAddressRoot=publish;}
+        expect(entered).toBe(true);expect((await f.coordinator.inspect()).historical).toBeUndefined();
+        expect((f.coordinator as any).historicalCompleted).toBeUndefined();
+        await f.coordinator.drain();expect((await f.coordinator.inspect()).historical).toBeDefined();
+        expect((f.coordinator as any).historicalCompleted?.head.blockNum).toBe(4);
+        await f.coordinator.revokeSource('session-a');
+        expect((f.coordinator as any).historicalCompleted).toBeUndefined();
+        expect((await f.coordinator.inspect()).historical).toBeUndefined();
     });
     it('does not publish an admitted tail block after the catalog changes',async()=>{
         const catalog=diskCatalog(),f=await fixture({diskAbiHistory:catalog}),next=await f.selected(4);await f.prepare(next);await f.admit(next);
@@ -439,3 +500,5 @@ describe('canonical ABI runtime coordinator',()=>{
         expect(await restarted.openSource(f.contextId,'session-c')).toMatchObject({resumeFromBlock:101});
     });
 });
+
+
