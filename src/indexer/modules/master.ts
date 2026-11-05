@@ -771,6 +771,16 @@ export class HyperionMaster {
         };
     }
 
+    private validateQualificationGenesisStart(): void {
+        if (!this.conf.settings.protocol_abi_coordination?.qualification_genesis_start) return;
+        const indexer=this.conf.indexer;
+        if (!/^[a-z0-9][a-z0-9_-]{0,127}$/.test(this.chain) || this.conf.settings.protocol?.provider!=='extension'
+            || !indexer.live_reader || !indexer.live_only_mode || indexer.start_on!==1 || indexer.stop_on!==0
+            || this.conf.settings.preview || indexer.rewrite || indexer.purge_queues || indexer.disable_reading
+            || !indexer.fetch_block || !indexer.fetch_traces || !indexer.fetch_deltas)
+            throw new Error('Qualification genesis requires a fresh live-only native source with full block and delta fetch');
+    }
+
     private async initializeProtocolAbiCoordinator(): Promise<void> {
         // A bulk-only process must never acquire or replace live-source ownership.
         if ((this.conf.settings.protocol?.provider !== 'extension' && this.engineering?.exactActionSequenceStorage !== true)
@@ -779,6 +789,12 @@ export class HyperionMaster {
             const selected = await loadChainProtocol(this.conf.settings.protocol, {sourceEvidence: true});
             const replicas = this.conf.settings.es_replicas ?? 0;
             const options = this.conf.settings.protocol_abi_coordination;
+            if (options?.qualification_genesis_start) {
+                this.validateQualificationGenesisStart();
+                if (typeof selected.provider.verifyNativeGenesis!=='function')
+                    throw new Error('Qualification genesis requires a native genesis verifier');
+
+            }
             const coordinator = new ProtocolAbiCoordinator({chainId: this.manager.conn.chains[this.chain].chain_id,
                 profile: {id: selected.id, profileId: selected.provider.profileId, components: selected.components ?? []},
                 ownerId: randomUUID(), bindings: new ProtocolSourceBindingStore(this.esClient, this.chain, replicas),
@@ -787,6 +803,7 @@ export class HyperionMaster {
                 verifyNativeGenesis: selected.provider.verifyNativeGenesis?.bind(selected.provider),
                 nativeActionInterfaceVersion: selected.provider.nativeActions?.interfaceVersion,
                 maxPendingBlocks: options?.max_pending_blocks, recoveryWindowBlocks: options?.recovery_window_blocks,
+                qualificationGenesisStart: options?.qualification_genesis_start,
                 historicalCertificates: options?.historical_certificates && {interfaceVersion: 1,
                     maxCommitsPerDrain: options.historical_certificates.max_commits_per_drain,
                     maxCommitBytesPerDrain: options.historical_certificates.max_commit_bytes_per_drain,
@@ -1946,6 +1963,7 @@ export class HyperionMaster {
 
     // Main start function
     async runMaster() {
+        this.validateQualificationGenesisStart();
         // config checks
         if (!this.conf.scaling.max_queue_limit) {
             hLog(`scaling.max_queue_limit is not defined!`);

@@ -1269,6 +1269,18 @@ export default class StateReader extends HyperionWorker {
         if (this.usesProtocolSourceBindings && this.isLiveReader) {
             if (!this.coordinatorSource?.generation) return;
             if (this.coordinatorResumeFromBlock !== null && this.coordinatorResumeFromBlock !== undefined) start = this.coordinatorResumeFromBlock;
+            if (this.conf.settings.protocol_abi_coordination?.qualification_genesis_start
+                && start===1 && (!this.sourceRangeAvailable(1)
+                || ![1,2].includes(Number(this.shipInitStatus.trace_begin_block))
+                || Number(this.shipInitStatus.chain_state_begin_block)!==1
+                || !Number.isSafeInteger(Number(this.shipInitStatus.chain_state_end_block))
+                || Number(this.shipInitStatus.chain_state_end_block)<=1
+                || typeof this.protocol.verifyNativeGenesis!=='function'
+                || this.baseRequest.fetch_block!==true || this.baseRequest.fetch_traces!==true
+                || this.baseRequest.fetch_deltas!==true)) {
+                this.failSourceRecovery('Canonical genesis is outside verified SHiP retention');
+                return;
+            }
             this.coordinatorResumeFromBlock = undefined;
         }
         this.rangeRequested = true;

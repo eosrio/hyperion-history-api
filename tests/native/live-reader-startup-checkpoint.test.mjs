@@ -2,6 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
+import {frontierMemoryClient} from '../unit/protocol-frontier-memory.mjs';
+const {ProtocolAbiCoordinator}=await import('../../build/indexer/protocol/abi-coordinator.js');
+const {ProtocolAbiFrontierStore}=await import('../../build/indexer/protocol/abi-frontier-store.js');
+const {ProtocolSourceBindingStore}=await import('../../build/indexer/protocol/source-bindings.js');
+const {ProtocolAbiObservationStore}=await import('../../build/indexer/protocol/abi-observation-store.js');
 
 // Pure VM caller regression: real source methods, inert cargo/cluster/HTTP and a
 // manually advanced clock. No addon, worker, socket, broker or real timer loads.
@@ -11,7 +16,8 @@ const source = {
   master: read('indexer/modules/master.js'),
   reader: read('indexer/workers/state-reader.js'),
   progress: read('indexer/helpers/reader-progress.js'),
-  controller: read('indexer/modules/controller.js')
+  controller: read('indexer/modules/controller.js'),
+  monitor: read('indexer/modules/queueMonitor.js')
 };
 function load(text, name, globals) {
   const script = text.replace(/^import[\s\S]*?;\r?\n/gm, '').replace(/^export (?:default )?/gm, '')
@@ -96,7 +102,7 @@ function fixture() {
       }
     };
   }
-  return {master,info,forks,clock,sends,reader};
+  return {master,context,info,forks,clock,sends,reader};
 }
 async function started() {
   const f = fixture(); await f.master.setupReaders(); f.master.launchWorkers(); return f;
@@ -159,4 +165,87 @@ test('reversible and replaced-publisher confirmations never create a checkpoint'
   r.publish(901,899); r.value.cch = {sendToQueue() {throw Error('Not used');}}; r.confirms[1](null);
   assert.match(r.failures[0],/replaced publisher/);
   assert.equal(f.info().last_processed_block,undefined);
+});
+
+test('fresh coordinator boundary drives the actual live request, respecting pressure and retention',async()=>{
+  const chainId='1'.repeat(64),profile={id:'wire',profileId:'seed-test',components:[{id:'wire-node',runtime:'node',version:'1.0.0',sourceRevision:'a'.repeat(40),sha256:'b'.repeat(64)}]};
+  const memory=frontierMemoryClient(),bindings=new ProtocolSourceBindingStore(memory.client,'wire-seed'),observations=new ProtocolAbiObservationStore(memory.client,'wire-seed'),store=new ProtocolAbiFrontierStore(memory.client,'wire-seed');
+  const contextId=(await bindings.prepareContext({schemaVersion:1,chainId,protocol:profile,schemaJson:'{}'})).id;
+  const coordinator=new ProtocolAbiCoordinator({chainId,profile,ownerId:'owner',bindings,observations,store,qualificationGenesisStart:true,verifyNativeGenesis:()=>false});await coordinator.start();
+  const f=await started(),r=f.reader();r.value.sourceContext.id=contextId;r.value.coordinatorRpc={open:()=>coordinator.openSource(contextId,'session')};
+  r.value.conf.settings.protocol_abi_coordination={qualification_genesis_start:true};r.value.protocol={verifyNativeGenesis:()=>false};r.value.baseRequest.fetch_block=true;r.value.baseRequest.fetch_traces=true;r.value.baseRequest.fetch_deltas=true;
+  await r.value.openCoordinatorSource();assert.equal((await coordinator.inspect()).head,null);
+  r.value.queuePressurePaused=true;r.value.backpressurePaused=true;r.value.allowRequests=false;
+  r.value.handleStatusResult({chain_state_begin_block:1,trace_begin_block:2,chain_state_end_block:2000});
+  assert.equal(r.requests.length,0);r.value.queuePressurePaused=false;r.value.updateReaderPressure();
+  assert.equal(r.requests.at(-1)[1].start_block_num,1);assert.equal(f.info().last_processed_block,undefined);
+});
+test('actual queue monitor withholds and releases the genesis request',async()=>{
+  const f=await started(),r=f.reader();r.value.conf.settings.protocol_abi_coordination={qualification_genesis_start:true};
+  r.value.coordinatorRpc={open:async()=>({generation:'generation',resumeFromBlock:1}),onMessage:()=>false};
+  r.value.protocol={verifyNativeGenesis:()=>false};Object.assign(r.value.baseRequest,{fetch_block:true,fetch_traces:true,fetch_deltas:true});
+  await r.value.openCoordinatorSource();
+  const {Type:Monitor}=load(source.monitor,'HyperionQueueMonitor',{console,hLog(){},Date});
+  Object.assign(f.master,{chain:'wire',conf:{scaling:{block_queue_limit:10000,max_queue_limit:100000,resume_trigger:5000,max_autoscale:0}},
+    manager:{async checkQueueSize(q){return q==='wire:ds_pool:1'?depth:0;}}});
+  let depth=100000;f.master.workerMap.push({worker_role:'deserializer',worker_queue:'wire:live_blocks'},{worker_role:'ds_pool_worker',local_id:1});
+  f.master.liveReader.wref.send=(value,done)=>{r.value.onIpcMessage(value);done?.(null);};
+  const monitor=new Monitor(f.master);f.master.queueMonitor=monitor;f.master.syncReaderPressure(f.master.liveReader.wref);
+  await monitor.checkQueues({},1000000);r.value.handleStatusResult({chain_state_begin_block:1,trace_begin_block:2,chain_state_end_block:2000});
+  assert.equal(r.requests.length,0);depth=0;await monitor.checkQueues({},1000000);
+  assert.equal(r.requests.at(-1)[1].start_block_num,1);
+});
+
+test('unsupported genesis source or retention refuses the actual live request',async()=>{
+  const variants=[
+    {status:{chain_state_begin_block:1,trace_begin_block:3,chain_state_end_block:2000}},
+    {status:{chain_state_begin_block:1,trace_begin_block:0,chain_state_end_block:2000}},
+    {status:{chain_state_begin_block:1,trace_begin_block:-1,chain_state_end_block:2000}},
+    {status:{chain_state_begin_block:1,trace_begin_block:1.5,chain_state_end_block:2000}},
+    {status:{chain_state_begin_block:2,trace_begin_block:2,chain_state_end_block:2000}},
+    {status:{chain_state_begin_block:1,trace_begin_block:2,chain_state_end_block:1}},
+    {status:{chain_state_begin_block:1,trace_begin_block:1}},
+    {setting:'fetch_block'}, {setting:'fetch_traces'}, {setting:'fetch_deltas'}, {unsupported:true}
+  ];
+  for(const variant of variants){
+    const f=await started(),r=f.reader(),failures=[];r.value.coordinatorRpc={open:async()=>({generation:'generation',resumeFromBlock:1})};
+    r.value.conf.settings.protocol_abi_coordination={qualification_genesis_start:true};r.value.protocol=variant.unsupported?{}:{verifyNativeGenesis:()=>false};r.value.baseRequest.fetch_block=true;r.value.baseRequest.fetch_traces=true;r.value.baseRequest.fetch_deltas=true;
+    if(variant.setting)r.value.baseRequest[variant.setting]=false;
+    r.value.failSourceRecovery=reason=>failures.push(reason);await r.value.openCoordinatorSource();
+    r.value.handleStatusResult(variant.status??{chain_state_begin_block:1,trace_begin_block:2,chain_state_end_block:2000});
+    assert.equal(r.requests.length,0);assert.match(failures[0],/outside verified SHiP retention/);
+  }
+});
+
+test('recovery and pressure release cannot bypass qualified genesis retention checks',async()=>{
+  for(const pressured of [false,true]) {
+    const f=await started(),r=f.reader(),failures=[];r.value.conf.settings.protocol_abi_coordination={qualification_genesis_start:true};
+    r.value.coordinatorRpc={open:async()=>({generation:'generation',resumeFromBlock:1})};r.value.protocol={verifyNativeGenesis:()=>false};
+    Object.assign(r.value.baseRequest,{fetch_block:true,fetch_traces:true,fetch_deltas:true});r.value.failSourceRecovery=reason=>failures.push(reason);
+    await r.value.openCoordinatorSource();r.value.recovery=true;
+    r.value.queuePressurePaused=pressured;r.value.backpressurePaused=pressured;
+    r.value.handleStatusResult({chain_state_begin_block:1,trace_begin_block:3,chain_state_end_block:2000});
+    if(pressured){r.value.queuePressurePaused=false;r.value.updateReaderPressure();}
+    assert.equal(r.requests.length,0);assert.match(failures[0],/outside verified SHiP retention/);
+  }
+});
+
+test('master validates explicit genesis qualification before initializing the real coordinator',async()=>{
+  const f=fixture(),chain='wire-qualification-fixture',chainId='1'.repeat(64);
+  f.master.chain=chain;f.master.conf={settings:{chain,protocol:{provider:'extension',package:'wire',profileId:'seed-test'},protocol_abi_coordination:{qualification_genesis_start:true}},
+    indexer:{live_reader:true,live_only_mode:true,start_on:1,stop_on:0,rewrite:false,purge_queues:false,disable_reading:false,fetch_block:true,fetch_traces:true,fetch_deltas:true},scaling:{ds_threads:0}};
+  f.master.manager={conn:{chains:{[chain]:{chain_id:chainId}}}};
+  const memory=frontierMemoryClient();f.master.esClient=memory.client;
+  const profile={id:'wire',profileId:'seed-test',components:[{id:'wire-node',runtime:'node',version:'1.0.0',sourceRevision:'a'.repeat(40),sha256:'b'.repeat(64)}]};
+  Object.assign(f.context,{loadChainProtocol:async()=>({id:profile.id,components:profile.components,provider:{profileId:profile.profileId,verifyNativeGenesis:()=>false}}),
+    randomUUID:()=> 'qualified-owner',ProtocolAbiCoordinator:class extends ProtocolAbiCoordinator {constructor(options){super({...options,profile:structuredClone(options.profile)});}},ProtocolAbiFrontierStore,ProtocolSourceBindingStore,ProtocolAbiObservationStore,setInterval:()=>({unref(){}})});
+  f.master.failProtocolAbiCoordinator=()=>{};
+  f.master.validateQualificationGenesisStart();
+  await f.master.initializeProtocolAbiCoordinator();
+  const control=await f.master.protocolAbiCoordinator.inspect();assert.equal(control.head,null);assert.equal(control.replayFromBlock,1);
+  for(const patch of [{live_reader:false},{live_only_mode:false},{start_on:2},{stop_on:4},{rewrite:true},{purge_queues:true},{fetch_block:false},{fetch_traces:false},{fetch_deltas:false}]){
+    const previous=f.master.conf.indexer;f.master.conf.indexer={...previous,...patch};assert.throws(()=>f.master.validateQualificationGenesisStart());f.master.conf.indexer=previous;
+  }
+  f.master.conf.settings.preview=true;assert.throws(()=>f.master.validateQualificationGenesisStart());f.master.conf.settings.preview=false;
+  f.master.chain='bad*namespace';assert.throws(()=>f.master.validateQualificationGenesisStart());
 });

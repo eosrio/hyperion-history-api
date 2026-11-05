@@ -34,6 +34,8 @@ export interface ProtocolAbiCoordinatorOptions {
     chainId:string; profile:ProtocolSourceProfile; ownerId:string; bindings:ProtocolSourceBindingStore;
     observations:ProtocolAbiObservationStore; store:ProtocolAbiFrontierStore;
     maxPendingBlocks?:number; recoveryWindowBlocks?:number;
+    /** Explicit new qualification namespace request boundary, never canonical proof. */
+    qualificationGenesisStart?:true;
     verifyNativeGenesis?:ProtocolNativeGenesisVerifier;
     /** Native-aware epochs keep this requirement in immutable canonical commits, including failed extraction. */
     nativeActionInterfaceVersion?:1;
@@ -83,6 +85,8 @@ export class ProtocolAbiCoordinator {
 
     constructor(private readonly options:ProtocolAbiCoordinatorOptions) {
         if(!hex64.test(options.chainId)||!text(options.ownerId))throw new Error('Invalid ABI coordinator identity');
+        if(options.qualificationGenesisStart===true&&typeof options.verifyNativeGenesis!=='function')
+            throw new Error('Qualification genesis requires native genesis verification');
         if(options.nativeActionInterfaceVersion!==undefined&&options.nativeActionInterfaceVersion!==1)
             throw new Error('Unsupported native action interface marker');
         protocolSourceContextId({schemaVersion:1,chainId:options.chainId,protocol:options.profile,schemaJson:'{}'});
@@ -167,8 +171,11 @@ export class ProtocolAbiCoordinator {
         if(this.started)throw new Error('ABI coordinator owner may only be acquired once');
         const stored=await this.options.store.readControl();
         const previous=stored?this.validateControl(stored.value):null;
+        if(this.options.qualificationGenesisStart&&previous&&!this.sameProfile(previous.profile))
+            throw new Error('Qualification genesis cannot adopt a different ABI profile');
         let head=previous&&this.sameProfile(previous.profile)?previous.head:null;
-        let replayFromBlock=previous&&this.sameProfile(previous.profile)?previous.replayFromBlock:null;
+        let replayFromBlock=previous&&this.sameProfile(previous.profile)?previous.replayFromBlock
+            :this.options.qualificationGenesisStart?1:null;
         let reason=previous?.gap??null;
         if(previous&&!this.sameProfile(previous.profile))reason=gap('protocol_profile_changed','ABI knowledge requires initialization under the installed profile',null);
         if(head){
