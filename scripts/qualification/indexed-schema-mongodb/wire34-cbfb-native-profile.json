@@ -4,7 +4,7 @@
   "qualificationOnly": true,
   "base": "97edbdc56de9a2e54ff60769544e6e09a8d0a5aa",
   "assembly": "indexed-linear-history-sdk-cbfb-native-1825-engineering-v1",
-  "baseAssemblySha256": "510a0d21a43c120ce09fb5288764fd5cc2e8ea9454394d0b6ad6b6f8c2192d23",
+  "baseAssemblySha256": "3c82b32c076f13661da41f57dafe08e591f77aa100b6eec4527c3f781a9d5610",
   "limits": {
     "readAttempts": 12,
     "responseRecords": 8,
@@ -563,8 +563,8 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.json",
-      "bytes": 193983,
-      "sha256": "d3124aaf8720db705b24fd1343b70c2afa0d779e4a06dab79bbaf20e05b2bcb8"
+      "bytes": 194373,
+      "sha256": "7c7003fa167648fc20dc767da354aef80053dd24cc6056f7e9b2a32044464fc6"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.mjs",
@@ -5656,7 +5656,7 @@
     "observation": {
       "files": 147,
       "edges": 496,
-      "sha256": "098bba138bdc22e7018de583a14f30b3ec6b768e52b978e1f9a202e79e6fc26a"
+      "sha256": "700c056646786bd0a6e632a28576e51f86ec7686c29f64867bc88f11526e6165"
     }
   },
   "provenance": {
