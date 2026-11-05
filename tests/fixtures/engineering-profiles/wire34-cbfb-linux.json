@@ -4278,7 +4278,7 @@
       {
         "path": "tests/native/wire34-cbfb-codec-profile.test.mjs",
         "bytes": 8312,
-        "sha256": "8e2d9e2ca899925524383e8a215ada783fb1fd780f40ccac312351a4b9427be9"
+        "sha256": "ffe5e0906ff4a0e30f0d3d343d1b9d6cfd6b147c7f27852e6aef6ffb01321929"
       },
       {
         "path": "tests/native/wire34-cbfb-current-stateful-source-profile.test.mjs",
