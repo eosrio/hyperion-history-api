@@ -622,8 +622,8 @@
       },
       {
         "path": "scripts/qualification/atomic-managed-wire34-cbfb/README.md",
-        "bytes": 2677,
-        "sha256": "393ad32bf020b3a25167b32d328c6026e24208a80c05895b0356ae523909de8c"
+        "bytes": 2984,
+        "sha256": "90ed1e7ed44075cfdf2b011144d32fac1ab393fecea2b3c0ddccba536c4f0d77"
       },
       {
         "path": "scripts/qualification/atomic-managed-wire34-cbfb/assembly.mjs",
@@ -658,7 +658,7 @@
       {
         "path": "scripts/qualification/atomic-managed-wire34-cbfb/profile.json",
         "bytes": 543647,
-        "sha256": "d270f8b6f8e5be574aa09c36e7bb0839de24a257cf67d320b2369cdaca04f988"
+        "sha256": "a626b7d0aebfd3634113b18bc8753f9e8d3ca9d21eebe79d990b9d13ac1e7771"
       },
       {
         "path": "scripts/qualification/atomic-managed-wire34-cbfb/runner.mjs",
@@ -5696,7 +5696,7 @@
         "sha256": "1945027163c553cd08421dd1f8caa08fab025c44279883ed9e6c3dec0e8c6408"
       }
     ],
-    "totalBytes": 15975848,
+    "totalBytes": 15976155,
     "trackedPaths": [
       ".bun-version",
       ".gitattributes",

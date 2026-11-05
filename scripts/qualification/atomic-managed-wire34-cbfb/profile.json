@@ -12962,8 +12962,8 @@
     "harness": [
       {
         "path": "README.md",
-        "bytes": 2677,
-        "sha256": "393ad32bf020b3a25167b32d328c6026e24208a80c05895b0356ae523909de8c"
+        "bytes": 2984,
+        "sha256": "90ed1e7ed44075cfdf2b011144d32fac1ab393fecea2b3c0ddccba536c4f0d77"
       },
       {
         "path": "assembly.mjs",
