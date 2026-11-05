@@ -683,7 +683,7 @@
       {
         "path": "scripts/qualification/atomic-managed-wire34-cbfb/profile.json",
         "bytes": 545574,
-        "sha256": "1ac3b090251cde50fd6b7c7d758d187c1f2c0179f8d8a5b61ec8621cfd063deb"
+        "sha256": "c9c90fc91c3b7a0538e894256a0afa78b8e3792f8fe96eff3eaf92a5c3c0d870"
       },
       {
         "path": "scripts/qualification/atomic-managed-wire34-cbfb/runner.mjs",
@@ -1188,7 +1188,7 @@
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.json",
         "bytes": 194770,
-        "sha256": "80eb991921c2fd27aa3e9aabf1d3159defe8ebd1f0c791593821e9af34b969fb"
+        "sha256": "093f57b20a7252b8971021c6ab3a391c402cc600bcaa9b8cc7d61ac218f8874b"
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.mjs",
@@ -1238,7 +1238,7 @@
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-profile.json",
         "bytes": 213033,
-        "sha256": "460de33d89758ea8b1276018243ea4d37432f80dd723b9c997ac6748607c3932"
+        "sha256": "b3e98236b4373ab44cfbc7d299b21accb8487cfb8e6a05f7d00fab8b45392029"
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-routes.json",
@@ -3017,8 +3017,8 @@
       },
       {
         "path": "src/indexer/modules/config.ts",
-        "bytes": 4691,
-        "sha256": "f000d83c89714e875ccd41f7a15eefb4828ea5a7050dbda25cf2583599370958"
+        "bytes": 4959,
+        "sha256": "30611ea974f9dbb1c8efa3ccaa4073cba866adb1d0e7bb1b096bf6cad236d3a8"
       },
       {
         "path": "src/indexer/modules/controller.ts",
@@ -3047,8 +3047,8 @@
       },
       {
         "path": "src/indexer/modules/master.ts",
-        "bytes": 123362,
-        "sha256": "3f715f853a5df030c4de58bf0c1528b1660c15b8522fc79a9f6199949262dd23"
+        "bytes": 124949,
+        "sha256": "cb512e77ec9fc908e7aac7f24befce54901c0fb1f04a5338d2e53d48090b3897"
       },
       {
         "path": "src/indexer/modules/parsers/3.2-parser.ts",
@@ -3327,8 +3327,8 @@
       },
       {
         "path": "src/indexer/workers/state-reader.ts",
-        "bytes": 90416,
-        "sha256": "935297b92c9a64bdfbeca810ac255890c62c606b4629dcd4d769f83cdd2e7ee9"
+        "bytes": 90495,
+        "sha256": "dac3023308ec76d81c978903e2c669ad86377e587ee01c930418e8adc7d5ba44"
       },
       {
         "path": "src/indexer/workers/ws-router.ts",
@@ -5592,13 +5592,13 @@
       },
       {
         "path": "tests/unit/state-reader-live-backpressure.mjs",
-        "bytes": 50411,
-        "sha256": "ac46a525f5f48e150084adb6b02ba0fbd84ad2609e71eb44a88ded7d270b9eb1"
+        "bytes": 54613,
+        "sha256": "b81007f98c47e8ba11b8c4bfe6b6b41dea827f985b0c098abe3bb2fe1291032c"
       },
       {
         "path": "tests/unit/state-reader-live-backpressure.test.ts",
-        "bytes": 2115,
-        "sha256": "eca339ebfe4aadfa20b4c764ebc5f48bb620548b4f3c15c25a79688d04778614"
+        "bytes": 2186,
+        "sha256": "dc09b018e5465a76c2e153c7c18c0631c68e21ff3f3dedd4ad2cd906718d0876"
       },
       {
         "path": "tests/unit/stateful-abi-epoch.test.ts",
@@ -5936,7 +5936,7 @@
         "sha256": "1945027163c553cd08421dd1f8caa08fab025c44279883ed9e6c3dec0e8c6408"
       }
     ],
-    "totalBytes": 16362540,
+    "totalBytes": 16368747,
     "trackedPaths": [
       ".bun-version",
       ".gitattributes",
@@ -10226,13 +10226,13 @@
       },
       {
         "path": "indexer/modules/config.js",
-        "bytes": 4290,
-        "sha256": "a694765ea7730a6dc7fe2b20b54a55021befb6d5839f1d7fd949918048fbdbed"
+        "bytes": 4648,
+        "sha256": "3f47e6fbf8b2b88e67718345f96867ba7f149c7a17608a4097c3a64e1c099eb3"
       },
       {
         "path": "indexer/modules/config.js.map",
-        "bytes": 4335,
-        "sha256": "3fe5a033542fa741ebd96ae976fef43c13105d17bd88f3701d7ebf5f4bb7033a"
+        "bytes": 4602,
+        "sha256": "34dbda23f7ec1747721d9bcfe058e8d4c76418a799ac5b6a78af0a2fbf1cd989"
       },
       {
         "path": "indexer/modules/controller.js",
@@ -10286,13 +10286,13 @@
       },
       {
         "path": "indexer/modules/master.js",
-        "bytes": 118508,
-        "sha256": "b165ca044890a942c3a7cd07a8194c96a62cbd105126de96d9d2d6e516ebf21f"
+        "bytes": 120066,
+        "sha256": "7adb1399680888365a60fced485e72d75137754ed8957ca5e298097286394cde"
       },
       {
         "path": "indexer/modules/master.js.map",
-        "bytes": 97789,
-        "sha256": "f3e7a206975a78ece11a2e14b67f0d807501ff7addef93f6f04a217bdd0ddb8e"
+        "bytes": 98903,
+        "sha256": "e637d02ca252b67c59a3eb8a108541bfda1446c6d8e8b2841341f7595d49831a"
       },
       {
         "path": "indexer/modules/parsers/3.2-parser.js",
@@ -10846,13 +10846,13 @@
       },
       {
         "path": "indexer/workers/state-reader.js",
-        "bytes": 88530,
-        "sha256": "8733740260687113a82c95affa096a5fea013e695c16b641edff41b75757ba4c"
+        "bytes": 88613,
+        "sha256": "5da964c12e00acb9fc7dd2852892681c30d930061967913300d8a15b7ba930f5"
       },
       {
         "path": "indexer/workers/state-reader.js.map",
-        "bytes": 69120,
-        "sha256": "d1ba1eda09f8a33919169c518a8119bea877e6fe4166e28c46e54826ac2380a1"
+        "bytes": 69204,
+        "sha256": "04789216c7b73d41dab32addb85d554a6bd824f210e96aa9e0cf6eafd8375ee1"
       },
       {
         "path": "indexer/workers/ws-router.js",

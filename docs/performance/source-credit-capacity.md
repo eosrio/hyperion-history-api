@@ -12,6 +12,10 @@ is inferred or enabled by default. The first slice requires an extension protoco
 and repair readers are not supported by this option. The explicit budget must cover the
 existing `prefetch.read` window multiplied by the existing `max_ws_payload_mb` frame cap.
 The component fixture's 8 MiB/one-MiB-frame values are test inputs, not a selected testnet budget.
+The runtime option is fixed for the master lifetime. Contract reload validates it before
+changing configuration or filters; mode, active window/frame or budget changes require a
+controlled restart. Rejected changes fence new reader forks until the original option is
+restored or the master restarts. Ordinary mapping reload with capacity absent remains supported.
 
 The actual master authenticates the physical `Worker` and holds a shared reservation pool
 across current and retiring reader objects. A source request is sent only after its complete

@@ -51,7 +51,8 @@ export default class StateReader extends HyperionWorker {
     private creditCapacityOptions?: SourceCreditCapacityOptions | null;
     private sourceCreditState?: SourceCreditReaderState;
     private sourceCreditOptions(): SourceCreditCapacityOptions | null {
-        if (this.creditCapacityOptions === undefined) this.creditCapacityOptions = resolveSourceCreditCapacity(this.conf) ?? null;
+        if (this.creditCapacityOptions === undefined) this.creditCapacityOptions = this.conf?.settings?.source_credit_capacity === undefined
+            ? null : resolveSourceCreditCapacity(this.conf) ?? null;
         return this.creditCapacityOptions;
     }
     private get usesOrderedSourceIngress(): boolean {return this.usesProtocolSourceBindings || this.actionSourceAdmissionEnabled;}

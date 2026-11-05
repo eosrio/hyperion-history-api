@@ -21,8 +21,8 @@ const readers = [];
 const scenario = process.argv[2];
 const capacityScenario = scenario.startsWith('capacity-');
 const previousStartBlock = process.env.worker_start_block;
-const originalWireFrame = !scenario.startsWith('legacy') && scenario !== 'socket-callbacks' && scenario !== 'capacity-physical-exit';
-const actualReaderMonitorAndEncoding = scenario !== 'socket-callbacks' && scenario !== 'capacity-physical-exit';
+const originalWireFrame = !scenario.startsWith('legacy') && !['socket-callbacks','capacity-physical-exit','capacity-config-lifecycle'].includes(scenario);
+const actualReaderMonitorAndEncoding = !['socket-callbacks','capacity-physical-exit','capacity-config-lifecycle'].includes(scenario);
 const controlledWsUrl = new URL('./state-reader-live-backpressure-ws.mjs', import.meta.url).href;
 const hooks = scenario.includes('socket-') ? registerHooks({resolve(specifier, context, nextResolve) {
     if (specifier === 'ws' && context.parentURL?.endsWith('/connections/state-history.js'))
@@ -182,7 +182,52 @@ try {
             capacityMaster, capacityRequests, capacityReplies, retiringReader, capacityAutomatic(value) {capacityAutomatic = value;},
             automatic(value) {automatic = value;}, writable(value) {writable = value;}};
     }
-    if (scenario === 'capacity-physical-exit') {
+    if (scenario === 'capacity-config-lifecycle') {
+        const {ConfigurationModule} = await import('../../build/indexer/modules/config.js');
+        const initial = enabled => {
+            const value = structuredClone(config); value.features={contract_state:{contracts:{sample:{}}}};
+            if (!enabled) delete value.settings.source_credit_capacity;
+            return value;
+        };
+        const controlled = configuration => {
+            const cm=Object.assign(Object.create(ConfigurationModule.prototype),{config:configuration,
+                EOSIO_ALIAS:'kept-alias',proc_prefix:'kept-prefix',disabledWorkers:new Set(),filters:{
+                    action_blacklist:new Set(['kept']),action_whitelist:new Set(),delta_blacklist:new Set(),delta_whitelist:new Set()}});
+            let parsed=0;
+            const master=Object.assign(Object.create(HyperionMaster.prototype),{conf:configuration,cm,workerMap:[],
+                manager:{mongodbClient:{db:()=>({})},conn:{mongodb:{database_prefix:'controlled'}},chain},
+                async parseContractStateConfig(){parsed++;}});
+            master.sourceCreditConfiguration();
+            return {master,cm,configuration,parsed:()=>parsed};
+        };
+        const savedConfigPath=process.env.CONFIG_JSON, candidatePath=join(directory,'capacity-reload.json');
+        const reload=async(h,next)=>{writeFileSync(candidatePath,JSON.stringify(next));process.env.CONFIG_JSON=candidatePath;
+            try{return await h.master.reloadContractConfig('sample');}finally{process.env.CONFIG_JSON=savedConfigPath;}};
+        const untouched=h=>{assert.equal(h.master.conf,h.configuration);assert.equal(h.cm.config,h.configuration);
+            assert.equal(h.cm.EOSIO_ALIAS,'kept-alias');assert.equal(h.cm.proc_prefix,'kept-prefix');
+            assert.deepEqual([...h.cm.filters.action_blacklist],['kept']);assert.equal(h.parsed(),0);};
+        const disabled=controlled(initial(false));
+        const worker={on(){},send(){}};let forks=0;const originalFork=cluster.fork;
+        disabled.master.workerMap=[{worker_id:1,worker_role:'continuous_reader'}];
+        try{cluster.fork=()=>{forks++;return worker;};disabled.master.launchWorkers();}finally{cluster.fork=originalFork;}
+        assert.equal(forks,1);assert.equal(worker.once,undefined,'default launch must not require a capacity exit hook');
+        const changed=initial(true);changed.settings.process_prefix='must-not-apply';changed.settings.eosio_alias='must-not-apply';changed.blacklists={actions:['must-not-apply']};
+        const refused=await reload(disabled,changed);assert.equal(refused.success,false);assert.match(refused.message,/controlled restart required/);untouched(disabled);
+        assert.equal(disabled.master.sourceCreditRestartRequired,true);
+        disabled.master.workerMap[0].wref=undefined;forks=0;
+        try{cluster.fork=()=>{forks++;return worker;};disabled.master.launchWorkers();}finally{cluster.fork=originalFork;}
+        assert.equal(forks,0,'rejected runtime changes must fence future readers that load the on-disk config');
+        const restored=initial(false);restored.prefetch.read=4;restored.settings.max_ws_payload_mb=2;restored.settings.process_prefix='allowed';
+        assert.equal((await reload(disabled,restored)).success,true);assert.equal(disabled.parsed(),1);
+        assert.equal(disabled.master.sourceCreditRestartRequired,false);assert.equal(disabled.cm.proc_prefix,'allowed');
+        assert.equal(disabled.master.conf,disabled.cm.config);assert.equal(disabled.master.conf.prefetch.read,4);
+        for(const mutate of [x=>delete x.settings.source_credit_capacity,x=>x.settings.source_credit_capacity.maximum_ingress_bytes*=2,
+            x=>x.prefetch.read=4,x=>x.settings.max_ws_payload_mb=.5]){
+            const h=controlled(initial(true)),next=initial(true);mutate(next);
+            assert.equal((await reload(h,next)).success,false);untouched(h);assert.equal(h.master.sourceCreditRestartRequired,true);
+            assert.equal((await reload(h,initial(true))).success,true);assert.equal(h.parsed(),1);assert.equal(h.master.sourceCreditRestartRequired,false);
+        }
+    } else if (scenario === 'capacity-physical-exit') {
         const planned = Object.assign(Object.create(HyperionMaster.prototype), {conf:{...config,scaling:{...config.scaling,ds_threads:1}},
             workerMap:[],worker_index:0,chain,starting_block:1,head:100,max_readers:4,maxBatchSize:20,
             chain_data:{head_block_num:{toNumber:()=>100}}});
