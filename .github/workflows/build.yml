@@ -17,7 +17,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      HYPERION_NATIVE_SOURCE_PROFILE: stateful-all-cbfb-root-native-wire69-linux-engineering-v1
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-all-cbfb-root-native-wire34-linux-engineering-v1
     strategy:
       fail-fast: false
       matrix:
@@ -44,16 +44,18 @@ jobs:
       - run: npm run build
       - name: Record the explicit current Linux assembly and actual runtime candidate
         run: |
-          node scripts/qualification/indexed-schema-mongodb/all-cbfb-ci-source-check.mjs > current-native-git-${{ matrix.node-version }}.json
-          node tests/unit/all-cbfb-source-admission.mjs --admit-all-cbfb > current-native-source-${{ matrix.node-version }}.json
+          mkdir -p out/wire34-build-source
+          node scripts/qualification/wire34-cbfb/source-check.mjs > out/wire34-build-source/current-native-git-${{ matrix.node-version }}.json
+          node tests/unit/wire34-cbfb-source-admission.mjs --admit-wire34-cbfb > current-native-source-${{ matrix.node-version }}.json
           node --input-type=module <<'NODE'
           import {copyFileSync} from 'node:fs';
           const exact=process.versions.node,major=exact.split('.')[0];
+          copyFileSync(`out/wire34-build-source/current-native-git-${exact}.json`,`current-native-git-${exact}.json`);
           for(const kind of ['git','source'])
             copyFileSync(`current-native-${kind}-${exact}.json`,`current-native-${kind}-${major}.x.json`);
           NODE
       - name: Check explicit current profile, frozen historical predicates and workload boundaries
-        run: node --test tests/native/current-stateful-source-profile.test.mjs scripts/qualification/indexed-schema-mongodb/all-cbfb-contract.test.mjs scripts/qualification/indexed-schema-mongodb/all-cbfb-native-teardown.test.mjs tests/native/all-cbfb-codec-profile.test.mjs tests/native/all-cbfb-source-tamper.test.mjs tests/native/all-cbfb-caller-routing.test.mjs tests/native/projection-manager-lifecycle.test.mjs tests/native/bounded-json-string-encoding.test.mjs scripts/qualification/operator-list-mongodb/cleanup-source-profile.test.mjs scripts/qualification/wire-source-snapshot.test.mjs
+        run: node --test tests/native/wire34-cbfb-current-stateful-source-profile.test.mjs scripts/qualification/indexed-schema-mongodb/wire34-cbfb-build-contract.test.mjs scripts/qualification/indexed-schema-mongodb/wire34-cbfb-migration.test.mjs tests/native/wire34-cbfb-source-profile.test.mjs scripts/qualification/indexed-schema-mongodb/all-cbfb-native-teardown.test.mjs tests/native/wire34-cbfb-codec-profile.test.mjs tests/native/wire34-cbfb-source-tamper.test.mjs tests/native/wire34-cbfb-caller-routing.test.mjs tests/native/projection-manager-lifecycle.test.mjs tests/native/bounded-json-string-encoding.test.mjs scripts/qualification/operator-list-mongodb/cleanup-source-profile.test.mjs scripts/qualification/wire-source-snapshot.test.mjs
       - name: Check bounded canonical JSON and authentic protocol records on Node ${{ matrix.node-version }}
         run: node --test tests/unit/bounded-json.test.mjs tests/native/bounded-json-protocol-records.test.mjs
       - name: Check all-CBFB stateful source and final publication on Node ${{ matrix.node-version }}
@@ -61,7 +63,7 @@ jobs:
           node --test tests/native/pinned-git-source.test.mjs
           node tests/unit/portable-state-owner-v2.mjs
           node tests/unit/stateful-host-native.mjs
-          node tests/unit/all-cbfb-source-admission-native.mjs
+          node tests/unit/wire34-cbfb-source-admission-native.mjs
       - name: Check retained Wire managed state on Node ${{ matrix.node-version }}
         id: retained_wire_acceptance
         run: node --test tests/unit/wire-managed-state-v2-native.mjs
@@ -100,7 +102,7 @@ jobs:
           node --experimental-strip-types tests/unit/portable-state-mongo-sampling.mjs
           node --experimental-strip-types tests/unit/portable-state-mongo-admission-red.mjs characterize
       - name: Check stateful MongoDB fixture source guards on Node ${{ matrix.node-version }}
-        run: node --test scripts/qualification/stateful-mongodb-fixture/offline.test.mjs scripts/qualification/stateful-complete-kind-mongodb/offline.test.mjs
+        run: node --test scripts/qualification/stateful-mongodb-fixture/offline.test.mjs scripts/qualification/stateful-complete-kind-mongodb/wire34-cbfb-offline.test.mjs
       - name: Check portable state source and fixture ownership guards
         run: python3 tests/fixtures/portable-state-worker/test_helpers.py
       - name: Verify published native Wire CPU evidence
@@ -224,6 +226,8 @@ jobs:
 
   projection-mongodb:
     runs-on: ubuntu-22.04
+    env:
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-all-cbfb-root-native-wire34-linux-engineering-v1
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -249,14 +253,17 @@ jobs:
           bun check -p packages/backend-mongodb/tsconfig.json
           npm test --prefix packages/backend-mongodb
       - name: Exercise the portable runtime and adapter against owned MongoDB 8.0.34
-        run: node scripts/qualification/check-projection-mongodb.mjs projection-report.json
+        run: |
+          mkdir -p out/wire34-projection-source
+          node scripts/qualification/wire34-cbfb/source-check.mjs > out/wire34-projection-source/projection-native-git-${{ matrix.node-version }}.json
+          node scripts/qualification/check-projection-mongodb-wire34-cbfb.mjs projection-report.json
       - name: Check actual root-client/native-driver command execution and source profile
         run: |
           npm run build
-          node scripts/qualification/indexed-schema-mongodb/all-cbfb-ci-source-check.mjs > projection-native-git-${{ matrix.node-version }}.json
-          node --test tests/native/stateful-complete-kind-public-command.test.mjs tests/native/all-cbfb-codec-profile.test.mjs
+          cp out/wire34-projection-source/projection-native-git-${{ matrix.node-version }}.json projection-native-git-${{ matrix.node-version }}.json
+          node --test tests/native/stateful-complete-kind-public-command.test.mjs tests/native/wire34-cbfb-codec-profile.test.mjs
       - name: Exercise complete-kind accounting and same-snapshot ownership against a separately owned MongoDB 8.0.34
-        run: node scripts/qualification/stateful-complete-kind-mongodb/ci.mjs complete-kind-mongodb-${{ matrix.node-version }}
+        run: node scripts/qualification/stateful-complete-kind-mongodb/wire34-cbfb-ci.mjs complete-kind-mongodb-${{ matrix.node-version }}
       - name: Retain complete-kind native traces, terminal logs and verified fixture cleanup
         if: always()
         uses: actions/upload-artifact@v4
@@ -311,17 +318,19 @@ jobs:
           packages/backend-mongodb/tests/operator-lists-driver.test.mjs
           packages/backend-mongodb/tests/operator-list-native-snapshot.test.mjs
           packages/backend-mongodb/tests/operator-list-native-cleanup.test.mjs
-          scripts/qualification/operator-list-mongodb/offline.test.mjs
+          scripts/qualification/operator-list-mongodb/wire34-cbfb-offline.test.mjs
           scripts/qualification/operator-list-mongodb/cleanup-trace.test.mjs
           scripts/qualification/operator-list-mongodb/source-profile.test.mjs
           scripts/qualification/operator-list-mongodb/cleanup-source-profile.test.mjs
-          scripts/qualification/operator-list-mongodb/assembly-diagnostics.test.mjs
+          scripts/qualification/operator-list-mongodb/wire34-cbfb-assembly-diagnostics.test.mjs
       - name: Retain exact new source and compiled assembly admission
         run: |
-          node scripts/qualification/indexed-schema-mongodb/all-cbfb-ci-source-check.mjs > operator-list-native-git-${{ matrix.node-version }}.json
-          node scripts/qualification/operator-list-mongodb/all-cbfb-source-profile.mjs --diagnostics operator-list-assembly-${{ matrix.node-version }} > operator-list-source-${{ matrix.node-version }}.json
+          mkdir -p out/wire34-operator-list-source
+          node scripts/qualification/wire34-cbfb/source-check.mjs > out/wire34-operator-list-source/operator-list-native-git-${{ matrix.node-version }}.json
+          cp out/wire34-operator-list-source/operator-list-native-git-${{ matrix.node-version }}.json operator-list-native-git-${{ matrix.node-version }}.json
+          node scripts/qualification/operator-list-mongodb/wire34-cbfb-source-profile.mjs --diagnostics operator-list-assembly-${{ matrix.node-version }} > operator-list-source-${{ matrix.node-version }}.json
       - name: Exercise operator lists against a separately owned MongoDB 8.0.34
-        run: node scripts/qualification/operator-list-mongodb/ci.mjs operator-list-mongodb-${{ matrix.node-version }}
+        run: node scripts/qualification/operator-list-mongodb/wire34-cbfb-ci.mjs operator-list-mongodb-${{ matrix.node-version }}
       - name: Retain original list results, traces, terminal logs and owned-fixture cleanup
         if: always()
         uses: actions/upload-artifact@v4
@@ -363,7 +372,7 @@ jobs:
   action-source-journal:
     runs-on: ubuntu-24.04
     env:
-      HYPERION_NATIVE_SOURCE_PROFILE: stateful-all-cbfb-root-native-wire69-linux-engineering-v1
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-all-cbfb-root-native-wire34-linux-engineering-v1
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -382,8 +391,10 @@ jobs:
           npm run build
       - name: Record explicit current source and actual Node runtime metadata
         run: |
-          node scripts/qualification/indexed-schema-mongodb/all-cbfb-ci-source-check.mjs > journal-native-git-${{ matrix.node }}.json
-          node tests/unit/all-cbfb-source-admission.mjs --admit-all-cbfb > journal-native-source-${{ matrix.node }}.json
+          mkdir -p out/wire34-journal-source
+          node scripts/qualification/wire34-cbfb/source-check.mjs > out/wire34-journal-source/journal-native-git-${{ matrix.node }}.json
+          cp out/wire34-journal-source/journal-native-git-${{ matrix.node }}.json journal-native-git-${{ matrix.node }}.json
+          node tests/unit/wire34-cbfb-source-admission.mjs --admit-wire34-cbfb > journal-native-source-${{ matrix.node }}.json
       - name: Qualify source journal records and two-copy recovery on owned Elasticsearch 9.5.5
         run: node scripts/qualification/check-action-source-journal.mjs action-source-journal-${{ matrix.node }}.json
       - name: Retain source journal evidence and cleanup result

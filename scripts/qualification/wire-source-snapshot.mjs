@@ -6,6 +6,9 @@ import {mkdir, writeFile} from 'node:fs/promises';
 import {dirname, join} from 'node:path';
 
 export const engineeringAdmissionSourcePaths = Object.freeze([
+    'tests/unit/wire34-cbfb-source-admission.mjs',
+    'tests/fixtures/engineering-profiles/wire34-cbfb-linux.json',
+    'scripts/qualification/wire34-cbfb/contract.mjs',
     'tests/unit/all-cbfb-source-admission.mjs',
     'tests/fixtures/engineering-profiles/all-cbfb-linux.json',
     'scripts/qualification/indexed-schema-mongodb/all-cbfb-contract.mjs',

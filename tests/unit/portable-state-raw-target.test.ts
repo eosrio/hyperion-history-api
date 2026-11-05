@@ -3,7 +3,7 @@ import {fileURLToPath} from 'node:url';
 
 test('native emitted source admits original target references before missing capture and keeps owner/error fences', async () => {
     const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node',
-        fileURLToPath(new URL('./portable-state-raw-target.mjs', import.meta.url))],
+        fileURLToPath(new URL(process.env.HYPERION_NATIVE_SOURCE_PROFILE === 'stateful-all-cbfb-root-native-wire34-linux-engineering-v1' ? './wire34-cbfb-portable-state-raw-target.mjs' : './portable-state-raw-target.mjs', import.meta.url))],
     {stdout: 'pipe', stderr: 'pipe', timeout: 60000});
     const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
     expect({code, error: code ? stderr : undefined}).toEqual({code: 0, error: undefined});

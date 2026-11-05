@@ -6,13 +6,13 @@
   "routeSources": [
     {
       "path": ".github/workflows/atomic-managed.yml",
-      "bytes": 2630,
-      "sha256": "96ca555c12cc124dab0d879a4af615c8b9414944e1ffd626f36f36f65adadd2c"
+      "bytes": 2671,
+      "sha256": "4dedf7804095255c2ae37754d7c426227e1157536fac242c5d3de0c43792fe66"
     },
     {
       "path": ".github/workflows/build.yml",
-      "bytes": 27731,
-      "sha256": "be9e34c4db554c44fe340458beef53483389e78cb4ddf8d1ab98884bf0970244"
+      "bytes": 28855,
+      "sha256": "81672b66e41aad083fe0600e999040f5229583407b58d7abb8f09ef16f20f55d"
     },
     {
       "path": ".github/workflows/indexed-schema-finite.yml",
@@ -126,13 +126,13 @@
     },
     {
       "path": "scripts/qualification/wire-source-snapshot.mjs",
-      "bytes": 8372,
-      "sha256": "f3acedf52c793a4b8e01758c431541c16f483d4637a7bf7269448d6a858b26e1"
+      "bytes": 8543,
+      "sha256": "d603b5d9a2525a971446201cd2834fdb59b6f169bf414cdd2fcfa489d392681b"
     },
     {
       "path": "scripts/qualification/wire-source-snapshot.test.mjs",
-      "bytes": 5065,
-      "sha256": "7c47ba6671dad19b352a8d1d6c9c14fd3d85335748e755ca91cb372e33872b4f"
+      "bytes": 5134,
+      "sha256": "7df23ac2aca358a22dd9a2440fefbe5db295b651119282990de11c0d8a5768a8"
     },
     {
       "path": "tests/fixtures/engineering-profiles/sdk49-indexed-linux.json",
@@ -141,8 +141,8 @@
     },
     {
       "path": "tests/fixtures/portable-mapping-retry.mjs",
-      "bytes": 8082,
-      "sha256": "c6365034348befaf066e7187a0861965a85b826517ff9b96a7c738d18da6ea91"
+      "bytes": 8070,
+      "sha256": "2be9f1168df502b056171995f1065babc87dc56e03099baf2185098d7d96474b"
     },
     {
       "path": "tests/native/all-cbfb-caller-routing.test.mjs",
@@ -266,8 +266,8 @@
     },
     {
       "path": "tests/unit/stateful-engineering-source-admission.test.ts",
-      "bytes": 1168,
-      "sha256": "f4942a9101d326ce5c09c7e8322b8f36251e332c2e6326685f05a986056c3d78"
+      "bytes": 1370,
+      "sha256": "0258f48d816823b733b7936b76912f96813786a9be7f1446d86fe94e455260e4"
     },
     {
       "path": "tests/unit/stateful-host-fixture.mjs",

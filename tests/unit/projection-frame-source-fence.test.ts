@@ -4,7 +4,7 @@ import {fileURLToPath} from 'node:url';
 for (const scenario of ['owned', 'ordinary', 'foreign', 'copied'])
 test(`native late projection source fence preserves error authority: ${scenario}`, async () => {
     const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node',
-        fileURLToPath(new URL('./projection-frame-source-fence.mjs', import.meta.url)), scenario],
+        fileURLToPath(new URL(process.env.HYPERION_NATIVE_SOURCE_PROFILE === 'stateful-all-cbfb-root-native-wire34-linux-engineering-v1' ? './wire34-cbfb-projection-frame-source-fence.mjs' : './projection-frame-source-fence.mjs', import.meta.url)), scenario],
     {stdout: 'pipe', stderr: 'pipe', timeout: 20000});
     const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
     expect({code, stdout: stdout.slice(-12000), stderr}).toMatchObject({code: 0, stderr: ''});
@@ -19,7 +19,7 @@ const fallbackCases = ['recovery', 'mark'].flatMap(boundary => ['ordinary', 'for
 for (const scenario of fallbackCases)
 test(`native controller preserves primary error across fallback callback: ${scenario}`, async () => {
     const child = Bun.spawn([process.env.HYPERION_NATIVE_NODE ?? 'node',
-        fileURLToPath(new URL('./projection-frame-source-fence.mjs', import.meta.url)), scenario],
+        fileURLToPath(new URL(process.env.HYPERION_NATIVE_SOURCE_PROFILE === 'stateful-all-cbfb-root-native-wire34-linux-engineering-v1' ? './wire34-cbfb-projection-frame-source-fence.mjs' : './projection-frame-source-fence.mjs', import.meta.url)), scenario],
     {stdout: 'pipe', stderr: 'pipe', timeout: 20000});
     const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
     expect({code, stdout: stdout.slice(-12000), stderr}).toMatchObject({code: 0, stderr: ''});

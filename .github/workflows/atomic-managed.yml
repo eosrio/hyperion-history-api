@@ -1,9 +1,9 @@
 name: Managed Atomic MongoDB
+# Historical Wire69 qualification; automatic PR routing belongs to atomic-managed-wire34-cbfb.yml.
+# Original immutable workflow/source: https://github.com/eosrio/hyperion-history-api/tree/7b53542111709cf8b225b381077e498e25bc5d61
+# Historical execution must use a ref resolving to that source; dispatching current source fails its frozen gate.
 on:
   workflow_dispatch:
-  pull_request:
-    branches: ["main", "test/indexed-native-mongodb-415", "feat/indexed-int64-tested-49dfe-20261104"]
-    paths: ["src/**", "packages/backend-mongodb/**", "scripts/qualification/atomic-managed/**", "tests/native/atomic-managed*", "package*.json", ".github/workflows/atomic-managed.yml"]
 jobs:
   managed-atomic:
     runs-on: ubuntu-22.04

@@ -1,0 +1,315 @@
+{
+  "schemaVersion": 1,
+  "qualificationOnly": true,
+  "profile": "managed-atomic77-hapi-wire34-cbfb-linux-engineering-v1",
+  "historicalProfile": "managed-atomic77-hapi-cbfb-linux-engineering-v1",
+  "files": [
+    {
+      "path": "scripts/qualification/atomic-managed/contract.mjs",
+      "bytes": 4642,
+      "sha256": "0334efca6cb60cad420d92026485b0f0b618319262908689a9701c19abbed3b7"
+    },
+    {
+      "path": "scripts/qualification/atomic-managed/ci.mjs",
+      "bytes": 10312,
+      "sha256": "5b1150642ae22df12ff7cc12c984821aa7f7f755f46e4a1b5d64ab0aec1b07d3"
+    },
+    {
+      "path": "scripts/qualification/atomic-managed/runner.mjs",
+      "bytes": 13222,
+      "sha256": "b361e4c03244931a9a2813e3a0d6659a86a370b642276b11091f970a691aadbe"
+    },
+    {
+      "path": "scripts/qualification/atomic-managed/driver.mjs",
+      "bytes": 12938,
+      "sha256": "f6ef06b70aec0a98092325f4141d3002f275a6b209607f97d40a37a22856ffc8"
+    },
+    {
+      "path": "scripts/qualification/atomic-managed/host.mjs",
+      "bytes": 6782,
+      "sha256": "5d627484ea2947be5e416e1fe29ed8f1eb389943cccb24cf1aaac37d07e2086a"
+    },
+    {
+      "path": "scripts/qualification/atomic-managed/assembly.mjs",
+      "bytes": 5560,
+      "sha256": "86e307a8a5c6486cd2fa6e596c83932adf331a932e8eeb519958e699a69f2045"
+    },
+    {
+      "path": "tests/native/atomic-managed-contract.test.mjs",
+      "bytes": 5836,
+      "sha256": "0074d5d928a1b0b30bfede20f1c954759d4d019044ce2f5bf9fe87e5b872d3b7"
+    },
+    {
+      "path": "tests/native/atomic-managed-teardown.test.mjs",
+      "bytes": 14912,
+      "sha256": "f40a01772ff7911991bdb74c6c4108d146c28879da437b3ae213cd14544021eb"
+    },
+    {
+      "path": "tests/native/atomic-managed-host-publication.test.mjs",
+      "bytes": 10935,
+      "sha256": "69937a2e62802a08746cd5b0f864d1301b106348f907705c997816025c7a5efa"
+    },
+    {
+      "path": "tests/native/atomic-managed-result-observer.test.mjs",
+      "bytes": 2475,
+      "sha256": "0132dc205048e7e19899108d5b7118a34ccd7d20141255329a96c193304673d5"
+    },
+    {
+      "path": "tests/native/atomic-managed-sdk-boundary.test.mjs",
+      "bytes": 14756,
+      "sha256": "d988cebdfff14b9f8df1cc975da6d79a8dd5179e3128eb5bbfcad3a36fea2c6b"
+    },
+    {
+      "path": ".github/workflows/atomic-managed.yml",
+      "bytes": 2630,
+      "sha256": "96ca555c12cc124dab0d879a4af615c8b9414944e1ffd626f36f36f65adadd2c"
+    },
+    {
+      "path": "scripts/qualification/atomic-managed/profile.json",
+      "bytes": 541941,
+      "sha256": "aec3e1ffc61516266ac4980ea7f0081c6091fe620a18253ba4f690bbb0d3edaa"
+    },
+    {
+      "path": "scripts/qualification/atomic-managed/README.md",
+      "bytes": 5368,
+      "sha256": "728877657ecd31574f22d45f49e64b25c93a0b58181d7e1b646d6a0a6df81c8f"
+    }
+  ],
+  "routes": [
+    {
+      "historicalPath": "scripts/qualification/atomic-managed/contract.mjs",
+      "currentPath": "scripts/qualification/atomic-managed-wire34-cbfb/contract.mjs",
+      "historicalSha256": "0334efca6cb60cad420d92026485b0f0b618319262908689a9701c19abbed3b7",
+      "changes": [
+        {
+          "historical": "managed-atomic77-hapi-cbfb-linux-engineering-v1",
+          "current": "managed-atomic77-hapi-wire34-cbfb-linux-engineering-v1",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "historicalPath": "scripts/qualification/atomic-managed/ci.mjs",
+      "currentPath": "scripts/qualification/atomic-managed-wire34-cbfb/ci.mjs",
+      "historicalSha256": "5b1150642ae22df12ff7cc12c984821aa7f7f755f46e4a1b5d64ab0aec1b07d3",
+      "changes": [
+        {
+          "historical": "scripts/qualification/atomic-managed",
+          "current": "scripts/qualification/atomic-managed-wire34-cbfb",
+          "count": 1
+        },
+        {
+          "historical": "tests/native/atomic-managed-",
+          "current": "tests/native/atomic-managed-wire34-cbfb-",
+          "count": 4
+        },
+        {
+          "historical": ".github/workflows/atomic-managed.yml",
+          "current": ".github/workflows/atomic-managed-wire34-cbfb.yml",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "historicalPath": "scripts/qualification/atomic-managed/runner.mjs",
+      "currentPath": "scripts/qualification/atomic-managed-wire34-cbfb/runner.mjs",
+      "historicalSha256": "b361e4c03244931a9a2813e3a0d6659a86a370b642276b11091f970a691aadbe",
+      "changes": []
+    },
+    {
+      "historicalPath": "scripts/qualification/atomic-managed/driver.mjs",
+      "currentPath": "scripts/qualification/atomic-managed-wire34-cbfb/driver.mjs",
+      "historicalSha256": "f6ef06b70aec0a98092325f4141d3002f275a6b209607f97d40a37a22856ffc8",
+      "changes": []
+    },
+    {
+      "historicalPath": "scripts/qualification/atomic-managed/host.mjs",
+      "currentPath": "scripts/qualification/atomic-managed-wire34-cbfb/host.mjs",
+      "historicalSha256": "5d627484ea2947be5e416e1fe29ed8f1eb389943cccb24cf1aaac37d07e2086a",
+      "changes": []
+    },
+    {
+      "historicalPath": "scripts/qualification/atomic-managed/assembly.mjs",
+      "currentPath": "scripts/qualification/atomic-managed-wire34-cbfb/assembly.mjs",
+      "historicalSha256": "86e307a8a5c6486cd2fa6e596c83932adf331a932e8eeb519958e699a69f2045",
+      "changes": [
+        {
+          "historical": "scripts/qualification/atomic-managed",
+          "current": "scripts/qualification/atomic-managed-wire34-cbfb",
+          "count": 3
+        },
+        {
+          "historical": "tests/native/atomic-managed-",
+          "current": "tests/native/atomic-managed-wire34-cbfb-",
+          "count": 5
+        },
+        {
+          "historical": ".github/workflows/atomic-managed.yml",
+          "current": ".github/workflows/atomic-managed-wire34-cbfb.yml",
+          "count": 1
+        },
+        {
+          "historical": "import {observeCbfbAssembly} from '../indexed-schema-mongodb/cbfb-assembly.mjs';",
+          "current": "import {observeWire34CbfbAssembly,admitWire34CbfbAssembly,readWire34SourceCensus} from '../indexed-schema-mongodb/wire34-cbfb-assembly.mjs';",
+          "count": 1
+        },
+        {
+          "historical": "const api=observeCbfbAssembly();api.profile=PROFILE;",
+          "current": "const api=observeWire34CbfbAssembly();api.profile=PROFILE;",
+          "count": 1
+        },
+        {
+          "historical": "selfPaths:[PROFILE_PATH]",
+          "current": "selfPaths:[PROFILE_PATH,'tests/fixtures/engineering-profiles/wire34-cbfb-linux.json','tests/unit/wire34-cbfb-source-admission.mjs']",
+          "count": 1
+        },
+        {
+          "historical": " const observation=assertManagedAssembly(observeManagedAssembly(atomicRoot)),runtime=",
+          "current": " const wireSource=admitWire34CbfbAssembly(),sourceCensus=readWire34SourceCensus();\n assert.equal(wireSource.wireSource.wireRevision,'1e7547ff52740ecaa88d7867d3ec887a2febaa58');\n const observation=assertManagedAssembly(observeManagedAssembly(atomicRoot)),runtime=",
+          "count": 1
+        },
+        {
+          "historical": "return {profile:PROFILE,observationSha256:sha(JSON.stringify(observation)),runtime,observation};",
+          "current": "return {profile:PROFILE,observationSha256:sha(JSON.stringify(observation)),runtime,observation,wireSource:wireSource.wireSource,sourceCensus};",
+          "count": 1
+        },
+        {
+          "historical": "'tests/native/atomic-managed-wire34-cbfb-teardown.test.mjs'].map",
+          "current": "'tests/native/atomic-managed-wire34-cbfb-teardown.test.mjs','tests/native/atomic-managed-wire34-cbfb-migration.test.mjs'].map",
+          "count": 1
+        },
+        {
+          "historical": "'tests/native/atomic-managed-wire34-cbfb-migration.test.mjs']",
+          "current": "'tests/native/atomic-managed-wire34-cbfb-migration.test.mjs','tests/native/wire34-parent-integration.test.mjs']",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "historicalPath": "tests/native/atomic-managed-contract.test.mjs",
+      "currentPath": "tests/native/atomic-managed-wire34-cbfb-contract.test.mjs",
+      "historicalSha256": "0074d5d928a1b0b30bfede20f1c954759d4d019044ce2f5bf9fe87e5b872d3b7",
+      "changes": [
+        {
+          "historical": "scripts/qualification/atomic-managed/",
+          "current": "scripts/qualification/atomic-managed-wire34-cbfb/",
+          "count": 4
+        }
+      ]
+    },
+    {
+      "historicalPath": "tests/native/atomic-managed-teardown.test.mjs",
+      "currentPath": "tests/native/atomic-managed-wire34-cbfb-teardown.test.mjs",
+      "historicalSha256": "f40a01772ff7911991bdb74c6c4108d146c28879da437b3ae213cd14544021eb",
+      "changes": [
+        {
+          "historical": "scripts/qualification/atomic-managed/",
+          "current": "scripts/qualification/atomic-managed-wire34-cbfb/",
+          "count": 3
+        }
+      ]
+    },
+    {
+      "historicalPath": "tests/native/atomic-managed-host-publication.test.mjs",
+      "currentPath": "tests/native/atomic-managed-wire34-cbfb-host-publication.test.mjs",
+      "historicalSha256": "69937a2e62802a08746cd5b0f864d1301b106348f907705c997816025c7a5efa",
+      "changes": []
+    },
+    {
+      "historicalPath": "tests/native/atomic-managed-result-observer.test.mjs",
+      "currentPath": "tests/native/atomic-managed-wire34-cbfb-result-observer.test.mjs",
+      "historicalSha256": "0132dc205048e7e19899108d5b7118a34ccd7d20141255329a96c193304673d5",
+      "changes": [
+        {
+          "historical": "scripts/qualification/atomic-managed/",
+          "current": "scripts/qualification/atomic-managed-wire34-cbfb/",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "historicalPath": "tests/native/atomic-managed-sdk-boundary.test.mjs",
+      "currentPath": "tests/native/atomic-managed-wire34-cbfb-sdk-boundary.test.mjs",
+      "historicalSha256": "d988cebdfff14b9f8df1cc975da6d79a8dd5179e3128eb5bbfcad3a36fea2c6b",
+      "changes": [
+        {
+          "historical": "scripts/qualification/atomic-managed/",
+          "current": "scripts/qualification/atomic-managed-wire34-cbfb/",
+          "count": 4
+        }
+      ]
+    },
+    {
+      "historicalPath": ".github/workflows/atomic-managed.yml",
+      "currentPath": ".github/workflows/atomic-managed-wire34-cbfb.yml",
+      "historicalSha256": "96ca555c12cc124dab0d879a4af615c8b9414944e1ffd626f36f36f65adadd2c",
+      "changes": [
+        {
+          "historical": "name: Managed Atomic MongoDB",
+          "current": "name: Managed Atomic Wire34 CBFB MongoDB",
+          "count": 1
+        },
+        {
+          "historical": "scripts/qualification/atomic-managed/",
+          "current": "scripts/qualification/atomic-managed-wire34-cbfb/",
+          "count": 2
+        },
+        {
+          "historical": "tests/native/atomic-managed",
+          "current": "tests/native/atomic-managed-wire34-cbfb",
+          "count": 6
+        },
+        {
+          "historical": ".github/workflows/atomic-managed.yml",
+          "current": ".github/workflows/atomic-managed-wire34-cbfb.yml",
+          "count": 1
+        },
+        {
+          "historical": "managed-atomic77-hapi-cbfb-linux-engineering-v1",
+          "current": "managed-atomic77-hapi-wire34-cbfb-linux-engineering-v1",
+          "count": 1
+        },
+        {
+          "historical": "tests/native/atomic-managed-wire34-cbfb-sdk-boundary.test.mjs\n",
+          "current": "tests/native/atomic-managed-wire34-cbfb-sdk-boundary.test.mjs tests/native/atomic-managed-wire34-cbfb-migration.test.mjs\n",
+          "count": 1
+        },
+        {
+          "historical": "out/managed-atomic-",
+          "current": "out/managed-atomic-wire34-cbfb-",
+          "count": 2
+        },
+        {
+          "historical": "name: managed-atomic-",
+          "current": "name: managed-atomic-wire34-cbfb-",
+          "count": 1
+        },
+        {
+          "historical": "_qualification/",
+          "current": "out/wire34-managed-inputs/",
+          "count": 10
+        },
+        {
+          "historical": "tests/native/atomic-managed-wire34-cbfb-migration.test.mjs\n",
+          "current": "tests/native/atomic-managed-wire34-cbfb-migration.test.mjs tests/native/wire34-parent-integration.test.mjs\n",
+          "count": 1
+        }
+      ]
+    }
+  ],
+  "integrationDependency": "Root must integrate the Build-parent lane and refresh the complete global Wire34 source census and affected successor inventories before Linux admission. No workload acceptance is inherited.",
+  "authorizedHistoricalWorkflowException": {
+    "path": ".github/workflows/atomic-managed.yml",
+    "authorizationEvent": "evt_20261105T035149_613e40d89553",
+    "authorizationTask": "task_wire34_parent_combined_integration_20261105",
+    "scope": "Only automatic PR trigger retirement and explanatory historical source comments; entire jobs body stays exact",
+    "immutableGitRef": "7b53542111709cf8b225b381077e498e25bc5d61",
+    "immutableSourceURL": "https://github.com/eosrio/hyperion-history-api/blob/7b53542111709cf8b225b381077e498e25bc5d61/.github/workflows/atomic-managed.yml",
+    "historicalSource": "name: Managed Atomic MongoDB\non:\n  workflow_dispatch:\n  pull_request:\n    branches: [\"main\", \"test/indexed-native-mongodb-415\", \"feat/indexed-int64-tested-49dfe-20261104\"]\n    paths: [\"src/**\", \"packages/backend-mongodb/**\", \"scripts/qualification/atomic-managed/**\", \"tests/native/atomic-managed*\", \"package*.json\", \".github/workflows/atomic-managed.yml\"]\njobs:\n  managed-atomic:\n    runs-on: ubuntu-22.04\n    timeout-minutes: 15\n    strategy:\n      fail-fast: false\n      matrix:\n        node-version: [24.22.1, 26.4.0]\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/checkout@v4\n        with:\n          repository: eosrio/hyperion-atomicassets-plugin\n          ref: 1bc686bd7ed7d433b2cb7c3a04a762c0c832ad97\n          path: _qualification/atomic\n      - uses: actions/checkout@v4\n        with:\n          ref: c1b98a52a872b6c070ada32243c8286607e86883\n          path: _qualification/mixed\n      - uses: actions/setup-node@v4\n        with:\n          node-version: ${{ matrix.node-version }}\n      - uses: oven-sh/setup-bun@v2\n        with:\n          bun-version: 1.4.4\n      - run: npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false\n      - run: npm ci --allow-git=all\n      - run: npm ci --prefix _qualification/atomic --allow-git=all\n      - run: npm ci --prefix _qualification/mixed/packages/backend-mongodb --allow-git=all --ignore-scripts=false\n      - run: npm ci --prefix _qualification/mixed --allow-git=all\n      - run: npm run build\n      - run: npm run build --prefix _qualification/atomic\n      - run: npm run typecheck\n      - run: npm run typecheck --prefix _qualification/atomic\n      - name: Pure actual SDK and emitted managed publication controls\n        env:\n          HYPERION_ATOMIC_ROOT: ${{ github.workspace }}/_qualification/atomic\n          HYPERION_MIXED_ROOT: ${{ github.workspace }}/_qualification/mixed\n        run: node --test tests/native/atomic-managed-contract.test.mjs tests/native/atomic-managed-teardown.test.mjs tests/native/atomic-managed-host-publication.test.mjs tests/native/atomic-managed-result-observer.test.mjs tests/native/atomic-managed-sdk-boundary.test.mjs\n      - name: Owned controlled-source managed Atomic HTTP\n        run: node scripts/qualification/atomic-managed/ci.mjs --profile managed-atomic77-hapi-cbfb-linux-engineering-v1 _qualification/atomic out/managed-atomic-${{ matrix.node-version }}\n      - uses: actions/upload-artifact@v4\n        if: always()\n        with:\n          name: managed-atomic-${{ matrix.node-version }}\n          path: out/managed-atomic-${{ matrix.node-version }}\n          if-no-files-found: error\n",
+    "historicalSha256": "96ca555c12cc124dab0d879a4af615c8b9414944e1ffd626f36f36f65adadd2c",
+    "jobBodySha256": "2c3da6bb5ee4d498f4a2bc4fd05068349c7bec361f78715a2309f336b80e9699",
+    "selectedSha256": "4dedf7804095255c2ae37754d7c426227e1157536fac242c5d3de0c43792fe66",
+    "dispatchSourceRequirement": "A ref resolving to the original immutable source; current HEAD correctly fails frozen Wire69 admission",
+    "historicalCohortWire": "69a66064c077a405341f5aaf15e84b88b8d86ccb"
+  }
+}
