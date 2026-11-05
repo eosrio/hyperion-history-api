@@ -11,6 +11,7 @@ import {ProtocolAbiCoordinatorRpc} from '../protocol/abi-coordinator-rpc.js';
 import {debugLog, hLog} from '../helpers/common_functions.js';
 import {RabbitQueueDef} from '../definitions/index-queues.js';
 import {LiveReaderCheckpoint, ReaderConfirmRange} from '../helpers/reader-progress.js';
+import {resolveSourceCreditCapacity, SourceCreditCapacityRpc, type SourceCreditCapacityOptions} from '../helpers/source-credit-capacity.js';
 import {actionSourceIngressHeader} from '../history/action-source-admission.js';
 import type {ProtocolShipSession} from '@eosrio/hyperion-sdk/protocol';
 
@@ -30,6 +31,11 @@ type ProtocolIngress = {generation: number; kind: 'connected'} | {generation: nu
     | {generation?: number; kind: 'source-probe'; requestId: string; readerSessionId: string;
         coordinatorGeneration: string; source: ProtocolSourcePosition};
 interface ShipCreditOwner {generation?: number; epoch: object; session?: ProtocolShipSession}
+interface SourceCreditReaderState {
+    owner: ShipCreditOwner; rpc: SourceCreditCapacityRpc; options: SourceCreditCapacityOptions; request?: any[];
+    wantedTotal: number; settledTotal: number; observedTotal: number; sentTotal: number; grantedTotal: number;
+    pending: boolean; cancelled: boolean; timer?: NodeJS.Timeout;
+}
 
 export interface GetBlocksResultV0 {
     head: BlockInfo;
@@ -42,6 +48,12 @@ export interface GetBlocksResultV0 {
 }
 
 export default class StateReader extends HyperionWorker {
+    private creditCapacityOptions?: SourceCreditCapacityOptions | null;
+    private sourceCreditState?: SourceCreditReaderState;
+    private sourceCreditOptions(): SourceCreditCapacityOptions | null {
+        if (this.creditCapacityOptions === undefined) this.creditCapacityOptions = resolveSourceCreditCapacity(this.conf) ?? null;
+        return this.creditCapacityOptions;
+    }
     private get usesOrderedSourceIngress(): boolean {return this.usesProtocolSourceBindings || this.actionSourceAdmissionEnabled;}
     private actionSourceSession?: {readerSessionId: string; schemaJson: string; generation?: number; verified: boolean};
     private readonly isLiveReader = process.env['worker_role'] === 'continuous_reader';
@@ -125,6 +137,7 @@ export default class StateReader extends HyperionWorker {
 
     constructor() {
         super();
+        if (this.sourceCreditOptions() && !this.isLiveReader) throw new Error('Source-credit capacity requires the qualification live reader');
         const liveStart = process.env.worker_last_processed_block ?? process.env.worker_start_block;
         if (this.isLiveReader && liveStart) {
             this.local_block_num = parseInt(liveStart, 10) - 1;
@@ -398,6 +411,7 @@ export default class StateReader extends HyperionWorker {
     }
 
     onIpcMessage(msg: any): void {
+        if (this.sourceCreditState?.rpc.onMessage(msg)) return;
         if (this.coordinatorRpc?.onMessage(msg)) return;
         switch (msg.event) {
             case 'protocol_source_probe_request': {
@@ -1011,6 +1025,8 @@ export default class StateReader extends HyperionWorker {
     }
 
     private async onMessage(data: Buffer): Promise<'block' | 'other'> {
+        if (this.sourceCreditState && data.length > this.sourceCreditState.options.frameBytes)
+            throw new Error('Source-credit response exceeds configured WebSocket cap');
         if (!this.shipABI) {
             await this.processFirstABI(data);
             return 'other';
@@ -1051,6 +1067,12 @@ export default class StateReader extends HyperionWorker {
                 }
                 case 'get_blocks_result_v0':
                 case 'get_blocks_result_v1': {
+                    if (this.sourceCreditOptions()) {
+                        const state = this.sourceCreditState;
+                        if (!state || state.cancelled || !this.currentShipCreditOwner(state.owner) || state.observedTotal >= state.sentTotal)
+                            throw new Error('Block response lacks a current reserved source credit');
+                        state.observedTotal++;
+                    }
                     if (this.actionSourceAdmissionEnabled && !this.actionSourceSession?.verified)
                         throw new Error('Action source block arrived before chain verification');
                     if (this.usesProtocolSourceBindings && (!this.sourceContext || this.verifiedReaderSessionId !== this.sourceContext.readerSessionId)) {
@@ -1319,6 +1341,10 @@ export default class StateReader extends HyperionWorker {
         // Commands and credits from an old await must never reach a new physical socket.
         if (this.usesOrderedSourceIngress && this.socketGeneration
             && (generation === undefined || generation !== this.physicalIngressGeneration)) return;
+        if (this.sourceCreditOptions() && /^get_blocks_request_/.test(req_data[0])) {
+            this.startReservedSourceRequest(req_data);
+            return;
+        }
         this.ship.send(
             this.shipSession!.encodeRequest(req_data)
         );
@@ -1465,12 +1491,76 @@ export default class StateReader extends HyperionWorker {
     private invalidateShipCredits(): void {
         this.shipCreditEpoch = {};
         this.withheldShipCredits = undefined;
+        const state = this.sourceCreditState;
+        if (state) {
+            state.cancelled = true; state.rpc.cancel();
+            if (state.timer) clearTimeout(state.timer);
+            state.timer = undefined;
+        }
+    }
+
+    private startReservedSourceRequest(request: any[]): void {
+        if (this.sourceCreditState) {
+            this.failSourceRecovery('Source-credit qualification requires a fresh physical reader for a replaced stream');
+            return;
+        }
+        const options = this.sourceCreditOptions()!;
+        const state: SourceCreditReaderState = {owner: this.shipCreditOwner(), options, rpc: this.createSourceCreditCapacityRpc(),
+            request: [request[0], {...request[1], have_positions: [...request[1].have_positions]}],
+            wantedTotal: options.window, settledTotal: 0, observedTotal: 0, sentTotal: 0, grantedTotal: 0,
+            pending: false, cancelled: false};
+        this.sourceCreditState = state;
+        this.pumpReservedSourceCredits();
+    }
+    private createSourceCreditCapacityRpc(): SourceCreditCapacityRpc {return new SourceCreditCapacityRpc();}
+
+    /** Completion is broker-confirmed source input only; it never attests downstream/projection completion. */
+    private pumpReservedSourceCredits(): void {
+        const state = this.sourceCreditState;
+        if (!state || state.cancelled || state.pending || !this.currentShipCreditOwner(state.owner)) return;
+        if (state.timer) clearTimeout(state.timer);
+        state.timer = undefined; state.pending = true;
+        const settled = state.settledTotal, wanted = state.wantedTotal;
+        void state.rpc.update(settled, wanted).then(grant => {
+            if (state.cancelled || this.sourceCreditState !== state || !this.currentShipCreditOwner(state.owner)) return;
+            if (grant.grantedTotal < state.grantedTotal) throw new Error('Source-credit grant regressed');
+            state.grantedTotal = grant.grantedTotal;
+            if (this.backpressurePaused) return;
+            if (state.request) {
+                if (state.grantedTotal < state.options.window) return;
+                const request = state.request;
+                state.request = undefined; state.sentTotal = state.options.window;
+                request[1].max_messages_in_flight = state.options.window;
+                this.ship.send(this.shipSession!.encodeRequest(request));
+            } else if (state.grantedTotal > state.sentTotal) {
+                const count = state.grantedTotal - state.sentTotal;
+                state.sentTotal = state.grantedTotal; // Retire before encode/send, including synchronous callbacks.
+                this.ship.send(this.shipSession!.encodeRequest(['get_blocks_ack_request_v0', {num_messages: count}]));
+            }
+        }).catch(error => {
+            if (!state.cancelled && this.sourceCreditState === state && this.currentShipCreditOwner(state.owner))
+                this.failSourceRecovery('Source-credit capacity is unresolved: ' + String(error?.message ?? error));
+        }).finally(() => {
+            state.pending = false;
+            if (state.cancelled || this.sourceCreditState !== state || !this.currentShipCreditOwner(state.owner)) return;
+            if (state.settledTotal !== settled || state.wantedTotal !== wanted)
+                queueMicrotask(() => this.pumpReservedSourceCredits());
+            else if (state.grantedTotal < state.wantedTotal)
+                state.timer = setTimeout(() => {state.timer = undefined; this.pumpReservedSourceCredits();}, 100).unref();
+        });
     }
 
     /** Confirmed input retains one bounded counter, never a waiter in the cargo loop. */
     private returnShipCredits(count: number, owner: ShipCreditOwner): void {
         if (!Number.isInteger(count) || count < 1 || count > 0xffffffff) throw new Error('Invalid SHIP credit count');
         if (!this.currentShipCreditOwner(owner)) return;
+        if (this.sourceCreditOptions()) {
+            const state = this.sourceCreditState;
+            if (!state || state.cancelled || !this.sameShipCreditOwner(state.owner, owner)
+                || count > state.observedTotal - state.settledTotal) throw new Error('Invalid reserved source completion');
+            state.settledTotal += count;
+            this.pumpReservedSourceCredits();
+        }
         const pending = this.withheldShipCredits;
         const total = count + (pending && this.sameShipCreditOwner(pending.owner, owner) ? pending.count : 0);
         if (total > 0xffffffff) throw new Error('Withheld SHIP credit count exceeds uint32');
@@ -1484,6 +1574,16 @@ export default class StateReader extends HyperionWorker {
         // Clear before encoding/sending: duplicate resumes or synchronous socket
         // callbacks cannot return the same accepted-input credit twice.
         this.withheldShipCredits = undefined;
+        if (this.sourceCreditOptions()) {
+            const state = this.sourceCreditState;
+            if (!state || state.cancelled) return;
+            if (pending && this.currentShipCreditOwner(pending.owner) && this.sameShipCreditOwner(state.owner, pending.owner)) {
+                if (!Number.isSafeInteger(state.wantedTotal + pending.count)) throw new Error('Source-credit counter overflow');
+                state.wantedTotal += pending.count;
+            }
+            this.pumpReservedSourceCredits();
+            return;
+        }
         if (pending && this.currentShipCreditOwner(pending.owner))
             this.send(['get_blocks_ack_request_v0', {num_messages: pending.count}], pending.owner.generation);
     }
@@ -1534,6 +1634,7 @@ export default class StateReader extends HyperionWorker {
 
     private startWS() {
         if (this.finishing || this.publisherFailure) return;
+        if (this.sourceCreditState) {this.failSourceRecovery('Source-credit stream replacement needs supervised reader recovery'); return;}
         const generation = ++this.socketGeneration;
         this.physicalIngressGeneration = undefined;
         this.invalidateShipCredits();
@@ -1599,6 +1700,7 @@ export default class StateReader extends HyperionWorker {
     }
 
     private handleLostConnection() {
+        if (this.sourceCreditState) {this.failSourceRecovery('Source-credit socket closed; reservations await physical reader exit'); return;}
         this.invalidateShipCredits();
         this.physicalIngressGeneration = undefined;
         if (this.usesOrderedSourceIngress && (this.reconnectTimer || this.finishing || this.publisherFailure)) return;
