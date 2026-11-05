@@ -4157,8 +4157,8 @@
       },
       {
         "path": "tests/native/protocol-genesis-seed.test.mjs",
-        "bytes": 4857,
-        "sha256": "9edf25ad11322945d5292e153a57543f8052cc391582a1f84b017a005813bcdc"
+        "bytes": 4856,
+        "sha256": "e21f7f94a75ee6410c992a94c9cd3094dc8e943f49c7c2f7a3a087917b442f27"
       },
       {
         "path": "tests/native/protocol-index-metadata.test.mjs",
@@ -5926,7 +5926,7 @@
         "sha256": "1945027163c553cd08421dd1f8caa08fab025c44279883ed9e6c3dec0e8c6408"
       }
     ],
-    "totalBytes": 16324545,
+    "totalBytes": 16324544,
     "trackedPaths": [
       ".bun-version",
       ".gitattributes",

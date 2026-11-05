@@ -40,4 +40,3 @@ test('unsupported native genesis verifier cannot select the seed',()=>{
  const memory=frontierMemoryClient(),chain='wire-qualification-unsupported',bindings=new ProtocolSourceBindingStore(memory.client,chain),observations=new ProtocolAbiObservationStore(memory.client,chain),store=new ProtocolAbiFrontierStore(memory.client,chain);
  assert.throws(()=>new ProtocolAbiCoordinator({chainId,profile,ownerId:'owner',bindings,observations,store,qualificationGenesisStart:true}),/native genesis verification/);
 });
-
