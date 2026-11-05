@@ -683,7 +683,7 @@
       {
         "path": "scripts/qualification/atomic-managed-wire34-cbfb/profile.json",
         "bytes": 546404,
-        "sha256": "ab27bc745ef50ce9a96d1f2232d0474c8a277f3a367a4cbd951d88fd6be48fe1"
+        "sha256": "ceda2809f8f99994fd021885d59efa50df76cf004aef61bc6b5b4f4e8c72a8a8"
       },
       {
         "path": "scripts/qualification/atomic-managed-wire34-cbfb/runner.mjs",
@@ -1188,7 +1188,7 @@
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.json",
         "bytes": 195560,
-        "sha256": "ee2850c8b1ae06ec3f02a35d69016dea68006ba0babeba69ae754e7a39e701fc"
+        "sha256": "7ec3d65f064067b1b784062af3befa7f28435580616ff92e48c90c9ecf2d2be9"
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.mjs",
@@ -1238,7 +1238,7 @@
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-profile.json",
         "bytes": 213033,
-        "sha256": "6c8fc7d32ae41a19c62ce1a93a84e0137297b6945ae4084a5d69f889a65dd563"
+        "sha256": "15b2bd67213d1f4e916de937f8e5f642abe62fa27d7d1b4633d3d1bb4eb8496b"
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-routes.json",
@@ -3062,8 +3062,8 @@
       },
       {
         "path": "src/indexer/modules/queueMonitor.ts",
-        "bytes": 8581,
-        "sha256": "fa1deeb1211c72c6f24b05e8cb1410e5e1ab6479279a872bf7de662c8f715a25"
+        "bytes": 9053,
+        "sha256": "19d7e76348fe164b467a201ac16bad8197beaea3cbf02df4ce1e12396f73fab5"
       },
       {
         "path": "src/indexer/modules/telegram.ts",
@@ -4192,13 +4192,13 @@
       },
       {
         "path": "tests/native/reader-input-pressure.test.mjs",
-        "bytes": 9513,
-        "sha256": "2fb8440ae02a038ea287f527465f1b2f199493fa0db8f6f7774c0b852a9e7ce1"
+        "bytes": 12684,
+        "sha256": "63f0f10df39d6e88a3afa887facbac40681f3af6835ba5a5ad32252ab9240753"
       },
       {
         "path": "tests/native/reader-pressure-ipc-recovery.test.mjs",
-        "bytes": 10435,
-        "sha256": "3ff56dfa7c529592939581f685b990a9265a0a45f74895954a96dd2229e63c35"
+        "bytes": 11035,
+        "sha256": "f7fd2735155386a6f1de47239160f2e3a51317d128e00c12ee51abbaddaa527a"
       },
       {
         "path": "tests/native/reader-pressure-observability.test.mjs",
@@ -5986,7 +5986,7 @@
         "sha256": "1945027163c553cd08421dd1f8caa08fab025c44279883ed9e6c3dec0e8c6408"
       }
     ],
-    "totalBytes": 16526735,
+    "totalBytes": 16530978,
     "trackedPaths": [
       ".bun-version",
       ".gitattributes",
@@ -10382,13 +10382,13 @@
       },
       {
         "path": "indexer/modules/queueMonitor.js",
-        "bytes": 7791,
-        "sha256": "a8fb3470ea0f8ccd807a856436e949ca689438e8e7ad928185a4de9335d665de"
+        "bytes": 8234,
+        "sha256": "95a81a7d938409145eb3887380ba0328dd3e325e107e18b9d55d7b11ac109ee2"
       },
       {
         "path": "indexer/modules/queueMonitor.js.map",
-        "bytes": 7898,
-        "sha256": "1a605e0f947e28803a4bf640ff2c838c72d9a0ea2ca3cfdbafb8ae394076661e"
+        "bytes": 8211,
+        "sha256": "7888b981ef7895bfd18c77b45da3be7d86fb1167c28d3bfaa83fb249d1ee339a"
       },
       {
         "path": "indexer/modules/telegram.js",

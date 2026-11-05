@@ -1288,8 +1288,8 @@
         },
         {
           "path": "src/indexer/modules/queueMonitor.ts",
-          "bytes": 8581,
-          "sha256": "fa1deeb1211c72c6f24b05e8cb1410e5e1ab6479279a872bf7de662c8f715a25"
+          "bytes": 9053,
+          "sha256": "19d7e76348fe164b467a201ac16bad8197beaea3cbf02df4ce1e12396f73fab5"
         },
         {
           "path": "src/indexer/modules/telegram.ts",
@@ -3711,13 +3711,13 @@
           },
           {
             "path": "indexer/modules/queueMonitor.js",
-            "bytes": 7791,
-            "sha256": "a8fb3470ea0f8ccd807a856436e949ca689438e8e7ad928185a4de9335d665de"
+            "bytes": 8234,
+            "sha256": "95a81a7d938409145eb3887380ba0328dd3e325e107e18b9d55d7b11ac109ee2"
           },
           {
             "path": "indexer/modules/queueMonitor.js.map",
-            "bytes": 7898,
-            "sha256": "1a605e0f947e28803a4bf640ff2c838c72d9a0ea2ca3cfdbafb8ae394076661e"
+            "bytes": 8211,
+            "sha256": "7888b981ef7895bfd18c77b45da3be7d86fb1167c28d3bfaa83fb249d1ee339a"
           },
           {
             "path": "indexer/modules/telegram.js",

@@ -95,3 +95,44 @@ test('a disappeared inactive input remains unknown for a later replacement',asyn
  await f.check();assert.equal(f.monitor.isReaderPaused('continuous_reader'),true);assert.equal(f.monitor.isReaderPaused('reader'),false);
  f.master.workerMap.push({worker_role:'continuous_reader'});assert.equal(f.monitor.isReaderPaused('continuous_reader'),true);
 });
+
+
+test('first complete under-budget sample releases startup despite retained shared backlog in hysteresis band',async()=>{
+ const f=fixture();f.sizes.set('wire:ds_pool:1',12);await f.check();
+ assert.deepEqual(f.events,[['reader','resume'],['continuous_reader','resume']]);
+ assert.equal(f.monitor.getPressureSnapshot().status,'current');
+});
+test('unknown samples fail closed without inventing pressure; actual limit retains hysteresis across failure',async()=>{
+ const f=fixture(),original=f.master.manager.checkQueueSize;
+ f.master.manager.checkQueueSize=async()=>{throw Error('unavailable');};await f.check();
+ assert.equal(f.monitor.isReaderPaused('reader'),true);assert.equal(f.monitor.isReaderPaused('continuous_reader'),true);
+ f.master.manager.checkQueueSize=original;f.sizes.set('wire:ds_pool:1',12);await f.check();
+ assert.deepEqual(f.events,[['reader','resume'],['continuous_reader','resume']]);
+ f.sizes.set('wire:ds_pool:1',20);await f.check();
+ f.master.manager.checkQueueSize=async()=>undefined;await f.check();
+ f.master.manager.checkQueueSize=original;f.sizes.set('wire:ds_pool:1',12);await f.check();
+ assert.equal(f.monitor.isReaderPaused('reader'),true);assert.equal(f.monitor.isReaderPaused('continuous_reader'),true);
+ f.sizes.set('wire:ds_pool:1',4);await f.check();
+ assert.equal(f.monitor.isReaderPaused('reader'),false);assert.equal(f.monitor.isReaderPaused('continuous_reader'),false);
+});
+test('startup latches only roles whose own or shared queue reaches its limit',async()=>{
+ for(const [queue,paused] of [['wire:blocks:1',{reader:true,continuous_reader:false}],
+  ['wire:live_blocks',{reader:false,continuous_reader:true}],['wire:ds_pool:1',{reader:true,continuous_reader:true}]]){
+  const f=fixture();f.sizes.set(queue,queue.includes('ds_pool')?20:10);await f.check();
+  assert.deepEqual(f.monitor.getPressureSnapshot().queue_monitor_paused_roles,paused);
+  f.sizes.set(queue,7);await f.check();assert.deepEqual(f.monitor.getPressureSnapshot().queue_monitor_paused_roles,paused);
+  f.sizes.set(queue,4);await f.check();assert.deepEqual(f.monitor.getPressureSnapshot().queue_monitor_paused_roles,{reader:false,continuous_reader:false});
+ }
+});
+
+test('valid over-limit observation survives a later failed queue read for each scope',async()=>{
+ for(const [queue,limit,expected] of [['wire:blocks:1',10,{reader:true,continuous_reader:false}],
+  ['wire:live_blocks',10,{reader:false,continuous_reader:true}],['wire:ds_pool:1',20,{reader:true,continuous_reader:true}]]){
+  const f=fixture(),original=f.master.manager.checkQueueSize;f.sizes.set(queue,limit);
+  f.master.manager.checkQueueSize=async q=>{if(q==='wire:other')throw Error('later read failed');return original(q);};
+  await f.check();assert.deepEqual(f.monitor.getPressureSnapshot().queue_monitor_paused_roles,{reader:true,continuous_reader:true});
+  f.master.manager.checkQueueSize=original;f.sizes.set(queue,7);await f.check();
+  assert.deepEqual(f.monitor.getPressureSnapshot().queue_monitor_paused_roles,expected);
+  f.sizes.set(queue,4);await f.check();assert.deepEqual(f.monitor.getPressureSnapshot().queue_monitor_paused_roles,{reader:false,continuous_reader:false});
+ }
+});
