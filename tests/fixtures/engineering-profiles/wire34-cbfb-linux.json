@@ -1537,8 +1537,8 @@
       },
       {
         "path": "scripts/qualification/wire34-cbfb/source-check.mjs",
-        "bytes": 1495,
-        "sha256": "56862aa808b65cff18c38d393e4d48c9bd92819187c57b87dc5a62a7c88c65a0"
+        "bytes": 1595,
+        "sha256": "9bc7e1d16ee003ba69363afd4b233a53ea5531f862668c254aa3340426bfc234"
       },
       {
         "path": "scripts/qualification/worker-end-diagnostics.mjs",
@@ -5341,7 +5341,7 @@
         "sha256": "1945027163c553cd08421dd1f8caa08fab025c44279883ed9e6c3dec0e8c6408"
       }
     ],
-    "totalBytes": 14396536
+    "totalBytes": 14396636
   },
   "sdkPackageSha256": "8ac734718171ff01c21251e447302a806788d0ccf49d13a1e5d3dd9fe9b35ba2",
   "trees": {

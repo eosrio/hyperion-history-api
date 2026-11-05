@@ -11,7 +11,7 @@ export {STATEFUL_WIRE34_CBFB_SOURCE_PROFILE};
 const root=fileURLToPath(new URL('../../',import.meta.url)),sha=b=>createHash('sha256').update(b).digest('hex');
 const read=path=>{const s=lstatSync(path);assert(s.isFile()&&!s.isSymbolicLink()&&s.size<=4*1024*1024,'Bounded regular source member required');const b=readFileSync(path);assert.equal(b.length,s.size);return b;};
 const raw=read(new URL('../fixtures/engineering-profiles/wire34-cbfb-linux.json',import.meta.url));
-assert.equal(sha(raw),'46413b77dcaea0cded9b3ce32a54d6a08b0ee343b8cdbcb9623d7209cc62999e','Exact Wire34 consumer profile required');
+assert.equal(sha(raw),'12bd14ebafef7645e4482a7013aa33dd597513706d80d2ad9df99ca8a8724987','Exact Wire34 consumer profile required');
 export const WIRE34_CBFB_MANIFEST=freeze(JSON.parse(raw));
 const expected=WIRE34_CBFB_MANIFEST;
 function local(base,name){const p=join(base,'node_modules',name);assert.equal(findPackageJSON(name,pathToFileURL(join(base,'package.json'))),join(p,'package.json'),'No ancestor dependency fallback');assert(lstatSync(p).isDirectory()&&!lstatSync(p).isSymbolicLink());return p;}
