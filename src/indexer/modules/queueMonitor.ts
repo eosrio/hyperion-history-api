@@ -4,6 +4,12 @@ import Timeout = NodeJS.Timeout;
 import { ConnectionManager } from "../connections/manager.class.js";
 import { hLog } from "../helpers/common_functions.js";
 
+type QueueScope = 'bulk' | 'live' | 'shared';
+type QueueObservation = {queue: string; scope: QueueScope; size: number; limit: number; resume_trigger: number};
+type PressureSample = {status: 'missing' | 'current' | 'failed'; sampled_at: string | null;
+    reason: 'not_sampled' | 'missing_input' | 'invalid_metric' | 'check_failed' | null;
+    queues: QueueObservation[]; scopes: {bulk: boolean; live: boolean; shared: boolean} | null};
+
 export class HyperionQueueMonitor {
 
     master: HyperionMaster;
@@ -14,6 +20,13 @@ export class HyperionQueueMonitor {
     private queueMonitoringInterval?: Timeout;
     private readonly readingPaused = {reader: true, continuous_reader: true};
     private checking = false;
+    private sample: PressureSample = {status: 'missing', sampled_at: null, reason: 'not_sampled', queues: [], scopes: null};
+
+    getPressureSnapshot() {
+        return { ...this.sample, status: this.checking && this.sample.status === 'current' ? 'stale' as const : this.sample.status, checking: this.checking, queue_monitor_paused_roles: {...this.readingPaused},
+            queues: this.sample.queues.map(queue => ({...queue})),
+            scopes: this.sample.scopes ? {...this.sample.scopes} : null };
+    }
     chain: string;
 
     constructor(master: HyperionMaster) {
@@ -40,6 +53,7 @@ export class HyperionQueueMonitor {
     private async checkQueues(autoscaleConsumers: Record<string, number>, limit: number) {
         if (this.checking) return;
         this.checking = true;
+        let reason: PressureSample['reason'] = 'check_failed';
         try {
             type Scope = 'bulk' | 'live' | 'shared';
             const queues = new Map<string, {scope: Scope; limit: number; ingestor?: HyperionMaster['workerMap'][number]}>();
@@ -61,12 +75,15 @@ export class HyperionQueueMonitor {
             const hasLive = [...queues.values()].some(item => item.scope === 'live');
             if ((!hasBulk && this.master.workerMap.some(worker => worker.worker_role === 'reader'))
                 || (!hasLive && this.master.workerMap.some(worker => worker.worker_role === 'continuous_reader'))) {
+                reason = 'missing_input';
                 throw new Error('Active reader input queue is not observed');
             }
             const pressure = {bulk: {above: !hasBulk, resume: hasBulk}, live: {above: !hasLive, resume: hasLive}, shared: {above: false, resume: true}};
+            const observations: QueueObservation[] = [];
             for (const [queue, item] of queues) {
                 const size = await this.manager.checkQueueSize(queue);
-                if (!Number.isSafeInteger(size) || size < 0) throw new Error(`Invalid queue size for ${queue}`);
+                if (!Number.isSafeInteger(size) || size < 0) { reason = 'invalid_metric'; throw new Error(`Invalid queue size for ${queue}`); }
+                observations.push({queue, scope: item.scope, size, limit: item.limit, resume_trigger: this.conf.scaling.resume_trigger});
                 const state = pressure[item.scope];
                 if (size >= item.limit) state.above = true;
                 if (size >= this.conf.scaling.resume_trigger) state.resume = false;
@@ -82,10 +99,13 @@ export class HyperionQueueMonitor {
             }
             this.updateReader('reader', pressure.shared.above || pressure.bulk.above, pressure.shared.resume && pressure.bulk.resume);
             this.updateReader('continuous_reader', pressure.shared.above || pressure.live.above, pressure.shared.resume && pressure.live.resume);
+            this.sample = {status: 'current', sampled_at: new Date().toISOString(), reason: null, queues: observations,
+                scopes: {bulk: hasBulk, live: hasLive, shared: [...queues.values()].some(item => item.scope === 'shared')}};
         } catch (error) {
             // Unknown queue pressure must not release either reader.
             this.updateReader('reader', true, false);
             this.updateReader('continuous_reader', true, false);
+            this.sample = {status: 'failed', sampled_at: new Date().toISOString(), reason, queues: [], scopes: null};
             hLog('Queue monitoring failed; readers paused:', error);
         } finally {
             this.checking = false;

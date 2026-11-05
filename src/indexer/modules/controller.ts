@@ -167,6 +167,7 @@ export class LocalHyperionController {
                     routing_mode: this.master.conf.scaling.routing_mode
                 },
                 // Current worker counts by role
+                reader_pressure: this.master.getReaderPressureSnapshot(),
                 current_workers: workerCounts,
                 // Total active workers
                 total_workers: this.master.workerMap.length,
