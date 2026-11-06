@@ -63,24 +63,64 @@ const immutableFields={kind:{type:'keyword'},bundle_id:{type:'keyword'},digest:{
     chunk_index:{type:'integer'},chunk_ids:{type:'keyword'},payload:{type:'binary'}} as const;
 const controlFields={schemaVersion:{type:'integer'},kind:{type:'keyword'},digest:{type:'keyword'},payload:{type:'binary'}} as const;
 
+function deepFreeze<T>(value:T):T {
+    const pending:unknown[]=[value];
+    while(pending.length){
+        const item=pending.pop();
+        if(!item||typeof item!=='object'||Object.isFrozen(item))continue;
+        Object.freeze(item);
+        for(const child of Object.values(item))pending.push(child);
+    }
+    return value;
+}
+
+/**
+ * Process-local memo of fully verified frontier records. Every entry is addressed by the hash of
+ * its own content, so a remembered value can only be the value its ID names. It remembers bytes,
+ * never authority: control, ownership, generation, root membership and historical locators are
+ * read fresh by their callers, and missing or invalid results are never remembered.
+ */
+export class ProtocolAbiFrontierRecordMemo {
+    private readonly entries=new Map<string,{value:unknown;bytes:number}>();
+    private retainedBytes=0;
+    constructor(private readonly maximumBytes=64*1024*1024) {
+        if(!Number.isSafeInteger(maximumBytes)||maximumBytes<1)throw new Error('Invalid ABI frontier record memo budget');
+    }
+    get(id:string):unknown {
+        const entry=this.entries.get(id);
+        if(!entry)return undefined;
+        this.entries.delete(id);this.entries.set(id,entry);
+        return entry.value;
+    }
+    set(id:string,value:unknown,bytes:number):void {
+        if(bytes>this.maximumBytes/8||this.entries.has(id))return;
+        this.entries.set(id,{value,bytes});this.retainedBytes+=bytes;
+        for(const [oldest,entry] of this.entries){
+            if(this.retainedBytes<=this.maximumBytes)break;
+            this.entries.delete(oldest);this.retainedBytes-=entry.bytes;
+        }
+    }
+}
+
 /** Physical storage only. The coordinator owns source/profile validation, ownership, generations and readiness. */
 export class ProtocolAbiFrontierStore {
     readonly controlIndex:string;
     readonly recordsIndex:string;
     private readonly bundles:ImmutableProtocolBundleStore;
     private readonly provisioning=new Map<string,Promise<void>>(); // Exactly the two owned indices, never session/account state.
+    private readonly verifiedBuckets=new WeakMap<object,Readonly<Record<string,string>>>();
 
     constructor(private readonly client:Client,private readonly chain:string,private readonly replicas=0,
-                private readonly options:{readOnly?:boolean}={}) {
+                private readonly options:{readOnly?:boolean;recordMemo?:ProtocolAbiFrontierRecordMemo}={}) {
         if(!/^[a-z0-9][a-z0-9_.-]{0,120}$/.test(chain)||!Number.isSafeInteger(replicas)||replicas<0)throw new Error('Invalid ABI frontier store configuration');
         this.controlIndex=chain+'-protocol-abi-frontier-v1';this.recordsIndex=chain+'-protocol-abi-frontier-records-v1';
         this.bundles=new ImmutableProtocolBundleStore(client,chain,replicas,'protocol-abi-frontier-records','protocol-abi-frontier-records-v1',undefined,
-            {...options,rejectLifecycleOnRead:true});
+            {readOnly:options.readOnly,rejectLifecycleOnRead:true});
     }
 
     /** Preserve the physical namespace while refusing provisioning and writes. */
     asReadOnly():ProtocolAbiFrontierStore {
-        return new ProtocolAbiFrontierStore(this.client,this.chain,this.replicas,{readOnly:true});
+        return new ProtocolAbiFrontierStore(this.client,this.chain,this.replicas,{readOnly:true,recordMemo:this.options.recordMemo});
     }
 
     private async initialize(control:boolean,signal?:AbortSignal) {
@@ -207,8 +247,10 @@ export class ProtocolAbiFrontierStore {
     private async read(kind:ProtocolAbiFrontierRecordKind,id:string,signal?:AbortSignal):Promise<any> {
         signal?.throwIfAborted();
         if(!validId(kind,id))throw new ProtocolAbiFrontierReadError('invalid',kind,id,'Invalid ABI frontier record ID');
+        const remembered=this.options.recordMemo?.get(id);
+        if(remembered!==undefined)return remembered;
         // The bundle read freshly validates the same records index, including frontier retention rules.
-        // Keep the response owned inside that operation; do not cache or accept validation from a caller.
+        // Keep the response owned inside that operation; only a record verified below may be remembered.
         let raw:unknown;
         try {raw=await this.bundles.read(id,signal);}catch(error) {
             if(error instanceof ImmutableProtocolBundleReadError)throw new ProtocolAbiFrontierReadError(error.code,kind,id,error.message);
@@ -218,7 +260,11 @@ export class ProtocolAbiFrontierStore {
             const record=bounded(raw,{bytes:limits[kind].bytes+1024,nodes:limits[kind].nodes+10}).value;
             if(!recordKeys(record,['schemaVersion','chain','kind','value'])||record.schemaVersion!==1||record.chain!==this.chain
                 ||record.kind!==kind||this.id(record)!==id)throw new Error('Invalid frontier envelope');
-            return bounded(record.value,limits[kind]).value;
+            const verified=bounded(record.value,limits[kind]);
+            if(!this.options.recordMemo)return verified.value;
+            // Buckets also retain their verified map, so they count twice against the budget.
+            this.options.recordMemo.set(id,deepFreeze(verified.value),verified.json.length*(kind==='bucket'?2:1));
+            return verified.value;
         }catch{throw new ProtocolAbiFrontierReadError('invalid',kind,id,'Stored ABI frontier type, chain or identity mismatch');}
     }
 
@@ -310,13 +356,21 @@ export class ProtocolAbiFrontierStore {
         }
         return Object.assign(Object.create(null),value.buckets);
     }
-    private async bucket(id:string,key:string,signal?:AbortSignal):Promise<Record<string,string>> {
+    /** Shared and read-only. The per-entry checks are a pure function of content its ID already binds. */
+    private async verifiedBucket(id:string,key:string,signal?:AbortSignal):Promise<Readonly<Record<string,string>>> {
         const value=await this.read('bucket',id,signal);
+        const known=this.verifiedBuckets.get(value);
+        if(known&&value.prefix===key)return known;
         if(!recordKeys(value,['prefix','accounts'])||value.prefix!==key
             ||!recordKeysMap(value.accounts,20000,([account,stateId])=>validAccount(account)&&hash(account).slice(0,2)===key&&validId('account-state',stateId))) {
             throw new ProtocolAbiFrontierReadError('invalid','bucket',id,'Invalid ABI account bucket map');
         }
-        return Object.assign(Object.create(null),value.accounts);
+        const accounts:Readonly<Record<string,string>>=Object.freeze(Object.assign(Object.create(null),value.accounts));
+        if(this.options.recordMemo)this.verifiedBuckets.set(value,accounts);
+        return accounts;
+    }
+    private async bucket(id:string,key:string,signal?:AbortSignal):Promise<Record<string,string>> {
+        return Object.assign(Object.create(null),await this.verifiedBucket(id,key,signal));
     }
 
     private stateUpdates(updates:readonly ProtocolAbiAccountUpdate[]):ProtocolAbiAccountUpdate[] {
@@ -393,7 +447,7 @@ export class ProtocolAbiFrontierStore {
         if(!validAccount(account))throw new Error('Invalid ABI account lookup');
         const buckets=await this.root(rootId,signal),key=hash(account).slice(0,2);
         if(!buckets[key])return null;
-        const accounts=await this.bucket(buckets[key],key,signal),id=accounts[account];if(!id)return null;
+        const accounts=await this.verifiedBucket(buckets[key],key,signal),id=accounts[account];if(!id)return null;
         const state:any=await this.readAccountState(id,signal);
         if(state.account!==account)throw new ProtocolAbiFrontierReadError('invalid','account-state',id,'ABI bucket/account identity mismatch');
         return state;

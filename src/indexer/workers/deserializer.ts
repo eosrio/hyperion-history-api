@@ -28,7 +28,7 @@ import {ProtocolSourceBindingStore, ProtocolSourceBindingReadError, protocolSour
 import {protocolImmutableJson} from '../protocol/immutable-bundle-store.js';
 import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, type ProtocolAbiProofView} from '../protocol/abi-proof.js';
 import {diskAbiHistoryOptions,publishDiskAbiSource} from '../protocol/disk-abi-history-options.js';
-import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
+import {ProtocolAbiFrontierStore, ProtocolAbiFrontierRecordMemo} from '../protocol/abi-frontier-store.js';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {actionSourceAdmissionHeader, actionSourceIngressHeader, type ActionSourceAdmission} from '../history/action-source-admission.js';
 import {actionProducerEpoch, currentActionConfiguration} from '../history/action-producer-epoch.js';
@@ -729,7 +729,7 @@ export default class MainDSWorker extends HyperionWorker {
         return this.protocolAbiProofReader ??= new ProtocolAbiProofReader({chainId: this.chainId,
             diskHistory:this.getProtocolAbiProofReaderOptions(),
             profile: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
-            store: new ProtocolAbiFrontierStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0, {readOnly: true}),
+            store: new ProtocolAbiFrontierStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0, {readOnly: true, recordMemo: new ProtocolAbiFrontierRecordMemo()}),
             historicalCertificates:this.conf.settings.protocol_abi_coordination?.historical_certificates!==undefined,
             requireAttemptScope: this.workerAttemptScopeRequired,
             maxAncestryBlocks: this.conf.settings.protocol_abi_coordination?.recovery_window_blocks});

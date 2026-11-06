@@ -117,6 +117,8 @@ export class ProtocolAbiProofReader {
     private readonly profile:ProtocolSourceProfile;
     private readonly maximumAncestry:number;
     private readonly issued=new WeakMap<ProtocolAbiProofView,Issued>();
+    /** Frozen memoized commits already structurally valid for this reader's fixed chain/profile/catalog. */
+    private readonly validatedCommits=new WeakSet<object>();
     private activeReads=0;
     constructor(private readonly options:ProtocolAbiProofReaderOptions) {
         if(!hex64.test(options.chainId))throw new Error('Invalid ABI proof chain');
@@ -191,6 +193,7 @@ export class ProtocolAbiProofReader {
                 &&(value.nativeActionInterfaceVersion===undefined||value.nativeActionInterfaceVersion===1),'Invalid disk ABI baseline');
             await catalog.revalidate();return value;
         }
+        if(value&&typeof value==='object'&&this.validatedCommits.has(value))return value;
         requireProof(value?.schemaVersion===1&&value.kind==='canonical-abi-block'&&value.chainId===this.options.chainId
             &&this.sameProfile(value.profile)&&text(value.generation)&&ident('h45srcsel1',value.selectionId)
             &&value.source?.chainId===this.options.chainId&&uint(value.source.blockNum,1)&&hex64.test(value.source.blockId)
@@ -223,6 +226,7 @@ export class ProtocolAbiProofReader {
                 &&(binding.stateId===null||ident('h45abist1',binding.stateId))&&!seen.has(key),'Invalid ABI input binding');
             seen.add(key);
         }
+        if(Object.isFrozen(value))this.validatedCommits.add(value);
         return value;
     }
     async open(source:ProtocolAbiProofSource,selectionId?:string,{signal}:ProtocolAbiProofReadOptions={}):Promise<ProtocolAbiProofView> {

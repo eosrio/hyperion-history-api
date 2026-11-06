@@ -5,7 +5,7 @@ import {ProtocolAbiObservationStore} from '../../indexer/protocol/abi-observatio
 import {createHash} from 'node:crypto';
 import type {FastifyInstance, FastifyRequest} from 'fastify';
 import {loadChainProtocol} from '../../indexer/protocol/selection.js';
-import {ProtocolAbiFrontierStore} from '../../indexer/protocol/abi-frontier-store.js';
+import {ProtocolAbiFrontierStore, ProtocolAbiFrontierRecordMemo} from '../../indexer/protocol/abi-frontier-store.js';
 import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError,
     type ProtocolActionProofMetadata, type ProtocolAbiProofView} from '../../indexer/protocol/abi-proof.js';
 import {ProtocolNativeActionReader, ProtocolNativeActionUnavailableError,
@@ -57,7 +57,7 @@ export class ProtocolActionConsumer {
                 new ProtocolAbiObservationStore(host.elastic,chain,host.manager.config.settings.es_replicas ?? 0,undefined,{readOnly:true})),
             historicalCertificates: host.manager.config.settings.protocol_abi_coordination?.historical_certificates !== undefined,
             maxAncestryBlocks: host.manager.config.settings.protocol_abi_coordination?.recovery_window_blocks,
-            store: new ProtocolAbiFrontierStore(host.elastic, chain, host.manager.config.settings.es_replicas ?? 0, {readOnly: true})});
+            store: new ProtocolAbiFrontierStore(host.elastic, chain, host.manager.config.settings.es_replicas ?? 0, {readOnly: true, recordMemo: new ProtocolAbiFrontierRecordMemo()})});
         this.nativeReader = selected.provider.nativeActions ? new ProtocolNativeActionReader({chainId, profile,
             provider: selected.provider, proofReader: this.reader,
             store: new ProtocolNativeObservationStore(host.elastic, chain,

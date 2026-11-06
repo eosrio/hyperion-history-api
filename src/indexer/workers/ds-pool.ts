@@ -19,7 +19,7 @@ import { groupActionTraces } from "../helpers/action-dedup.js";
 import {assertCompleteProtocolSearch} from '../protocol/search.js';
 import {protocolBytes} from '../protocol/contract-cache.js';
 import {protocolSourceSelectionHeader} from '../protocol/source-bindings.js';
-import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
+import {ProtocolAbiFrontierStore, ProtocolAbiFrontierRecordMemo} from '../protocol/abi-frontier-store.js';
 import {ProtocolNativeObservationStore} from '../protocol/native-observation-store.js';
 import {ProtocolNativeActionReader, ProtocolNativeActionUnavailableError,
     type ProtocolNativeActionView, type ProtocolNativeActionGrant, type ProtocolNativeWorkerReaders} from '../protocol/native-authorization.js';
@@ -533,7 +533,7 @@ export default class DSPoolWorker extends HyperionWorker {
             diskHistory:diskAbiHistoryOptions(this.conf.settings.protocol_abi_history,this.client,this.chain,this.chainId,
                 {id:this.protocolId,profileId:this.protocol.profileId,components:this.protocolComponents??[]},this.protocol,this.conf.settings.es_replicas??0),
             profile: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
-            store: new ProtocolAbiFrontierStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0, {readOnly: true}),
+            store: new ProtocolAbiFrontierStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0, {readOnly: true, recordMemo: new ProtocolAbiFrontierRecordMemo()}),
             sourceEquivalence: new ProtocolSourceEquivalence(new ProtocolSourceBindingStore(this.client,this.chain,this.conf.settings.es_replicas ?? 0,{readOnly:true}),
                 new ProtocolAbiObservationStore(this.client,this.chain,this.conf.settings.es_replicas ?? 0,undefined,{readOnly:true})),
             historicalCertificates: this.conf.settings.protocol_abi_coordination?.historical_certificates !== undefined,
