@@ -1,8 +1,7 @@
 # Opt-in original-context mapping and preserving MongoDB recovery
 
 [HAPI #359](https://github.com/eosrio/hyperion-history-api/issues/359) consumes the independently
-released SDK contextual recovery family, pinned
-to merged commit `8d37e932df5e0e7d671c9682505de3dd55f0edb4` in both application and adapter locks.
+released SDK contextual recovery family.
 Wire remains pinned to its existing package, nested SDK, native components and source receipts;
 [the development build](development-build.md) describes the explicit two-SDK compatibility check.
 
