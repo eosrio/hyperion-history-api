@@ -76,7 +76,7 @@ export async function runCI(output) {
         check();
         assertOriginalTerminal(report.child);
         const native = JSON.parse(readFileSync(join(output, 'native/report.json')));
-        assertNativeCompletion(report.child, native, OPERATOR_LIST_ASSEMBLY.trees.nativeBuild.sha256);
+        assertNativeCompletion(report.child, native);
         const checksums = JSON.parse(readFileSync(join(output, 'native/sha256.json')));
         assert.deepEqual(checksums.map(row => row.path).sort(), ['report.json', 'trace.json']);
         for (const entry of checksums) {

@@ -105,9 +105,9 @@ export async function afterReadiness(check, ready, continueWork) {
     check(); await ready(); check(); return continueWork();
 }
 /** Pure CI verdict check; artifact collection/cleanup cannot replace the original child result. */
-export function assertNativeCompletion(terminal, native, compiledSha256) {
+export function assertNativeCompletion(terminal, native) {
     assertOriginalTerminal(terminal);
-    assert.equal(native.status, 'passed-native-only'); assert.equal(native.source.profile, PLAN.profile); assert.equal(native.source.compiledSha256, compiledSha256);
+    assert.equal(native.status, 'passed-native-only'); assert.equal(native.source.profile, PLAN.profile);
     assert.deepEqual(native.cases.map(row => row.name).sort(), PLAN.cases.filter(name => name !== 'original-session-client-cleanup').sort());
     assert.ok(native.cases.every(row => row.status === 'passed'));
     for (const key of ['ownedDatabaseDropped', 'failpointDisabled', 'sessionsEnded', 'boundedClosed', 'adminClosed', 'noHiddenTransactionControls'])

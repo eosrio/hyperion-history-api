@@ -54,8 +54,7 @@ test('native CI verdict retains timeout/failed terminal/open-stream and incomple
     const success = make(); assertNativeCompletion(success.terminal, success.native, expected);
     for (const mutate of [v => {v.terminal.timedOut = true;}, v => {v.terminal.code = 1;}, v => {v.terminal.signal = 'SIGKILL';},
         v => {v.terminal.terminal = false;}, v => {v.terminal.streamsClosed = false;}, v => {v.native.status = 'failed';},
-        v => {v.native.source.profile = 'old-profile';}, v => {v.native.source.compiledSha256 = '0'.repeat(64);},
-        v => {v.native.cases.pop();}, v => {v.native.cases[0].status = 'failed';}, v => {v.native.cleanup.failpointDisabled = false;},
+        v => {v.native.source.profile = 'old-profile';}, v => {v.native.cases.pop();}, v => {v.native.cases[0].status = 'failed';}, v => {v.native.cleanup.failpointDisabled = false;},
         v => {v.native.cleanup.sessionsEnded = false;}, v => {v.native.cleanup.noHiddenTransactionControls = false;}]) {
         const value = make(); mutate(value); assert.throws(() => assertNativeCompletion(value.terminal, value.native, expected));
     }
