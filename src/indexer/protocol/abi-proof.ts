@@ -1,7 +1,8 @@
 import type {ProtocolSourceEquivalence,ProtocolSourceEquivalenceReceipt} from './source-equivalence.js';
 import {createHash} from 'node:crypto';
-import {currentProofConsumerScope, assertProofConsumerCapability, trackProofConsumerOperation, proofConsumerSignal, type ProofConsumerScope} from './proof-consumer-scope.js';
+import {currentProofConsumerScope, currentProofReadRecovery, assertProofConsumerCapability, trackProofConsumerOperation, proofConsumerSignal, type ProofConsumerScope} from './proof-consumer-scope.js';
 import {setTimeout as delay} from 'node:timers/promises';
+import {performance} from 'node:perf_hooks';
 import type {ProtocolAbiActionInput} from '@eosrio/hyperion-sdk/protocol';
 import type {ProtocolAbiAccountState} from './abi-reducer.js';
 import {protocolSourceContextId,type ProtocolSourceProfile,type ProtocolSourcePosition} from './source-bindings.js';
@@ -45,12 +46,16 @@ export interface ProtocolAbiProofReaderOptions {
     readonly maxAncestryBlocks?:number;
     /** Internal worker wiring only; public/API readers remain independent. */
     readonly requireAttemptScope?:boolean;
+    /** Worker-only pure membership reads; never retries effects or API consumption. */
+    readonly workerProofRecovery?:boolean;
     /** Internal opt-in exact historical-address port; unchanged recent ancestry remains bounded. */
     readonly historicalCertificates?:boolean;
     readonly sourceEquivalence?:ProtocolSourceEquivalence;
 }
 // Internal provenance: only a missing certificate manifest can represent the activation publication gap.
 const unsettledCertificateErrors=new WeakSet<object>();
+const advancedHistoricalErrors=new WeakSet<object>();
+const workerRecovery=new WeakMap<ProofConsumerScope,{deadline:number}>();
 export function isUnsettledCertificate(error:unknown):boolean {
     return typeof error==='object'&&error!==null&&unsettledCertificateErrors.has(error);
 }
@@ -129,9 +134,9 @@ export class ProtocolAbiProofReader {
         if(!uint(this.maximumAncestry,1)||this.maximumAncestry>4096)throw new Error('Invalid ABI proof ancestry bound');
     }
     /** Independent issuance/cancellation state over storage that cannot initialize or write indices. */
-    asReadOnly():ProtocolAbiProofReader {
+    asReadOnly(workerProofRecovery=this.options.workerProofRecovery):ProtocolAbiProofReader {
         return new ProtocolAbiProofReader({chainId:this.options.chainId,profile:this.profile,
-            store:this.options.store.asReadOnly(),maxAncestryBlocks:this.maximumAncestry,requireAttemptScope:this.options.requireAttemptScope,
+            store:this.options.store.asReadOnly(),maxAncestryBlocks:this.maximumAncestry,requireAttemptScope:this.options.requireAttemptScope,workerProofRecovery,
             historicalCertificates:this.options.historicalCertificates,sourceEquivalence:this.options.sourceEquivalence,diskHistory:this.options.diskHistory});
     }
     private consume<T>(view:ProtocolAbiProofView|undefined, operation:()=>Promise<T>):Promise<T> {
@@ -342,7 +347,29 @@ export class ProtocolAbiProofReader {
             ||json(value.historical.anchor)!==json(root.anchor)
             ||value.chainId!==this.options.chainId||json(value.profile)!==json(this.profile)
             ||value.phase!=='following'||value.gap!==null||value.replayFromBlock!==null)
-            unavailable('authority_changed','Activated historical address root changed');
+            {
+                if(this.validHistoricalAdvance(value,current))this.historicalAdvanced('Activated historical address root changed');
+                unavailable('authority_changed','Activated historical address root changed');
+            }
+    }
+    private historicalAdvanced(message:string):never {
+        const error=new ProtocolAbiProofUnavailableError('authority_changed',message);
+        advancedHistoricalErrors.add(error);throw error;
+    }
+    private validHistoricalAdvance(value:any,current:ProtocolAbiHeadCertificate):boolean {
+        const historical=value?.historical;
+        return value?.schemaVersion===1&&Number.isSafeInteger(value.revision)&&value.revision>=0
+            &&value.chainId===this.options.chainId&&this.sameProfile(value.profile)
+            &&value.ownerId===current.ownerId&&value.generation===current.generation
+            &&value.source&&ident('h45srcctx1',value.source.contextId)&&text(value.source.readerSessionId)
+            &&value.phase==='following'&&value.gap===null&&value.replayFromBlock===null
+            &&validHead(value.head)&&value.head.blockNum>=current.head.blockNum
+            &&(value.head.blockNum!==current.head.blockNum||json(value.head)===json(current.head))
+            &&historical?.interfaceVersion===1&&ident('h45abiroot1',historical.addressRootId)
+            &&ident('h45abicert1',historical.activationCertificateId)&&validHead(historical.anchor)
+            &&historical.anchor.coverageStart===1&&historical.anchor.blockNum<=value.head.blockNum
+            &&(historical.anchor.blockNum!==value.head.blockNum||json(historical.anchor)===json(value.head))
+            &&this.options.store.certificateId(historicalRootCertificate({...current,head:historical.anchor},historical.addressRootId))===historical.activationCertificateId;
     }
     private async activatedHistoricalRoot(current:ProtocolAbiHeadCertificate,signal?:AbortSignal):Promise<HistoricalActivation> {
         const stored=await this.retained(()=>this.options.store.readControl(signal),'authority_unavailable',signal),value:any=stored?.value;
@@ -360,7 +387,7 @@ export class ProtocolAbiProofReader {
             &&validHead(anchor)&&anchor.coverageStart===1&&anchor.blockNum<=value.head.blockNum
             &&(anchor.blockNum!==value.head.blockNum||json(anchor)===json(value.head))
             &&this.options.store.certificateId(historicalRootCertificate({...current,head:anchor},rootId))===certificateId)
-            unavailable('authority_changed','Canonical ABI head advanced during historical root selection');
+            this.historicalAdvanced('Canonical ABI head advanced during historical root selection');
         if(value?.ownerId!==current.ownerId||value?.generation!==current.generation||value.historical?.interfaceVersion!==1
             ||!ident('h45abiroot1',rootId)||!ident('h45abicert1',certificateId)||!validHead(anchor)||anchor.coverageStart!==1
             ||anchor.blockNum>current.head.blockNum||anchor.blockNum===current.head.blockNum&&json(anchor)!==json(current.head)
@@ -410,7 +437,59 @@ export class ProtocolAbiProofReader {
             controller.signal.removeEventListener('abort',onAbort);controller.abort();}
         });
     }
+    /** Only pure membership reads retry. HTTP keeps its existing attempt lifetime; workers
+     * start one shared recovery clock on their first proven race. Native decoding, hooks,
+     * cache writes and publications never run here. Healthy worker reads gain no new timeout.
+     */
     private async revalidateCurrent(view:ProtocolAbiProofView,{signal}:ProtocolAbiProofReadOptions,opening:boolean):Promise<void> {
+        const scope=currentProofConsumerScope(),httpRecovery=currentProofReadRecovery();
+        if(!httpRecovery&&(!this.options.workerProofRecovery||!scope))return this.revalidateOnce(view,{signal},opening);
+        const originalSignal=proofConsumerSignal(httpRecovery?signal?AbortSignal.any([signal,httpRecovery.signal]):httpRecovery.signal:signal);
+        let controller:AbortController|undefined,timer:ReturnType<typeof setTimeout>|undefined;
+        try {while(true){
+            scope?.assertActive();originalSignal?.throwIfAborted();
+            const activeSignal=controller?AbortSignal.any([originalSignal!,controller.signal]):originalSignal;
+            try {
+                if(controller)await this.boundedRecoveryRead(()=>this.revalidateOnce(view,{signal:activeSignal},opening),activeSignal!);
+                else await this.revalidateOnce(view,{signal:activeSignal},opening);
+                return;
+            }
+            catch(error){
+                scope?.assertActive();originalSignal?.throwIfAborted();
+                if(controller?.signal.aborted)unavailable('proof_timeout','Proof read recovery exceeded its shared lifetime');
+                if(!(error instanceof ProtocolAbiProofUnavailableError)
+                    ||!(isUnsettledCertificate(error)||advancedHistoricalErrors.has(error)))throw error;
+                // Missing immutable manifests alone never authorize a source. The next attempt
+                // rereads authority AND exact current membership, still pinned to its issued owner.
+                let remaining:number;
+                if(httpRecovery)remaining=httpRecovery.remainingMs();
+                else {
+                    let recovery=workerRecovery.get(scope!);
+                    if(!recovery){recovery={deadline:performance.now()+5000};workerRecovery.set(scope!,recovery);}
+                    remaining=recovery.deadline-performance.now();
+                }
+                if(remaining<=0)unavailable('proof_timeout','Proof read recovery exceeded its shared lifetime');
+                if(!controller){controller=new AbortController();if(!httpRecovery){timer=setTimeout(()=>controller!.abort(),remaining);timer.unref();}}
+                try {await delay(Math.min(25,remaining),undefined,{signal:AbortSignal.any([originalSignal!,controller.signal])});}
+                catch(stopped){scope?.assertActive();originalSignal?.throwIfAborted();
+                    if(controller.signal.aborted)unavailable('proof_timeout','Proof read recovery exceeded its shared lifetime');throw stopped;}
+            }
+        }}finally{clearTimeout(timer);controller?.abort();}
+    }
+    /** A timeout ends the caller wait, never the physical tracked read or original attempt.
+     * Its still-aborted signal fences every continuation after an uncooperative store returns.
+     */
+    private async boundedRecoveryRead(operation:()=>Promise<void>,signal:AbortSignal):Promise<void> {
+        this.assertActive(signal);
+        let stop!:()=>void;
+        const stopped=new Promise<never>((_resolve,reject)=>{
+            stop=()=>reject(new ProtocolAbiProofUnavailableError('proof_cancelled','Proof recovery read was cancelled'));
+            signal.addEventListener('abort',stop,{once:true});
+        });
+        try {await Promise.race([operation(),stopped]);}
+        finally {signal.removeEventListener('abort',stop);}
+    }
+    private async revalidateOnce(view:ProtocolAbiProofView,{signal}:ProtocolAbiProofReadOptions,opening:boolean):Promise<void> {
         return this.consume(view,async()=>{
         signal=proofConsumerSignal(signal);
         if(this.diskIssued.has(view)){this.assertActive(signal);await this.options.diskHistory!.catalog.revalidate();this.assertActive(signal);return;}

@@ -117,3 +117,18 @@ export function trackProofConsumerOperation<T>(operation: () => T | Promise<T>, 
 export function assertProofConsumerEnd(scope: ProofConsumerScope, end: ProofConsumerEnd): void {
     if (ends.get(end) !== scope || scope.snapshot().state !== 'drained') throw new Error('Unissued or foreign worker attempt end');
 }
+
+/** Host-internal HTTP proof attempt lifetime. Supplies scheduling bounds, never source authority.
+ * Direct/stream callers have no recovery policy unless their host explicitly installs one.
+ */
+export interface ProofReadRecovery {
+    readonly key: object;
+    readonly signal: AbortSignal;
+    remainingMs(): number;
+}
+const readRecovery = new AsyncLocalStorage<ProofReadRecovery>();
+export function withProofReadRecovery<T>(recovery: ProofReadRecovery, operation: () => Promise<T>): Promise<T> {
+    recovery.signal.throwIfAborted();
+    return readRecovery.run(recovery, operation);
+}
+export function currentProofReadRecovery(): ProofReadRecovery | undefined {return readRecovery.getStore();}

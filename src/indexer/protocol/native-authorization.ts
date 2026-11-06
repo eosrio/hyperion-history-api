@@ -115,7 +115,7 @@ export class ProtocolNativeActionReader {
      * No view-adoption API, retained-pair lookup or cross-attempt opening cache is exposed.
      */
     static forWorker(options: ProtocolNativeActionReaderOptions): ProtocolNativeWorkerReaders {
-        const native = new ProtocolNativeActionReader(options), proofs = native.proofs;
+        const native = new ProtocolNativeActionReader({...options, proofReader: options.proofReader.asReadOnly(true)}), proofs = native.proofs;
         return Object.freeze({native, proofs, async waitForOpen(source: ProtocolAbiProofSource, selectionId: string,
             options: ProtocolAbiProofReadOptions & {timeoutMs?: number} = {}) {
             const scope = currentProofConsumerScope(true), signal = proofConsumerSignal(options.signal);
