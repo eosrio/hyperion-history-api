@@ -37,7 +37,9 @@ test('contextual Mongo replacements preserve first creation and required null in
     assert.equal((await adapter.apply(second)).status, 'duplicate');
     const reopened = adapterFor(fixture);
     assert.deepEqual(await reopened.open(binding), b.view);
+    let reads = 0; fixture.beforeFind = () => {reads++;};
     const retained = await reopened.retainedCheckpoints({binding, revision: b.view.revision});
+    fixture.beforeFind = null; assert.equal(reads, 1, 'progress and its applied branch come from one metadata read');
     assert.ok(Object.isFrozen(retained.checkpoints) && Object.isFrozen(retained.checkpoints[0]));
     assert.deepEqual(retained.checkpoints.map(point => ({...point})),
         [{blockNum: 2, blockId: hex(2)}, {blockNum: 1, blockId: hex(1)}, genesis]);
@@ -181,4 +183,10 @@ test('explicit nonpreserving put remains a full replacement and declared deletio
     await adapter.rollback({binding: selected, revision: start.revision, operationId: 'undo-declared-delete',
         from: removed.view.checkpoint, ancestor: b.view.checkpoint, maxBlocks: 1});
     assert.deepEqual((await adapter.query(await adapter.open(selected), all)).rows, [{key: 'one', value: put('bob', 2).value}]);
+});
+
+test('only the contextual adapter exposes retained-checkpoint inspection', () => {
+    const fixture = databaseFixture();
+    assert.equal(typeof fixture.rollbackAdapter().retainedCheckpoints, 'undefined');
+    assert.equal(typeof adapters.createMongoDbContextualRecoveryAdapter({client: fixture.client, databaseName: 'fixture', backendId: 'backend'}).retainedCheckpoints, 'function');
 });

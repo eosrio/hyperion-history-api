@@ -427,11 +427,13 @@ export class MongoDbRollbackEngine<D, B extends RecoveryBatch, C> extends MongoP
         });
     }
 
-    async retainedCheckpoints(input: ProjectionRetainedCheckpointRequest): Promise<ProjectionRetainedCheckpointView> {
+    /** Protected so that only adapters declaring inspection expose it. */
+    protected async inspectRetainedCheckpoints(input: ProjectionRetainedCheckpointRequest): Promise<ProjectionRetainedCheckpointView> {
         const captured = valid(validateProjectionRetainedCheckpointRequest(input));
         const binding = checkBinding(captured.binding, this.backendId);
-        return this.guarded(() => this.transaction(async session => {
-            const metadata = await this.load(binding, session);
+        return this.guarded(async () => {
+            // Progress and its exact applied branch come from this one durable metadata read.
+            const metadata = await this.load(binding);
             assertRevision(metadata, captured.revision);
             const checkpoints = [metadata.checkpoint, ...[...metadata.undo].reverse().map(item => ({
                 blockNum: item.block.blockNum - 1, blockId: item.block.previousBlockId,
@@ -439,7 +441,7 @@ export class MongoDbRollbackEngine<D, B extends RecoveryBatch, C> extends MongoP
             const result = validateProjectionRetainedCheckpoints({recovery: rollbackRecovery(metadata), checkpoints});
             if (!result.valid) return invalidStorage();
             return result.value;
-        }));
+        });
     }
 
     async query(input: ProjectionRollbackReadView, queryInput: ProjectionQuery): Promise<ProjectionRollbackQueryResult> {
@@ -457,5 +459,12 @@ export class MongoDbRollbackEngine<D, B extends RecoveryBatch, C> extends MongoP
             assertRollbackView(await this.load(view.binding), view);
             return result;
         });
+    }
+}
+
+/** Rollback engine for adapters that declare retained-checkpoint inspection. */
+export class MongoDbRecoveryEngine<D, B extends RecoveryBatch, C> extends MongoDbRollbackEngine<D, B, C> {
+    retainedCheckpoints(input: ProjectionRetainedCheckpointRequest): Promise<ProjectionRetainedCheckpointView> {
+        return this.inspectRetainedCheckpoints(input);
     }
 }

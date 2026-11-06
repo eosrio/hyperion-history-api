@@ -11,7 +11,7 @@ import {
 import {hash, slot, stableJson, validateReceiptProgress} from './contract.js';
 import {invalidStorage} from './rollback-contract.js';
 import type {RecoveryDialect} from './rollback-dialect.js';
-import {MongoDbRollbackEngine, type MongoDbRollbackAdapterOptions} from './rollback-engine.js';
+import {MongoDbRecoveryEngine, type MongoDbRollbackAdapterOptions} from './rollback-engine.js';
 
 const storageVersion = 'h45-contextual-mongodb-recovery-v1';
 const capabilities: ContextualProjectionRecoveryAdapterCapabilities = Object.freeze({
@@ -62,5 +62,5 @@ const dialect: RecoveryDialect<ContextualProjectionDefinition, ContextualProject
 
 /** Explicit SDK recovery family. No legacy storage adoption, production selection or host activation. */
 export function createMongoDbContextualRecoveryAdapter(options: MongoDbRollbackAdapterOptions): ContextualProjectionRecoveryAdapter {
-    return new MongoDbRollbackEngine(options, dialect);
+    return new MongoDbRecoveryEngine(options, dialect);
 }
