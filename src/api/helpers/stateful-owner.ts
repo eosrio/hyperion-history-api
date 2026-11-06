@@ -86,7 +86,7 @@ export function installStatefulApiHostV2(fastify: FastifyInstance, options: {con
             if (state.indexedPublication) await cancelled(state.indexedPublication(),state.abort.signal);
             guard(state);
             if (state.indexedResult) assertIndexedQueryPublicationV1(state.indexedResult);
-            reply.headers(stateResponseHeaders(state.result.expected.view));
+            reply.headers(stateResponseHeaders(state.result.expected.view, options.configuration.finality));
             return payload;
         } catch {state.failed = true; return failure(reply);}
     };

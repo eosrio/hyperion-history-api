@@ -57,6 +57,31 @@ invalidates the old lease and requires fresh observed acquisition. A request
 attestation rechecks actual native owner claim, completed view and original
 source before and after its reads. Its DTO is not a serving grant.
 
+## Finality
+
+`features.stateful_owner_v2.finality` selects `reversible`, the default, or
+`irreversible`. Reversible follows the canonical head and recovers forks through
+retained undo. Its configuration digest and instance are unchanged by this option.
+
+Irreversible applies only through the source's reported last irreversible block,
+which `PortableProjectionSource.irreversibleTarget` proves on the current canonical
+branch. Responses carry `Hyperion-State-Finality`, and attestation refuses any view
+above the eligible target.
+
+- **Separate instance:** irreversible state uses its own generation, so applied
+  reversible effects can never seed it. Changing mode needs a controlled restart
+  and fresh state initialization.
+- **No rollback:** an orphaned checkpoint or a retained rollback leaves the view
+  unavailable. Applied irreversible effects are never undone.
+- **Regression:** a report that moves backward or changes identity is fenced for
+  that source. After a restart, durable input waits for the source to catch up
+  and is not failed, and the view stays unavailable meanwhile.
+- **Replay:** a reported LIB above covered replay is capped at the covered head,
+  because every covered block is then already irreversible.
+- **Ancestry:** the LIB must be provable. A chain whose LIB trails its head by
+  more than `protocol_abi_coordination.recovery_window_blocks` needs
+  `historical_certificates`; otherwise the view fails closed as unavailable.
+
 ## Remaining production boundaries
 
 The optional `getStatefulProjectionsV2` method belongs on the existing enabled

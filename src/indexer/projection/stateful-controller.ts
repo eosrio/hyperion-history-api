@@ -11,6 +11,7 @@ import {currentProofConsumerScope} from '../protocol/proof-consumer-scope.js';
 import type {PortableProjectionRawTarget, PortableProjectionSource} from './source.js';
 import type {StatefulActionMetadataOptionsV2} from '@eosrio/hyperion-sdk/projection-stateful-source-v2';
 import {statefulOwnerExpectationDigest, type StatefulOwnerExpectation} from './stateful-expectation.js';
+import type {StatefulOwnerFinality} from './stateful-config.js';
 export {statefulOwnerExpectationDigest, type StatefulOwnerExpectation} from './stateful-expectation.js';
 
 const json = protocolImmutableJson;
@@ -23,7 +24,7 @@ function requireOwner(value: unknown, message: string): asserts value {
 interface OwnerOptions {
     readonly declaration: StatefulOwnerDeclarationV2;
     readonly adapter: StatefulOwnerAdapterV2;
-    readonly source: Pick<PortableProjectionSource, 'head' | 'open' | 'revalidate' | 'statefulBlock' | 'assertStatefulView'>;
+    readonly source: Pick<PortableProjectionSource, 'head' | 'irreversibleTarget' | 'open' | 'revalidate' | 'statefulBlock' | 'assertStatefulView'>;
     readonly identity: StatefulOwnerIdentityV2;
     readonly custody: StatefulCandidateStoreV2;
     readonly reduce: (reduction: StatefulReductionV2) => Promise<void>;
@@ -32,6 +33,7 @@ interface OwnerOptions {
     readonly requireAttemptScope: boolean;
     readonly run: (metadata: unknown, operation: () => Promise<boolean>) => Promise<boolean>;
     readonly maximumFramesPerDrain: number;
+    readonly finality?: StatefulOwnerFinality;
     readonly sourceMetadata?: StatefulActionMetadataOptionsV2;
     readonly onError?: (error: unknown) => void;
 }
@@ -46,7 +48,9 @@ export class StatefulProjectionControllerV2 {
     private failed = false;
     private admitting = false;
     private observedTarget?: string;
+    private readonly irreversible: boolean;
     constructor(private readonly options: OwnerOptions) {
+        this.irreversible = options.finality === 'irreversible';
         requireOwner(Number.isSafeInteger(options.maximumFramesPerDrain) && options.maximumFramesPerDrain > 0,
             'Stateful drain quantum is invalid');
     }
@@ -84,6 +88,13 @@ export class StatefulProjectionControllerV2 {
     }
     private async recoverFork(recovery: StatefulOwnerRecoveryV2): Promise<boolean> {
         const retained = recovery.rollback;
+        if (this.irreversible) {
+            // Applied effects are final. A conflict leaves this view unavailable; it never undoes them.
+            requireOwner((!retained || retained.status === 'complete') && await this.canonical(recovery.view.checkpoint)
+                && (!recovery.raw || await this.canonical(recovery.raw.target.target.block)),
+            'Canonical source conflicts with the applied irreversible finality floor');
+            return false;
+        }
         if (retained && retained.status !== 'complete') {
             requireOwner(retained.status !== 'unavailable', 'Stateful rollback needs historical recovery');
             this.reconciled = false;
@@ -129,9 +140,11 @@ export class StatefulProjectionControllerV2 {
             if (!this.lease || !recovery || this.revision !== recovery.view.revision) recovery = await this.claim(recovery);
             requireOwner(recovery.owner && same(recovery.owner.identity, this.options.identity), 'Another native owner holds this projection');
             if (await this.recoverFork(recovery)) return true;
-            const head = await this.options.source.head();
+            const target = this.irreversible ? await this.options.source.irreversibleTarget() : await this.options.source.head();
             const height = recovery.raw?.target.target.block.blockNum ?? recovery.view.checkpoint.blockNum + 1;
-            if (height > head.blockNum) {
+            if (height > target.blockNum) {
+                // A restarted source can report an older LIB. Durable input waits for it and is never failed.
+                if (this.irreversible && (recovery.raw || recovery.pending || recovery.gap)) {this.reconciled = false; return false;}
                 requireOwner(recovery.raw === null && recovery.pending === null && recovery.gap === null, 'Recovery exceeds current canonical source');
                 this.reconciled = recovery.view.checkpoint.blockNum > 0; this.failed = false; return false;
             }
@@ -191,6 +204,8 @@ export class StatefulProjectionControllerV2 {
             && same(recovery.owner, expected.owner) && same(recovery.owner.identity, this.options.identity)
             && same(recovery.view, expected.view) && recovery.gap === null
             && (!recovery.rollback || recovery.rollback.status === 'complete'), 'Requested live owner/view is unavailable');
+        if (this.irreversible) requireOwner(expected.view.checkpoint.blockNum <= (await this.options.source.irreversibleTarget()).blockNum,
+            'Requested view exceeds the eligible finality target');
         const proof = await this.options.source.open(expected.view.checkpoint);
         if (recovery.raw) requireOwner(await this.canonical(recovery.raw.target.target.block), 'In-flight raw source is no longer canonical');
         await this.options.source.assertStatefulView(proof, this.options.declaration);

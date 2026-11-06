@@ -80,6 +80,10 @@ compatibility; unsupported hosts fail rather than skipping the database checks.
 
 ## Remaining release work
 
+The `portable_state` path has no fork rollback or finality selection. Use
+[`stateful_owner_v2`](architecture/stateful-owner-v2-host.md) for projections that
+need canonical fork recovery or an irreversible view.
+
 The opt-in existing-worker and HTTP path is tracked in
 [History API #191](https://github.com/eosrio/hyperion-history-api/issues/191). Its
 production integration fixture must exercise the real source, RabbitMQ, MongoDB
