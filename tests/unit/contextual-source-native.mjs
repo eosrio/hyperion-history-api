@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {PortableProjectionSource, PortableProjectionFrameError} from '../../build/indexer/projection/source.js';
 import {nativeApiWireSource} from './protocol-native-api-source.mjs';
+import {STATEFUL_WIRE34_CBFB_SOURCE_PROFILE} from './stateful-engineering-source-admission.mjs';
 import {ContextualProjectionRuntime} from '../../build/indexer/projection/contextual-runtime.js';
 import {originalProjectionTimeMs} from '../../build/indexer/projection/contextual-contract.js';
 import {createMongoDbContextualRecoveryAdapter} from '../../packages/backend-mongodb/dist/index.js';
@@ -31,7 +32,7 @@ test('contextual source retains original Wire block/time with the pinned indepen
         assert.equal(createHash('sha256').update(bytes).digest('hex'), result.stdout.sha256);
         assert.equal(JSON.parse(bytes).timestamp, timestamp);
     }
-    const fixture = await nativeApiWireSource({nativeMarker: false});
+    const fixture = await nativeApiWireSource({nativeMarker: false, engineeringSourceProfile: STATEFUL_WIRE34_CBFB_SOURCE_PROFILE});
     try {
         await fixture.appendUntil(4);
         const source = new PortableProjectionSource({client: fixture.client, chain: fixture.chain,
