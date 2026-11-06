@@ -323,8 +323,8 @@
         },
         {
           "path": "src/api/helpers/protocol-proof-request.ts",
-          "bytes": 8833,
-          "sha256": "79540b519ea557be527bcec1407c1c99364cd4e2ec957c1946548f64ef1d1349"
+          "bytes": 8893,
+          "sha256": "50bdbd57e64df2bc3c87b5512bce8194ec945eac3bd6af864ecd08e251e3c6a9"
         },
         {
           "path": "src/api/helpers/protocol-state-readiness.ts",
@@ -1418,8 +1418,8 @@
         },
         {
           "path": "src/indexer/protocol/abi-proof.ts",
-          "bytes": 47593,
-          "sha256": "5e3c2a1b9b443aae0b62c994fd16aaaaf9e81da7b25266e6a049a1283a4bad5f"
+          "bytes": 49683,
+          "sha256": "1a561895c3afed13a54f00940a35c4e4228fbeece7634ac9179df14728cc4cd2"
         },
         {
           "path": "src/indexer/protocol/abi-reducer.ts",
@@ -1473,8 +1473,8 @@
         },
         {
           "path": "src/indexer/protocol/native-authorization.ts",
-          "bytes": 31154,
-          "sha256": "dd73d685a14fb2671729be6ddee9f477c30911350c3d9ab95ab62bea2026de2a"
+          "bytes": 31338,
+          "sha256": "af19221cad3cdced3a4f0d86ef8835669f87dd6c1d6f1e240b32673b65d97e82"
         },
         {
           "path": "src/indexer/protocol/native-genesis.ts",
@@ -1771,13 +1771,13 @@
           },
           {
             "path": "api/helpers/protocol-proof-request.js",
-            "bytes": 8036,
-            "sha256": "b45e9133c2c1376430605688057e5e3bfe184b18d837507df33e97141fdf469d"
+            "bytes": 8096,
+            "sha256": "f7cf6dd723ee3eb7fa36b0cef706e92c3d7fd067a981d947795df1575d21155d"
           },
           {
             "path": "api/helpers/protocol-proof-request.js.map",
-            "bytes": 7870,
-            "sha256": "0ef482210d588a7abb1f3dc24dd96f097a6bc161fb3afac14c78a49e080bb901"
+            "bytes": 7924,
+            "sha256": "f4a467189fed50f6a8069b2e8a2c35a4133ee920cc32829123c2efe16422d864"
           },
           {
             "path": "api/helpers/protocol-state-readiness.js",
@@ -3971,13 +3971,13 @@
           },
           {
             "path": "indexer/protocol/abi-proof.js",
-            "bytes": 45814,
-            "sha256": "95763f389af7b9f13e6d7fab7db6727522b7a18a79ab4205696a0efda849faf6"
+            "bytes": 47965,
+            "sha256": "103ff246df181670486544bdf4ab72ee3b4f709e08c66728a90adbc9e287ca42"
           },
           {
             "path": "indexer/protocol/abi-proof.js.map",
-            "bytes": 42469,
-            "sha256": "67346391081dd4c55b29c77c12f134525e69da0f217e7cedc193335981d5ae10"
+            "bytes": 44179,
+            "sha256": "de0cf3e899795021e70baa1ffe2ccd2d4318b4c514d04f66477605f91b621b2e"
           },
           {
             "path": "indexer/protocol/abi-reducer.js",
@@ -4101,13 +4101,13 @@
           },
           {
             "path": "indexer/protocol/native-authorization.js",
-            "bytes": 28113,
-            "sha256": "37d33d73bef58046c62f10bf97ab07ed9548abe20fd6682fe1328c4f289a9a5e"
+            "bytes": 28297,
+            "sha256": "45b3f8d010f5862ade24891f5517dbd4f0412152ee77774341439b410e859164"
           },
           {
             "path": "indexer/protocol/native-authorization.js.map",
-            "bytes": 23286,
-            "sha256": "e199e8f551da53c3142bab945ff13e800e51306f28e418f64d25d29606d762c6"
+            "bytes": 23407,
+            "sha256": "8e2ad0f0946916bc70aa1fc03bd2277634e4503ad66e9a747548051f5781a812"
           },
           {
             "path": "indexer/protocol/native-genesis.js",
