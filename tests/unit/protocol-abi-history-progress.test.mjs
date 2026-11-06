@@ -138,7 +138,10 @@ test('repeated live preemption preserves completed steps with 150ms authority re
     } finally {for(const [name,original] of originals)f.store[name]=original;f.store.readControl=read;clock.close();}
 });
 
-test('256-entry queue and multiple buckets finish without losing later admissions',async()=>{
+// This drives about 70k store calls, past bun's 5s default on a slow runner. Bun ignores the timeout
+// option of node:test, so under bun this one test uses its native form; plain node has no default limit.
+const longTest=process.versions.bun?(await import('bun:test')).test:test;
+longTest('256-entry queue and multiple buckets finish without losing later admissions',async()=>{
     const f=await fixture(258),clock=clocked(f.store);
     try {
         const control=await complete(f,3000,true),root=await f.store.read('root',control.historical.addressRootId);
@@ -146,7 +149,7 @@ test('256-entry queue and multiple buckets finish without losing later admission
         for(let n=1;n<=258;n++)assert.equal((await reader(f).openHistorical(n)).source.blockNum,n);
         assert.equal(f.memory.calls.some(call=>call.method==='search'),false);
     } finally {clock.close();}
-});
+},30000);
 
 test('a selected root remains unavailable and its queue retained until activation certification finishes',async()=>{
     const f=await fixture(),clock=clocked(f.store);
