@@ -44,7 +44,7 @@ test('successive proof reads share one deadline instead of resetting it per acti
     expect(remaining[1]).toBeLessThan(remaining[0]);
 });
 
-for(const [phase,targetFence,mode] of [['native consumption',1,'success'],['final response',3,'success'],['final output mutation',3,'mutate'],['disconnected response',3,'abort'],['parsed POST retry',3,'post-key'],['continuous roots',3,'continuous']] as const) test(`real root change during ${phase} recovers proof reads with one query and no duplicate proofs`,async()=>{
+for(const [phase,targetFence,mode] of [['native consumption',1,'success'],['final response',3,'success'],['final output mutation',2,'mutate'],['disconnected response',3,'abort'],['parsed POST retry',3,'post-key'],['continuous roots',3,'continuous']] as const) test(`real root change during ${phase} recovers proof reads with one query and no duplicate proofs`,async()=>{
     const source=await nativeAuthorizationFixture({nativeActionInterfaceVersion:1,historicalCertificates:true,maxAncestryBlocks:1});
     await source.append(3);await source.append(4);for(let i=0;i<4;i++)await source.coordinator.drain();
     const app=Fastify({logger:false});
@@ -75,6 +75,8 @@ for(const [phase,targetFence,mode] of [['native consumption',1,'success'],['fina
         let hold:ReturnType<typeof holdRead>|undefined;
         native.revalidate=async (...args)=>{fences++;if(fences===targetFence){let controlReads=0;hold=holdRead(source.client,r=>r.index===source.frontier.controlIndex&&r.id==='control'&&++controlReads===2);}
             try{return await original(...args);}catch(error:any){if(error.code==='authority_changed')guardFailures++;throw error;}};
+        const waitForOpen=consumer.reader.waitForOpen.bind(consumer.reader);let membershipReads=0;
+        consumer.reader.waitForOpen=async(...args)=>{membershipReads++;return waitForOpen(...args);};
         const old=await source.coordinator.inspect();
         const pending=timedQuery(async()=>{
             attempts++;const actions=clone(originals);
@@ -99,9 +101,10 @@ for(const [phase,targetFence,mode] of [['native consumption',1,'success'],['fina
         }
         hold.release();
         if(mode==='mutate'){await expect(pending).rejects.toMatchObject({statusCode:503});hold.restore();
-            expect(attempts).toBe(1);expect(writes).toHaveLength(0);return;}
+            expect(mutateNext).toBe(false);expect(attempts).toBe(1);expect(writes).toHaveLength(0);return;}
         const cache=await pending;hold.restore();if(advancing){await advancing;expect((await source.coordinator.inspect()).head?.blockNum).toBe(10);}
         expect(guardFailures).toBe(0);expect(attempts).toBe(1);expect(cache.actions).toHaveLength(2);
+        expect(membershipReads).toBe(1); // Both actions share one source view within the attempt.
         expect(writes).toHaveLength(1);expect(JSON.parse(writes[0])._hyperion_protocol_abi_v3.actions).toHaveLength(2);
         if(mode==='post-key'){expect(cacheKeys).toHaveLength(1);expect(new Set(cacheKeys).size).toBe(1);}
         expect(cache.actions.map((value:any)=>value.global_sequence)).toEqual(originals.map(value=>value.global_sequence));

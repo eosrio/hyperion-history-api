@@ -94,6 +94,16 @@ test('a held pending block does not cost pending-work mode any extra drains',asy
     } finally {clock.close();}
 });
 
+for(const waiting of [0,1])test('pending-work walk '+(waiting?'stops after one commit for a queued live admission':'runs its full quantum with no one waiting'),async()=>{
+    const f=await fixture(4,{...history,allowPendingWork:true});
+    f.coordinator.queuedAdmissions=waiting;
+    await f.coordinator.drain();
+    f.coordinator.queuedAdmissions=0;
+    const {anchor,nextCommitId}=f.coordinator.historicalWalk;
+    assert.equal(anchor.blockNum,4);
+    if(waiting)assert.notEqual(nextCommitId,null);else assert.equal(nextCommitId,null);
+});
+
 const reader=f=>new ProtocolAbiProofReader({chainId,profile,store:f.store.asReadOnly(),maxAncestryBlocks:1,historicalCertificates:true});
 async function until(f,predicate,maximum=100) {
     for(let n=0;n<maximum;n++){await f.coordinator.drain();if(predicate())return;}
@@ -309,3 +319,15 @@ test('process replacement starts without the prior volatile preparation or histo
         await assert.rejects(reader(f).openHistorical(1));
     } finally {clock.close();}
 });
+
+for(const [session,waits] of [['progress-session',true],['retired-session',false]])
+    test('a live source '+(waits?'waits for its current session':'does not wait on a retired session'),async()=>{
+        // Block 2 stays pending, so the first open reports it as not yet readable.
+        const f=await fixture(2,history,2),value=reader(f),selection=f.selections[1];
+        await f.coordinator.drain();
+        const source={chainId,blockNum:2,blockId:block(2),previousBlockId:block(1)};let waited=0;
+        value.waitForOpen=async()=>{waited++;return 'waited';};
+        const open=value.openLiveSource(source,selection,{contextId:f.contextId,readerSessionId:session});
+        if(waits)assert.equal(await open,'waited');else await assert.rejects(open,{code:'source_pending'});
+        assert.equal(waited,waits?1:0);
+    });
