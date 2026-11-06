@@ -87,7 +87,7 @@ Definition changes, corrupt metadata and incomplete initialization retain distin
 errors and cannot enter this recovery path.
 
 From this directory, run `npm run typecheck`, `npm run build`, and `npm test` using
-the repository's pinned TypeScript 7.0.2, Bun 1.4.3 and committed npm dependency
+the repository's pinned TypeScript 7.0.2, Bun 1.4.4 and committed npm dependency
 tree. The root qualification runner additionally exercises the adapter against a
 real MongoDB service; unit fixtures do not replace that evidence.
 
@@ -172,3 +172,33 @@ migration, irreversible-only behavior or release qualification.
 ## Operator-owned lists
 
 The additive [`./operator-lists`](OPERATOR-LISTS.md) entry point provides bounded request-local SDK list reads and partitioned immutable operator publications. It grants no chain/projection readiness. Native MongoDB, HTTP/onSend and Atomic parity qualification remain separate gates.
+
+## Explicit contextual recovery family
+
+`createMongoDbContextualRecoveryAdapter` implements the separate SDK
+`contextual-table-recovery` family. It shares native transaction, CAS,
+bounded undo and recovery code with the v2 adapter through a private typed dialect.
+Its storage version is `h45-contextual-mongodb-recovery-v1`; no legacy adoption or
+unfenced policy bypass is allowed. Existing factories and v1 put/delete meanings
+remain unchanged, and production backend selection still uses v1.
+
+The adapter hashes the full original contextual candidate/source/policy/order.
+Inside the existing transaction it reads one distinct-key pre-block image, then
+resolves preserving operations against the preceding transaction-local record.
+Required nulls remain null and the final merged record is bounded independently.
+The original batch remains the retry identity. Rollback restores before-images;
+undoing an initial insert removes it, so a later insertion receives new creation
+context. The adapter also exposes coherent revision-fenced retained checkpoints.
+
+The caller must negotiate host and adapter capabilities, derive original source
+time and revalidate source/ABI/owner authority across awaits. Adapter metadata
+and apply results are not canonical or production-serving grants. Native query
+execution remains here. Domain definitions and absence policy stay in plugins.
+
+Run `npm run test:package` after building to normally install the packed adapter
+with its exact Git-pinned SDK and check legacy/contextual exports and strict
+declarations without connecting to a database. The owned MongoDB runner adds
+contextual transaction-failure, process-loss, restart and rollback controls;
+writing that runner does not establish a successful engine result. See
+[HAPI #359](https://github.com/eosrio/hyperion-history-api/issues/359) for the
+standalone slice; #246/#221 retain production recovery and serving ownership.

@@ -27,8 +27,10 @@ try{
     await writeFile(join(consumer,'consumer.mts'),await readFile(join(root,'tests/consumers/stateful.mts'),'utf8'));
     await writeFile(join(consumer,'owner-v2.mts'),await readFile(join(root,'tests/consumers/stateful-owner-v2.mts'),'utf8'));
     await writeFile(join(consumer,'complete-kind.mts'),await readFile(join(root,'tests/consumers/stateful-complete-kind.mts'),'utf8'));
-    execFileSync(process.execPath,[join(root,'node_modules/typescript/bin/tsc'),'--strict','--skipLibCheck','--target','ES2022','--module','NodeNext','consumer.mts','owner-v2.mts','complete-kind.mts'],{cwd:consumer,stdio:'inherit'});
+    await writeFile(join(consumer,'contextual.mts'),await readFile(join(root,'tests/consumers/contextual.mts'),'utf8'));
+    execFileSync(process.execPath,[join(root,'node_modules/typescript/bin/tsc'),'--strict','--skipLibCheck','--target','ES2022','--module','NodeNext','consumer.mts','owner-v2.mts','complete-kind.mts','contextual.mts'],{cwd:consumer,stdio:'inherit'});
     execFileSync(process.execPath,[join(consumer,'consumer.mjs')],{cwd:consumer,stdio:'inherit'});
+    execFileSync(process.execPath,[join(consumer,'contextual.mjs')],{cwd:consumer,stdio:'inherit'});
     execFileSync(process.execPath,['--test',join(consumer,'stateful.test.mjs'),join(consumer,'stateful-owner-v2.test.mjs'),
         join(consumer,'stateful-complete-kind.test.mjs'),join(consumer,'stateful-complete-kind-driver.test.mjs')],{cwd:consumer,stdio:'inherit'});
     console.log('Packed ESM/TypeScript and native-driver controls passed; physical MongoDB qualification remains pending.');

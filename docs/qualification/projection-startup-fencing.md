@@ -196,6 +196,16 @@ unsuccessful when its diagnostic reporting failed. This is a startup observation
 lifetime coverage, loaded-module attestation, fresh OS census, database acknowledgment or live-chain
 qualification. Additional synchronous diagnostic I/O is bounded but not measured as a performance gain.
 
+Retained proof reads now check the original consumer scope before classifying a fulfilled read's
+cancellation. A source fence therefore retains scope-owned error authority for the existing
+drained-frame deferral guard. Rejected reads preserve their original ordinary or foreign error;
+only an exact caller-abort reason is normalized while the original scope remains unfenced.
+A caller's error cannot gain ownership from a later source fence, even when its retained read
+subsequently succeeds. Seven deterministic controls
+exercise the actual emitted reader on Node 24/26, including physical drainage and both error
+identities. Existing proof/API cancellation controls retain their prior behavior. These are
+controlled ownership checks, not a live fork, storage recovery or full-worker qualification.
+
 The next actual Linux run must preserve source/oracles, native binaries, grants, the 256-block
 ancestry window, queue/resource budgets and all original deadlines. Retain full workload, strict
 software shutdown, physical cleanup and protected-service observations separately. The old 813/800

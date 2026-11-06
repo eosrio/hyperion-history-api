@@ -87,6 +87,8 @@ jobs:
         run: node --test --test-timeout=15000 tests/native/fastify-compatibility.test.mjs
       - name: Check complete-kind query/client and final-publication controls
         run: node --test --test-concurrency=1 tests/native/stateful-complete-kind-client.test.mjs tests/native/stateful-complete-kind-host.test.mjs
+      - name: Preserve proof-read fence ownership on Node ${{ matrix.node-version }}
+        run: node --test tests/unit/proof-reader-owned-fence.test.ts
       - name: Check stream request lifecycle on Node ${{ matrix.node-version }}
         run: node --test tests/native/stream-request-lifecycle.test.mjs tests/native/stream-history-delivery.test.mjs
       - name: Check history/live stream filters and selectors on Node ${{ matrix.node-version }}
@@ -99,6 +101,8 @@ jobs:
         run: node --test tests/native/explorer-system-contract.test.mjs
       - name: Check independent reader input pressure on Node ${{ matrix.node-version }}
         run: node --test tests/native/reader-input-pressure.test.mjs tests/native/reader-pressure-observability.test.mjs tests/native/reader-startup-pressure.test.mjs tests/native/live-reader-startup-checkpoint.test.mjs tests/native/reader-pressure-ipc-recovery.test.mjs
+      - name: Check opt-in contextual projection runtime and original Wire timestamps on native Node
+        run: node --test tests/native/contextual-projection-runtime.test.mjs tests/native/contextual-projection-fixture.test.mjs tests/unit/contextual-source-native.mjs
       - name: Typecheck Elasticsearch qualification runner
         run: bun check -p scripts/qualification/tsconfig.json
       - name: Check retained Wire source and replay credits with native Node
@@ -258,6 +262,8 @@ jobs:
         run: |
           bun check -p packages/backend-mongodb/tsconfig.json
           npm test --prefix packages/backend-mongodb
+      - name: Check installed legacy and contextual adapter declarations
+        run: npm run test:package --prefix packages/backend-mongodb
       - name: Exercise the portable runtime and adapter against owned MongoDB 8.0.34
         run: |
           mkdir -p out/wire34-projection-source
