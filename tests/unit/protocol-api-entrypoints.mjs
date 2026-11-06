@@ -19,6 +19,7 @@ registerHooks({resolve(specifier, context, next) {
 const {loadChainProtocol} = await import('../../build/indexer/protocol/selection.js');
 const {ProtocolAbiCoordinator} = await import('../../build/indexer/protocol/abi-coordinator.js');
 const {ProtocolAbiFrontierStore} = await import('../../build/indexer/protocol/abi-frontier-store.js');
+const {ProtocolAbiProofReader} = await import('../../build/indexer/protocol/abi-proof.js');
 const {ProtocolAbiObservationStore, protocolAbiCaptureDigest} = await import('../../build/indexer/protocol/abi-observation-store.js');
 const {ProtocolSourceBindingStore} = await import('../../build/indexer/protocol/source-bindings.js');
 const {streamPastCommon} = await import('../../build/api/helpers/functions.js');
@@ -43,6 +44,14 @@ const profile = {id: selected.id, profileId, components: selected.components};
 const chain = 'api-entrypoint-fixture', chainId = '1'.repeat(64), transactionId = 'a'.repeat(64), session = 'entrypoint-reader';
 const blockId = value => value.toString(16).padStart(64, '0'), schemaJson = '{}';
 const memory = frontierMemoryClient(), store = new ProtocolAbiFrontierStore(memory.client, chain);
+// Runs a fault once an action proof resolves, whether its records came from storage or the memo.
+const afterActionProof = fault => {
+    const resolve = ProtocolAbiProofReader.prototype.action;
+    ProtocolAbiProofReader.prototype.action = async function (...args) {
+        const value = await resolve.apply(this, args); ProtocolAbiProofReader.prototype.action = resolve; await fault(); return value;
+    };
+    return () => {ProtocolAbiProofReader.prototype.action = resolve;};
+};
 const bindings = new ProtocolSourceBindingStore(memory.client, chain), observations = new ProtocolAbiObservationStore(memory.client, chain);
 const contextId = (await bindings.prepareContext({schemaVersion: 1, chainId, protocol: profile, schemaJson})).id;
 const coordinator = new ProtocolAbiCoordinator({chainId, profile, ownerId: 'entrypoint-owner', bindings, observations, store});
@@ -400,11 +409,12 @@ try {
     delete app.manager.config.api.stream_scroll_limit; streamTotal = undefined;
     // A generation change while an awaited per-action lookup is pending cannot publish a historical batch.
     let reconfigured = false;
-    memory.faults.beforeRead = async query => {if (!reconfigured && query.id.startsWith('h45abist1:')) {
+    const restoreProof = afterActionProof(async () => {
         reconfigured = true; await coordinator.revokeSource(session); generation = (await coordinator.openSource(contextId, session)).generation; await append(3, empty());
-    }};
+    });
     packets.length = 0; const clearsBefore = clearCalls.length;
-    await assert.rejects(history(), error => error.statusCode === 503); delete memory.faults.beforeRead;
+    await assert.rejects(history(), error => error.statusCode === 503); restoreProof();
+    assert(reconfigured, 'Generation change fault never fired');
     assert.equal(packets.length, 0); assert.equal(clearCalls.length, clearsBefore + 1);
     // Prime all final response caches, then replace their original source block.
     const primed = [];
