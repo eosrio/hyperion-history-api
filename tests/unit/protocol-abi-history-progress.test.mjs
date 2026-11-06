@@ -320,14 +320,11 @@ test('process replacement starts without the prior volatile preparation or histo
     } finally {clock.close();}
 });
 
-for(const [session,waits] of [['progress-session',true],['retired-session',false]])
-    test('a live source '+(waits?'waits for its current session':'does not wait on a retired session'),async()=>{
-        // Block 2 stays pending, so the first open reports it as not yet readable.
-        const f=await fixture(2,history,2),value=reader(f),selection=f.selections[1];
+for(const [session,code] of [['progress-session','proof_timeout'],['retired-session','source_pending']])
+    test('a live source on '+session+' ends with '+code,async()=>{
+        // Block 2 stays pending, so only the current session keeps waiting until its bound.
+        const f=await fixture(2,history,2);
         await f.coordinator.drain();
-        const source={chainId,blockNum:2,blockId:block(2),previousBlockId:block(1)};let waited=0;
-        value.waitForOpen=async()=>{waited++;return 'waited';};
-        const open=value.openLiveSource(source,selection,{contextId:f.contextId,readerSessionId:session});
-        if(waits)assert.equal(await open,'waited');else await assert.rejects(open,{code:'source_pending'});
-        assert.equal(waited,waits?1:0);
+        const source={chainId,blockNum:2,blockId:block(2),previousBlockId:block(1)};
+        await assert.rejects(reader(f).openLiveSource(source,f.selections[1],{contextId:f.contextId,readerSessionId:session},{timeoutMs:120}),{code});
     });
