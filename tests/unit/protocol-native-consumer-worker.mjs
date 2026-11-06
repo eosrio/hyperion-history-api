@@ -29,7 +29,7 @@ const directory = mkdtempSync(join(tmpdir(), 'hyperion-native-worker-original-')
 const chain = 'native-worker-original', chainId = '9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d', blockId = number => number.toString(16).padStart(64, '0');
 const hash = value => createHash('sha256').update(value).digest('hex');
 const events = [], sourceFrames = [], blockWrites = [], cache = [];
-let reader, coordinator, bridge, draining = Promise.resolve();
+let reader, coordinator, bridge, releaseRecoveryCertificate, draining = Promise.resolve();
 const measureProofPair = process.argv.includes('--measure-proof-pair');
 const workerProofRecovery = process.argv.includes('--worker-proof-recovery');
 // Reader ingress is a separate task, not a descendant of the active DS proof scope.
@@ -40,7 +40,7 @@ assert([1, 2].includes(expectedOpeningWalks));
 const proofPairMeasurements = [];
 process.send = (event, callback) => {
     events.push(event);
-    if (event.event === 'protocol_abi_prepared') draining = coordinator.drain();
+    if (event.event === 'protocol_abi_prepared') draining = independentIngress.runInAsyncScope(() => coordinator.drain());
     callback?.(null); return true;
 };
 class ControlledConsumer extends EventEmitter {
@@ -278,7 +278,7 @@ try {
             // settled before the certificate writer is released; DS keeps the same delivery.
             const writeCertificate = frontier.prepareCertificate.bind(frontier);
             let entered, release; const atGap = new Promise(resolve => {entered = resolve;});
-            const gate = new Promise(resolve => {release = resolve;});
+            const gate = new Promise(resolve => {release = resolve; releaseRecoveryCertificate = resolve;});
             frontier.prepareCertificate = async value => {
                 if (value.kind === 'settled-historical-abi-address-root' && value.current.head.blockNum === 37) {entered(); await gate;}
                 return writeCertificate(value);
@@ -317,10 +317,23 @@ try {
             };
             if (bridge && expected.has(number)) bridge.begin();
             try {await nativeConsumerOracle.run(true, () => pool.processMessages(prepared.messages));}
-            finally {memory.client.get = priorGet;}
+            catch (error) {
+                let current, inspectionTimer;
+                try {current = await Promise.race([coordinator.inspect().then(value => ({head: value.head?.blockNum,
+                    phase: value.phase, pending: value.pending.length, historicalAnchor: value.historical?.anchor?.blockNum})),
+                    new Promise((_, reject) => {inspectionTimer = setTimeout(() => reject(new Error('Diagnostic inspection exceeded250ms')), 250);})]);}
+                catch (inspection) {current = {inspectionError: inspection.message};}
+                finally {clearTimeout(inspectionTimer);}
+                console.error(JSON.stringify({fixtureFailure: true, blockNum: number, workerProofRecovery,
+                    recoveryObserved, recoveryHooks, missingReads, consumerMissingReads, historicalAddressReads,
+                    independentProducerStateReads, consumerOracleReads, coordinator: current,
+                    code: error.code ?? null, message: error.message}));
+                throw error;
+            } finally {memory.client.get = priorGet;}
+
             if (bridge && expected.has(number)) proofPairMeasurements.push({blockNum: number, ...bridge.end()});
             assert.equal(poolConsumer.acked.at(-1), prepared.messages.at(-1));
-            const output = poolPublisher.sent.slice(before); assert.equal(output.length, 1);
+            const output = poolPublisher.sent.slice(before); assert.equal(output.length, 1, 'Expected one original publication for block ' + number);
             const document = JSON.parse(output[0].payload), metadata = document.protocol;
             assert.equal(metadata.schemaVersion, 2); assert.equal(metadata.kind, 'native');
             assert.equal(metadata.selectionId, prepared.sourceSelectionId);
@@ -380,6 +393,7 @@ try {
         workerProofRecovery, recoveryObserved, recoveryHooks, missingReads, consumerMissingReads, historicalAddressReads, consumerOracleReads, independentProducerStateReads, sourceAdmission: true, exactConfirmedBytes: true, unknownAbiIndependent: true, tamperedOutputRawIncomplete: true,
         finalConfirmRevocationFenced: true, genesisActionAdmissionIncomplete: true, nativeAddonResolutions}));
 } finally {
+    releaseRecoveryCertificate?.();
     independentIngress.emitDestroy();
     await bridge?.close();
     reader?.coordinatorRpc?.cancel(); reader?.shipSession?.close?.();
