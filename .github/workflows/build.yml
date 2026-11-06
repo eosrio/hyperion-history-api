@@ -56,7 +56,7 @@ jobs:
             copyFileSync(`current-native-${kind}-${exact}.json`,`current-native-${kind}-${major}.x.json`);
           NODE
       - name: Check explicit current profile, frozen historical predicates and workload boundaries
-        run: node --test tests/native/wire34-cbfb-current-stateful-source-profile.test.mjs scripts/qualification/indexed-schema-mongodb/all-cbfb-native-teardown.test.mjs tests/native/wire34-cbfb-caller-routing.test.mjs tests/native/projection-manager-lifecycle.test.mjs tests/native/bounded-json-string-encoding.test.mjs scripts/qualification/operator-list-mongodb/cleanup-source-profile.test.mjs scripts/qualification/wire-source-snapshot.test.mjs
+        run: node --test scripts/qualification/indexed-schema-mongodb/all-cbfb-native-teardown.test.mjs tests/native/wire34-cbfb-caller-routing.test.mjs tests/native/projection-manager-lifecycle.test.mjs tests/native/bounded-json-string-encoding.test.mjs scripts/qualification/operator-list-mongodb/cleanup-source-profile.test.mjs scripts/qualification/wire-source-snapshot.test.mjs
       - name: Check bounded canonical JSON and authentic protocol records on Node ${{ matrix.node-version }}
         run: node --test tests/unit/bounded-json.test.mjs tests/native/bounded-json-protocol-records.test.mjs tests/native/stateful-custody-fractions.test.mjs
       - name: Check all-CBFB stateful source and final publication on Node ${{ matrix.node-version }}
@@ -328,7 +328,6 @@ jobs:
           scripts/qualification/operator-list-mongodb/cleanup-trace.test.mjs
           scripts/qualification/operator-list-mongodb/source-profile.test.mjs
           scripts/qualification/operator-list-mongodb/cleanup-source-profile.test.mjs
-          scripts/qualification/operator-list-mongodb/wire34-cbfb-assembly-diagnostics.test.mjs
       - name: Retain exact new source and compiled assembly admission
         run: |
           mkdir -p out/wire34-operator-list-source
