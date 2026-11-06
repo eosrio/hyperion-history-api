@@ -48,12 +48,13 @@ try {
     }]]));
     const actions = [], streams = [], cache = [], acks = [];
     let cacheWait, cacheEntered;
-    const channel = {ack(message) {acks.push(message);}, sendToQueue(_queue, payload) {actions.push(JSON.parse(payload)); return true;},
+    const channel = {ack(message) {acks.push(message);}, sendToQueue(_queue, payload, _options, confirmed) {actions.push(JSON.parse(payload)); confirmed?.(); return true;},
         publish(_exchange, _queue, payload) {streams.push(JSON.parse(payload)); return true;}};
     const pool = Object.create(Pool.prototype);
     Object.assign(pool, {chain, chainId, conf: config, configModule: cm, filters, mLoader: loader,
         protocol: fixture.provider, protocolId: profile.id, protocolComponents: profile.components,
-        protocolReady: Promise.resolve(), client: fixture.client, ch: channel, ch_ready: true,
+        protocolReady: Promise.resolve(), client: fixture.client, ch: channel, ch_ready: true, cch: channel, cch_ready: true,
+        preIndexingQueue: {push: task => task.publish()},
         profiler: {start: () => () => {}}, common: {attachActionExtras: Pool.prototype.attachActionExtras},
         protocolDeliveryOwners: new WeakMap(), poolAbiCache: new Map(), poolTypeCache: new Map(), protocolCacheViews: new Set(),
         temp_ds_counter: 0, actionDsCounter: 0, act_emit_idx: 1, allowStreaming: true, txCacheExpiration: 3600,
