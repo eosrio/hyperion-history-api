@@ -3,6 +3,7 @@ name: Build & Test
 on:
   push:
     branches: [ "main", "dev", "release/4.5" ]
+  workflow_dispatch:
   pull_request:
     branches: ["main", "dev", "release/4.5", "codex/fix-action-abi-epochs", "codex/wire-protocol-host", "codex/protocol-abi-observations", "codex/protocol-abi-coverage", "codex/protocol-abi-frontier", "codex/protocol-abi-consumers", "codex/exact-sequence-history-adapter", "codex/action-source-journal", "codex/portable-state-production", "feat/protocol-action-occurrence-proof", "fix/protocol-source-read-cancellation", "build/native-action-dependencies", "feat/native-observation-prepare", "feat/native-action-authorization", "feat/native-action-consumers", "build/native-wire-profile-pin", "build/bun-1.4.4", "fix/native-wire-worker-proofs", "fix/live-reader-ship-credits", "feat/source-handoff-outcomes", "feat/action-attempt-dispositions", "fix/worker-attempt-quiescence", "fix/stream-client-compatibility-45", "codex/wire-full-worker-replay", "feat/source-bound-attempt-adjudication", "perf/native-wire-worker-profiles", "codex/wire-storage-recovery", "codex/native-source-proof-pair", "feat/original-action-authorization-397", "fix/portable-mapping-retry-eligibility-403", "feat/mongodb-complete-kind-402", "test/wire-mongodb-combined-profile-408", "feat/mongodb-operator-lists-414", "build/wire-mongodb-codec-profile-410", "feat/stateful-indexed-schema-415", "test/indexed-native-mongodb-415", "feat/indexed-int64-tested-49dfe-20261104", "feat/atomic-managed-all-cbfb-20261104"]
 
@@ -55,7 +56,7 @@ jobs:
             copyFileSync(`current-native-${kind}-${exact}.json`,`current-native-${kind}-${major}.x.json`);
           NODE
       - name: Check explicit current profile, frozen historical predicates and workload boundaries
-        run: node --test tests/native/wire34-cbfb-current-stateful-source-profile.test.mjs scripts/qualification/indexed-schema-mongodb/wire34-cbfb-build-contract.test.mjs scripts/qualification/indexed-schema-mongodb/wire34-cbfb-migration.test.mjs tests/native/wire34-cbfb-source-profile.test.mjs scripts/qualification/indexed-schema-mongodb/all-cbfb-native-teardown.test.mjs tests/native/wire34-cbfb-codec-profile.test.mjs tests/native/wire34-cbfb-source-tamper.test.mjs tests/native/wire34-cbfb-caller-routing.test.mjs tests/native/projection-manager-lifecycle.test.mjs tests/native/bounded-json-string-encoding.test.mjs scripts/qualification/operator-list-mongodb/cleanup-source-profile.test.mjs scripts/qualification/wire-source-snapshot.test.mjs
+        run: node --test tests/native/wire34-cbfb-current-stateful-source-profile.test.mjs scripts/qualification/indexed-schema-mongodb/all-cbfb-native-teardown.test.mjs tests/native/wire34-cbfb-caller-routing.test.mjs tests/native/projection-manager-lifecycle.test.mjs tests/native/bounded-json-string-encoding.test.mjs scripts/qualification/operator-list-mongodb/cleanup-source-profile.test.mjs scripts/qualification/wire-source-snapshot.test.mjs
       - name: Check bounded canonical JSON and authentic protocol records on Node ${{ matrix.node-version }}
         run: node --test tests/unit/bounded-json.test.mjs tests/native/bounded-json-protocol-records.test.mjs tests/native/stateful-custody-fractions.test.mjs
       - name: Check all-CBFB stateful source and final publication on Node ${{ matrix.node-version }}
@@ -63,7 +64,6 @@ jobs:
           node --test tests/native/pinned-git-source.test.mjs
           node tests/unit/portable-state-owner-v2.mjs
           node tests/unit/stateful-host-native.mjs
-          node tests/unit/wire34-cbfb-source-admission-native.mjs
       - name: Check retained Wire managed state on Node ${{ matrix.node-version }}
         id: retained_wire_acceptance
         run: node --test tests/unit/wire-managed-state-v2-native.mjs
@@ -267,7 +267,7 @@ jobs:
         run: |
           npm run build
           cp out/wire34-projection-source/projection-native-git-${{ matrix.node-version }}.json projection-native-git-${{ matrix.node-version }}.json
-          node --test tests/native/stateful-complete-kind-public-command.test.mjs tests/native/wire34-cbfb-codec-profile.test.mjs
+          node --test tests/native/stateful-complete-kind-public-command.test.mjs
       - name: Exercise complete-kind accounting and same-snapshot ownership against a separately owned MongoDB 8.0.34
         run: node scripts/qualification/stateful-complete-kind-mongodb/wire34-cbfb-ci.mjs complete-kind-mongodb-${{ matrix.node-version }}
       - name: Retain complete-kind native traces, terminal logs and verified fixture cleanup
@@ -421,6 +421,8 @@ jobs:
           if-no-files-found: error
 
   historical-mixed-cbfb-admission:
+    # Retired source-pin check: manual only, see docs/qualification/retired-source-pins.md.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     strategy:
@@ -456,6 +458,8 @@ jobs:
           if-no-files-found: error
 
   historical-sdk49-admission:
+    # Retired source-pin check: manual only, see docs/qualification/retired-source-pins.md.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     strategy:

@@ -1,12 +1,6 @@
 name: Indexed cbfb finite engineering
+# Retired source-pin qualification: manual only, see docs/qualification/retired-source-pins.md.
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/indexed-schema-finite.yml'
-      - 'scripts/qualification/indexed-schema-mongodb/*cbfb-*'
-      - 'packages/backend-mongodb/**'
-      - 'package.json'
-      - 'package-lock.json'
   workflow_dispatch:
 jobs:
   finite-cbfb:

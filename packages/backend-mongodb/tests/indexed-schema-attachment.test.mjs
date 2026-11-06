@@ -69,7 +69,7 @@ test('retrying clients and duplicate model identities refuse during inert constr
  await assert.rejects(createMongoDbStatefulIndexedAdapterV1(s.options,[{declaration:s.declaration,limits:totals()},{declaration:s.declaration,limits:totals()}]),/Ambiguous indexed model/);
  assert.deepEqual(s.operations,[]);
 });
-test('engineering opt-in requires exact pinned emissions and still requires native index/coverage admission',async()=>{
+test('engineering opt-in requires its explicit profile and native index/coverage admission',async()=>{
  const s=await attached();assert.throws(()=>selectEngineering(s.adapter,'implicit'));
  const selected=selectEngineering(s.adapter,engineeringProfile);
  assert.notEqual(selected,s.adapter);assert.deepEqual(selected.indexedCapabilities.comparisonProfiles,[]);

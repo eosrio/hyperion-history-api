@@ -1,6 +1,6 @@
 import type {MongoDbStatefulIndexedAdapterV1} from './stateful-indexed-v1.js';
 import {requireState} from './stateful-contract.js';
-// Native-internal linkage only. The engineering entry point validates exact assembly bytes
+// Native-internal linkage only. The engineering entry point validates its declared profile
 // before selecting this facade; neither a public boolean nor a DTO issues read/owner authority.
 const factories = new WeakMap<MongoDbStatefulIndexedAdapterV1, () => MongoDbStatefulIndexedAdapterV1>();
 export function registerIndexedEngineeringFacadeV1(adapter: MongoDbStatefulIndexedAdapterV1, factory: () => MongoDbStatefulIndexedAdapterV1): void {
