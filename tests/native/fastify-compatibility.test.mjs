@@ -8,8 +8,6 @@ import cors from '@fastify/cors';
 import formbody from '@fastify/formbody';
 import rateLimit from '@fastify/rate-limit';
 import plugin from 'fastify-plugin';
-import {createPortableStateQueryService} from '../../build/indexer/projection/query-service.js';
-import {portableStateBinding, resolvePortableStateConfiguration} from '../../build/indexer/projection/config.js';
 import {STATE_RESPONSE_HEADERS} from '../../build/api/helpers/state-headers.js';
 
 const require = createRequire(import.meta.url);
@@ -85,50 +83,4 @@ test('pinned Fastify plugins declare compatible metadata and execute the HTTP-on
     for (const header of STATE_RESPONSE_HEADERS) assert.ok(first.headers['access-control-expose-headers'].includes(header));
     assert.equal((await app.inject({method: 'POST', url: '/form', payload: {}})).statusCode, 200);
     assert.equal((await app.inject({method: 'POST', url: '/form', payload: {}})).statusCode, 429);
-});
-
-test('emitted state query autoload preserves exact view headers, validation and the final source fence', async t => {
-    const chainId = 'a'.repeat(64);
-    const definition = {schemaVersion: 1, id: 'inventory', mappingRevision: 'b'.repeat(64),
-        source: {contract: 'items', table: 'inventory', abiDeployment: 'source-deployment', abiSha256: 'c'.repeat(64)},
-        fields: [{name: 'quantity', path: ['quantity'], type: 'integer'}], initialization: {kind: 'genesis'}};
-    const configuration = resolvePortableStateConfiguration({backend: {kind: 'mongodb', id: 'backend', database: 'fixture'},
-        projections: [definition]}, chainId);
-    const binding = portableStateBinding(configuration, configuration.projections[0], chainId);
-    const view = {binding, checkpoint: {blockNum: 3, blockId: 'd'.repeat(64)}};
-    let queried = 0, revoked = false, fenced = 0;
-    const adapter = {async open() {return structuredClone(view);}, async query(selected) {
-        queried++; return {view: selected, rows: [{key: 'opaque-key', value: {quantity: 0}}]};
-    }};
-    const service = createPortableStateQueryService({chainId, configuration, adapter, gate: {
-        async readReady() {return {definition: configuration.projections[0], view: structuredClone(view)};},
-        async assertCurrent() {fenced++; if (revoked) throw Object.assign(new Error('changed owner'), {code: 'authority_changed'});},
-    }});
-    const app = Fastify({logger: false});
-    t.after(() => app.close());
-    app.decorate('portableState', service);
-    await app.register(autoLoad, {dir: fileURLToPath(new URL('../../build/api/routes/v2-state/query/', import.meta.url)),
-        dirNameRoutePrefix: false, ignorePattern: /.*(handler|schema).js/, options: {prefix: '/v2/state'}});
-    const payload = {projection: 'inventory', query: {filter: [{field: 'quantity', op: 'eq', value: 0}], limit: 1}};
-    const good = await app.inject({method: 'POST', url: '/v2/state/query', payload});
-    assert.equal(good.statusCode, 200);
-    assert.equal(good.headers['cache-control'], 'no-store');
-    assert.equal(good.headers['hyperion-state-block-num'], '3');
-    assert.equal(good.headers['hyperion-state-block-id'], view.checkpoint.blockId);
-    assert.equal(good.headers['hyperion-state-last-valid'], 'false');
-    assert.deepEqual(good.json().rows, [{key: 'opaque-key', value: {quantity: 0}}]);
-    const bad = await app.inject({method: 'POST', url: '/v2/state/query', payload: {...payload, $where: 'not removed'}});
-    assert.equal(bad.statusCode, 400);
-    assert.equal(queried, 1);
-    revoked = true;
-    const unavailable = await app.inject({method: 'POST', url: '/v2/state/query', payload});
-    assert.equal(unavailable.statusCode, 503);
-    assert.equal(unavailable.headers['retry-after'], '1');
-    assert.equal(unavailable.headers['cache-control'], 'no-store');
-    assert.equal(unavailable.headers['hyperion-state-block-num'], undefined);
-    assert.equal(unavailable.headers['hyperion-state-block-id'], undefined);
-    assert.equal(unavailable.json().code, 'authority_changed');
-    assert.equal(unavailable.json().retryable, true);
-    assert.equal(Object.hasOwn(unavailable.json(), 'rows'), false);
-    assert.equal(fenced, 2);
 });

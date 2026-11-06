@@ -43,7 +43,7 @@ if (process.argv[2] === 'child') {
         process.exit(0);
     }
     const worker = Object.assign(Object.create(Projection.prototype), {manager: createProjectionManagerFixture({}), chainId: 'a'.repeat(64),
-        conf: {features: {portable_state: {}}}, protocolReady: scenario === 'copied-error' ? Promise.resolve()
+        conf: {features: {stateful_owner_v2: {}}}, protocolReady: scenario === 'copied-error' ? Promise.resolve()
             : Promise.reject(scenario === 'primitive' ? undefined : sentinel),
         profiler: {stopReporting() {}}});
     worker.installControlledAttemptLifecycle('projection');

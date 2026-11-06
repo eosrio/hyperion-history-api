@@ -34,8 +34,6 @@ import { FastifyMongodbOptions } from '@fastify/mongodb';
 
 import { createContext, runInContext } from 'node:vm';
 import fastifyHttpProxy from '@fastify/http-proxy';
-import {createPortableStateApiService} from './helpers/portable-state.js';
-import {PortableStateQueryError} from '../indexer/projection/query-service.js';
 import {resolveStatefulOwnerConfigurationV2} from '../indexer/projection/stateful-config.js';
 import {StatefulApiProbeClient} from '../indexer/projection/stateful-control.js';
 import {installStatefulApiHostV2, statefulApiRegistryFactory} from './helpers/stateful-owner.js';
@@ -384,20 +382,10 @@ class HyperionApiServer {
       },
     );
 
-    try {
-      const service = await createPortableStateApiService(this.fastify);
-      if (service) this.fastify.decorate('portableState', service);
-    } catch (error) {
-      hLog(`Portable state query initialization is unavailable: ${error instanceof Error ? error.message : String(error)}`);
-      this.fastify.decorate('portableState', {async query() {
-        throw new PortableStateQueryError(503, 'projection.query-unavailable', 'Portable state is unavailable; retry later.');
-      }});
-    }
-
     this.addGenericTypeParsing();
 
     await this.mLoader.init();
-    const statefulConfiguration = resolveStatefulOwnerConfigurationV2(this.conf.features.stateful_owner_v2, this.conf.features.portable_state);
+    const statefulConfiguration = resolveStatefulOwnerConfigurationV2(this.conf.features.stateful_owner_v2);
     const statefulApiContext = statefulConfiguration ? (() => {
       const probe = this.statefulProbeClient = new StatefulApiProbeClient(statefulConfiguration.api.maximumPendingProbes,
         statefulConfiguration.api.timeoutMs, () => this.indexerController);

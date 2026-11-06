@@ -1,7 +1,6 @@
 import {createHash} from 'node:crypto';
 import {STATEFUL_RECOVERY_LIMITS} from '@eosrio/hyperion-sdk/projection-stateful';
 import {protocolImmutableJson} from '../protocol/immutable-bundle-store.js';
-import type {PortableStateConfiguration} from './config.js';
 
 /** Reversible follows the canonical head. Irreversible applies only through the proven source LIB. */
 export type StatefulOwnerFinality = 'reversible' | 'irreversible';
@@ -38,8 +37,7 @@ function bounded(value: unknown, maximum: number, label: string): number {
     requireConfig(Number.isSafeInteger(value) && Number(value) > 0 && Number(value) <= maximum, `Invalid stateful ${label}`);
     return Number(value);
 }
-export function resolveStatefulOwnerConfigurationV2(input: unknown,
-    portable?: PortableStateConfiguration): ResolvedStatefulOwnerConfigurationV2 | undefined {
+export function resolveStatefulOwnerConfigurationV2(input: unknown): ResolvedStatefulOwnerConfigurationV2 | undefined {
     if (input === undefined) return undefined;
     const value = JSON.parse(protocolImmutableJson(input, 64 * 1024));
     record(value, ['interfaceVersion', 'sourceInputVersion', 'backend', 'recovery', 'api'],
@@ -49,8 +47,6 @@ export function resolveStatefulOwnerConfigurationV2(input: unknown,
     requireConfig(value.backend.kind === 'mongodb' && typeof value.backend.id === 'string' && value.backend.id.isWellFormed()
         && value.backend.id.length > 0 && Buffer.byteLength(value.backend.id) <= 256
         && typeof value.backend.database === 'string' && /^[a-zA-Z0-9_-]{1,48}$/.test(value.backend.database), 'Invalid stateful MongoDB backend');
-    if (portable) requireConfig(protocolImmutableJson(portable.backend) === protocolImmutableJson(value.backend),
-        'Scalar and stateful projections must use the same per-chain backend');
     record(value.recovery, ['bytes'], ['blocks', 'maxBlockBytes', 'receipts']);
     const bytes = bounded(value.recovery.bytes, STATEFUL_RECOVERY_LIMITS.retainedBytes, 'recovery byte budget');
     const blocks = bounded(value.recovery.blocks ?? 256, STATEFUL_RECOVERY_LIMITS.retainedBlocks, 'recovery blocks');

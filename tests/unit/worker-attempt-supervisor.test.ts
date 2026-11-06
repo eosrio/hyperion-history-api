@@ -9,9 +9,6 @@ import {WorkerAttemptClient, createControlledLocalAttemptClient} from '../../src
 import {HyperionWorker} from '../../src/indexer/workers/hyperionWorker.js';
 import {ProofConsumerScope, currentProofConsumerScope} from '../../src/indexer/protocol/proof-consumer-scope.js';
 import ProjectionWorker from '../../src/indexer/workers/projection.js';
-import {PortableStateController} from '../../src/indexer/projection/controller.js';
-import {resolvePortableStateConfiguration} from '../../src/indexer/projection/config.js';
-import {PROJECTION_CAPABILITIES} from '@eosrio/hyperion-sdk/projection';
 
 const descriptor = () => ({kind: 'source-delivery' as const, receiptId: randomUUID(), payloadSha256: '1'.repeat(64), headersSha256: '2'.repeat(64),
     consumerId: randomUUID(), publisherId: randomUUID(), queue: 'fixture:source', deliveryTag: 1});
@@ -97,55 +94,13 @@ it('retains a physical receipt whose bounded header snapshot is unavailable and 
     physical.client.dispose(); physical.physical.emit('exit');
 });
 
-it('fences a held projection initialization before a following definition can start', async () => {
-    const chainId = 'c'.repeat(64), initialized: string[] = [];
-    const definition = (id: string) => ({schemaVersion: 1 as const, id, mappingRevision: 'a'.repeat(64),
-        source: {contract: 'items', table: id, abiDeployment: 'original-source-epoch', abiSha256: 'b'.repeat(64)},
-        fields: [{name: 'owner', path: ['owner'], type: 'string' as const}], initialization: {kind: 'genesis' as const}});
-    const configuration = resolvePortableStateConfiguration({backend: {kind: 'mongodb', id: 'fixture', database: 'fixture'},
-        projections: [definition('first'), definition('second')]}, chainId)!;
-    let enter!: () => void, release!: () => void;
-    const entered = new Promise<void>(yes => {enter = yes;}), held = new Promise<void>(yes => {release = yes;});
-    const adapter: any = {capabilities: {interfaceVersion: 1, supported: [...PROJECTION_CAPABILITIES]},
-        async initialize(definition: any) {initialized.push(definition.id); if (definition.id === 'first') {enter(); await held;}},
-        recovery: async () => {}};
-    const scope = new ProofConsumerScope('projection-initialization-control');
-    const work = scope.run(() => PortableStateController.create({chainId, configuration, adapter,
-        source: {frame: async () => {throw new Error('No canonical source in this controlled initialization');}, revalidate: async () => {}}}));
-    void work.catch(() => {}); await entered; scope.fence(); release();
-    await expect(work).rejects.toThrow('Original worker attempt'); await scope.closeAndDrain();
-    expect(initialized).toEqual(['first']);
-});
-
-it('does not dispatch a projection marker or apply after a held source revalidation loses its attempt', async () => {
-    const chainId = 'c'.repeat(64), effects: string[] = [], selected = {schemaVersion: 1 as const, id: 'items', mappingRevision: 'a'.repeat(64),
-        source: {contract: 'items', table: 'items', abiDeployment: 'original-source-epoch', abiSha256: 'b'.repeat(64)},
-        fields: [{name: 'owner', path: ['owner'], type: 'string' as const}], initialization: {kind: 'genesis' as const}};
-    const configuration = resolvePortableStateConfiguration({backend: {kind: 'mongodb', id: 'fixture', database: 'fixture'}, projections: [selected]}, chainId)!;
-    let enter!: () => void, release!: () => void, binding: any;
-    const entered = new Promise<void>(yes => {enter = yes;}), held = new Promise<void>(yes => {release = yes;});
-    const adapter: any = {capabilities: {interfaceVersion: 1, supported: [...PROJECTION_CAPABILITIES]},
-        async initialize(_definition: any, value: any) {binding = value;},
-        async recovery() {return {binding, initialized: true, checkpoint: {blockNum: 0, blockId: '0'.repeat(64)}, pending: null, gap: null};},
-        async markIncomplete() {effects.push('mark');}, async apply() {effects.push('apply');}};
-    const controller = await PortableStateController.create({chainId, configuration, adapter, maximumFramesPerProjection: 1,
-        source: {async frame() {return {frame: {chainId, block: {blockNum: 1, blockId: '1'.repeat(64), previousBlockId: '0'.repeat(64)}, changes: []},
-            proof: {} as any, evidence: {} as any};}, async revalidate() {enter(); await held;}}});
-    const scope = new ProofConsumerScope('projection-frame-control'), work = scope.run(() => controller.drain());
-    void work.catch(() => {}); await entered; scope.fence(); release();
-    await expect(work).rejects.toThrow('Original worker attempt'); await scope.closeAndDrain();
-    expect(effects).toEqual([]); await controller.stop();
-});
-
 it('does not open a projection database after held protocol initialization loses its original attempt', async () => {
     const worker = Object.create(ProjectionWorker.prototype) as any, exits: unknown[] = [];
     let release!: () => void, entered!: () => void, scope!: ProofConsumerScope, connections = 0;
     const held = new Promise<void>(yes => {release = yes;}), started = new Promise<void>(yes => {entered = yes;});
     Object.assign(worker, {chainId: 'c'.repeat(64), protocolReady: held,
-        conf: {features: {portable_state: {backend: {kind: 'mongodb', id: 'fixture', database: 'fixture'}, projections: [{
-            schemaVersion: 1, id: 'items', mappingRevision: 'a'.repeat(64),
-            source: {contract: 'items', table: 'items', abiDeployment: 'original-source-epoch', abiSha256: 'b'.repeat(64)},
-            fields: [{name: 'owner', path: ['owner'], type: 'string'}], initialization: {kind: 'genesis'}}]}},
+        conf: {features: {stateful_owner_v2: {interfaceVersion: 2, sourceInputVersion: 2, backend: {kind: 'mongodb', id: 'fixture', database: 'fixture'},
+            recovery: {bytes: 1024 * 1024}, api: {timeoutMs: 1000, maximumPendingProbes: 8}}},
             indexer: {live_reader: true}},
         protocol: {profileId: 'controlled-native-profile', verifyNativeGenesis() {}}, profiler: {stopReporting() {}},
         manager: createProjectionManagerFixture({async connect() {connections++; throw new Error('Controlled unexpected connection');}})});

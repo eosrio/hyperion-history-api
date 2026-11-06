@@ -347,17 +347,12 @@ async function projectionRoles(fenceAt = null) {
     writeFileSync(join(directory, 'chain.json'), JSON.stringify(conf));
     process.env.CONFIG_JSON = join(directory, 'chain.json'); process.chdir(directory);
     const {HyperionWorker} = await import('../../build/indexer/workers/hyperionWorker.js');
-    const {PortableStateController} = await import('../../build/indexer/projection/controller.js');
-    const {resolvePortableStateConfiguration} = await import('../../build/indexer/projection/config.js');
-    const {PROJECTION_CAPABILITIES} = await import('@eosrio/hyperion-sdk/projection');
+    const {StatefulProjectionControllerV2} = await import('../../build/indexer/projection/stateful-controller.js');
     const worker = Object.create(HyperionWorker.prototype); worker.installControlledAttemptLifecycle('projection');
-    const definitions = ['first', 'other'].map(id => ({schemaVersion: 1, id, mappingRevision: 'a'.repeat(64),
-        source: {contract: 'items', table: id, abiDeployment: 'constructed-source-epoch', abiSha256: 'b'.repeat(64)},
-        fields: [{name: 'owner', path: ['owner'], type: 'string'}], initialization: {kind: 'genesis'}}));
-    const configuration = resolvePortableStateConfiguration({backend: {kind: 'mongodb', id: 'fixture-backend', database: 'fixture'},
-        projections: fenceAt ? definitions.slice(0, 1) : definitions}, chainId);
-    const slots = new Map(), scopeAt = [], io = [], progress = [], held = gate(), entered = gate();
-    let controller, initializationScope, frameScope, endings = [], revalidations = 0;
+    const point = height => ({blockNum: height, blockId: blockId(height)});
+    const block = {...point(6), previousBlockId: blockId(5)}, rawSource = {commitId: 'c', selectionId: 's', observationId: 'o', observationDigest: 'd'.repeat(64)};
+    const scopeAt = [], io = [], errors = [], held = gate(), entered = gate();
+    let controllers = [], initializationScope, frameScope, endings = [], revalidations = 0;
     const record = name => {
         // The controlled adapter records dispatch; it must not supply the host fence being tested.
         let scope;
@@ -366,67 +361,63 @@ async function projectionRoles(fenceAt = null) {
         }
         io.push({name, state: scope.snapshot().state, id: scope.id}); return scope;
     };
-    const adapter = {
-        capabilities: {interfaceVersion: 1, supported: [...PROJECTION_CAPABILITIES]},
-        async initialize(_definition, binding) {
-            const scope = record('initialize:' + binding.projectionId); initializationScope ??= scope;
-            slots.set(binding.projectionId, {binding, checkpoint: {blockNum: 0, blockId: '0'.repeat(64)}, initialized: true, pending: null, gap: null});
-            return this.open(binding);
-        },
-        async open(binding) {const value = slots.get(binding.projectionId); return structuredClone({binding, checkpoint: value.checkpoint});},
-        async recovery(binding) {record('recovery:' + binding.projectionId); return structuredClone(slots.get(binding.projectionId));},
-        async apply(request) {
-            record('apply:' + request.binding.projectionId); const value = slots.get(request.binding.projectionId);
-            value.checkpoint = {blockNum: request.block.blockNum, blockId: request.block.blockId}; value.pending = null;
-            return {status: 'applied', view: structuredClone({binding: value.binding, checkpoint: value.checkpoint})};
-        },
-        async markIncomplete(binding, block, reason) {record('mark:' + binding.projectionId);
-            if (fenceAt === 'admission') {entered.release(); await held.promise;}
-            slots.get(binding.projectionId).pending = {block, reason, digest: null};},
-        async query(view) {return {view, rows: []};},
+    const owner = (id, idle) => {
+        const identity = {ownerId: id};
+        const adapter = {
+            async recovery() {record('recovery:' + id); return {version: 2, view: {revision: 'r'.repeat(64), checkpoint: point(5)}, owner: {identity},
+                raw: idle ? null : {target: {digest: 'a'.repeat(64), target: {block, rawSource}}, sourceDigest: null}, pending: null, gap: null, rollback: null};},
+            acquireOwner: async () => ({lease: id}),
+            async admitRaw() {record('admit:' + id); if (fenceAt === 'admission') {entered.release(); await held.promise;}},
+            async markRawFailure() {record('mark:' + id);},
+            async markSourceFailure() {record('mark-source:' + id);},
+        };
+        const source = {
+            async head() {const scope = currentProofConsumerScope(true); frameScope ??= scope; scopeAt.push({projectionId: id, scope}); return point(idle ? 5 : 9);},
+            open: async value => ({source: value}), assertStatefulView: async () => {},
+            async statefulBlock(_height, _declaration, admit) {
+                await admit({block, reference: rawSource});
+                if (!fenceAt) throw new Error('Controlled contract failure');
+                return {source: {digest: 'b'.repeat(64), source: {}}, proof: {constructedSourceSeam: true}};
+            },
+            async revalidate() {
+                revalidations++;
+                if (fenceAt === 'revalidation' && revalidations === 1) {entered.release(); await held.promise;}
+            },
+        };
+        return new StatefulProjectionControllerV2({declaration: {digest: id.padEnd(64, '0'),
+            projection: {definition: {id, binding: {chainId}}, limits: {keyBytes: 256}}}, adapter, source, identity, custody: {},
+            reduce: async () => {}, assertActive: () => {}, requireAttemptScope: true, maximumFramesPerDrain: 1,
+            run: (metadata, operation) => worker.runProjectionAttempt('projection-frame', metadata, operation),
+            onError: error => errors.push({id, error})});
     };
-    const source = {async frame(height, definition) {
-        const scope = currentProofConsumerScope(true); frameScope ??= scope; scopeAt.push({projectionId: definition.id, scope});
-        assert.equal(height, 1);
-        return {frame: {chainId, block: {blockNum: 1, blockId: blockId(1), previousBlockId: '0'.repeat(64)},
-            changes: [{contract: 'items', table: definition.id, scope: '', primaryKey: 'constructed-key',
-                abiDeployment: definition.source.abiDeployment, abiSha256: definition.source.abiSha256,
-                present: true, value: !fenceAt && definition.id === 'first' ? {} : {owner: 'alice'}}]},
-            proof: {constructedSourceSeam: true}, evidence: {constructedSourceSeam: true}};
-    }, async revalidate() {
-        revalidations++;
-        if (fenceAt === 'revalidation' && revalidations === 1) {entered.release(); await held.promise;}
-    }};
     try {
-        controller = await worker.runProjectionAttempt('projection-initialization', {constructedConfiguration: true}, () => PortableStateController.create({
-            chainId, configuration, adapter, source, maximumFramesPerProjection: 1,
-            attempts: {run: (metadata, operation) => worker.runProjectionAttempt('projection-frame', metadata, operation), bind: fields => worker.bindWorkerAttempt(fields)},
-            onProgress: value => progress.push(value)}));
+        controllers = await worker.runProjectionAttempt('projection-initialization', {constructedConfiguration: true}, async () => {
+            initializationScope = currentProofConsumerScope(true); record('initialize');
+            return fenceAt ? [owner('first', false)] : [owner('first', false), owner('other', true)];
+        });
         assert.equal(initializationScope.snapshot().state, 'drained');
         if (fenceAt) {
-            const work = controller.drain(); work.catch(() => {});
+            const work = controllers[0].drain(); work.catch(() => {});
             await entered.promise; let ended = false;
             const ending = frameScope.closeAndDrain().then(end => {ended = true; return end;}); endings.push(ending);
             await turn(); assert.equal(ended, false, 'actual frame root remains live through held source revalidation');
             const atFence = io.length; held.release(); await Promise.allSettled([work, ending]);
             const later = io.slice(atFence);
-            assert.deepEqual(later, [], 'fenced actual controller cannot dispatch new adapter work after its held source revalidation returns');
-            assert.equal(slots.get('first').checkpoint.blockNum, 0);
+            assert.deepEqual(later, [], 'fenced actual owner cannot dispatch new adapter work after its held source call returns');
             cases.push({id: 'projection-post-' + fenceAt + '-fence', newAdapterCallsAfterFence: later, checkpoint: 0, controlledSourceAndAdapter: true});
         } else {
-            await controller.drain();
-            assert.equal(slots.get('first').checkpoint.blockNum, 0); assert(slots.get('first').pending);
-            assert.equal(slots.get('other').checkpoint.blockNum, 1); assert.equal(slots.get('other').pending, null);
+            for (const controller of controllers) await controller.drain();
+            assert(io.some(value => value.name === 'mark:first'), 'a failed frame durably marks its own raw input');
+            assert.equal(io.some(value => value.name.endsWith(':other') && value.name.startsWith('mark')), false, 'one owner failure cannot touch another');
+            assert.deepEqual(errors.map(value => value.id), ['first']);
             assert.equal(scopeAt.length, 2); assert.notEqual(scopeAt[0].scope, scopeAt[1].scope);
             for (const selected of scopeAt) {assert.notEqual(selected.scope, initializationScope); assert.equal(selected.scope.snapshot().state, 'drained');}
-            assert(progress.some(value => value.projectionId === 'first' && value.status === 'incomplete'));
-            assert(progress.some(value => value.projectionId === 'other' && value.status === 'applied'));
             assert.equal(io.filter(value => value.state !== 'open').length, 0);
             cases.push({id: 'actual-projection-initialization-and-independent-frame-roots', initializationRoots: 1, frameRoots: 2,
                 contractFailureCheckpoint: 0, independentCheckpoint: 1, controlledSourceAndAdapter: true, masterAcceptedEnd: false});
         }
     } finally {
-        held.release(); await Promise.allSettled(endings); await controller?.stop(); worker.workerAttemptClient.dispose();
+        held.release(); await Promise.allSettled(endings); for (const controller of controllers) await controller.stop(); worker.workerAttemptClient.dispose();
         process.chdir(previousDirectory); if (previousConfig === undefined) delete process.env.CONFIG_JSON; else process.env.CONFIG_JSON = previousConfig;
         const owned = resolve(directory); assert.equal(dirname(owned), resolve(tmpdir())); assert.match(basename(owned), /^hyperion-attempt-projection-/);
         rmSync(owned, {recursive: true, force: true});
@@ -930,7 +921,8 @@ async function projectionInitializationFence() {
         source: {contract: 'items', table: 'items', abiDeployment: 'constructed-epoch', abiSha256: 'b'.repeat(64)},
         fields: [{name: 'owner', path: ['owner'], type: 'string'}], initialization: {kind: 'genesis'}};
     const conf = {settings: {chain: 'projection-init'}, indexer: {live_reader: true}, whitelists: {}, blacklists: {},
-        features: {portable_state: {backend: {kind: 'mongodb', id: 'fixture-backend', database: 'fixture'}, projections: [definition]}}};
+        features: {stateful_owner_v2: {interfaceVersion: 2, sourceInputVersion: 2, backend: {kind: 'mongodb', id: 'fixture-backend', database: 'fixture'},
+            recovery: {bytes: 1024 * 1024}, api: {timeoutMs: 1000, maximumPendingProbes: 8}}}};
     writeFileSync(join(directory, 'chain.json'), JSON.stringify(conf)); process.env.CONFIG_JSON = join(directory, 'chain.json'); process.chdir(directory);
     const {default: ProjectionWorker} = await import('../../build/indexer/workers/projection.js');
     const {HyperionWorker} = await import('../../build/indexer/workers/hyperionWorker.js');

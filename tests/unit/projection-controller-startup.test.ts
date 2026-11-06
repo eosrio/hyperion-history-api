@@ -2,7 +2,7 @@ import {expect, test} from 'bun:test';
 import {fileURLToPath} from 'node:url';
 
 for (const stage of ['connect', 'initialize', 'initialize-retained', 'initialize-error', 'initialize-foreign', 'initialize-mutating',
-    'frame-read', 'frame-recover', 'frame-ordinary', 'frame-foreign', 'frame-copied',
+    'frame-read', 'frame-ordinary', 'frame-foreign', 'frame-copied',
     'frame-stop', 'frame-retire', 'frame-lost-end', 'frame-stale-end', 'frame-retire-after-end', 'frame-drain-timeout',
     'frame-register', 'frame-reply', 'frame-control', 'diagnostic-failure', 'bounded'])
 test(`native original projection controller startup: ${stage}`, async () => {
