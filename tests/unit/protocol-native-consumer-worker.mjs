@@ -7,7 +7,7 @@ import {mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync} from 'node:
 import {tmpdir} from 'node:os';
 import {basename, dirname, join, resolve} from 'node:path';
 import {EventEmitter} from 'node:events';
-import {AsyncResource} from 'node:async_hooks';
+import {AsyncLocalStorage, AsyncResource} from 'node:async_hooks';
 import {createHash} from 'node:crypto';
 
 import {spawnSync} from 'node:child_process';
@@ -33,6 +33,7 @@ let reader, coordinator, bridge, draining = Promise.resolve();
 const measureProofPair = process.argv.includes('--measure-proof-pair');
 const workerProofRecovery = process.argv.includes('--worker-proof-recovery');
 // Reader ingress is a separate task, not a descendant of the active DS proof scope.
+const nativeConsumerOracle = new AsyncLocalStorage();
 const independentIngress = new AsyncResource('fixture-independent-reader-ingress');
 const expectedOpeningWalks = Number(process.argv.find(value => value.startsWith('--expect-opening-walks='))?.split('=')[1] ?? 1);
 assert([1, 2].includes(expectedOpeningWalks));
@@ -244,7 +245,7 @@ try {
     };
     const numberFrom = bytes => Number(codec.decode('result', bytes)[1].this_block.block_num);
     const results = [];
-    let lastPrepared, recoveryObserved = false, missingReads = 0, historicalAddressReads = 0; const preprepared = new Map();
+    let lastPrepared, recoveryObserved = false, missingReads = 0, consumerMissingReads = 0, historicalAddressReads = 0, consumerOracleReads = 0, independentProducerStateReads = 0; const preprepared = new Map();
     // The frontier shares h45abist1 for contract ABI states and historical membership
     // entries. This oracle permits only retained, intact address-entry envelopes;
     // the real reader still verifies their exact activated root/source/certificate.
@@ -272,7 +273,7 @@ try {
             for (let i=0;i<3;i++) await coordinator.drain();
             const old = await coordinator.inspect(); assert.equal(old.head.blockNum,36); assert.ok(old.historical);
             const readGet=memory.client.get.bind(memory.client);
-            memory.client.get=async (...args)=>{try{return await readGet(...args);}catch(error){if(error?.meta?.statusCode===404 && String(args[0].id).startsWith('h45abicert1:'))missingReads++;throw error;}};
+            memory.client.get=async (...args)=>{try{return await readGet(...args);}catch(error){if(error?.meta?.statusCode===404 && String(args[0].id).startsWith('h45abicert1:')){missingReads++;if(nativeConsumerOracle.getStore()===true)consumerMissingReads++;}throw error;}};
             // Start the next real canonical commit from the action hook. Its control CAS is
             // settled before the certificate writer is released; DS keeps the same delivery.
             const writeCertificate = frontier.prepareCertificate.bind(frontier);
@@ -300,17 +301,24 @@ try {
         if (expected.has(number) || number === 34 || number === 35) {
             const before = poolPublisher.sent.length, cacheBefore = cache.length, streamsBefore = poolConsumer.streamed.length, ackBefore = poolConsumer.acked.length;
             fault = number === 34 ? 'value' : number === 35 ? 'metadata' : undefined;
-            const priorFault = memory.faults.beforeRead;
-            memory.faults.beforeRead = request => {
-                if (request.id.startsWith('h45abist1:')) {
-                    if (!workerProofRecovery || !isHistoricalAddressRead(request)) throw new Error('Native worker must not read deployed ABI states');
-                    historicalAddressReads++;
-                }
+            const priorGet = memory.client.get;
+            // Enforce at the consumer request boundary, before the optional HTTP bridge.
+            // The independent ingress/coordinator may legitimately prepare/read states;
+            // its AsyncResource was created outside this consumer-only oracle context.
+            memory.client.get = async (request, options) => {
+                if (nativeConsumerOracle.getStore() === true) {
+                    consumerOracleReads++;
+                    if (request.id.startsWith('h45abist1:')) {
+                        if (!workerProofRecovery || !isHistoricalAddressRead(request)) throw new Error('Native worker must not read deployed ABI states');
+                        historicalAddressReads++;
+                    }
+                } else if (request.id.startsWith('h45abist1:')) independentProducerStateReads++;
+                return priorGet.call(memory.client, request, options);
             };
             if (bridge && expected.has(number)) bridge.begin();
-            await pool.processMessages(prepared.messages);
+            try {await nativeConsumerOracle.run(true, () => pool.processMessages(prepared.messages));}
+            finally {memory.client.get = priorGet;}
             if (bridge && expected.has(number)) proofPairMeasurements.push({blockNum: number, ...bridge.end()});
-            memory.faults.beforeRead = priorFault;
             assert.equal(poolConsumer.acked.at(-1), prepared.messages.at(-1));
             const output = poolPublisher.sent.slice(before); assert.equal(output.length, 1);
             const document = JSON.parse(output[0].payload), metadata = document.protocol;
@@ -324,7 +332,7 @@ try {
             assert.deepEqual(sealed.manifest.fragments.flatMap(fragment => fragment.effects), [fingerprintActionHistoryEffect(document)]);
             assert.ok(poolConsumer.streamed.slice(streamsBefore).some(stream => stream.payload.equals(output[0].payload)));
             assert.ok(cache.slice(cacheBefore).some(entry => entry.values.get(document.global_sequence)?.equals(output[0].payload)));
-            if (workerProofRecovery && number === 33) {assert.equal(recoveryObserved, true);assert.equal(recoveryHooks, 1);assert.equal(poolConsumer.acked.length-ackBefore,1);assert.equal(poolPublisher.sent.length-before,1);await preprepared.get(37);assert.ok(missingReads>0, 'actual historical certificate manifest must be missing during the gap');assert.ok(historicalAddressReads>0, 'actual activated historical membership must be read');}
+            if (workerProofRecovery && number === 33) {assert.equal(recoveryObserved, true);assert.equal(recoveryHooks, 1);assert.equal(poolConsumer.acked.length-ackBefore,1);assert.equal(poolPublisher.sent.length-before,1);await preprepared.get(37);assert.ok(missingReads>0, 'actual historical certificate manifest must be missing during the gap');assert.ok(consumerMissingReads>0, 'the original DS consumer must read the missing activation certificate');assert.ok(historicalAddressReads>0, 'actual activated historical membership must be read');assert.ok(independentProducerStateReads>0, 'independent coordinator state preparation must remain outside the consumer oracle');}
             if (expected.has(number)) {
                 const original = expected.get(number); assert.deepEqual(bytes, readFileSync(join(originalDir, 'block-' + String(number).padStart(6, '0') + '.bin')));
                 assert.deepEqual(document.act.data, original.expectedValue); assert.equal(metadata.input.rawHex, original.rawHex);
@@ -366,9 +374,10 @@ try {
             assert.equal(measurement.commitManifests, expectedOpeningWalks, 'At the unchanged source head each opening walks one commit');
         }
     }
+    assert.ok(consumerOracleReads>0, 'actual consumer reads must execute under the negative ABI-state oracle');
     console.log(JSON.stringify({passed: true, originalBlocks: 397, nativeActions: results, originalWireSource: true,
         installedNativeActivation: false, fullWorkerQualification: false, controlledBrokerStorage: true,
-        workerProofRecovery, recoveryObserved, recoveryHooks, missingReads, historicalAddressReads, sourceAdmission: true, exactConfirmedBytes: true, unknownAbiIndependent: true, tamperedOutputRawIncomplete: true,
+        workerProofRecovery, recoveryObserved, recoveryHooks, missingReads, consumerMissingReads, historicalAddressReads, consumerOracleReads, independentProducerStateReads, sourceAdmission: true, exactConfirmedBytes: true, unknownAbiIndependent: true, tamperedOutputRawIncomplete: true,
         finalConfirmRevocationFenced: true, genesisActionAdmissionIncomplete: true, nativeAddonResolutions}));
 } finally {
     independentIngress.emitDestroy();

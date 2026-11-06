@@ -35,4 +35,7 @@ test.skipIf(process.platform !== 'linux' || process.env.HYPERION_NATIVE_SOURCE_P
         finalConfirmRevocationFenced: true, fullWorkerQualification: false});
     expect(observed.missingReads).toBeGreaterThan(0);
     expect(observed.historicalAddressReads).toBeGreaterThan(0);
+    expect(observed.consumerOracleReads).toBeGreaterThan(0);
+    expect(observed.consumerMissingReads).toBeGreaterThan(0);
+    expect(observed.independentProducerStateReads).toBeGreaterThan(0);
 }, 155_000);
