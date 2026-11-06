@@ -328,3 +328,28 @@ for(const [session,code] of [['progress-session','proof_timeout'],['retired-sess
         const source={chainId,blockNum:2,blockId:block(2),previousBlockId:block(1)};
         await assert.rejects(reader(f).openLiveSource(source,f.selections[1],{contextId:f.contextId,readerSessionId:session},{timeoutMs:120}),{code});
     });
+
+// A same-session reopen is the reset a fork or replay passes through: pending is emptied
+// and open() answers authority_unavailable before it can reach source_pending.
+for(const [blockNum,code] of [[2,'authority_unavailable'],[1,'proof_timeout']])
+    test('during recovery an unadmitted live source at block '+blockNum+' ends with '+code,async()=>{
+        const f=await fixture(2,history,2);
+        await f.coordinator.drain();await f.coordinator.openSource(f.contextId,'progress-session');
+        const control=await f.coordinator.inspect();
+        assert.equal(control.phase,'recovering');assert.deepEqual(control.pending,[]);assert.equal(control.head.blockNum,1);
+        const source={chainId,blockNum,blockId:block(blockNum),previousBlockId:blockNum===1?null:block(blockNum-1)};
+        await assert.rejects(reader(f).openLiveSource(source,f.selections[blockNum-1],
+            {contextId:f.contextId,readerSessionId:'progress-session'},{timeoutMs:120}),{code});
+    });
+
+test('an admitted live source keeps waiting while authority is unavailable',async()=>{
+    const f=await fixture(2,history,2);await f.coordinator.drain();
+    const control=await f.coordinator.inspect();assert.deepEqual(control.pending,[f.selections[1]]);assert.equal(control.head.blockNum,1);
+    // Admission and replay only coexist with no head, so the read side alone reports the replay here.
+    const store=f.store.asReadOnly(),read=store.readControl.bind(store);let unavailableReads=0;
+    store.readControl=async(...args)=>{const stored=await read(...args);unavailableReads++;return {...stored,value:{...stored.value,replayFromBlock:2}};};
+    const view=new ProtocolAbiProofReader({chainId,profile,store,maxAncestryBlocks:1,historicalCertificates:true});
+    const source={chainId,blockNum:2,blockId:block(2),previousBlockId:block(1)};
+    await assert.rejects(view.openLiveSource(source,f.selections[1],{contextId:f.contextId,readerSessionId:'progress-session'},{timeoutMs:120}),{code:'proof_timeout'});
+    assert.ok(unavailableReads>1);
+});

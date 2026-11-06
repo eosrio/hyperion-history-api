@@ -422,12 +422,13 @@ export class ProtocolAbiProofReader {
             const value:any=observed?.value;
             // Old durable live captures must not hold the FIFO while the current
             // reader's first admitted observation is still queued behind them.
+            // Recovery answers authority_unavailable before open() can reach source_pending.
             if(value?.schemaVersion!==1||value.chainId!==this.options.chainId||!this.sameProfile(value.profile)
                 ||!text(value.ownerId)||!text(value.generation)||!Number.isSafeInteger(value.revision)||value.revision<0
                 ||!ident('h45srcctx1',contextId)||!text(readerSessionId)
                 ||value.source?.contextId!==contextId||value.source?.readerSessionId!==readerSessionId
                 ||!Array.isArray(value.pending)||!value.pending.every((id:unknown)=>ident('h45srcsel1',id))
-                ||error.code==='source_pending'&&!value.pending.includes(selectionId)
+                ||['source_pending','authority_unavailable'].includes(error.code)&&!value.pending.includes(selectionId)
                     &&(!validHead(value.head)||value.head.blockNum<source.blockNum))throw error;
         });
     }
