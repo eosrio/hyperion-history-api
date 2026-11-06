@@ -5,7 +5,7 @@ import type {StatefulOwnerDeclarationV2} from '@eosrio/hyperion-sdk/projection-s
 import type {CapturedStatefulSourceV2} from '@eosrio/hyperion-sdk/projection-stateful-source-v2';
 import type {StatefulSelector} from '@eosrio/hyperion-sdk/projection-stateful';
 import {ProjectionContractError, type ProjectionBlock, type ProjectionCheckpoint, type ProjectionDefinition} from '@eosrio/hyperion-sdk/projection';
-import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
+import {ProtocolAbiFrontierStore, ProtocolAbiFrontierRecordMemo} from '../protocol/abi-frontier-store.js';
 import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, type ProtocolAbiProofView} from '../protocol/abi-proof.js';
 import {ProtocolAbiObservationStore, protocolAbiObservationId, type ProtocolAbiObservationRecord} from '../protocol/abi-observation-store.js';
 import {ProtocolSourceBindingStore, type ProtocolSourceContext, type ProtocolSourceSelection, type ProtocolSourceProfile} from '../protocol/source-bindings.js';
@@ -80,7 +80,7 @@ export class PortableProjectionSource {
     constructor(options: PortableProjectionSourceOptions) {
         this.maximumAncestry = options.maxAncestryBlocks ?? 256;
         this.options = {...options, profile: JSON.parse(json(options.profile))};
-        this.store = new ProtocolAbiFrontierStore(options.client, options.chain, options.replicas ?? 0, {readOnly: true});
+        this.store = new ProtocolAbiFrontierStore(options.client, options.chain, options.replicas ?? 0, {readOnly: true, recordMemo: new ProtocolAbiFrontierRecordMemo()});
         this.bindings = new ProtocolSourceBindingStore(options.client, options.chain, options.replicas ?? 0, {readOnly: true});
         this.observations = new ProtocolAbiObservationStore(options.client, options.chain, options.replicas ?? 0, undefined, {readOnly: true});
         this.diskHistory=diskAbiHistoryOptions(options.diskAbiHistory,options.client,options.chain,options.chainId,
