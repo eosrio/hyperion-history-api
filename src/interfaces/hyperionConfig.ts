@@ -1,7 +1,6 @@
 import { z } from "zod/v4";
 
 import {AlertManagerOptions} from "../indexer/modules/alertsManager.js";
-import {resolvePortableStateConfiguration, type PortableStateConfiguration} from '../indexer/projection/config.js';
 import {resolveStatefulOwnerConfigurationV2, type StatefulOwnerConfigurationV2} from '../indexer/projection/stateful-config.js';
 
 /**
@@ -286,7 +285,6 @@ export interface HyperionConfig {
         deltas: string[]
     };
     features: {
-        portable_state?: PortableStateConfiguration;
         stateful_owner_v2?: StatefulOwnerConfigurationV2;
         streaming: {
             enable: boolean,
@@ -582,9 +580,8 @@ const FeaturesSchema = z.object({
     stateful_owner_v2: z.custom<StatefulOwnerConfigurationV2>(value => {
         try {return resolveStatefulOwnerConfigurationV2(value) !== undefined;} catch {return false;}
     }, 'Invalid stateful owner version2 configuration').optional(),
-    portable_state: z.custom<PortableStateConfiguration>(value => {
-        try {return resolvePortableStateConfiguration(value, '0'.repeat(64)) !== undefined;} catch {return false;}
-    }, 'Invalid portable state backend or projection definitions').optional(),
+    // Rejected rather than stripped: a stale key must never look like running state.
+    portable_state: z.custom<never>(() => false, 'features.portable_state was removed; use features.stateful_owner_v2').optional(),
     streaming: StreamingFeaturesSchema,
     tables: TablesFeaturesSchema,
     contract_state: ContractStateSchema,

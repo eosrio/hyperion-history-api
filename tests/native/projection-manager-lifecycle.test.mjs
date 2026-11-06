@@ -6,7 +6,7 @@ import {runInNewContext} from 'node:vm';
 import {createProjectionManagerFixture} from '../unit/projection-manager-fixture.mjs';
 
 const read=path=>readFileSync(new URL('../../'+path,import.meta.url),'utf8'),source=read('build/indexer/workers/projection.js'),
- start=source.indexOf('            await this.controller?.stop();'),at=source.indexOf('        catch (error) {',start),
+ start=source.lastIndexOf('            for (const controller of this.statefulControllers.values())',source.indexOf('await controller.stop();')),at=source.indexOf('        catch (error) {',start),
  end=source.indexOf('\n        }\n    }\n    handleProjectionFailure',at);
 assert(start>0&&at>start&&end>at);
 const success=source.slice(start,at).replace(/\n        }\s*$/,''),failure=source.slice(at+'        catch (error) {'.length,end);
@@ -38,21 +38,6 @@ test('emitted cleanup retains a real original Mongo close failure after closing 
  const cleanup=runInNewContext('(async function(initialized){try{'+success+'}catch(error){'+failure+'}})',{process:{exit:code=>events.push(['exit',code])}});
  await cleanup.call({manager,statefulControllers:new Map(),probes:new Set(),profiler:{stopReporting(){}},handleProjectionFailure(error){assert.equal(error,primary);events.push('primary');events.push(['exit',1]);}},{client});
  assert.deepEqual(events,['primary',['exit',1]]);await assert.rejects(manager.statefulCompleteKindMongoClient(5),/configuration is unavailable/);
-});
-
-test('actual startup controller supports all emitted IPC invalidation events and stop before drain completion',async()=>{
- const fixture=read('tests/unit/projection-startup-fencing.mjs'),line=fixture.split('\n').find(line=>line.includes("send({event: 'fixture_initialized'})")&&line.includes('return '));
- assert(line,'Actual startup controller expression required');const expression=line.trim().slice('return '.length).replace(/;$/,'');
- const methodStart=source.indexOf('    onIpcMessage(message) {'),methodEnd=source.indexOf('    async run() {',methodStart);assert(methodStart>0&&methodEnd>methodStart);
- const onIpc=new Function('return ({'+source.slice(methodStart,methodEnd)+'});')().onIpcMessage;
- const ports=await import('../unit/projection-manager-fixture.mjs');
- for(const event of ['stop','worker_attempt_fence','worker_attempt_fence_active','reload_config','reload_contract_config']){
-  const events=[],controller=runInNewContext('('+expression+')',{...ports,send:value=>events.push(value),finish:{promise:Promise.resolve()}});
-  const retryEpoch={};controller.mappingRetries=new Map([['pending',{}]]);controller.retryEpoch=retryEpoch;
-  const worker={controller,stopped:false,statefulControllers:new Map(),probes:new Set()};
-  onIpc.call(worker,{event});assert.equal(worker.stopped,event==='stop');assert.equal(controller.mappingRetries.size,0);assert.notEqual(controller.retryEpoch,retryEpoch);
-  await controller.drain();assert.equal(events.length,1);assert.equal(events[0].event,'fixture_initialized');await controller.stop();
- }
 });
 
 test('actual fatal-lineage and held-protocol fixtures reach emitted primary failure handling through a real optional-pool closer',async()=>{

@@ -112,7 +112,7 @@ test('all-CBFB shipping routes reverse to the actual frozen mixed checkout and o
  assert.equal(ROUTING.base,'c1b98a52a872b6c070ada32243c8286607e86883');
  assert.equal(ROUTING.files.length,19);
  for(const row of ROUTING.files){assert.equal(restoreMixedRouting(row.path,raw(row.path)),row.historicalSource);assert.equal(sha(row.historicalSource),row.historicalSha256);assert.throws(()=>restoreMixedRouting(row.path,raw(row.path)+'\n'),/routing source differs/);restoreSdk49Routing(row.path,raw(row.path));}
- for(const path of ['tests/unit/wire-managed-state-v2-native.mjs','tests/unit/protocol-abi-history-native.mjs','tests/fixtures/portable-mapping-retry.mjs'])assert(raw(path).includes('STATEFUL_ALL_CBFB_SOURCE_PROFILE'));
+ for(const path of ['tests/unit/wire-managed-state-v2-native.mjs','tests/unit/protocol-abi-history-native.mjs'])assert(raw(path).includes('STATEFUL_ALL_CBFB_SOURCE_PROFILE'));
  const workflow=raw('.github/workflows/build.yml'),active=workflow.slice(0,workflow.indexOf('  historical-mixed-cbfb-admission:'));
  const main=workflow.slice(workflow.indexOf('\n  build:'),workflow.indexOf('\n  projection-mongodb:'));assert.match(main,/^    strategy:\n      fail-fast: false\n      matrix:\n        node-version: \["24\.22\.1", "26\.4\.0"\]/m,'Each actual Node major must retain its independent full-build outcome');
  for(const command of ['all-cbfb-ci-source-check.mjs','all-cbfb-source-admission.mjs --admit-all-cbfb','all-cbfb-source-admission-native.mjs','all-cbfb-source-profile.mjs','all-cbfb-codec-profile.test.mjs','npm test','stateful-complete-kind-mongodb/ci.mjs','operator-list-mongodb/ci.mjs'])assert(active.includes(command),command);

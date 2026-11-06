@@ -1,6 +1,6 @@
 /** Real emitted projection worker and native cluster IPC; Mongo/controller I/O is controlled. */
 import assert from 'node:assert/strict';
-import {createProjectionManagerFixture,createProjectionControllerFixture} from './projection-manager-fixture.mjs';
+import {createProjectionManagerFixture} from './projection-manager-fixture.mjs';
 import cluster from 'node:cluster';
 import {mkdtempSync, mkdirSync, writeFileSync, appendFileSync, readFileSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -40,21 +40,17 @@ if (cluster.isWorker) {
         catch (error) {trace({kind, rejected: true}); throw error;}
     };
     const fixture = {
-        backend() {record('backend'); return {};},
-        async controller() {
-            record('controller');
-            return createProjectionControllerFixture({async drain() {send({event: 'fixture_initialized'}); await finish.promise;}, async stop() {}});
+        async registry() {
+            record('backend'); record('controller');
+            return {entries: new Map(), async initializeMissing() {send({event: 'fixture_initialized'}); await finish.promise;}};
         },
     };
     globalThis.__projectionStartupFixture = fixture;
     const workerUrl = new URL('../../build/indexer/workers/projection.js', import.meta.url).href;
     registerHooks({resolve(specifier, context, next) {
-        if (context.parentURL === workerUrl && specifier === '../projection/backend.js')
+        if (context.parentURL === workerUrl && specifier === '../projection/stateful-registry.js')
             return {shortCircuit: true, url: 'data:text/javascript,' + encodeURIComponent(
-                'export const createPortableStateBackend=()=>globalThis.__projectionStartupFixture.backend();')};
-        if (context.parentURL === workerUrl && specifier === '../projection/controller.js')
-            return {shortCircuit: true, url: 'data:text/javascript,' + encodeURIComponent(
-                'export const PortableStateController={create:options=>globalThis.__projectionStartupFixture.controller(options)};')};
+                'export const StatefulProjectionRegistryV2={create:options=>globalThis.__projectionStartupFixture.registry(options)};')};
         return next(specifier, context);
     }});
     process.on('message', message => {
@@ -90,7 +86,8 @@ if (cluster.isWorker) {
     worker = Object.create(ProjectionWorker.prototype);
     Object.assign(worker, {chainId: '1'.repeat(64), chain: 'projection-startup', conf: {
         settings: {chain: 'projection-startup'}, indexer: {live_reader: true},
-        features: {portable_state: {backend: {kind: 'mongodb', id: 'controlled-backend', database: 'controlled'}, projections: [definition]}}},
+        features: {stateful_owner_v2: {interfaceVersion: 2, sourceInputVersion: 2, backend: {kind: 'mongodb', id: 'controlled-backend', database: 'controlled'},
+            recovery: {bytes: 1024 * 1024}, api: {timeoutMs: 1000, maximumPendingProbes: 8}}}},
         protocolId: 'controlled-startup-protocol', protocolComponents: [{id: 'owned-startup-fixture', runtime: 'node',
             version: '0.0.0-dev.1', sourceRevision: 'c'.repeat(40), sha256: 'd'.repeat(64)}], protocolReady: Promise.resolve(),
         protocol: {profileId: 'controlled-startup-v1', verifyNativeGenesis() {}}, client: {},
@@ -183,8 +180,10 @@ if (cluster.isWorker) {
             assert.equal(state.exited, false, 'Projection initialization must recover after a source fence; actual child output: ' + state.stdout + state.stderr);
             worker.send({event: 'fixture_finish'}); await until(() => state.exited, 'original projection worker exits normally after stop');
             assert.equal(state.code, 0);
-            assert.equal(ends.length, activeFence ? 2 : 1); assert.equal(ends.at(-1).rootResult, 'returned');
-            assert.ok(ends.every(e => e.status === 'quiescent' && e.descriptor.kind === 'projection-initialization'));
+            // The owner loop runs in its own frame attempt once initialization has ended.
+            const initialization = ends.filter(e => e.descriptor.kind === 'projection-initialization');
+            assert.equal(initialization.length, activeFence ? 2 : 1); assert.equal(initialization.at(-1).rootResult, 'returned');
+            assert.ok(ends.every(e => e.status === 'quiescent' && ['projection-initialization', 'projection-frame'].includes(e.descriptor.kind)));
             if (activeFence) {
                 assert.equal(ends[0].rootResult, 'threw');
                 assert.equal(ends[0].incarnation, ends[1].incarnation); assert.equal(ends[0].epoch, ends[1].epoch);
@@ -199,7 +198,7 @@ if (cluster.isWorker) {
         const trace = readFileSync(join(directory, 'trace.jsonl'), 'utf8').trimEnd().split('\n').map(line => JSON.parse(line));
         const effects = trace.filter(e => ['backend', 'controller'].includes(e.kind));
         assert.equal(effects.length, successful ? 2 : 0);
-        assert.ok(effects.every(e => !e.rejected && e.scopeId === ends.at(-1).attemptId));
+        assert.ok(effects.every(e => !e.rejected && e.scopeId === ends.filter(end => end.descriptor.kind === 'projection-initialization').at(-1).attemptId));
         if (activeFence) assert.ok(effects.every(e => e.scopeId !== original));
         console.log(JSON.stringify({passed: true, scenario, originalWorkerRecovered: successful && activeFence, physicalWorkers: 1,
             freshAcceptedInitialization: successful, postFenceOldBackendCalls: 0, capacityAuthority: false, fullWorkerQualification: false}));

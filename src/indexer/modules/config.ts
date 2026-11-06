@@ -104,7 +104,12 @@ export class ConfigurationModule {
             let validationFailed = false;
             try {
                 const next = JSON.parse(data);
-                try {validate?.(next);} catch (error) {validationFailed = true; throw error;}
+                try {
+                    // Refused rather than ignored: a stale key must never look like running state.
+                    if (Object.hasOwn(next?.features ?? {}, 'portable_state'))
+                        throw new Error('features.portable_state was removed; use features.stateful_owner_v2');
+                    validate?.(next);
+                } catch (error) {validationFailed = true; throw error;}
                 this.config = next;
                 this.processConfig();
             } catch (e) {

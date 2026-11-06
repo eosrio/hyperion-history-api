@@ -52,7 +52,6 @@ import {ProtocolSourceBindingStore, type ProtocolSourcePosition} from '../protoc
 import {ProtocolAbiObservationStore} from '../protocol/abi-observation-store.js';
 import {isProtocolAbiCoordinatorRequest, type ProtocolAbiCoordinatorReply} from '../protocol/abi-coordinator-rpc.js';
 import {ensureProtocolActionMapping} from '../protocol/action-proof-mapping.js';
-import {resolvePortableStateConfiguration} from '../projection/config.js';
 import {resolveStatefulOwnerConfigurationV2} from '../projection/stateful-config.js';
 import {StatefulWorkerProbeBroker} from '../projection/stateful-control.js';
 import {WorkerAttemptSupervisor, type WorkerAttemptRole} from '../protocol/worker-attempt-supervisor.js';
@@ -101,7 +100,7 @@ export class HyperionMaster {
     getSourceCreditCapacitySnapshot() {return this.sourceCreditCapacity?.snapshot() ?? null;}
     private statefulProbes?: StatefulWorkerProbeBroker<Worker>;
     async probeStatefulOwner(target: string, signal: AbortSignal): Promise<boolean> {
-        const configuration = resolveStatefulOwnerConfigurationV2(this.conf.features.stateful_owner_v2, this.conf.features.portable_state);
+        const configuration = resolveStatefulOwnerConfigurationV2(this.conf.features.stateful_owner_v2);
         if (!configuration) return false;
         const isCurrent = (worker: Worker) => this.workerMap.some(definition => definition.wref === worker && definition.worker_role === 'projection')
             && this.workerAttemptSupervisor?.ownsActiveWorker(worker, 'projection') === true;
@@ -478,11 +477,6 @@ export class HyperionMaster {
                 if (!this.workerMap.some(definition => definition.wref === worker && definition.worker_role === 'deserializer')
                     || typeof msg.data?.selectionId !== 'string' || !/^h45srcsel1:[0-9a-f]{64}$/.test(msg.data.selectionId)) return;
                 this.requestProtocolAbiDrain();
-            },
-            portable_state_progress: (worker: Worker, msg: WorkerMessage) => {
-                // Observational only: this message cannot advance source/history progress or grant query readiness.
-                if (this.workerMap.some(definition => definition.wref === worker && definition.worker_role === 'projection'))
-                    debugLog('Portable state projection progress:', msg.data);
             },
             stateful_owner_probe_reply: (worker: Worker, msg: WorkerMessage) => {this.statefulProbes?.accept(worker, msg.data);},
             skipped_block: (_worker: Worker, msg: WorkerMessage) => {
@@ -1505,10 +1499,7 @@ export class HyperionMaster {
         await this.setupIndexers();
         await this.setupStreaming();
         await this.setupDSPool();
-        const portable = resolvePortableStateConfiguration(this.conf.features.portable_state,
-            this.manager.conn.chains[this.chain].chain_id);
-        const stateful = resolveStatefulOwnerConfigurationV2(this.conf.features.stateful_owner_v2, portable);
-        if (portable || stateful) this.addWorker({worker_role: 'projection'});
+        if (resolveStatefulOwnerConfigurationV2(this.conf.features.stateful_owner_v2)) this.addWorker({worker_role: 'projection'});
     }
 
     launchWorkers() {

@@ -13,12 +13,6 @@ test('stateful owner remains opt-in and requires explicit request/recovery budge
         {...input, recovery: {}}, {...input, api: {timeoutMs: '5s', maximumPendingProbes: 8}}])
         expect(() => resolveStatefulOwnerConfigurationV2(changed)).toThrow();
 });
-test('v2 cannot select another backend for projections on the same chain', () => {
-    const input = configured();
-    expect(resolveStatefulOwnerConfigurationV2(input, {backend: input.backend as any, projections: []})).toBeDefined();
-    for (const backend of [{...input.backend, id: 'other'}, {...input.backend, database: 'other'}, {...input.backend, kind: 'wormdb'}])
-        expect(() => resolveStatefulOwnerConfigurationV2(input, {backend: backend as any, projections: []})).toThrow('per-chain backend');
-});
 test('invalid probe/native bounds and accessor configuration fail before resource admission', () => {
     const input = configured();
     for (const changed of [{...input, api: {...input.api, maximumPendingProbes: 4097}}, {...input, api: {...input.api, maximumPendingProbes: 0}},
