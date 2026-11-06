@@ -82,6 +82,8 @@ export class PortableProjectionSource {
     private readonly reader: ProtocolAbiProofReader;
     private readonly options: PortableProjectionSourceOptions;
     private readonly maximumAncestry: number;
+    // In-process fence only; the applied checkpoint is the durable finality floor.
+    private lastIrreversible?: ProjectionCheckpoint;
     private readonly diskHistory:ReturnType<typeof diskAbiHistoryOptions>;
     constructor(options: PortableProjectionSourceOptions) {
         this.maximumAncestry = options.maxAncestryBlocks ?? 256;
@@ -126,6 +128,36 @@ export class PortableProjectionSource {
         const proof = await this.open({blockNum: control.head.blockNum, blockId: control.head.blockId});
         await this.revalidate(proof);
         return Object.freeze({blockNum: proof.source.blockNum, blockId: proof.source.blockId});
+    }
+    /** The source's reported LIB, proven on the current canonical branch. Never above the covered head. */
+    async irreversibleTarget(): Promise<ProjectionCheckpoint> {
+        const head = await this.head();
+        // The disk catalog ends at its irreversible boundary, so its head needs no live report.
+        if (this.diskHistory && await this.diskHistory.catalog.covers({chainId: this.options.chainId, ...head})) return head;
+        const proof = await this.open(head);
+        const {selection, context} = await this.retained(() => this.bindings.readSelection(proof.selectionId));
+        if (json(selection.source) !== json(proof.source) || context.chainId !== this.options.chainId
+            || json(context.protocol) !== json(this.options.profile)) unavailable('Source finality selection does not match its head');
+        const reported = Object.freeze({blockNum: selection.irreversible.blockNum, blockId: selection.irreversible.blockId});
+        this.assertIrreversibleProgress(reported);
+        let target: ProjectionCheckpoint = reported;
+        // During replay the reported LIB can pass coverage: every covered block is then already irreversible.
+        if (reported.blockNum > head.blockNum) target = head;
+        else if (reported.blockNum > 0) {
+            const irreversible = await this.open(reported);
+            if (irreversible.source.blockId !== reported.blockId) unavailable('Reported irreversible block is not canonical');
+            await this.revalidate(irreversible);
+        }
+        await this.revalidate(proof);
+        // Probes and drains overlap on this source, so a slower older call must not lower the fence.
+        this.assertIrreversibleProgress(reported);
+        this.lastIrreversible = reported;
+        return target;
+    }
+    private assertIrreversibleProgress(reported: ProjectionCheckpoint): void {
+        const prior = this.lastIrreversible;
+        if (prior && (reported.blockNum < prior.blockNum || (reported.blockNum === prior.blockNum && reported.blockId !== prior.blockId)))
+            unavailable('Source irreversible position regressed or changed identity');
     }
     /** Resolve one immutable template version from an actual canonical view, never from operator ABI pins. */
     async statefulSelectors(templates: readonly Omit<StatefulSelector, 'abiDeployment' | 'abiSha256'>[]): Promise<{
