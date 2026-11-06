@@ -62,8 +62,8 @@
       },
       {
         "path": ".github/workflows/wire-canonical-bulk.yml",
-        "bytes": 3876,
-        "sha256": "84c01e6dcf7fc6a3c8ec40c78b6e4cd31f530596cec35eac08df827c9fff5c3e"
+        "bytes": 4400,
+        "sha256": "d71f952a0eca5182708999de3525e6743159e929468c2b794e5be84d18f3028f"
       },
       {
         "path": ".github/workflows/wire34-cbfb.yml",
@@ -683,7 +683,7 @@
       {
         "path": "scripts/qualification/atomic-managed-wire34-cbfb/profile.json",
         "bytes": 546404,
-        "sha256": "597b8bf9ace00620c4c605835874d7fd7a4cf4b89afd96015a5d7321f8543c5e"
+        "sha256": "0671c67ae2101c6fbe2c0181090b7d28ea5210febc4d81ba783d71b91ce1cb41"
       },
       {
         "path": "scripts/qualification/atomic-managed-wire34-cbfb/runner.mjs",
@@ -1188,7 +1188,7 @@
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.json",
         "bytes": 195560,
-        "sha256": "44b4d8703650b7b29a3201678fa99404962f863d8dc4960c0199c47fbfd9567a"
+        "sha256": "90d0b946026f34283ad62d91019485086c29814123829790fef2125158d5284e"
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.mjs",
@@ -1238,7 +1238,7 @@
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-profile.json",
         "bytes": 213033,
-        "sha256": "39347ad4c6e8edcf4c02f820c18bc7d8a5ca4d54eef2097fab6caea5a7f86dee"
+        "sha256": "a816e6010fd8ff08cca81fa15729ac3bed00440f3089e34a025aa2ce311a36f0"
       },
       {
         "path": "scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-routes.json",
@@ -3192,8 +3192,8 @@
       },
       {
         "path": "src/indexer/protocol/abi-proof.ts",
-        "bytes": 55593,
-        "sha256": "d6d0ad2e5b09edfd88c751e2f1d3c252694ca69c7748b77c1df0095b8ac8a555"
+        "bytes": 55585,
+        "sha256": "daba04ce1d879146ade5f9b3a5e3c2cd653a1e72757005fa40df5b77bf12e1d5"
       },
       {
         "path": "src/indexer/protocol/abi-reducer.ts",
@@ -5452,8 +5452,8 @@
       },
       {
         "path": "tests/unit/protocol-native-worker-pair.test.ts",
-        "bytes": 1637,
-        "sha256": "c90d234442bc6ff92422e806ca99d53d5b8b996a990d0059494a1b5e318aa9c8"
+        "bytes": 2963,
+        "sha256": "98aed71869e53693bc4ee93a8f8fa46d8e6f2b5b875b46b0a44733eaa6828f3f"
       },
       {
         "path": "tests/unit/protocol-observation-memory.mjs",
@@ -5532,8 +5532,8 @@
       },
       {
         "path": "tests/unit/protocol-worker-proof-recovery.mjs",
-        "bytes": 10659,
-        "sha256": "04ae5dae4e8a5bcf3b71c85036a14ede6a58c7c422d651b61477c43e216c821f"
+        "bytes": 11881,
+        "sha256": "c85a3bf251ce3a6bfb4e0851244ad7fb038496a9676eb8c8cc9c79a7b438ab9d"
       },
       {
         "path": "tests/unit/protocol-worker-proof-recovery.test.ts",
@@ -6011,7 +6011,7 @@
         "sha256": "1945027163c553cd08421dd1f8caa08fab025c44279883ed9e6c3dec0e8c6408"
       }
     ],
-    "totalBytes": 16597543,
+    "totalBytes": 16600607,
     "trackedPaths": [
       ".bun-version",
       ".gitattributes",
@@ -10672,13 +10672,13 @@
       },
       {
         "path": "indexer/protocol/abi-proof.js",
-        "bytes": 54457,
-        "sha256": "f83e51a94b2607e66b9a90f68fb23979027566a00aa60f8a779dccae8ac1453e"
+        "bytes": 54390,
+        "sha256": "baa54c78bdbda7a3d1b23bc5648d9e6449147cf15de0f26bd3ba48f0429d7fd2"
       },
       {
         "path": "indexer/protocol/abi-proof.js.map",
-        "bytes": 49190,
-        "sha256": "7eeb1da1a4354fb9db30ddc072f81d4edbe09028b0c656510e067ff717a5cd49"
+        "bytes": 49087,
+        "sha256": "218a929baf9473c666883f842198e983447bb2781ac92b9469d051738c44d2eb"
       },
       {
         "path": "indexer/protocol/abi-reducer.js",

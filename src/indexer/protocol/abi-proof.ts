@@ -450,8 +450,7 @@ export class ProtocolAbiProofReader {
             scope?.assertActive();originalSignal?.throwIfAborted();
             const activeSignal=controller?AbortSignal.any([originalSignal!,controller.signal]):originalSignal;
             try {
-                if(controller)await this.boundedRecoveryRead(()=>this.revalidateOnce(view,{signal:activeSignal},opening),activeSignal!);
-                else await this.revalidateOnce(view,{signal:activeSignal},opening);
+                await this.boundedRecoveryRead(()=>this.revalidateOnce(view,{signal:activeSignal},opening),activeSignal!);
                 return;
             }
             catch(error){
@@ -476,8 +475,9 @@ export class ProtocolAbiProofReader {
             }
         }}finally{clearTimeout(timer);controller?.abort();}
     }
-    /** A timeout ends the caller wait, never the physical tracked read or original attempt.
-     * Its still-aborted signal fences every continuation after an uncooperative store returns.
+    /** Cancellation always ends the caller wait, including a healthy first read. Only a
+     * proven recovery adds the worker timer; physical reads remain tracked until they settle.
+     * Their still-aborted signal fences every late continuation after an uncooperative store.
      */
     private async boundedRecoveryRead(operation:()=>Promise<void>,signal:AbortSignal):Promise<void> {
         this.assertActive(signal);

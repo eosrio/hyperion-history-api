@@ -148,3 +148,22 @@ for(const cancellation of [false,true])test(`recovery ${cancellation?'cancellati
     await new Promise(r=>setTimeout(r,30));assert.equal(drained,false);assert(scope.snapshot().pendingOperations>0);
     release.release();await ending;restore();assert.equal(lateReads,before);assert.equal(scope.snapshot().state,'drained');
 });
+
+test('original-scope cancellation interrupts the initial abort-ignoring validation read without starting a recovery clock',async()=>{
+    const f=await fixture(),scope=new ProofConsumerScope('worker-initial-read-cancel');
+    let hold;const result=scope.run(async()=>{
+        const issued=await opened(f);
+        hold=holdRead(f.client,r=>r.index===f.frontier.controlIndex&&r.id==='control');
+        await f.pair.native.revalidate(issued.nativeView);
+        assert.fail('Cancelled initial read must not issue a successful return');
+    });
+    const outcome=result.then(()=>null,e=>e);
+    while(!hold)await new Promise(r=>setImmediate(r));await hold.entered;
+    const started=performance.now();scope.fence();const error=await outcome;
+    assert.equal(error.code,'worker_attempt_fenced');assert(performance.now()-started<500);
+    let drained=false;const ending=scope.closeAndDrain().then(()=>{drained=true;});
+    await new Promise(r=>setTimeout(r,30));assert.equal(drained,false);assert(scope.snapshot().pendingOperations>0);
+    const before=f.memory.calls.length;
+    hold.release();await ending;hold.restore();assert.equal(f.memory.calls.length,before);
+    assert.equal(scope.snapshot().state,'drained');
+});
