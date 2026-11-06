@@ -67,7 +67,8 @@ export function resolveStatefulOwnerConfigurationV2(input: unknown,
     const irreversible = finality === 'irreversible';
     const resolved = {interfaceVersion: 2 as const, sourceInputVersion: 2 as const, backend: Object.freeze({...value.backend}) as StatefulOwnerConfigurationV2['backend'],
         // Irreversible state owns a separate instance, so applied reversible effects can never seed it.
-        recovery, api, generation: irreversible ? generation + '.irreversible' : generation, maximumFramesPerDrain: bounded(value.maximumFramesPerDrain ?? 8, 32, 'drain quantum'),
+        // The separator is outside the explicit generation alphabet, so no reversible name can collide.
+        recovery, api, generation: irreversible ? generation + ':irreversible' : generation, maximumFramesPerDrain: bounded(value.maximumFramesPerDrain ?? 8, 32, 'drain quantum'),
         operationTimeoutMS: bounded(value.operationTimeoutMS ?? 5000, 30_000, 'native operation timeout'),
         transactionTimeoutMS: bounded(value.transactionTimeoutMS ?? 30_000, 60_000, 'native transaction timeout')};
     requireConfig(resolved.operationTimeoutMS <= resolved.transactionTimeoutMS, 'Stateful operation timeout exceeds transaction timeout');

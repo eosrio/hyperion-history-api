@@ -152,6 +152,12 @@ export class StatefulProjectionControllerV2 {
                 admitted = await this.raw(recovery!, target);
             }, this.options.sourceMetadata);
             this.guard(); requireOwner(admitted, 'Original raw target was not durably admitted'); decodedDigest = selected.source.digest;
+            if (this.irreversible) {
+                // Eligibility was a height. The revalidation below then proves this exact block is still
+                // canonical alongside the LIB, so it is an ancestor of that LIB and not a later replacement.
+                const eligible = await this.options.source.irreversibleTarget(); this.guard();
+                if (height > eligible.blockNum) {this.reconciled = false; return false;}
+            }
             await this.options.source.revalidate(selected.proof); this.guard();
             await executeStatefulOwnerBlockV2(this.options.declaration, this.options.adapter, this.lease!, admitted.digest,
                 selected.source.source, this.options.custody, this.options.reduce, this.guard);

@@ -139,9 +139,7 @@ export class PortableProjectionSource {
         if (json(selection.source) !== json(proof.source) || context.chainId !== this.options.chainId
             || json(context.protocol) !== json(this.options.profile)) unavailable('Source finality selection does not match its head');
         const reported = Object.freeze({blockNum: selection.irreversible.blockNum, blockId: selection.irreversible.blockId});
-        const prior = this.lastIrreversible;
-        if (prior && (reported.blockNum < prior.blockNum || (reported.blockNum === prior.blockNum && reported.blockId !== prior.blockId)))
-            unavailable('Source irreversible position regressed or changed identity');
+        this.assertIrreversibleProgress(reported);
         let target: ProjectionCheckpoint = reported;
         // During replay the reported LIB can pass coverage: every covered block is then already irreversible.
         if (reported.blockNum > head.blockNum) target = head;
@@ -151,8 +149,15 @@ export class PortableProjectionSource {
             await this.revalidate(irreversible);
         }
         await this.revalidate(proof);
+        // Probes and drains overlap on this source, so a slower older call must not lower the fence.
+        this.assertIrreversibleProgress(reported);
         this.lastIrreversible = reported;
         return target;
+    }
+    private assertIrreversibleProgress(reported: ProjectionCheckpoint): void {
+        const prior = this.lastIrreversible;
+        if (prior && (reported.blockNum < prior.blockNum || (reported.blockNum === prior.blockNum && reported.blockId !== prior.blockId)))
+            unavailable('Source irreversible position regressed or changed identity');
     }
     /** Resolve one immutable template version from an actual canonical view, never from operator ABI pins. */
     async statefulSelectors(templates: readonly Omit<StatefulSelector, 'abiDeployment' | 'abiSha256'>[]): Promise<{

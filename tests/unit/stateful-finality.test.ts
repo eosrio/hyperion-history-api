@@ -92,6 +92,27 @@ test('a LIB that regresses or changes identity is fenced for this source', async
     await expect(source.irreversibleTarget()).rejects.toMatchObject(unavailable);
 });
 
+test('a slower older LIB read cannot lower the fence set by a newer one', async () => {
+    const f = await fixture();
+    await f.append(1); await f.append(2); await f.append(3, point(1)); await f.append(4, point(2));
+    const source = f.source() as any, revalidate = source.revalidate.bind(source);
+    // head() and the LIB proof revalidate first; the third call runs with the older LIB already read.
+    let calls = 0, enter!: () => void, release!: () => void;
+    const entered = new Promise<void>(yes => {enter = yes;}), held = new Promise<void>(yes => {release = yes;});
+    source.revalidate = async (proof: unknown) => {
+        if (++calls === 3) {enter(); await held;}
+        return revalidate(proof);
+    };
+    const older = source.irreversibleTarget(); void older.catch(() => {});
+    await entered;
+    await f.append(5, point(3));
+    expect(await source.irreversibleTarget()).toEqual(point(3));
+    release();
+    await expect(older).rejects.toMatchObject(unavailable);
+    await f.append(6, point(3));
+    expect(await source.irreversibleTarget()).toEqual(point(3));
+});
+
 test('a LIB outside bounded ancestry fails closed without historical certificates', async () => {
     const f = await fixture(2);
     await f.append(1); await f.append(2); await f.append(3); await f.append(4); await f.append(5, point(1));
@@ -111,6 +132,10 @@ test('reversible keeps its existing identity and irreversible owns a separate in
     expect(omitted.configDigest).toBe('ee5b156223af3c280238d9127cddaf2f58c3a207756f503ce1ad7f8383566811');
     expect(irreversible.finality).toBe('irreversible');
     expect(irreversible.generation).not.toBe(omitted.generation);
+    // No explicit reversible name can reach the irreversible namespace.
+    const named = resolveStatefulOwnerConfigurationV2({...base, generation: irreversible.generation.replace(':', '.')})!;
+    expect(named.generation).not.toBe(irreversible.generation);
+    expect(() => resolveStatefulOwnerConfigurationV2({...base, generation: irreversible.generation})).toThrow();
     expect(irreversible.configDigest).not.toBe(omitted.configDigest);
     expect(() => resolveStatefulOwnerConfigurationV2({...base, finality: 'final'})).toThrow();
 });
@@ -123,13 +148,14 @@ test('only the stateful route reports finality on served views', () => {
 
 const identity = {ownerId: 'owner'}, declarationDigest = 'd'.repeat(64);
 function owner(finality: 'reversible' | 'irreversible', options: {checkpoint?: ProjectionCheckpoint; head?: ProjectionCheckpoint;
-    target?: ProjectionCheckpoint; raw?: unknown; rollback?: unknown; orphaned?: boolean} = {}) {
-    const calls = {head: 0, target: 0, frames: [] as number[], rollbacks: 0, failures: 0, errors: [] as unknown[]};
+    target?: ProjectionCheckpoint; raw?: unknown; rollback?: unknown; orphaned?: boolean;
+    select?: (admit: (target: unknown) => Promise<void>, state: {target: ProjectionCheckpoint}) => Promise<unknown>} = {}) {
+    const calls = {head: 0, target: 0, frames: [] as number[], rollbacks: 0, failures: 0, revalidations: 0, errors: [] as unknown[]};
     const state = {target: options.target ?? point(5), checkpoint: options.checkpoint ?? point(5), head: options.head ?? point(9), orphaned: options.orphaned ?? false};
     const recovery = () => ({version: 2, view: {revision: 'r'.repeat(64), checkpoint: state.checkpoint}, owner: {identity},
         raw: options.raw ?? null, pending: null, gap: null, rollback: options.rollback ?? null});
     const adapter = {recovery: async () => recovery(), acquireOwner: async () => ({lease: true}),
-        rollbackOwned: async () => {calls.rollbacks++;}, retainedCheckpoints: async () => ({recovery: recovery(), checkpoints: [point(4), point(3)]}),
+        admitRaw: async () => {}, rollbackOwned: async () => {calls.rollbacks++;}, retainedCheckpoints: async () => ({recovery: recovery(), checkpoints: [point(4), point(3)]}),
         markRawFailure: async () => {calls.failures++;}, markSourceFailure: async () => {calls.failures++;}};
     const source = {head: async () => {calls.head++; return state.head;}, irreversibleTarget: async () => {calls.target++; return state.target;},
         open: async (value: ProjectionCheckpoint) => {
@@ -137,8 +163,12 @@ function owner(finality: 'reversible' | 'irreversible', options: {checkpoint?: P
                 throw new ProtocolAbiProofUnavailableError('source_not_canonical', 'Orphaned');
             return {source: value};
         },
-        revalidate: async () => {}, assertStatefulView: async () => {},
-        statefulBlock: async (height: number) => {calls.frames.push(height); throw new Error('Stop after selecting the frame');}};
+        revalidate: async () => {calls.revalidations++;}, assertStatefulView: async () => {},
+        statefulBlock: async (height: number, _declaration: unknown, admit: (target: unknown) => Promise<void>) => {
+            calls.frames.push(height);
+            if (options.select) return options.select(admit, state);
+            throw new Error('Stop after selecting the frame');
+        }};
     const controller = new StatefulProjectionControllerV2({declaration: {digest: declarationDigest,
         projection: {definition: {id: 'items', binding: {chainId}}, limits: {keyBytes: 256}}}, adapter, source, identity, custody: {},
         reduce: async () => {}, assertActive: () => {}, requireAttemptScope: false, run: (_metadata: unknown, work: () => Promise<boolean>) => work(),
@@ -191,6 +221,23 @@ test('durable raw input above an older reported LIB waits without failing and is
     await value.controller.drain();
     expect(value.calls.failures).toBe(0);
     expect(value.calls.frames).toEqual([]);
+    expect(value.calls.errors).toEqual([]);
+    await expect(value.controller.attest(value.expected())).rejects.toThrow();
+});
+
+test('a selected block is rechecked against finality before anything irreversible happens', async () => {
+    const block = {blockNum: 6, blockId: id(60), previousBlockId: id(5)}, rawSource = {commitId: 'c'};
+    const value = owner('irreversible', {target: point(6), raw: {target: {digest: 'a'.repeat(64), target: {block, rawSource}}},
+        select: async (admit, state) => {
+            await admit({block, reference: rawSource});
+            state.target = point(5); // The replacement branch reports an older LIB, so block 6 is not final there.
+            return {source: {digest: 'b'.repeat(64), source: {}}, proof: {}};
+        }});
+    await value.controller.drain();
+    expect(value.calls.frames).toEqual([6]);
+    expect(value.calls.target).toBe(2);
+    expect(value.calls.revalidations).toBe(0);
+    expect(value.calls.failures).toBe(0);
     expect(value.calls.errors).toEqual([]);
     await expect(value.controller.attest(value.expected())).rejects.toThrow();
 });
