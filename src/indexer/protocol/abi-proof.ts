@@ -405,6 +405,37 @@ export class ProtocolAbiProofReader {
         requireProof(json(actual)===json(certificate),'Historical root certificate differs from the selected control');
         const root={rootId,certificateId,anchor:copy(anchor)};await this.assertHistoricalRoot(root,current,signal);return root;
     }
+    /** Session/admission identity schedules waiting only; every usable view still comes from open(). */
+    async openLiveSource(source:ProtocolAbiProofSource,selectionId:string,
+                         session:{contextId:string;readerSessionId:string},options:ProtocolAbiProofReadOptions={}):Promise<ProtocolAbiProofView> {
+        source=copy(source);const {contextId,readerSessionId}=session;
+        return this.consume(undefined,async()=>{
+            const signal=proofConsumerSignal(options.signal);
+            try {return await this.open(source,selectionId,{signal});}
+            catch(error) {
+                if(!(error instanceof ProtocolAbiProofUnavailableError)
+                    ||!['authority_unavailable','authority_changed','source_pending','certificate_unavailable','proof_busy'].includes(error.code))throw error;
+                this.assertActive(signal);
+                let observed;
+                try {observed=await this.retained(()=>this.options.store.readControl(signal),'authority_unavailable',signal);}
+                catch {
+                    this.assertActive(signal);currentProofConsumerScope(this.options.requireAttemptScope);
+                    throw error; // A failed scheduling hint adds no readiness and must not retire a healthy worker.
+                }
+                const value:any=observed?.value;
+                if(value?.schemaVersion!==1||value.chainId!==this.options.chainId||!this.sameProfile(value.profile)
+                    ||!text(value.ownerId)||!text(value.generation)||!Number.isSafeInteger(value.revision)||value.revision<0
+                    ||!ident('h45srcctx1',contextId)||!text(readerSessionId)
+                    ||value.source?.contextId!==contextId||value.source?.readerSessionId!==readerSessionId
+                    ||!Array.isArray(value.pending)||!value.pending.every((id:unknown)=>ident('h45srcsel1',id))
+                    ||error.code==='source_pending'&&!value.pending.includes(selectionId)
+                        &&(!validHead(value.head)||value.head.blockNum<source.blockNum))throw error;
+                // Old durable live captures must not hold the FIFO while the current
+                // reader's first admitted observation is still queued behind them.
+                return this.waitForOpen(source,selectionId,{signal});
+            }
+        });
+    }
     async waitForOpen(source:ProtocolAbiProofSource,selectionId?:string,
                       options:{timeoutMs?:number;signal?:AbortSignal}={}):Promise<ProtocolAbiProofView> {
         return this.consume(undefined,async()=>{
