@@ -8,6 +8,9 @@ import type {ProtocolAbiHeadCertificate} from './abi-proof.js';
 export interface ProtocolAbiFrontierToken {seqNo:number;primaryTerm:number}
 export interface ProtocolAbiFrontierControl extends ProtocolAbiFrontierToken {value:unknown}
 export interface ProtocolAbiAccountUpdate {account:string;state:unknown|null}
+declare const historicalPreparation:unique symbol;
+/** Process-local capability. Only the issuing store can resume it; it contains no serialized authority. */
+export interface ProtocolAbiHistoricalRootPreparation {readonly [historicalPreparation]:true}
 export type ProtocolAbiFrontierRecordKind='commit'|'account-state'|'bucket'|'root'|'certificate';
 export class ProtocolAbiFrontierReadError extends Error {
     constructor(readonly code:'missing'|'incomplete'|'invalid',readonly recordKind:ProtocolAbiFrontierRecordKind,
@@ -109,6 +112,9 @@ export class ProtocolAbiFrontierStore {
     private readonly bundles:ImmutableProtocolBundleStore;
     private readonly provisioning=new Map<string,Promise<void>>(); // Exactly the two owned indices, never session/account state.
     private readonly verifiedBuckets=new WeakMap<object,Readonly<Record<string,string>>>();
+    private readonly historicalPreparations=new WeakMap<ProtocolAbiHistoricalRootPreparation,{
+        input:string;steps:AsyncGenerator<void,string>;result?:string;
+    }>();
 
     constructor(private readonly client:Client,private readonly chain:string,private readonly replicas=0,
                 private readonly options:{readOnly?:boolean;recordMemo?:ProtocolAbiFrontierRecordMemo}={}) {
@@ -305,24 +311,65 @@ export class ProtocolAbiFrontierStore {
             return address;
         } catch {throw new ProtocolAbiHistoricalAddressReadError('invalid',id,'Stored historical certificate address identity differs');}
     }
-    /** The existing immutable map machinery stores addresses in a distinct control-selected root. */
-    async prepareHistoricalAddressRoot(previousRootId:string|null,addresses:readonly ProtocolAbiHistoricalAddress[],checkpoint?:()=>Promise<void>):Promise<string> {
-        const updates:ProtocolAbiAccountUpdate[]=[];
+    beginHistoricalAddressRoot(previousRootId:string|null,addresses:readonly ProtocolAbiHistoricalAddress[]):ProtocolAbiHistoricalRootPreparation {
+        if(this.options.readOnly)throw new Error('Read-only ABI frontier cannot prepare historical roots');
+        if(previousRootId!==null&&!validId('root',previousRootId))throw new Error('Invalid historical ABI state root');
+        const input=bounded(addresses,{bytes:64*1024*1024,nodes:500000});
+        if(!Array.isArray(input.value)||input.value.length>10000)throw new Error('Invalid bounded historical addresses');
+        const handle=Object.freeze({}) as ProtocolAbiHistoricalRootPreparation;
+        this.historicalPreparations.set(handle,{input:protocolImmutableJson([previousRootId,input.value]),
+            steps:this.historicalRootSteps(previousRootId,input.value)});
+        return handle;
+    }
+    /** Each yield retains completed neutral work and has no outstanding I/O. No stored IDs are fresh receipts. */
+    private async *historicalRootSteps(previousRootId:string|null,addresses:readonly ProtocolAbiHistoricalAddress[]):AsyncGenerator<void,string> {
+        const changes=new Map<string,Array<{account:string;state:unknown;address:ProtocolAbiHistoricalAddress}>>(),seen=new Set<string>();
         for(const address of addresses) {
-            if(checkpoint)await checkpoint();
-            const key=historicalAddressId(address.identity);
-            if(protocolImmutableJson(await this.readHistoricalCertificateAddress(address.identity))!==protocolImmutableJson(address))
-                throw new Error('Historical map address differs from its exact locator');
-            if(checkpoint)await checkpoint();
-            const state={account:key,kind:'historical-certificate-address-entry',address};
-            const prior=await this.readAccount(previousRootId,key);
-            if(checkpoint)await checkpoint();
-            if(prior!==null&&protocolImmutableJson(prior)!==protocolImmutableJson(state))throw new Error('Historical address map cannot replace an existing height');
-            updates.push({account:key,state});
+            const account=historicalAddressId(address.identity),key=hash(account).slice(0,2);
+            if(seen.has(account))throw new Error('Duplicate historical address');seen.add(account);
+            if(!changes.has(key))changes.set(key,[]);
+            const state={account,kind:'historical-certificate-address-entry',address};bounded(state,limits['account-state']);
+            changes.get(key)!.push({account,state,address});
         }
-        const root=await this.prepareState(previousRootId,updates,false,checkpoint);
-        if(!root)throw new Error('Historical address map cannot be empty');
+        const buckets=await this.root(previousRootId);yield;
+        let changed=false;
+        for(const [key,entries] of changes) {
+            const accounts=buckets[key]?await this.bucket(buckets[key],key):Object.create(null);yield;
+            let bucketChanged=false;
+            for(const {account,state,address} of entries) {
+                const locator=await this.readHistoricalCertificateAddress(address.identity);yield;
+                if(protocolImmutableJson(locator)!==protocolImmutableJson(address))throw new Error('Historical map address differs from its exact locator');
+                if(accounts[account]) {
+                    const prior=await this.readAccountState(accounts[account]);yield;
+                    if(protocolImmutableJson(prior)!==protocolImmutableJson(state))throw new Error('Historical address map cannot replace an existing height');
+                }
+                // Always freshly prepare, including unchanged content. A prior map entry is not a receipt.
+                const prepared=await this.prepareAccountState(state);
+                if(accounts[account]!==prepared.id){accounts[account]=prepared.id;bucketChanged=true;}yield;
+            }
+            if(!bucketChanged)continue;
+            if(Object.keys(accounts).length>20000)throw new ProtocolAbiFrontierLimitError('ABI account bucket exceeds bounded entry budget');
+            buckets[key]=(await this.prepare('bucket',{prefix:key,accounts})).id;changed=true;yield;
+        }
+        if(!Object.keys(buckets).length)throw new Error('Historical address map cannot be empty');
+        if(!changed)return previousRootId!;
+        const root=(await this.prepare('root',{buckets})).id;yield;
         return root;
+    }
+    /** Existing single-call entry point; an optional store-issued handle resumes the exact same operation. */
+    async prepareHistoricalAddressRoot(previousRootId:string|null,addresses:readonly ProtocolAbiHistoricalAddress[],checkpoint?:()=>Promise<void>,
+                                       preparation?:ProtocolAbiHistoricalRootPreparation):Promise<string> {
+        const handle=preparation??this.beginHistoricalAddressRoot(previousRootId,addresses),work=this.historicalPreparations.get(handle);
+        if(!work||work.input!==protocolImmutableJson([previousRootId,addresses]))throw new Error('Historical preparation belongs to another store or scope');
+        while(work.result===undefined) {
+            if(checkpoint)await checkpoint();
+            try {
+                const step=await work.steps.next();if(step.done)work.result=step.value;
+            } catch(error) {this.historicalPreparations.delete(handle);throw error;}
+            if(checkpoint)await checkpoint();
+        }
+        this.historicalPreparations.delete(handle);
+        return work.result;
     }
     async readHistoricalAddressRoot(rootId:string,identity:ProtocolAbiHistoricalAddressIdentity,signal?:AbortSignal):Promise<ProtocolAbiHistoricalAddress> {
         const key=historicalAddressId(identity),state:any=await this.readAccount(rootId,key,signal);

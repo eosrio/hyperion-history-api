@@ -82,7 +82,7 @@ jobs:
           path: ${{ runner.temp }}/retained-wire-cpu/*.cpuprofile
           if-no-files-found: warn
       - name: Check historical Wire source authority on Node ${{ matrix.node-version }}
-        run: node --test tests/unit/protocol-abi-history-native.mjs
+        run: node --test tests/unit/protocol-abi-history-native.mjs tests/unit/protocol-abi-history-progress.test.mjs
       - name: Check Fastify request admission and state route compatibility on Node ${{ matrix.node-version }}
         run: node --test --test-timeout=15000 tests/native/fastify-compatibility.test.mjs
       - name: Check complete-kind query/client and final-publication controls
