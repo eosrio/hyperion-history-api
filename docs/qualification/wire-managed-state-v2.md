@@ -76,7 +76,7 @@ managed ProjectionWorker/controller, SDK owner-v2, Mongo adapter command fixture
 request/probe/onSend code. Elasticsearch/Mongo commands and IPC/control transports are
 controlled fixtures; no physical server or listener is started. State values are compared with
 the independently retained official-clio barriers. This does not replace physical fullsync,
-restart, rollback/fork or current-Hyperion-3 acceptance.
+restart, rollback/fork or physical acceptance.
 
 A source-preloaded-to-1480/fresh-owner-zero attempt was refused by the unchanged 256-block
 canonical ancestry bound. The positive interleaved test keeps source/owner distance within that
@@ -138,7 +138,7 @@ still recheck owner/generation/root membership and final publication authority.
 and recovery, and a fresh actual managed owner from checkpoint zero over original retained
 blocks 1..258 after the source has reached258. It uses the unchanged default256 ancestry bound
 and real absent genesis traces. This is controlled component evidence, not physical MongoDB/ES,
-Hyperion-3 fullsync, whole retained-range cold catch-up, ABI redeployment/cutover or live acceptance.
+fullsync, whole retained-range cold catch-up, ABI redeployment/cutover or live acceptance.
 The original commit and settled-head certificate formats are unchanged; the opt-in adds locator
 records, a distinct immutable map root and an optional field on existing coordinator control.
 

@@ -16,13 +16,13 @@ Only root may perform the following actual Linux work after independent source r
 major needs its own fresh case and database. The runner does not provision, delete, rebaseline, kill
 or clean any database, container, listener or process.
 
-1. Apply the original full Hyperion-1 host/LXC/private-Docker guards and retain their results. Use
-   the existing owned H1 LXC and private daemon only after fresh guards; never production Mongo or
-   the quarantined H3 LXC. Keep the current Wire fixture, queues, timeouts and resources untouched.
+1. Apply the original full host, container and private-Docker guards and retain their results. Use
+   an owned, isolated container and private daemon only after fresh guards; never production Mongo
+   or a quarantined host. Keep the current Wire fixture, queues, timeouts and resources untouched.
    Root must select a separate owned single-member replica-set fixture with test commands enabled,
    an unused non-default port and a fresh `h45_stateful_<12hex>` set identity. Run mongod bound to
    **127.0.0.1 in the runner's network namespace**, for example with the separately approved private
-   fixture's host network inside the isolated LXC. A Docker published-port proxy is refused: the
+   fixture's host network inside the isolated container. A Docker published-port proxy is refused: the
    pinned actual mongod PID must own the listening socket inode. Root retains the image/config and
    physical resource/lifecycle receipts separately; this source defines no Docker invocation.
 2. Build the exact reviewed adapter package from its own committed lock on the selected native

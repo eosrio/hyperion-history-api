@@ -132,7 +132,7 @@ invalid numbers/IDs/parents, missing or replaced anchors and branch disagreement
 fail closed. Protocol-specific full block decoding stays in the selected provider.
 
 The read-only [source preflight](evidence/action-attempt-live-source-20261023.json)
-queried the running Hyperion-3 Wire SHIP and RPC endpoints on 2026-10-23 at 05:41 UTC. It used
+queried running Wire SHIP and RPC endpoints on 2026-10-23 at 05:41 UTC. It used
 the installed `wire-sysio-6508c9e8-native-engineering-v1` codec profile and Node 26.4.0 for the
 probe only. The advertised SHIP schema SHA-256 was
 `94c5661306467f8c49f22180213e390db10d290be9ebf512fb63314f440ef6f9`, matching the

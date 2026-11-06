@@ -62,7 +62,7 @@ Controls cover exact decimal sequences, same-block/repeated deployment epochs, e
 barriers, pin/file replacement, cancellation, API reader construction, actual StateReader
 and MainDS methods, equivalent/conflicting source recapture, pending raw input, captured
 Wire genesis/blocks 2–4, and catalog-to-live-tail fork recovery. These are component
-controls with controlled transports, not evidence that Hyperion-3 has synced or that
+controls with controlled transports, not evidence that a physical node has synced or that
 MongoDB/AtomicAssets parity is qualified. Activation and live replay acceptance are
 recorded separately.
 
@@ -122,7 +122,7 @@ The regression controls cover sustained pending work, repeated queue overflow,
 all tail addresses beyond 256 blocks, actual MainDS/API reader openings, map
 preparation failure, deadline expiry, and source/owner fencing.
 
-On Hyperion-3, the v1 profile with 256 entries and a 3000 ms deadline did not
+In a physical run, the v1 profile with 256 entries and a 3000 ms deadline did not
 activate a historical root within three minutes, despite 200 prepared addresses.
 A separately versioned v2 profile used 32 entries, the same 16 MiB and 3000 ms
 budgets, 128 pending blocks and the 256-block recovery window. With active source
