@@ -361,18 +361,18 @@ async function projectionRoles(fenceAt = null) {
         }
         io.push({name, state: scope.snapshot().state, id: scope.id}); return scope;
     };
-    const owner = (id, idle) => {
+    const owner = id => {
         const identity = {ownerId: id};
         const adapter = {
             async recovery() {record('recovery:' + id); return {version: 2, view: {revision: 'r'.repeat(64), checkpoint: point(5)}, owner: {identity},
-                raw: idle ? null : {target: {digest: 'a'.repeat(64), target: {block, rawSource}}, sourceDigest: null}, pending: null, gap: null, rollback: null};},
+                raw: {target: {digest: 'a'.repeat(64), target: {block, rawSource}}, sourceDigest: null}, pending: null, gap: null, rollback: null};},
             acquireOwner: async () => ({lease: id}),
             async admitRaw() {record('admit:' + id); if (fenceAt === 'admission') {entered.release(); await held.promise;}},
             async markRawFailure() {record('mark:' + id);},
             async markSourceFailure() {record('mark-source:' + id);},
         };
         const source = {
-            async head() {const scope = currentProofConsumerScope(true); frameScope ??= scope; scopeAt.push({projectionId: id, scope}); return point(idle ? 5 : 9);},
+            async head() {const scope = currentProofConsumerScope(true); frameScope ??= scope; scopeAt.push({projectionId: id, scope}); return point(9);},
             open: async value => ({source: value}), assertStatefulView: async () => {},
             async statefulBlock(_height, _declaration, admit) {
                 await admit({block, reference: rawSource});
@@ -390,10 +390,44 @@ async function projectionRoles(fenceAt = null) {
             run: (metadata, operation) => worker.runProjectionAttempt('projection-frame', metadata, operation),
             onError: error => errors.push({id, error})});
     };
+    // A real owner over the adapter and SDK, so "independent" means it commits a block of its own.
+    const healthySibling = async () => {
+        const {captureStatefulDeclaration} = await import('@eosrio/hyperion-sdk/projection-stateful');
+        const {negotiateStatefulOwnerV2, STATEFUL_OWNER_FAMILY_V2, STATEFUL_OWNER_HOST_CAPABILITIES_V2} = await import('@eosrio/hyperion-sdk/projection-stateful-owner-v2');
+        const {captureStatefulSourceV2} = await import('@eosrio/hyperion-sdk/projection-stateful-source-v2');
+        const {definition, limits} = await import('../../packages/backend-mongodb/tests/stateful-fixture.mjs');
+        const {configured, v1} = await import('../../packages/backend-mongodb/tests/stateful-owner-v2-fixture.mjs');
+        const selected = definition(), projection = await captureStatefulDeclaration(selected, limits());
+        const native = await configured(undefined, {projection: await v1.captureStatefulDeclaration(selected, limits())});
+        const declaration = await negotiateStatefulOwnerV2(projection, {family: STATEFUL_OWNER_FAMILY_V2, interfaceVersion: 2,
+            sourceInputVersions: [2], supported: STATEFUL_OWNER_HOST_CAPABILITIES_V2, limits: projection.limits}, native.adapter.capabilities);
+        const first = {...point(1), previousBlockId: blockId(0)}, recorded = new Set(['markRawFailure', 'markSourceFailure', 'applyOwned']);
+        const adapter = new Proxy(native.adapter, {get(target, key) {
+            const member = Reflect.get(target, key);
+            if (typeof member !== 'function') return member;
+            return (...args) => {if (recorded.has(key)) record(key.replace('RawFailure', '').replace('SourceFailure', '-source').replace('Owned', '') + ':other'); return member.apply(target, args);};
+        }});
+        const source = {
+            async head() {scopeAt.push({projectionId: 'other', scope: currentProofConsumerScope(true)}); return point(1);},
+            open: async value => ({source: value}), assertStatefulView: async () => {}, revalidate: async () => {},
+            async statefulBlock(_height, selectedDeclaration, admit) {
+                await admit({block: first, reference: rawSource});
+                return {source: await captureStatefulSourceV2(selectedDeclaration, {previous: point(0), block: {...first, timeMs: '1001'}, inputs: []}), proof: {}};
+            },
+        };
+        const controller = new StatefulProjectionControllerV2({declaration, adapter, source, identity: {id: 'other', generation: 'one'}, custody: native.custody,
+            reduce: async () => {}, assertActive: () => {}, requireAttemptScope: true, maximumFramesPerDrain: 1,
+            run: (metadata, operation) => worker.runProjectionAttempt('projection-frame', metadata, operation),
+            onError: error => errors.push({id: 'other', error})});
+        return {controller, checkpoint: async () => (await native.adapter.recovery()).view.checkpoint.blockNum, pending: async () => {
+            const {raw, pending, gap} = await native.adapter.recovery(); return {raw, pending, gap};
+        }};
+    };
     try {
+        const sibling = fenceAt ? null : await healthySibling();
         controllers = await worker.runProjectionAttempt('projection-initialization', {constructedConfiguration: true}, async () => {
             initializationScope = currentProofConsumerScope(true); record('initialize');
-            return fenceAt ? [owner('first', false)] : [owner('first', false), owner('other', true)];
+            return sibling ? [owner('first'), sibling.controller] : [owner('first')];
         });
         assert.equal(initializationScope.snapshot().state, 'drained');
         if (fenceAt) {
@@ -413,8 +447,14 @@ async function projectionRoles(fenceAt = null) {
             assert.equal(scopeAt.length, 2); assert.notEqual(scopeAt[0].scope, scopeAt[1].scope);
             for (const selected of scopeAt) {assert.notEqual(selected.scope, initializationScope); assert.equal(selected.scope.snapshot().state, 'drained');}
             assert.equal(io.filter(value => value.state !== 'open').length, 0);
+            // The failed owner applied nothing, while its sibling committed and cleared its own block.
+            assert.equal(io.some(value => value.name === 'apply:first'), false);
+            assert(io.some(value => value.name === 'apply:other'));
+            const independentCheckpoint = await sibling.checkpoint();
+            assert.equal(independentCheckpoint, 1);
+            assert.deepEqual(await sibling.pending(), {raw: null, pending: null, gap: null});
             cases.push({id: 'actual-projection-initialization-and-independent-frame-roots', initializationRoots: 1, frameRoots: 2,
-                contractFailureCheckpoint: 0, independentCheckpoint: 1, controlledSourceAndAdapter: true, masterAcceptedEnd: false});
+                independentCheckpoint, controlledFailingOwner: true, actualIndependentOwner: true, masterAcceptedEnd: false});
         }
     } finally {
         held.release(); await Promise.allSettled(endings); for (const controller of controllers) await controller.stop(); worker.workerAttemptClient.dispose();
