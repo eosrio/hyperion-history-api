@@ -33,6 +33,26 @@ async function checkedIo<T>(signal: AbortSignal | undefined, operation: () => Pr
     try {return await operation();} finally {signal?.throwIfAborted();}
 }
 
+/** How long a read may rely on an earlier metadata check. A write never relies on one. */
+export const protocolMetadataReadBoundMs=1000;
+/** Process-local and never authority. Reads keep their own content checks; durability only matters to writes. */
+export class ProtocolMetadataFreshness {
+    private validatedAt?:number;
+    private failures=0;
+    constructor(private readonly boundMs=protocolMetadataReadBoundMs) {
+        if(!Number.isSafeInteger(boundMs)||boundMs<0||boundMs>protocolMetadataReadBoundMs)throw new Error('Invalid metadata read bound');
+    }
+    async run(write:boolean,validate:()=>Promise<void>):Promise<void> {
+        if(!write&&this.validatedAt!==undefined&&performance.now()-this.validatedAt<this.boundMs)return;
+        // Measured from before the request, so the metadata seen is at least this recent.
+        const started=performance.now(),seen=this.failures;
+        try {await validate();}
+        catch(error) {this.failures++;this.validatedAt=undefined;throw error;}
+        // An overlapping check that failed outranks this older success.
+        if(seen===this.failures&&(this.validatedAt===undefined||started>this.validatedAt))this.validatedAt=started;
+    }
+}
+
 export type ImmutableProtocolBundleReadCode='missing'|'incomplete'|'invalid';
 export class ImmutableProtocolBundleReadError extends Error {
     constructor(readonly code:ImmutableProtocolBundleReadCode,readonly recordId:string,message:string) {
@@ -58,11 +78,12 @@ export class ImmutableProtocolBundleStore {
     readonly index:string;
     private initialized?:Promise<void>;
     private readonly bounds:ImmutableProtocolBundleBounds;
+    private readonly metadata:ProtocolMetadataFreshness;
 
     constructor(private readonly client:Client,chain:string,private readonly replicas:number,
                 private readonly kind:string,suffix:string,
                 bounds:ImmutableProtocolBundleBounds={chunkBytes:512*1024,maximumBytes:128*1024*1024,maximumChunks:256},
-                private readonly options:{readOnly?:boolean;rejectLifecycleOnRead?:boolean}={}) {
+                private readonly options:{readOnly?:boolean;rejectLifecycle?:boolean;metadataReadBoundMs?:number}={}) {
         if(!/^[a-z0-9][a-z0-9_.-]{0,120}$/.test(chain)||!/^[a-z0-9-]{1,80}$/.test(suffix)||!/^[a-z0-9-]{1,80}$/.test(kind)
             ||!Number.isSafeInteger(replicas)||replicas<0
             ||!Number.isSafeInteger(bounds.chunkBytes)||bounds.chunkBytes<1||bounds.chunkBytes>1024*1024
@@ -70,14 +91,19 @@ export class ImmutableProtocolBundleStore {
             ||!Number.isSafeInteger(bounds.maximumChunks)||bounds.maximumChunks<1||bounds.maximumChunks>256) {
             throw new Error('Invalid ABI observation storage bounds');
         }
-        this.index=chain+'-'+suffix;this.bounds={...bounds};
+        this.index=chain+'-'+suffix;this.bounds={...bounds};this.metadata=new ProtocolMetadataFreshness(options.metadataReadBoundMs);
     }
 
     private isMissing(error:any,id:string):boolean {
         return error?.meta?.statusCode===404&&error?.meta?.body?.found===false
             &&error?.meta?.body?._index===this.index&&error?.meta?.body?._id===id;
     }
-    private async initialize(signal?:AbortSignal,rejectLifecycle=false) {
+    private async initialize(signal?:AbortSignal,write=false) {
+        signal?.throwIfAborted();
+        await this.metadata.run(write,()=>this.validate(signal));
+        signal?.throwIfAborted();
+    }
+    private async validate(signal?:AbortSignal) {
         signal?.throwIfAborted();
         if (!this.initialized) this.initialized = (this.options.readOnly?Promise.resolve():this.provision(signal))
             .catch(error => {this.initialized = undefined; throw error;});
@@ -86,7 +112,8 @@ export class ImmutableProtocolBundleStore {
         const metadata = await checkedIo(signal, () => this.client.indices.get({index: this.index,
             features: ['mappings', 'settings'], flat_settings: true, include_defaults: true}, {signal}));
         this.validateMapping(metadata);
-        // Do not retain a stale startup assumption if an operator changes this projection's durability.
+        // Do not retain a stale startup assumption if an operator changes this projection's durability:
+        // every write repeats this check, and a read repeats it within protocolMetadataReadBoundMs.
         signal?.throwIfAborted();
         const entry = metadata[this.index];
         const sourceMode = settingsValue(entry, 'mapping.source.mode');
@@ -97,7 +124,7 @@ export class ImmutableProtocolBundleStore {
             || (sourceMode !== undefined && String(sourceMode).toLowerCase() !== 'stored')
             || [settingsValue(entry, 'default_pipeline'), settingsValue(entry, 'final_pipeline')]
                 .some(pipeline => pipeline !== undefined && pipeline !== '_none')
-            || (rejectLifecycle && ['lifecycle.name', 'lifecycle.rollover_alias'].some(name => {
+            || (this.options.rejectLifecycle === true && ['lifecycle.name', 'lifecycle.rollover_alias'].some(name => {
                 const lifecycle = settingsValue(entry, name); return lifecycle !== undefined && lifecycle !== '';
             }))) {
             throw new Error('ABI observation index durability or retention is incompatible: ' + JSON.stringify({
@@ -207,7 +234,7 @@ export class ImmutableProtocolBundleStore {
         if(this.options.readOnly)throw new Error('Read-only protocol bundles cannot prepare records');
         const count = Math.ceil(bytes.length / this.bounds.chunkBytes);
         if (bytes.length > this.bounds.maximumBytes || count > this.bounds.maximumChunks) throw new Error('ABI observation exceeds bounded storage budget');
-        await this.initialize(signal);
+        await this.initialize(signal,true);
         const digest = sha256(bytes);
         const chunks = Array.from({length: count}, (_, index) => `${id}:${digest}:${index}`);
         const manifest: StoredDocument = {kind: 'manifest', bundle_id: id, digest, byte_length: bytes.length, chunk_ids: chunks};
@@ -304,8 +331,7 @@ export class ImmutableProtocolBundleStore {
             || !Number.isSafeInteger(maximumRetainedBytes) || maximumRetainedBytes < 1 || maximumRetainedBytes > 128 * 1024 * 1024)
             throw new Error('Invalid immutable bundle staged read budget');
         const ids = [...input];
-        // Preserve one fresh metadata validation per original logical read, never a shared metadata snapshot.
-        for (const id of ids) {await this.initialize(signal, this.options.rejectLifecycleOnRead === true); scope?.assertActive();}
+        await this.initialize(signal); scope?.assertActive();
         const responseBytes = Math.max(1024 * 1024, Math.ceil(this.bounds.chunkBytes / 3) * 4 + 8192);
         const manifests = new Map<string, StoredDocument>();
         const manifestItems = ids.map(id => ({id, maximumBytes: 4096 + this.bounds.maximumChunks * (id.length + 82)}));
@@ -406,7 +432,7 @@ export class ImmutableProtocolBundleStore {
     }
 
     private async readParts(id:string,signal?:AbortSignal):Promise<{manifest:StoredDocument;payloads:Buffer[];bytes:number}> {
-        await this.initialize(signal,this.options.rejectLifecycleOnRead===true);
+        await this.initialize(signal);
         let manifest;
         try {manifest=(await this.get(id,signal))._source;} catch(error) {
             if(this.isMissing(error,id))throw new ImmutableProtocolBundleReadError('missing',id,'Immutable protocol bundle is missing');

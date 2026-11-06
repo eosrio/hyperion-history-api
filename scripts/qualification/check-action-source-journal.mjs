@@ -674,6 +674,40 @@ try {
         assert.equal(await emptyIndexCount(unsafe.index), 0);
     });
 
+    await check('a real durability change refuses the next write at once and reads within the fixed bound', async () => {
+        const {ImmutableProtocolBundleStore, protocolMetadataReadBoundMs: bound} = await import('../../build/indexer/protocol/immutable-bundle-store.js');
+        const store = new ImmutableProtocolBundleStore(client, chain, 1, 'metadata-bound', 'metadata-bound-v1');
+        const durability = value => client.indices.putSettings({index: store.index, settings: {'translog.durability': value}});
+        await store.prepare('first', {value: 1}); assert.deepEqual(await store.read('first'), {value: 1});
+        await durability('async');
+        await assert.rejects(store.prepare('second', {value: 2}), /durability or retention/);
+        await durability('request');
+        await store.read('first');
+        await durability('async');
+        const started = performance.now(); let reads = 0, refusedAfterMs = null;
+        while (refusedAfterMs === null && performance.now() - started < bound + 500) {
+            reads++;
+            try {await store.read('first');}
+            catch (error) {assert.match(String(error.message), /durability or retention/); refusedAfterMs = Math.round(performance.now() - started);}
+        }
+        assert.notEqual(refusedAfterMs, null, 'A read must be refused soon after the bound');
+        await durability('request');
+        assert.deepEqual(await store.read('first'), {value: 1});
+        // The same engine and record with and without the bound; zero restores a check on every read.
+        const median = async reader => {
+            const samples = [];
+            for (let sample = 0; sample < 300; sample++) {
+                const begun = performance.now(); await reader.read('first'); samples.push(performance.now() - begun);
+            }
+            return Number(samples.sort((a, b) => a - b)[150].toFixed(3));
+        };
+        const open = metadataReadBoundMs => new ImmutableProtocolBundleStore(client, chain, 1, 'metadata-bound', 'metadata-bound-v1', undefined,
+            {readOnly: true, metadataReadBoundMs});
+        const everyReadP50Ms = await median(open(0)), boundedReadP50Ms = await median(open(undefined));
+        report.observations.metadataReadBound = {boundMs: bound, refusedAfterMs, readsBeforeRefusal: reads, everyReadP50Ms, boundedReadP50Ms};
+        return report.observations.metadataReadBound;
+    });
+
     await check('read-only readers observe retained membership without provisioning or mutating storage', async () => {
         const absent = new ActionHistorySourceJournal(client, `${chain}-readonly-absent`, 1, {readOnly: true});
         await assert.rejects(absent.readPlan(firstId));

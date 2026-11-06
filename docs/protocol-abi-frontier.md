@@ -159,6 +159,9 @@ The control and immutable frontier-record indices are dedicated, owned projectio
 stored source, request translog durability, all configured-copy receipts, exact-ID realtime reads, and
 refusal of pruning pipelines or ILM/rollover. Identical CAS repair needs a fresh complete receipt. A primary
 GET alone grants no durability. Immutable bundles compare exact canonical UTF8 bytes, including on readback.
+Every write checks these index properties again, so a change refuses the next write. A read may rely on a
+check that started less than one second earlier, because durability only matters to writes and reads keep
+their own content checks. That bound is fixed, a failed check is never reused, and it is local to one store.
 Existing observation IDs and valid retained bytes stay compatible.
 
 Account state uses copy-on-write roots over 256 hash buckets. Updated account values are immutable records;
