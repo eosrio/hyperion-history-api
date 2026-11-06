@@ -5382,8 +5382,8 @@
       },
       {
         "path": "tests/unit/protocol-native-consumer-worker.mjs",
-        "bytes": 30213,
-        "sha256": "e190a4c7cb99b9761281e4f2df8769e316bc712155fb997d13fef1274b1e8ef3"
+        "bytes": 32173,
+        "sha256": "ae06096e68a9ca1bc6462ed9b655b26c1764a3ca98273dec2f03450bc074ee37"
       },
       {
         "path": "tests/unit/protocol-native-consumer-worker.test.ts",
@@ -6011,7 +6011,7 @@
         "sha256": "1945027163c553cd08421dd1f8caa08fab025c44279883ed9e6c3dec0e8c6408"
       }
     ],
-    "totalBytes": 16595583,
+    "totalBytes": 16597543,
     "trackedPaths": [
       ".bun-version",
       ".gitattributes",

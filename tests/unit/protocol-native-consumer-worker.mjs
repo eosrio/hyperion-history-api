@@ -244,7 +244,25 @@ try {
     };
     const numberFrom = bytes => Number(codec.decode('result', bytes)[1].this_block.block_num);
     const results = [];
-    let lastPrepared, recoveryObserved = false, missingReads = 0; const preprepared = new Map();
+    let lastPrepared, recoveryObserved = false, missingReads = 0, historicalAddressReads = 0; const preprepared = new Map();
+    // The frontier shares h45abist1 for contract ABI states and historical membership
+    // entries. This oracle permits only retained, intact address-entry envelopes;
+    // the real reader still verifies their exact activated root/source/certificate.
+    const isHistoricalAddressRead = request => {
+        const document = memory.documents.get(memory.key(request.index, request.id))?.document;
+        if (!document || !['manifest', 'chunk'].includes(document.kind)) return false;
+        const id = document.bundle_id, manifest = memory.documents.get(memory.key(request.index, id))?.document;
+        if (!manifest || manifest.kind !== 'manifest' || !id?.startsWith('h45abist1:')
+            || (request.id !== id && !manifest.chunk_ids.includes(request.id))) return false;
+        const chunks = manifest.chunk_ids.map(chunk => memory.documents.get(memory.key(request.index, chunk))?.document);
+        if (chunks.some(chunk => !chunk || chunk.kind !== 'chunk' || chunk.bundle_id !== id)) return false;
+        const bytes = Buffer.concat(chunks.map(chunk => Buffer.from(chunk.payload, 'base64')));
+        if (bytes.length !== manifest.byte_length || hash(bytes) !== manifest.digest) return false;
+        const envelope = JSON.parse(bytes.toString()), state = envelope.value;
+        return envelope.schemaVersion === 1 && envelope.chain === chain && envelope.kind === 'account-state'
+            && state?.kind === 'historical-certificate-address-entry' && state.account?.startsWith('h45abihist1:')
+            && state.address?.identity?.chainId === chainId && state.address?.certificateId?.startsWith('h45abicert1:');
+    };
     for (let number = 1; number <= 397; number++) {
         const bytes = readFileSync(join(sourceDir, 'block-' + String(number).padStart(6, '0') + '.bin'));
         assert.equal(bytes.length, frameIndex.get(number).bytes); assert.equal(hash(bytes), frameIndex.get(number).sha256);
@@ -283,7 +301,12 @@ try {
             const before = poolPublisher.sent.length, cacheBefore = cache.length, streamsBefore = poolConsumer.streamed.length, ackBefore = poolConsumer.acked.length;
             fault = number === 34 ? 'value' : number === 35 ? 'metadata' : undefined;
             const priorFault = memory.faults.beforeRead;
-            memory.faults.beforeRead = request => {if (request.id.startsWith('h45abist1:')) throw new Error('Native worker must not read deployed ABI states');};
+            memory.faults.beforeRead = request => {
+                if (request.id.startsWith('h45abist1:')) {
+                    if (!workerProofRecovery || !isHistoricalAddressRead(request)) throw new Error('Native worker must not read deployed ABI states');
+                    historicalAddressReads++;
+                }
+            };
             if (bridge && expected.has(number)) bridge.begin();
             await pool.processMessages(prepared.messages);
             if (bridge && expected.has(number)) proofPairMeasurements.push({blockNum: number, ...bridge.end()});
@@ -301,7 +324,7 @@ try {
             assert.deepEqual(sealed.manifest.fragments.flatMap(fragment => fragment.effects), [fingerprintActionHistoryEffect(document)]);
             assert.ok(poolConsumer.streamed.slice(streamsBefore).some(stream => stream.payload.equals(output[0].payload)));
             assert.ok(cache.slice(cacheBefore).some(entry => entry.values.get(document.global_sequence)?.equals(output[0].payload)));
-            if (workerProofRecovery && number === 33) {assert.equal(recoveryObserved, true);assert.equal(recoveryHooks, 1);assert.equal(poolConsumer.acked.length-ackBefore,1);assert.equal(poolPublisher.sent.length-before,1);await preprepared.get(37);assert.ok(missingReads>0, 'actual historical certificate manifest must be missing during the gap');}
+            if (workerProofRecovery && number === 33) {assert.equal(recoveryObserved, true);assert.equal(recoveryHooks, 1);assert.equal(poolConsumer.acked.length-ackBefore,1);assert.equal(poolPublisher.sent.length-before,1);await preprepared.get(37);assert.ok(missingReads>0, 'actual historical certificate manifest must be missing during the gap');assert.ok(historicalAddressReads>0, 'actual activated historical membership must be read');}
             if (expected.has(number)) {
                 const original = expected.get(number); assert.deepEqual(bytes, readFileSync(join(originalDir, 'block-' + String(number).padStart(6, '0') + '.bin')));
                 assert.deepEqual(document.act.data, original.expectedValue); assert.equal(metadata.input.rawHex, original.rawHex);
@@ -345,7 +368,7 @@ try {
     }
     console.log(JSON.stringify({passed: true, originalBlocks: 397, nativeActions: results, originalWireSource: true,
         installedNativeActivation: false, fullWorkerQualification: false, controlledBrokerStorage: true,
-        workerProofRecovery, recoveryObserved, recoveryHooks, missingReads, sourceAdmission: true, exactConfirmedBytes: true, unknownAbiIndependent: true, tamperedOutputRawIncomplete: true,
+        workerProofRecovery, recoveryObserved, recoveryHooks, missingReads, historicalAddressReads, sourceAdmission: true, exactConfirmedBytes: true, unknownAbiIndependent: true, tamperedOutputRawIncomplete: true,
         finalConfirmRevocationFenced: true, genesisActionAdmissionIncomplete: true, nativeAddonResolutions}));
 } finally {
     independentIngress.emitDestroy();
