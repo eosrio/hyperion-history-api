@@ -1,0 +1,67 @@
+name: Wire canonical bulk proof
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["release/4.5", "codex/wire-release-integration"]
+    paths: ["src/**", "packages/backend-mongodb/**", "tests/unit/wire-*bulk-regression.mjs", "tests/unit/source-credit-capacity.test.ts", "tests/unit/state-reader-live-backpressure*", "docs/performance/source-credit-capacity.md", "tests/unit/protocol-abi-proof.test.ts", "tests/unit/protocol-abi-coordinator.test.ts", "tests/unit/protocol-native-genesis.test.ts", "tests/unit/wire-genesis-seed-original.mjs", "tests/native/protocol-genesis-seed.test.mjs", "tests/native/live-reader-startup-checkpoint.test.mjs", "docs/protocol-abi-frontier.md", "tests/native/wire-canonical-bulk-workflow.test.mjs", "tests/fixtures/**", "scripts/qualification/**", "package*.json", ".github/workflows/wire-canonical-bulk.yml"]
+permissions:
+  contents: read
+jobs:
+  coupled-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["24.22.1", "26.4.0"]
+    env:
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-all-cbfb-root-native-wire34-linux-engineering-v1
+      HYPERION_INDEXED_TEST_PROFILE: cbfb
+      NODE_OPTIONS: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - name: Install locked dependencies
+        run: |
+          npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false
+          npm ci --allow-git=all --ignore-scripts=false
+      - name: Build and check toolchain
+        run: |
+          test "$(bun --version)" = "1.4.4"
+          test "$(bun -p process.versions.typescript)" = "7.0.2"
+          npm run typecheck
+          bun check -p packages/backend-mongodb/tsconfig.json
+          npm run build
+      - name: Admit exact source and emitted runtime
+        run: |
+          mkdir -p out/wire-canonical-bulk
+          node scripts/qualification/wire34-cbfb/source-check.mjs > out/wire-canonical-bulk/source.json
+          node tests/unit/wire34-cbfb-source-admission.mjs --admit-wire34-cbfb > out/wire-canonical-bulk/runtime.json
+      - name: Check workflow contract
+        run: node --test tests/native/wire-canonical-bulk-workflow.test.mjs
+      - name: Verify source-credit reservations and count backpressure
+        run: bun test tests/unit/source-credit-capacity.test.ts tests/unit/state-reader-live-backpressure.test.ts
+      - name: Verify proof invariants and captured source
+        run: |
+          bun test tests/unit/protocol-abi-proof.test.ts tests/unit/protocol-abi-coordinator.test.ts tests/unit/protocol-native-genesis.test.ts
+          node --test tests/native/protocol-genesis-seed.test.mjs tests/native/live-reader-startup-checkpoint.test.mjs
+          node tests/unit/wire-genesis-seed-original.mjs normal
+          node tests/unit/wire-genesis-seed-original.mjs missing-trace2
+          node tests/unit/wire-genesis-seed-original.mjs missing-genesis-block
+          node tests/unit/wire-genesis-seed-original.mjs missing-genesis-deltas
+          node tests/unit/wire-canonical-bulk-regression.mjs normal
+          node tests/unit/wire-historical-bulk-regression.mjs normal
+          node tests/unit/wire-historical-bulk-regression.mjs disabled
+      - name: Retain source and runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wire-canonical-bulk-${{ matrix.node }}-${{ github.run_attempt }}
+          path: out/wire-canonical-bulk/*.json
+          if-no-files-found: warn
+          retention-days: 14

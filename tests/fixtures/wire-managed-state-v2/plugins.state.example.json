@@ -1,0 +1,7 @@
+{
+  "plugins": {
+    "wire-managed-state": {
+      "enabled": true
+    }
+  }
+}

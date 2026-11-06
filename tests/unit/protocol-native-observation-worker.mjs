@@ -1,4 +1,5 @@
-import {controlledAttemptLifecycle} from './worker-attempt-fixture.mjs';
+import {controlledAttemptLifecycle as installAttemptLifecycle, controlledDurableOutputTransport} from './worker-attempt-fixture.mjs';
+function controlledAttemptLifecycle(worker, role) {controlledDurableOutputTransport(worker, role); installAttemptLifecycle(worker, role);}
 import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
 import {createHash} from 'node:crypto';

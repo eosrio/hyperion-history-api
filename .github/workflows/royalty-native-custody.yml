@@ -1,0 +1,60 @@
+name: Royalty template native driver custody
+# Retired source-pin qualification: manual only, see docs/qualification/retired-source-pins.md.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  custody:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [24.22.1, 26.4.0]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: eosrio/hyperion-atomicassets-plugin
+          ref: 1bc686bd7ed7d433b2cb7c3a04a762c0c832ad97
+          path: out/royalty-custody-inputs/atomic
+      - uses: actions/checkout@v4
+        with:
+          repository: eosrio/hyperion-atomicassets-plugin
+          ref: af07febcbc1146f162817c3a84ec7cbbebd76114
+          path: out/royalty-custody-inputs/original
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - run: npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false
+      - run: npm ci --allow-git=all
+      - run: npm ci --prefix out/royalty-custody-inputs/atomic --allow-git=all
+      - run: npm run build
+      - run: npm run build --prefix out/royalty-custody-inputs/atomic
+      - run: npm run typecheck
+      - name: Pure custody controls
+        run: node --test scripts/qualification/royalty-native-custody/*.test.mjs
+      - name: Fetch and verify immutable original archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p out/royalty-custody-inputs/reports
+          curl --fail --location --silent --show-error -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" https://api.github.com/repos/eosrio/hyperion-atomicassets-plugin/actions/artifacts/13408438511/zip -o out/royalty-custody-inputs/reports/official-24.zip
+          curl --fail --location --silent --show-error -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" https://api.github.com/repos/eosrio/hyperion-atomicassets-plugin/actions/artifacts/13408208855/zip -o out/royalty-custody-inputs/reports/official-26.zip
+          echo "baf3a6468f3cb83d38b0e3239309811669fbcd1e39cf236daf18338ef457bcb5  out/royalty-custody-inputs/reports/official-24.zip" | sha256sum -c -
+          echo "a3bcb2288d3127681e576bf8d415b44eb609bf0ccc6c91ddd444082ccfc9e03b  out/royalty-custody-inputs/reports/official-26.zip" | sha256sum -c -
+          unzip -p out/royalty-custody-inputs/reports/official-24.zip royalty-rule-pg-oracle-v1.json > out/royalty-custody-inputs/reports/report-24.json
+          unzip -p out/royalty-custody-inputs/reports/official-26.zip royalty-rule-pg-oracle-v1.json > out/royalty-custody-inputs/reports/report-26.json
+      - name: Owned native template custody
+        run: node scripts/qualification/royalty-native-custody/ci.mjs --profile royalty-template-driver-custody-cbfb-wire34-linux-v1 out/royalty-custody-inputs/atomic out/royalty-custody-inputs/original out/royalty-custody-inputs/reports out/royalty-custody-${{ matrix.node-version }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: royalty-native-custody-${{ matrix.node-version }}
+          path: out/royalty-custody-${{ matrix.node-version }}
+          if-no-files-found: error

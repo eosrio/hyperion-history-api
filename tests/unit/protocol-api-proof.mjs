@@ -11,6 +11,7 @@ registerHooks({resolve(specifier, context, next) {
 const {loadChainProtocol} = await import('../../build/indexer/protocol/selection.js');
 const {ProtocolAbiCoordinator} = await import('../../build/indexer/protocol/abi-coordinator.js');
 const {ProtocolAbiFrontierStore} = await import('../../build/indexer/protocol/abi-frontier-store.js');
+const {ProtocolAbiProofReader} = await import('../../build/indexer/protocol/abi-proof.js');
 const {ProtocolAbiObservationStore, protocolAbiCaptureDigest} = await import('../../build/indexer/protocol/abi-observation-store.js');
 const {ProtocolSourceBindingStore} = await import('../../build/indexer/protocol/source-bindings.js');
 const {default: registerV1} = await import('../../build/api/routes/v1-history/get_actions/index.js');
@@ -26,6 +27,14 @@ const chain = 'api-proof-fixture', chainId = '1'.repeat(64), transactionId = 'a'
 const blockId = number => number.toString(16).padStart(64, '0');
 const schemaJson = '{"version":"eosio::abi/1.1"}';
 const memory = frontierMemoryClient(), store = new ProtocolAbiFrontierStore(memory.client, chain);
+// Runs a fault once an action proof resolves, whether its records came from storage or the memo.
+const afterActionProof = fault => {
+    const resolve = ProtocolAbiProofReader.prototype.action;
+    ProtocolAbiProofReader.prototype.action = async function (...args) {
+        const value = await resolve.apply(this, args); ProtocolAbiProofReader.prototype.action = resolve; await fault(); return value;
+    };
+    return () => {ProtocolAbiProofReader.prototype.action = resolve;};
+};
 const bindings = new ProtocolSourceBindingStore(memory.client, chain), observations = new ProtocolAbiObservationStore(memory.client, chain);
 const contextId = (await bindings.prepareContext({schemaVersion: 1, chainId, protocol: profile, schemaJson})).id;
 const coordinator = new ProtocolAbiCoordinator({chainId, profile, ownerId: 'api-fixture-owner', bindings, observations, store});
@@ -158,9 +167,14 @@ try {
     transactionCache = {}; responseCache.clear(); current = action();
     assert.equal((await v2()).statusCode, 200);
     // A source revocation during asynchronous proof resolution cannot publish an otherwise valid value.
+    // A new app has an empty record memo, so the account state read still happens mid-proof.
     responseCache.clear(); let revoked = false;
     memory.faults.beforeRead = async query => {if (!revoked && query.id.startsWith('h45abist1:')) {revoked = true; await coordinator.revokeSource(session);}};
-    const interrupted = await request(); assert.equal(interrupted.statusCode, 503, interrupted.body); delete memory.faults.beforeRead;
+    const cold = await createApp();
+    try {
+        const interrupted = await cold.inject({method: 'POST', url: '/v1/history/get_actions', payload: {account_name: 'alpha', hex_data: true}});
+        assert(revoked, 'Revocation fault never fired'); assert.equal(interrupted.statusCode, 503, interrupted.body);
+    } finally {delete memory.faults.beforeRead; await cold.close();}
     generation = (await coordinator.openSource(contextId, session)).generation;
     const emptyThird = await append(3, empty());
     await append(4,empty());
@@ -174,6 +188,16 @@ try {
         assert.equal(retained.statusCode,200,retained.body);
         assert.equal(retained.json().actions[0].action_trace.act.hex_data,'07000000');
     }finally{await narrow.close();await wide.close();responseCache.clear();}
+    // Once records are memoized only control reads remain, and a revocation is still fenced.
+    responseCache.clear(); current = action(); const memoized = await request(); assert.equal(memoized.statusCode, 200, memoized.body);
+    const warmReads = []; memory.faults.beforeRead = query => {warmReads.push(query.index);};
+    responseCache.clear(); current = action(); const warm = await request(); delete memory.faults.beforeRead;
+    assert.equal(warm.statusCode, 200, warm.body);
+    assert(warmReads.length > 0 && warmReads.every(index => index === store.controlIndex), warmReads.join());
+    revoked = false; const restoreProof = afterActionProof(async () => {revoked = true; await coordinator.revokeSource(session);});
+    responseCache.clear(); current = action(); const fenced = await request(); restoreProof();
+    assert(revoked, 'Revocation fault never fired'); assert.equal(fenced.statusCode, 503, fenced.body);
+    generation = (await coordinator.openSource(contextId, session)).generation; await append(5, empty());
     responseCache.clear(); current = action(); const primed = await request(); assert.equal(primed.statusCode, 200, primed.body);
     // A fresh canonical generation with a replacement block revokes cached old-branch output.
     await append(2, facts, 20, 1);

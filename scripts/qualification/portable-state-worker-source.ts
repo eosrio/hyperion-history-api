@@ -8,11 +8,13 @@ import {dirname, isAbsolute, join, parse, resolve} from 'node:path';
 import {once} from 'node:events';
 import {WebSocket, WebSocketServer} from 'ws';
 import {createWireShipCodec, resolveCodecProfile} from '@eosrio/hyperion-wire-plugin';
+import {describeOwnedWireBrokerRestart} from './owned-wire-broker.mjs';
+import {describeIssuedWireBrokerControl} from './portable-state-broker-recovery.mjs';
 
 export const portableSourceLimits = Object.freeze({blocks: 4096, bytes: 128 * 1024 * 1024,
     receiptBytes: 8 * 1024 * 1024, frameBytes: 8 * 1024 * 1024, window: 32,
     requests: 16384, requestBytes: 4096, requestTotalBytes: 8 * 1024 * 1024,
-    connections: 8, bufferedBytes: 16 * 1024 * 1024, runMs: 900_000});
+    connections: 8, sessions: 32, bufferedBytes: 16 * 1024 * 1024, runMs: 900_000});
 export const portableSourceHash = (bytes: Uint8Array | string) => createHash('sha256').update(bytes).digest('hex');
 const jsonCopy = <T>(value: T): T => structuredClone(value);
 const hex64 = /^[0-9a-f]{64}$/;
@@ -35,6 +37,8 @@ export interface PortableWorkerSource {
     readonly chainId: string; readonly profileId: string; readonly sourceRevision: string;
     readonly components: readonly any[]; readonly endBlock: number; readonly schemaJson: string;
     readonly records: readonly PortableSourceBlock[]; readonly inputHashes: Readonly<Record<string, string>>;
+    /** Original SHIP status/frame LIB observations, keyed by their block number. */
+    readonly irreversibleAnchors: Readonly<Record<string, string>>;
     readonly originalStatus: any; readonly startupInfo: any;
 }
 interface PrivateSource {frames: Buffer[]; status: Buffer; schema: Buffer; codec: ReturnType<typeof createWireShipCodec>;}
@@ -97,7 +101,16 @@ export async function auditPortableWorkerSource(input: PortableSourceInput,
     assert.equal(Number(decodedStatus[1].chain_state_begin_block), 1); assert.equal(Number(decodedStatus[1].trace_begin_block), 2);
     for (const name of ['chain_state_end_block', 'trace_end_block']) assert.ok(Number(decodedStatus[1][name]) > input.endBlock, 'source retention does not cover requested prefix');
     const originalInfo = JSON.parse(infoBytes.toString('utf8')); assert.equal(originalInfo.chain_id, receipt.chainId);
-    const frames: Buffer[] = [], records: PortableSourceBlock[] = [];
+    const frames: Buffer[] = [], records: PortableSourceBlock[] = [], irreversibleAnchors: Record<string, string> = {};
+    const retainAnchor = (value: {block_num: number | string; block_id: string}) => {
+        const blockNum = Number(value.block_num), blockId = value.block_id;
+        assert.ok(Number.isSafeInteger(blockNum) && blockNum >= 1 && blockNum <= 0xffffffff && hex64.test(blockId));
+        const key = String(blockNum);
+        assert.ok(irreversibleAnchors[key] === undefined || irreversibleAnchors[key] === blockId,
+            'original SHIP irreversible anchor changed for the same block');
+        irreversibleAnchors[key] = blockId;
+    };
+    retainAnchor(decodedStatus[1].last_irreversible);
     const inputHashes: Record<string, string> = {'receipt.json': input.receiptSha256, 'schema.json': portableSourceHash(schema),
         [input.status.path]: input.status.sha256, [input.getInfo.path]: input.getInfo.sha256};
     let totalBytes = schema.length + status.length + infoBytes.length, parent: string | null = null;
@@ -108,6 +121,7 @@ export async function auditPortableWorkerSource(input: PortableSourceInput,
         totalBytes += frame.length; assert.ok(totalBytes <= portableSourceLimits.bytes, 'source aggregate byte bound exceeded');
         const bundle: any = codec.decodeBundle(frame), result = bundle.envelope[1];
         assert.equal(bundle.envelope[0], 'get_blocks_result_v0'); assert.equal(Number(result.this_block.block_num), index + 1);
+        retainAnchor(result.last_irreversible);
         assert.equal(result.this_block.block_id, entry.blockId); assert.ok(hex64.test(entry.blockId));
         assert.equal(result.prev_block?.block_id ?? null, parent, 'original source is not contiguous');
         assert.ok(Number(result.last_irreversible.block_num) >= index + 1, 'input was not captured irreversible');
@@ -130,17 +144,23 @@ export async function auditPortableWorkerSource(input: PortableSourceInput,
         head_block_producer: first.producer};
     const source = Object.freeze({chainId: receipt.chainId, profileId, sourceRevision: profile.upstreamRevision,
         components: Object.freeze(jsonCopy(selected.components)), endBlock: input.endBlock, schemaJson,
-        records: Object.freeze(records), inputHashes: Object.freeze(inputHashes), originalStatus: jsonCopy(decodedStatus), startupInfo: Object.freeze(startupInfo)});
+        records: Object.freeze(records), inputHashes: Object.freeze(inputHashes),
+        irreversibleAnchors: Object.freeze(irreversibleAnchors), originalStatus: jsonCopy(decodedStatus), startupInfo: Object.freeze(startupInfo)});
     sealed.set(source, {frames, status, schema, codec}); return source;
 }
 
 export class PortableSourceFlow {
     readonly sent: number[] = []; readonly acknowledged: number[] = [];
-    private next = 1; private through = 0; private window = 0; private active = false; private inFlight: number[] = [];
+    private next: number; private through = 0; private window = 0; private active = false; private inFlight: number[] = [];
     requests = 0; private statusRequests = 0;
-    readonly last: number;
-    constructor(last: number) {assert.ok(Number.isSafeInteger(last) && last >= 1 && last <= portableSourceLimits.blocks); this.last = last;}
+    readonly last: number; readonly first: number;
+    constructor(last: number, first = 1) {
+        assert.ok(Number.isSafeInteger(last) && last >= 1 && last <= portableSourceLimits.blocks);
+        assert.ok(Number.isSafeInteger(first) && first >= 1 && first <= last);
+        this.last = last; this.first = first; this.next = first;
+    }
     get outstanding() {return this.inFlight.length;}
+    get started() {return this.active;}
     releaseThrough(block: number) {assert.ok(Number.isSafeInteger(block) && block >= this.through && block <= this.last); this.through = block; return this.available();}
     private available() {const result: number[] = []; while (this.active && this.next <= this.through && this.inFlight.length < this.window) {
         result.push(this.next); this.sent.push(this.next); this.inFlight.push(this.next++);
@@ -152,7 +172,7 @@ export class PortableSourceFlow {
         if (type === 'get_blocks_request_v0') {
             assert.deepEqual(Object.keys(value).sort(), ['start_block_num', 'end_block_num', 'max_messages_in_flight', 'have_positions',
                 'irreversible_only', 'fetch_block', 'fetch_traces', 'fetch_deltas'].sort());
-            assert.equal(this.active, false); assert.equal(value.start_block_num, 1); assert.deepEqual(value.have_positions, []);
+            assert.equal(this.active, false); assert.equal(value.start_block_num, this.first); assert.deepEqual(value.have_positions, []);
             assert.ok(value.end_block_num === this.last + 1 || value.end_block_num === 0xffffffff);
             for (const key of ['fetch_block', 'fetch_traces', 'fetch_deltas']) assert.ok(value[key] === true || value[key] === 1);
             assert.ok([true, false, 0, 1].includes(value.irreversible_only));
@@ -171,8 +191,12 @@ export async function servePortableWorkerSource(source: PortableWorkerSource, er
     const retained = sealed.get(source); assert.ok(retained, 'source must be the sealed audit result');
     const server = new WebSocketServer({host: '127.0.0.1', port: 0, maxPayload: portableSourceLimits.requestBytes});
     await once(server, 'listening');
-    const sessions: {flow: PortableSourceFlow; socket: WebSocket}[] = [], requests: any[] = [];
-    let through = 0, sentBytes = 0, requestBytes = 0, closed = false, closing: Promise<void> | undefined;
+    const sessions: {flow: PortableSourceFlow; socket: WebSocket; epoch: number}[] = [], requests: any[] = [];
+    const activeSessions = new Set<typeof sessions[number]>();
+    let through = 0, sentBytes = 0, requestBytes = 0, peakActiveConnections = 0, closed = false, closing: Promise<void> | undefined;
+    let restart: {blockNum: number; oldMasterPid?: number; kind?: 'reader' | 'broker'; masterPid?: number;
+        oldReaderPid?: number; brokerContainerId?: string; brokerStartedAt?: string} | undefined;
+    let brokerOriginal: typeof sessions[number] | undefined;
     const close = () => closing ??= (async () => {closed = true; clearTimeout(timer); for (const {socket} of sessions) socket.terminate();
         await new Promise<void>((done, reject) => server.close(error => error ? reject(error) : done()));})();
     const timer = setTimeout(() => {errors.push('portable source deadline exceeded'); void close().catch(error => errors.push(String(error)));}, portableSourceLimits.runMs); timer.unref();
@@ -183,18 +207,107 @@ export async function servePortableWorkerSource(source: PortableWorkerSource, er
             session.socket.send(frame, {binary: true}, error => {if (error && !closed) errors.push(String(error));});}
     };
     server.on('connection', socket => {
-        if (sessions.length >= portableSourceLimits.connections) {errors.push('portable source connection bound'); socket.terminate(); return;}
-        const session = {flow: new PortableSourceFlow(source.endBlock), socket}; sessions.push(session); session.flow.releaseThrough(through);
+        // Normal API health checks open and close a status socket once their cache expires.
+        // Keep physical concurrency and retained audit history separately bounded.
+        if (sessions.length >= portableSourceLimits.sessions) {errors.push('portable source session history bound'); socket.terminate(); return;}
+        if (activeSessions.size >= portableSourceLimits.connections) {errors.push('portable source concurrent connection bound'); socket.terminate(); return;}
+        const session = {flow: new PortableSourceFlow(source.endBlock, restart?.blockNum ?? 1), socket, epoch: restart ? 1 : 0};
+        sessions.push(session); session.flow.releaseThrough(through);
+        activeSessions.add(session); peakActiveConnections = Math.max(peakActiveConnections, activeSessions.size);
+        socket.once('close', () => activeSessions.delete(session));
         socket.send(retained.schema, {binary: false}); socket.on('error', error => {if (!closed) errors.push(String(error));});
         socket.on('message', (bytes, binary) => {try {assert.equal(binary, true); const frame = Buffer.from(bytes as Buffer); requestBytes += frame.length;
             assert.ok(requestBytes <= portableSourceLimits.requestTotalBytes); const request = retained.codec.decodeRequest(frame);
             assert.ok(requests.length < portableSourceLimits.requests);
             requests.push({session: sessions.indexOf(session), request: jsonCopy(request), sha256: portableSourceHash(frame), bytes: frame.length});
-            const accepted = session.flow.receive(request); send(session, accepted.blocks, accepted.status);
+            const accepted = session.flow.receive(request);
+            if (restart) assert.ok(sessions.filter(value => value.epoch === session.epoch && value.flow.started).length <= 1,
+                'multiple block streams in the resumed source epoch');
+            send(session, accepted.blocks, accepted.status);
         } catch (error) {errors.push(String(error)); socket.close(1008, 'source request refused');}});
     });
     server.on('error', error => errors.push(String(error)));
+    const brokerStream = () => {
+        assert.ok(restart?.kind === 'broker' && brokerOriginal, 'broker source restart was not issued');
+        assert.deepEqual(errors, []);
+        assert.equal(brokerOriginal.socket.readyState, WebSocket.CLOSED, 'original source socket is still physically open');
+        const resumed = sessions.filter(value => value.epoch === 1 && value.flow.started);
+        assert.equal(resumed.length, 1); assert.equal(resumed[0].flow.first, 34);
+        assert.equal(resumed[0].socket.readyState, WebSocket.OPEN);
+        return resumed[0];
+    };
+    const emptyBrokerStream = () => {
+        assert.equal(through, 33); const resumed = brokerStream();
+        assert.deepEqual(resumed.flow.sent, []); assert.deepEqual(resumed.flow.acknowledged, []);
+        assert.equal(resumed.flow.outstanding, 0);
+    };
     return {url: `ws://127.0.0.1:${(server.address() as any).port}`, requests, sessions, close,
+        // Synchronous: queued socket events cannot observe the new broker without its issued boundary.
+        allowBrokerRestart(receipt: unknown, issuedControl: unknown) {
+            const broker = describeOwnedWireBrokerRestart(receipt), control = describeIssuedWireBrokerControl(issuedControl);
+            assert.equal(restart, undefined, 'only one original broker restart is permitted');
+            assert.equal(through, 33); assert.equal(control.blockNum, through);
+            assert.equal(control.chain, 'hyp-p191-' + broker.run);
+            assert.equal(control.chainId, source.chainId); assert.equal(control.profileId, source.profileId);
+            assert.equal(control.blockId, source.records[32].blockId);
+            assert.equal(control.frameSha256, portableSourceHash(retained.frames[32]));
+            assert.equal(source.endBlock, 1480);
+            const flows = sessions.filter(value => value.flow.started); assert.equal(flows.length, 1);
+            const expected = Array.from({length: through}, (_, index) => index + 1);
+            assert.deepEqual(flows[0].flow.sent, expected); assert.deepEqual(flows[0].flow.acknowledged, expected);
+            assert.equal(flows[0].flow.outstanding, 0); assert.deepEqual(errors, []);
+            brokerOriginal = flows[0];
+            restart = {kind: 'broker', blockNum: 34, brokerContainerId: broker.after.broker.containerId,
+                brokerStartedAt: broker.after.broker.startedAt};
+        },
+        assertBrokerReconnected: emptyBrokerStream,
+        releaseBrokerContinuation() {
+            emptyBrokerStream(); through = 34;
+            for (const session of sessions) if (session.socket.readyState === WebSocket.OPEN)
+                send(session, session.flow.releaseThrough(through));
+        },
+        assertBrokerContinued() {
+            assert.equal(through, 34); const resumed = brokerStream();
+            assert.deepEqual(resumed.flow.sent, [34]); assert.deepEqual(resumed.flow.acknowledged, [34]);
+            assert.equal(resumed.flow.outstanding, 0);
+        },
+        async allowMasterRestart(receipt: unknown) {
+            const {describeWireMasterCrash} = await import('./portable-state-master-recovery.mjs');
+            const {control, fence} = describeWireMasterCrash(receipt);
+            assert.equal(restart, undefined, 'only one original master restart is permitted');
+            assert.equal(through, 33); assert.equal(control.blockNum, through);
+            assert.equal(control.chainId, source.chainId); assert.equal(control.profileId, source.profileId);
+            assert.equal(control.blockId, source.records[32].blockId);
+            assert.equal(control.frameSha256, portableSourceHash(retained.frames[32]));
+            assert.equal(control.resumeBlockNum, through + 1); assert.equal(control.resumeBlockId, source.records[33].blockId);
+            assert.equal(control.resumeFrameSha256, portableSourceHash(retained.frames[33]));
+            assert.equal(fence.directory, control.output);
+            const flows = sessions.filter(value => value.flow.started);
+            assert.equal(flows.length, 1); assert.equal(flows[0].socket.readyState, WebSocket.CLOSED);
+            const expected = Array.from({length: through}, (_, index) => index + 1);
+            assert.deepEqual(flows[0].flow.sent, expected); assert.deepEqual(flows[0].flow.acknowledged, expected);
+            assert.equal(flows[0].flow.outstanding, 0); assert.deepEqual(errors, []);
+            restart = {blockNum: control.resumeBlockNum, oldMasterPid: fence.root.pid};
+        },
+        async allowReaderRestart(receipt: unknown) {
+            const {describeWireReaderCrash, wireReaderStatus} = await import('./portable-state-reader-recovery.mjs');
+            const {control, fence} = describeWireReaderCrash(receipt);
+            assert.equal(restart, undefined, 'only one original reader handover is permitted');
+            assert.equal(through, 33); assert.equal(control.blockNum, through);
+            assert.equal(control.chainId, source.chainId); assert.equal(control.profileId, source.profileId);
+            assert.equal(control.blockId, source.records[32].blockId); assert.equal(control.frameSha256, portableSourceHash(retained.frames[32]));
+            assert.equal(control.resumeBlockNum, through + 1); assert.equal(control.resumeBlockId, source.records[33].blockId);
+            assert.equal(control.resumeFrameSha256, portableSourceHash(retained.frames[33])); assert.equal(fence.directory, control.output);
+            const flows = sessions.filter(value => value.flow.started);
+            assert.equal(flows.length, 1); assert.equal(flows[0].socket.readyState, WebSocket.CLOSED);
+            const expected = Array.from({length: through}, (_, index) => index + 1);
+            assert.deepEqual(flows[0].flow.sent, expected); assert.deepEqual(flows[0].flow.acknowledged, expected);
+            assert.equal(flows[0].flow.outstanding, 0); assert.deepEqual(errors, []);
+            const status = await wireReaderStatus(receipt);
+            assert.equal(status.masterPid, fence.parent.pid); assert.equal(status.oldReaderPid, fence.reader.pid);
+            assert.equal(status.held, true); assert.equal(status.terminated, true);
+            restart = {kind: 'reader', blockNum: control.resumeBlockNum, masterPid: fence.parent.pid, oldReaderPid: fence.reader.pid};
+        },
         releaseThrough(block: number) {assert.ok(!closed && block >= through && block <= source.endBlock); through = block;
             for (const session of sessions) if (session.socket.readyState === WebSocket.OPEN) send(session, session.flow.releaseThrough(block));},
         assertThrough(block: number) {const expected = Array.from({length: block}, (_, index) => index + 1);
@@ -202,5 +315,8 @@ export async function servePortableWorkerSource(source: PortableWorkerSource, er
             assert.deepEqual(sessions.flatMap(session => session.flow.acknowledged), expected);
             assert.ok(sessions.every(session => session.flow.outstanding === 0));},
         metrics() {return {through, sentBytes, requestBytes, connections: sessions.length,
-            sessions: sessions.map(session => ({sent: [...session.flow.sent], acknowledged: [...session.flow.acknowledged], outstanding: session.flow.outstanding}))};}};
+            activeConnections: activeSessions.size, peakActiveConnections,
+            ...(restart ? {restart: {...restart}} : {}),
+            sessions: sessions.map(session => ({sent: [...session.flow.sent], acknowledged: [...session.flow.acknowledged], outstanding: session.flow.outstanding,
+                ...(restart ? {epoch: session.epoch, firstBlock: session.flow.first} : {})}))};}};
 }

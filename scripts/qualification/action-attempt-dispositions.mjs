@@ -1,5 +1,6 @@
 /** #284 typed attempt storage; broker, producer, locators and constructed variants confer no canonical authority. */
 import assert from 'node:assert/strict';
+import {isPinnedGitSource} from '../../tests/unit/pinned-git-source.mjs';
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {EventEmitter} from 'node:events';
@@ -9,8 +10,8 @@ import {fileURLToPath} from 'node:url';
 
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 const profileId = 'wire-sysio-6508c9e8-native-engineering-v1';
-const wireRevision = '7167659e9c043cb3351074fcacb40200cc57f3a3';
-const sdkRevision = '339b5c93d1338968c18ed14254961439dcab16a0';
+const legacyWireRevision = '7167659e9c043cb3351074fcacb40200cc57f3a3';
+const legacySdkRevision = '339b5c93d1338968c18ed14254961439dcab16a0';
 const archiveSha256 = '42d092f3ecf6f428ecdba4825580377acdd27f2818ce445d4f197719e6ab72b7';
 const genesisSha256 = 'bdfdb8832cc573cca61f3e53cfa71219241e008b5c9665626295ea9342c2fb60';
 const oracleSha256 = 'f2d022f14e493f2297034dd8e7e1846d1504f19bbf1278afee8cd30a955b9720';
@@ -105,6 +106,9 @@ export function constructAttemptSourceVariant(codec, originalBytes, kind) {
 }
 
 export async function qualifyActionAttemptDispositions({client, chain, targetIndex, check, instrument, report}) {
+    const admission = process.env.HYPERION_NATIVE_SOURCE_PROFILE
+        ? (await import('../../tests/unit/stateful-engineering-source-admission.mjs')).admitNativeSourceEnvironment() : undefined;
+    const wireRevision = admission?.wireRevision ?? legacyWireRevision, sdkRevision = admission?.sdkRevision ?? legacySdkRevision;
     const [{ActionSourceAdmissionStore, actionSourceAdmissionHeader}, {actionContractOutputFailure},
         {publishAdmittedActionWithEvidence}, {actionHistoryImmutableJson}, {deriveActionSourceInventory, ActionSourceInventoryError},
         {loadChainProtocol}, {normalizeActionSequences}, {groupActionTraces}, {currentActionConfiguration, currentActionPolicy}, wireCodec] = await Promise.all([
@@ -127,7 +131,7 @@ export async function qualifyActionAttemptDispositions({client, chain, targetInd
     assert.equal(receipt.sourceRevision, wireRevision);
     const lock = readJson(new URL('../../package-lock.json', import.meta.url));
     for (const [name, revision] of [['hyperion-wire-plugin', wireRevision], ['hyperion-sdk', sdkRevision]])
-        assert.equal(lock.packages[`node_modules/@eosrio/${name}`].resolved, `git+ssh://git@github.com/eosrio/${name}.git#${revision}`);
+        assert.ok(isPinnedGitSource(lock.packages[`node_modules/@eosrio/${name}`].resolved, name, revision));
     const manifest = readJson(join(fixture, 'manifest.json'));
     assert.equal(manifest.originalArchiveSha256, archiveSha256);
     for (const member of manifest.members) {

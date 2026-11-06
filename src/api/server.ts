@@ -36,6 +36,9 @@ import { createContext, runInContext } from 'node:vm';
 import fastifyHttpProxy from '@fastify/http-proxy';
 import {createPortableStateApiService} from './helpers/portable-state.js';
 import {PortableStateQueryError} from '../indexer/projection/query-service.js';
+import {resolveStatefulOwnerConfigurationV2} from '../indexer/projection/stateful-config.js';
+import {StatefulApiProbeClient} from '../indexer/projection/stateful-control.js';
+import {installStatefulApiHostV2, statefulApiRegistryFactory} from './helpers/stateful-owner.js';
 
 class HyperionApiServer {
   private readonly fastify: FastifyInstance;
@@ -53,6 +56,7 @@ class HyperionApiServer {
   lastSentTimestamp = '';
   usageInterval?: ReturnType<typeof setInterval>;
   private indexerController?: WebSocket;
+  private statefulProbeClient?: StatefulApiProbeClient<WebSocket>;
   private alerts?: AlertsManager;
 
   constructor() {
@@ -393,6 +397,13 @@ class HyperionApiServer {
     this.addGenericTypeParsing();
 
     await this.mLoader.init();
+    const statefulConfiguration = resolveStatefulOwnerConfigurationV2(this.conf.features.stateful_owner_v2, this.conf.features.portable_state);
+    const statefulApiContext = statefulConfiguration ? (() => {
+      const probe = this.statefulProbeClient = new StatefulApiProbeClient(statefulConfiguration.api.maximumPendingProbes,
+        statefulConfiguration.api.timeoutMs, () => this.indexerController);
+      return installStatefulApiHostV2(this.fastify, {configuration: statefulConfiguration, probe,
+        registry: statefulApiRegistryFactory(this.fastify, this.mLoader, statefulConfiguration)});
+    })() : undefined;
 
     hLog('Registering plugins...');
     // add custom plugin routes
@@ -400,7 +411,8 @@ class HyperionApiServer {
       try {
         if (plugin.hasApiRoutes) {
           hLog(`Adding routes for plugin: ${plugin.internalPluginName}`);
-          plugin.addRoutes(this.fastify);
+          if (statefulApiContext) await Reflect.apply(plugin.addRoutes, plugin, [this.fastify, statefulApiContext]);
+          else plugin.addRoutes(this.fastify);
           plugin.chainName = this.chain;
         }
       } catch (error) {
@@ -763,6 +775,8 @@ class HyperionApiServer {
     const indexerControlURL = `ws://${controllerUrl}/local`;
     hLog(`Connecting to Indexer at: ${indexerControlURL}`);
     this.indexerController = new WebSocket(indexerControlURL);
+    const controllerSocket = this.indexerController;
+    controllerSocket.on('message', data => {this.statefulProbeClient?.accept(controllerSocket, data.toString());});
 
     this.indexerController.on('open', async () => {
       hLog('Connected to Hyperion Controller');
@@ -774,6 +788,7 @@ class HyperionApiServer {
     });
 
     this.indexerController.on('close', () => {
+      this.statefulProbeClient?.disconnected(controllerSocket);
       hLog('Disconnected from Hyperion Controller');
       this.qryPublisher?.publishIndexerStatus('offline');
       this.alerts?.emit('IndexerError', { message: 'Indexer disconnected' });

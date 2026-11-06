@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "executable": false,
+  "sourceCommit": "81dbfeaf4f349f0b20381779bba1ff9c357eb2a1",
+  "files": [
+    {
+      "path": "tests/native/current-stateful-source-profile.test.mjs",
+      "snapshot": "tests/fixtures/engineering-profiles/historical-81db-snapshot45/current-stateful-source-profile.test.mjs.txt",
+      "bytes": 6051,
+      "sha256": "8b0da84e6e1975b80580632f3c021b92910331d6ae20e282b074301cdfad2317"
+    },
+    {
+      "path": "tests/native/stateful-complete-kind-codec-profile.test.mjs",
+      "snapshot": "tests/fixtures/engineering-profiles/historical-81db-snapshot45/stateful-complete-kind-codec-profile.test.mjs.txt",
+      "bytes": 3313,
+      "sha256": "0defe6104e31783545a6eb353c2d047c4b94086c8cb0aa2dfc018105ea3e6b47"
+    },
+    {
+      "path": "tests/unit/stateful-complete-kind-source-admission-native.mjs",
+      "snapshot": "tests/fixtures/engineering-profiles/historical-81db-snapshot45/stateful-complete-kind-source-admission-native.mjs.txt",
+      "bytes": 14248,
+      "sha256": "1b5764c5eb09735e2668103d9389d38428ebfb22f7c9cd13f5363d9572685715"
+    },
+    {
+      "path": "scripts/qualification/operator-list-mongodb/assembly-diagnostics.test.mjs",
+      "snapshot": "tests/fixtures/engineering-profiles/historical-81db-snapshot45/assembly-diagnostics.test.mjs.txt",
+      "bytes": 7441,
+      "sha256": "eda1f3f8d7a1827b7bd16237242b88ed9894ab8ba620f4fa2b2c18bdec01aefc"
+    }
+  ]
+}

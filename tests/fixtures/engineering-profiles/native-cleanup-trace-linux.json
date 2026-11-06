@@ -1,0 +1,173 @@
+{
+  "schemaVersion": 1,
+  "profile": "stateful-owner-v2-root741-native429-source-9c3db03-cleanup-trace-v2-linux-gitlf-engineering",
+  "qualificationOnly": true,
+  "assemblyProfile": "operator-list-mongodb-root741-native429-source-9c3db03-linux-gitlf-engineering",
+  "productSource": {
+    "repository": "eosrio/hyperion-history-api",
+    "commit": "9c3db038a32a0aa9b9a17ca494baa9c6c63ed6ec",
+    "tree": "d9f5095787bdacc89f125c9106a4eade55e0c7ca"
+  },
+  "rootSDK": "7412889a14c84342551fd864ea3ebfcf28849385",
+  "rootSDKTree": "c486de0538bf33b4d7a199147e97ba763d731bab",
+  "nativeSDK": "429a1bf1d3bddb746fa662de9529480890b7368f",
+  "nativeSDKTree": "c9658c4dfb4bdf59bcc40ca272fd14fd6e1b8d2f",
+  "wireSDK": "58d68c5cea81490bbb1c9a7736d633d465bab3ef",
+  "wireSDKPackageSha256": "2e11db52cf8d150e30d165bafb962b50c6ad0cc764770714ea7fdca48a5e4684",
+  "wireSDKFiles": {
+    "files": 31,
+    "sha256": "df919dbdbfe8eb6c0b0f05a7f4b4ddabf42095d9da1e2621d0adba250fd3b7cc",
+    "format": "sorted-path-sha256-pairs-v1"
+  },
+  "wire": {
+    "commit": "69a66064c077a405341f5aaf15e84b88b8d86ccb",
+    "tree": "97adfecdfd02d881493f950b2cf5a9a32d2a030b",
+    "packageSha256": "1e455544de9256a1504293498af802ee1ebf952b6048d6758e37a6218c6ac390",
+    "descriptorSha256": "19fc9804da7e9ec5744733cdc191cd430bb807d73c25dcb98014bf4ca3ef20b8",
+    "nodeSha256": "31627f132686a1eea8cdf91a1312923f43c33df28949514041ff844621f43a37",
+    "rustSha256": "c8815e5ece1d6f8dbd662ea96ba277d00c077231659bf0d029f6a7120a4db838",
+    "npmLockSha256": "a7bbbb10d86a698d23c44b0ec73774a72a3ec915d11ff5d51c0892dfc9553943"
+  },
+  "helperSources": {
+    "tests/unit/stateful-engineering-source-admission.mjs": "27fceecf8b730a05475cc7aa6e8dfe1934f108782a4804d7375adee82bd8c6d7",
+    "tests/unit/native-snapshot-source-admission.mjs": "620fc6c5b9ff78feb5c6349ba706b0b59c3bad88ddb81b37721ad66c500f80f9",
+    "tests/unit/current-stateful-engineering-source-admission.mjs": "4e47b6dfab9eb7d8d7b80c64cecd3989abcc44860c555cbdafc42bb899729172",
+    "scripts/qualification/operator-list-mongodb/linux-snapshot-source-profile.mjs": "28594aaaf5a0471a79e31d9cf1f887b1dc192e7fc5f6f856d72af036f96b1850",
+    "scripts/qualification/operator-list-mongodb/linux-source-profile.mjs": "5ece724186a09044f532e57de727a427ccc47644093f7bd537d8d9fa6572e3bb",
+    "scripts/qualification/operator-list-mongodb/source-profile.mjs": "696cdc012c57fd62d09d7ff50fc2791498de380895d98ea44a9d346a17c7de85",
+    "scripts/qualification/operator-list-mongodb/inventory.mjs": "77978a3afd409840f32e9800a0d6d770bef9cdab525c3d1d3764cd7452d9e15f",
+    "scripts/qualification/operator-list-mongodb/assembly-diagnostics.mjs": "d3bf730fd5d79723bbdc5ff123035d7d0ef9b2bfc155704c146435890aa90231",
+    "scripts/qualification/operator-list-mongodb/contract.mjs": "2bf99585b8f5c80d643641427948f0acdbc3985fd46f5cd6a66ef8f8324e2334",
+    "tests/unit/native-cleanup-source-admission.mjs": "abfae7b0a80a4866fd7ed22b28e57f3095827524ad86aad20ff0976cfceab7a7",
+    "scripts/qualification/operator-list-mongodb/linux-cleanup-source-profile.mjs": "a8356606454978e5f2438b1b6d546a4d596f28f724bda4a918f483401142c165",
+    "tests/unit/native-cleanup-trace-source-admission.mjs": "7c57eb2fd0d706252cbd74de4c508d85f8a34cbf529fe4b236137cb7d1a77c56"
+  },
+  "historicalSnapshot": "tests/fixtures/engineering-profiles/historical-native39-9c4dd228/manifest.json",
+  "historicalHelperSha256": "9c4dd22874e2a6610a4aa07dc6ec64f219ec42e539eba2e240abfc7c85e621ed",
+  "acceptance": {
+    "runtime": "pending",
+    "physicalMongoDB": "pending",
+    "retainedWire1480": "pending-original-180000ms-control",
+    "managedAPI": "pending",
+    "publicHTTP": "pending",
+    "atomicParity": "pending",
+    "qualificationVerifierV2": "pending-actual-CI"
+  },
+  "callerSources": [
+    [
+      "src/api/helpers/stateful-owner.ts",
+      "8bdf6914852f2d9f008adbfd81fe83c0b3f94d6a2928f5567147a9030f72cb82"
+    ],
+    [
+      "src/indexer/connections/stateful-complete-kind-client.ts",
+      "37ee22762dda7b1a10c9adbe036e1e0b2d19b8d39b9c2cc5391fca83ba0fb906"
+    ],
+    [
+      "src/indexer/connections/manager.class.ts",
+      "e5949cd8f0a539439a01e032770d9891e5037c801076335c52fb7ebb8da19807"
+    ],
+    [
+      "src/indexer/projection/stateful-plugin.ts",
+      "4b1fbd3ba70be572020f8cf4e2928c3f6894ffe9e5503aa247cb74be47960622"
+    ],
+    [
+      "src/indexer/projection/stateful-registry.ts",
+      "f9dad39ff1a9911cba887e75bb11fe4cfdad2896f94a6a6d2eda31cc9d6783d6"
+    ],
+    [
+      "src/indexer/workers/projection.ts",
+      "596e0969a1e0613f817d5ec65abcadaa2ac896c682bf7b18029e45cb999d4ad1"
+    ],
+    [
+      "src/indexer/projection/controller.ts",
+      "eadbbebe2b4ae7d19e372c1132174cbedc6c258ea83d17b98c2c7a9bbf8429b6"
+    ],
+    [
+      "src/indexer/projection/runtime.ts",
+      "697c2ed177bc51e04cb9170debf644d595bcc7bcc1f4c8f7735f1415648f6785"
+    ],
+    [
+      "src/indexer/helpers/bounded-json.ts",
+      "9c62cc0fbb69fe34dc739d4904690dd506c10335590aba2a3d1e6a5dc068b5b7"
+    ]
+  ],
+  "workloadGuards": {
+    "tests/unit/wire-managed-state-v2-native.mjs": {
+      "historicalSha256": "32bbfc3e8a698edf1a506385dc1e346de4e4cf4c63ebb6ffeec879308e172eb3",
+      "replace": {
+        "selected": "STATEFUL_NATIVE_CLEANUP_TRACE_API_SOURCE_PROFILE",
+        "historical": "STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE"
+      }
+    },
+    "tests/unit/protocol-abi-history-native.mjs": {
+      "historicalSha256": "612f35aa346ee159730dff227791e9a4ce7f32da158e4c638e8c5c9cd0535b89",
+      "replace": {
+        "selected": "STATEFUL_NATIVE_CLEANUP_TRACE_API_SOURCE_PROFILE",
+        "historical": "STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE"
+      }
+    },
+    "scripts/qualification/stateful-complete-kind-mongodb/runner.mjs": {
+      "historicalSha256": "9053323d4da7f6c859d199564de71a892c0101db727fff8f59c2a83c86a22d9d",
+      "replace": {
+        "selected": "stateful-owner-v2-root741-native429-source-9c3db03-cleanup-trace-v2-linux-gitlf-engineering",
+        "historical": "stateful-owner-v2-7412889-69a6606-complete-kind-engineering"
+      }
+    },
+    "scripts/qualification/operator-list-mongodb/ci.mjs": {
+      "historicalSha256": "0e4b9b203bc6712503967c3352dc06d7ef94b5e62023e7b5d3747bb98b3c246d",
+      "replace": {
+        "selected": "from './linux-cleanup-source-profile.mjs'",
+        "historical": "from './source-profile.mjs'"
+      }
+    },
+    "scripts/qualification/operator-list-mongodb/runner.mjs": {
+      "historicalSha256": "005e183efe9353e53a81307f356aef57b7a9fd580df413c24a616add34cc4510",
+      "replace": {
+        "selected": "from './linux-cleanup-source-profile.mjs'",
+        "historical": "from './source-profile.mjs'"
+      }
+    },
+    "scripts/qualification/stateful-complete-kind-mongodb/ci.mjs": {
+      "historicalSha256": "d24b28d2a8465a7cc47cb4350e0259bba2d3b3278c00f9c94760c16fdae731d9",
+      "replace": null
+    }
+  },
+  "originalLimits": {
+    "retainedWireBlocks": 1480,
+    "retainedWireTimeoutMS": 180000,
+    "nativeCases": 17,
+    "nativeComponentMS": 300000
+  },
+  "priorCurrentHelperSha256": "c5be4c31c2a76117ed7a8c50e34d3921d461ea37e94cdf323b5901dfeb2adb01",
+  "sourceRepair": {
+    "source": {
+      "commit": "9c3db038a32a0aa9b9a17ca494baa9c6c63ed6ec",
+      "tree": "d9f5095787bdacc89f125c9106a4eade55e0c7ca"
+    },
+    "cause": "Pinned7.2 snapshot decoration adds readConcern to killCursors; MongoDB8.0.34 rejects it",
+    "repair": "Exact command-name-selected non-read cleanup operation preserves original operation session/lsid/CSOT/signal; no session mutation",
+    "physicalMongoDB": "pending"
+  },
+  "earlierSourceRepair": {
+    "source": {
+      "commit": "5aaaee4ebcb11783e3e00e02874180c54350b338",
+      "tree": "d220a29e41f48d5b61a9d4a8885fc253d032f93b"
+    },
+    "cause": "MongoDB8.0.34 missing namespace find omits atClusterTime",
+    "repair": "one charged majority+journal canonical source index creation before verification; no source pointer fabricated",
+    "physicalMongoDB": "pending"
+  },
+  "qualificationVerifierGuard": {
+    "path": "scripts/qualification/operator-list-mongodb/contract.mjs",
+    "source": "43c7935d4fa26200c79c82c99bdc217a08587255",
+    "tree": "673faa31725385774758baf310e4cb7367959f44",
+    "historicalSource": "f0d99742a12b36a08e1d5a536ed6c57522cc78f4",
+    "historicalSnapshot": "scripts/qualification/operator-list-mongodb/fixtures/contract-f0.mjs.txt",
+    "historicalSha256": "66502b7b20ce5710390971e0eefe500d8b0e41ecedd87b395203e305ffad4323",
+    "selectedSha256": "2bf99585b8f5c80d643641427948f0acdbc3985fd46f5cd6a66ef8f8324e2334",
+    "change": "Explicit v2 non-read cleanup identity/closure classification; snapshot data checks and original PLAN preserved",
+    "oldActualRun": 41295200550,
+    "oldActualVerdict": "failed verifier after native killCursors succeeded",
+    "newActualRun": "pending"
+  }
+}

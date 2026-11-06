@@ -1,5 +1,8 @@
 # MongoDB portable projection adapter
 
+The separate [stateful development factory](STATEFUL.md) is available only through the explicit
+`/stateful` subpath. It does not change these existing factories or activate production workers.
+
 This development package implements native MongoDB operations behind the shared
 Hyperion projection contract. Contract definitions, source selection and API
 response shaping remain outside this package. The application owns the connected
@@ -165,3 +168,7 @@ The integration fixture under `scripts/qualification/projection-rollback*` tests
 the portable runtime/adapter seam against real MongoDB with native process
 termination; it does not establish live SHiP fork/reconnect, complete state-route
 migration, irreversible-only behavior or release qualification.
+
+## Operator-owned lists
+
+The additive [`./operator-lists`](OPERATOR-LISTS.md) entry point provides bounded request-local SDK list reads and partitioned immutable operator publications. It grants no chain/projection readiness. Native MongoDB, HTTP/onSend and Atomic parity qualification remain separate gates.

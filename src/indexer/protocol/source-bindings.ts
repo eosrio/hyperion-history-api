@@ -37,8 +37,13 @@ export interface ProtocolSourceQuarantine {
 export interface ProtocolSourceObservationLink {
     schemaVersion:1;selectionId:string;observationId:string;observationDigest:string;
 }
+/** A raw-input locator. Canonical membership still comes from the independently pinned catalog. */
+export interface ProtocolPublishedSource {
+    schemaVersion:1;kind:'published-source';source:ProtocolSourcePosition;contextId:string;captureSha256:string;
+    selectionId:string;observationId:string;observationDigest:string;
+}
 type SourceRecords = {context:ProtocolSourceContext;selection:ProtocolSourceSelection;quarantine:ProtocolSourceQuarantine;
-    'observation-link':ProtocolSourceObservationLink};
+    'observation-link':ProtocolSourceObservationLink;'published-source':ProtocolPublishedSource};
 export type ProtocolSourceBindingReadCode = 'missing'|'incomplete'|'invalid';
 export class ProtocolSourceBindingReadError extends Error {
     constructor(readonly code:ProtocolSourceBindingReadCode, readonly recordType:keyof SourceRecords,
@@ -50,6 +55,7 @@ const contextId = /^h45srcctx1:[0-9a-f]{64}$/;
 const selectionId = /^h45srcsel1:[0-9a-f]{64}$/;
 const quarantineId = /^h45srcq1:[0-9a-f]{64}$/;
 const observationLinkId = /^h45srcobs1:[0-9a-f]{64}$/;
+const publicationId = /^h45srcpub1:[0-9a-f]{64}$/;
 const hash = (value:string) => createHash('sha256').update(value).digest('hex');
 const text = (value:unknown,maximum=256):value is string => typeof value==='string'&&value.length>0&&value.length<=maximum;
 const uint32 = (value:unknown,minimum=0):value is number => Number.isSafeInteger(value)&&Number(value)>=minimum&&Number(value)<=0xffffffff;
@@ -124,12 +130,25 @@ function observationLink(value:unknown):ProtocolSourceObservationLink {
         ||!/^h45abi1:[0-9a-f]{64}$/.test(record.observationId)||typeof record.observationDigest!=='string'||!hex64.test(record.observationDigest))fail();
     return record;
 }
+function publication(value:unknown):ProtocolPublishedSource {
+    const record=snapshot<any>(value,64*1024);
+    if(!keys(record,['schemaVersion','kind','source','contextId','captureSha256','selectionId','observationId','observationDigest'])
+        ||record.schemaVersion!==1||record.kind!=='published-source'||!contextId.test(record.contextId)
+        ||!hex64.test(record.captureSha256)||!keys(record.source,['chainId','blockNum','blockId','previousBlockId'])
+        ||!hex64.test(record.source.chainId)||!uint32(record.source.blockNum,1)||!hex64.test(record.source.blockId)
+        ||record.source.previousBlockId!==null&&!hex64.test(record.source.previousBlockId))fail();
+    observationLink({schemaVersion:1,selectionId:record.selectionId,observationId:record.observationId,observationDigest:record.observationDigest});
+    return record;
+}
 function id(prefix:string,domain:string,value:unknown):string {return prefix+hash(protocolImmutableJson([domain,value]));}
 export function protocolSourceContextId(value:ProtocolSourceContext):string {return id('h45srcctx1:','hyperion-source-context-v1',context(value));}
 export function protocolSourceSelectionId(value:ProtocolSourceSelection):string {return id('h45srcsel1:','hyperion-source-selection-v1',selection(value));}
 export function protocolSourceQuarantineId(value:ProtocolSourceQuarantine):string {return id('h45srcq1:','hyperion-source-quarantine-v1',quarantine(value));}
 export function protocolSourceObservationLinkId(value:string):string {
     if(typeof value!=='string'||!selectionId.test(value))fail();return 'h45srcobs1:'+hash(value);
+}
+export function protocolPublishedSourceId(chainId:string,blockId:string):string {
+    if(!hex64.test(chainId)||!hex64.test(blockId))fail();return id('h45srcpub1:','hyperion-published-source-v1',{chainId,blockId});
 }
 
 /** Durable source association only. Neither a stored selection nor a capsule grants progress or ABI authority. */
@@ -179,9 +198,41 @@ export class ProtocolSourceBindingStore {
         if(value.selectionId!==selectedId)throw new ProtocolSourceBindingReadError('invalid','observation-link',recordId,'Source observation link mismatch');
         await this.readSelection(selectedId,signal);signal?.throwIfAborted();return value;
     }
+    /** The caller validates catalog membership and complete original observation before publication. */
+    async preparePublishedSource(selectedId:string,checkpoint:()=>Promise<void>):Promise<ProtocolPublishedSource> {
+        await checkpoint();const {selection}=await this.readSelection(selectedId),link=await this.readObservationLink(selectedId);
+        const value=publication({kind:'published-source',source:selection.source,contextId:selection.contextId,
+            captureSha256:selection.captureSha256,...link});
+        const recordId=protocolPublishedSourceId(value.source.chainId,value.source.blockId);
+        const equivalent=(prior:ProtocolPublishedSource)=>{
+            const {selectionId:_old,...left}=prior,{selectionId:_new,...right}=value;
+            if(protocolImmutableJson(left)!==protocolImmutableJson(right))throw new Error('Published source conflicts with original capture');
+            return prior;
+        };
+        let prior:ProtocolPublishedSource|undefined;
+        try{prior=await this.readRecord('published-source',recordId);}catch(error){
+            if(!(error instanceof ProtocolSourceBindingReadError)||error.code!=='missing')throw error;
+        }
+        await checkpoint();if(prior){equivalent(prior);await this.bundles.prepare(recordId,prior);await checkpoint();return prior;}
+        try{await this.bundles.prepare(recordId,value);}catch(error){
+            // A concurrent equivalent recapture may have won. Partial/unknown writes remain retryable failures.
+            if(!(error instanceof Error)||!error.message.startsWith('Immutable ABI observation conflict:'))throw error;
+            const settled=await this.readRecord('published-source',recordId);equivalent(settled);await checkpoint();
+            await this.bundles.prepare(recordId,settled);await checkpoint();return settled;
+        }
+        const settled=await this.readRecord('published-source',recordId);await checkpoint();return equivalent(settled);
+    }
+    async readPublishedSource(chainId:string,blockId:string,signal?:AbortSignal):Promise<ProtocolPublishedSource> {
+        const value=await this.readRecord('published-source',protocolPublishedSourceId(chainId,blockId),signal);
+        const {selection}=await this.readSelection(value.selectionId,signal),link=await this.readObservationLink(value.selectionId,signal);
+        if(protocolImmutableJson(selection.source)!==protocolImmutableJson(value.source)||selection.contextId!==value.contextId
+            ||selection.captureSha256!==value.captureSha256||link.observationId!==value.observationId||link.observationDigest!==value.observationDigest)
+            throw new ProtocolSourceBindingReadError('invalid','published-source',protocolPublishedSourceId(chainId,blockId),'Published source reference differs');
+        return value;
+    }
     private async readRecord<K extends keyof SourceRecords>(kind:K,recordId:string,signal?:AbortSignal):Promise<SourceRecords[K]> {
         signal?.throwIfAborted();
-        const syntax={context:contextId,selection:selectionId,quarantine:quarantineId,'observation-link':observationLinkId}[kind];
+        const syntax={context:contextId,selection:selectionId,quarantine:quarantineId,'observation-link':observationLinkId,'published-source':publicationId}[kind];
         if(typeof recordId!=='string'||!syntax.test(recordId))throw new ProtocolSourceBindingReadError('invalid',kind,recordId,'Invalid source binding ID');
         let value:unknown;
         try {value=await this.bundles.read(recordId,signal);} catch(error) {
@@ -191,9 +242,11 @@ export class ProtocolSourceBindingStore {
         }
         signal?.throwIfAborted();
         try {
-            const normalized=kind==='context'?context(value):kind==='selection'?selection(value):kind==='quarantine'?quarantine(value):observationLink(value);
+            const normalized=kind==='context'?context(value):kind==='selection'?selection(value):kind==='quarantine'?quarantine(value)
+                :kind==='published-source'?publication(value):observationLink(value);
             const expected=kind==='context'?protocolSourceContextId(normalized as ProtocolSourceContext)
                 :kind==='selection'?protocolSourceSelectionId(normalized as ProtocolSourceSelection):kind==='quarantine'?protocolSourceQuarantineId(normalized as ProtocolSourceQuarantine)
+                :kind==='published-source'?protocolPublishedSourceId((normalized as ProtocolPublishedSource).source.chainId,(normalized as ProtocolPublishedSource).source.blockId)
                 :protocolSourceObservationLinkId((normalized as ProtocolSourceObservationLink).selectionId);
             if(expected!==recordId)fail();const result=freeze(normalized) as SourceRecords[K];
             signal?.throwIfAborted();return result;

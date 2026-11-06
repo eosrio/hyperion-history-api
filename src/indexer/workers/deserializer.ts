@@ -1,5 +1,5 @@
 import { HyperionWorker, ProtocolSourceCodecError, protocolSourceCapture } from "./hyperionWorker.js";
-import { cargo, queue } from 'async';
+import { cargo } from 'async';
 import { debugLog, hLog } from "../helpers/common_functions.js";
 import { createHash } from "crypto";
 import { Message, Options, type Channel } from "amqplib";
@@ -27,7 +27,8 @@ import {assertProtocolAbiObservationFacts} from '../protocol/abi-observation-fac
 import {ProtocolSourceBindingStore, ProtocolSourceBindingReadError, protocolSourceSelectionHeader} from '../protocol/source-bindings.js';
 import {protocolImmutableJson} from '../protocol/immutable-bundle-store.js';
 import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, type ProtocolAbiProofView} from '../protocol/abi-proof.js';
-import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
+import {diskAbiHistoryOptions,publishDiskAbiSource} from '../protocol/disk-abi-history-options.js';
+import {ProtocolAbiFrontierStore, ProtocolAbiFrontierRecordMemo} from '../protocol/abi-frontier-store.js';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {actionSourceAdmissionHeader, actionSourceIngressHeader, type ActionSourceAdmission} from '../history/action-source-admission.js';
 import {actionProducerEpoch, currentActionConfiguration} from '../history/action-producer-epoch.js';
@@ -39,7 +40,7 @@ import {snapshotNativeGenesisFacts, zeroBlockId} from '../protocol/native-genesi
 import {ProtocolNativeObservationStore, protocolNativeObservationBounds,
     type ProtocolNativeObservationRecord} from '../protocol/native-observation-store.js';
 import {protocolNativeInputInventory, snapshotProtocolNativeDecisions} from '../protocol/native-observation-facts.js';
-import {currentProofConsumerScope, trackProofConsumerOperation} from '../protocol/proof-consumer-scope.js';
+import {currentProofConsumerScope} from '../protocol/proof-consumer-scope.js';
 
 class ProtocolProofStorageError extends Error {
     constructor(cause: unknown) {super('Canonical ABI proof storage failed', {cause});}
@@ -104,6 +105,8 @@ export default class MainDSWorker extends HyperionWorker {
     private activeSourceSelectionId?: string;
     private activeSourceRole?: 'live' | 'bulk' | 'repair';
     private protocolAbiProofReader?: ProtocolAbiProofReader;
+    private readonly diskAbiHistoryConfiguration=structuredClone(this.conf.settings.protocol_abi_history);
+    private diskHistory?:ReturnType<typeof diskAbiHistoryOptions>;
     private activeProtocolAbiProofView?: ProtocolAbiProofView;
     private protocolAbiProofDeployments = new Map<string, ProtocolAbiProofView>();
     private readonly protocolDerivedPublications = new AsyncLocalStorage<ProtocolDerivedPublications>();
@@ -139,9 +142,6 @@ export default class MainDSWorker extends HyperionWorker {
 
     allowedDynamicContracts: Set<string> = new Set<string>();
 
-    backpressureQueue: any[] = [];
-    waitToSend = false;
-
     constructor() {
 
         super();
@@ -167,15 +167,7 @@ export default class MainDSWorker extends HyperionWorker {
             });
         }, this.conf.prefetch.block);
 
-        this.preIndexingQueue = queue((data: any, cb) => {
-            if (data.publish) {try {data.publish(); cb();} catch (error) {cb(error instanceof Error ? error : new Error(String(error)));} return;}
-            if (this.ch && this.ch_ready) {
-                this.workerBufferedPublication(this.ch, () => this.ch!.sendToQueue(data.queue, data.content, { headers: data.headers }));
-                cb();
-            } else {
-                hLog('Channel is not ready!');
-            }
-        }, 1);
+        this.preIndexingQueue = this.createDurableWorkerOutputQueue();
 
         this.events.on('loader_ready', () => {
             this.mLoader.appendDynamicContracts(this.allowedDynamicContracts);
@@ -265,9 +257,7 @@ export default class MainDSWorker extends HyperionWorker {
 
         if (this.ch) {
             this.ch_ready = true;
-            if (this.preIndexingQueue.paused) {
-                this.preIndexingQueue.resume();
-            }
+            if (this.preIndexingQueue.paused) this.preIndexingQueue.resume();
             this.ch.on('close', () => {
                 this.ch_ready = false;
                 this.preIndexingQueue.pause();
@@ -367,7 +357,7 @@ export default class MainDSWorker extends HyperionWorker {
             this.activeActionSource = {message, frameHex, ingressId, schemaJson: ingress.schemaJson, owner};
             try {await processBound(result);} finally {this.activeActionSource = undefined;}
         };
-        if (this.usesExtensionProtocol) {
+        if (this.usesProtocolSourceBindings) {
             await this.processProtocolSourceDelivery(message, async result => {
                 if (this.activeProtocolShipSchemaJson !== ingress.schemaJson) throw new Error('Action source and protocol handshakes disagree');
                 await run(result);
@@ -409,9 +399,9 @@ export default class MainDSWorker extends HyperionWorker {
                 producer: String(block?.producer ?? ''), timestamp: String(block?.timestamp ?? '')},
             policy: epoch.policy, traces: traces ?? null, ...(rootActions ? {rootActions} : {}),
             ...(wireActionInputs ? {wireActionInputs} : {}),
-            ...(this.usesExtensionProtocol ? {sourceSelectionId: this.activeSourceSelectionId} : {})};
+            ...(this.usesProtocolSourceBindings ? {sourceSelectionId: this.activeSourceSelectionId} : {})};
         const store = this.getActionAdmissionStore();
-        const sourceId = await store.retainSource({schemaVersion: 1, frameHex: scope.frameHex,
+        const sourceId = await store.retainSource({schemaVersion: 2, frameHex: scope.frameHex,
             schemaJson: scope.schemaJson, captureSha256: capture.captureSha256, ingressId: scope.ingressId,
             previousBlockId: capture.source.previousBlockId, producer: epoch.producer,
             executableSha256: epoch.executableSha256, inventoryInput});
@@ -457,8 +447,12 @@ export default class MainDSWorker extends HyperionWorker {
             configuration: configuration!, owner: scope!.owner});
         await revalidate();
         for (const evidence of observations) {
-            await store.recordAttemptDisposition({owner: scope!.owner, evidence}); await revalidate();
+            const recorded = await store.recordAttemptDisposition({owner: scope!.owner, evidence});
+            await this.observeFreshActionWrite(recorded);
+            await revalidate();
         }
+        await this.flushDurableWorkerOutputs();
+        await revalidate();
         assertCurrent(); this.assertWorkerAttemptActive(); this.markWorkerAcknowledgementAttempt(); scope!.owner.consumer.ack(message);
     }
 
@@ -564,7 +558,8 @@ export default class MainDSWorker extends HyperionWorker {
             this.activeSourceDelivery = undefined; close?.(); }
     }
 
-    ackProtocolSourceDelivery(message: Message): void {
+    async ackProtocolSourceDelivery(message: Message): Promise<void> {
+        await this.flushDurableWorkerOutputs();
         const delivery = this.activeSourceDelivery;
         if (delivery?.message === message && delivery.channel && delivery.channel === this.ch && this.ch_ready) {
             this.assertWorkerAttemptActive(); this.markWorkerAcknowledgementAttempt(); delivery.channel.ack(message);
@@ -581,7 +576,7 @@ export default class MainDSWorker extends HyperionWorker {
 
     /** Journal PREPARE precedes history filters and source ACK; it grants no decoding authority. */
     async prepareProtocolAbiObservations(res: GetBlocksResultV0): Promise<{traces?: any; deltas?: any[]; wireActionInputs?: readonly ProtocolAbiActionInput[]}> {
-        if (!this.usesExtensionProtocol) return {};
+        if (!this.usesProtocolSourceBindings) return {};
         this.assertWorkerAttemptActive();
         if (!this.activeSourceSelectionId || !this.activeProtocolShipSchemaJson || !this.protocolSourceBindingStore) {
             throw new Error('ABI observations require a verified reader source selection');
@@ -624,7 +619,7 @@ export default class MainDSWorker extends HyperionWorker {
                 if (typeof provider.observeBlockAbi !== 'function') throw new Error('Selected provider has no ABI observation hook');
                 const facts = provider.observeBlockAbi({traces: decoded.traces, accountRows}, position);
                 assertProtocolAbiObservationFacts(facts);
-                decoded.wireActionInputs = facts.actionInputs;
+                if (this.usesExtensionProtocol) decoded.wireActionInputs = facts.actionInputs;
                 // Validate malformed provider output here so raw source survives as an incomplete record.
                 observation = {status: 'observed', facts};
             }
@@ -650,6 +645,8 @@ export default class MainDSWorker extends HyperionWorker {
         // codec rethrow/readiness wait. Neither retained labels nor readback grant authority.
         await this.prepareProtocolNativeObservations(abiRecord, prepared);
         this.assertWorkerAttemptActive();
+        await publishDiskAbiSource(this.getProtocolAbiProofReaderOptions(),this.protocolSourceBindingStore,this.activeSourceSelectionId,
+            ()=>this.assertWorkerAttemptActive());
         // This is only a wake-up hint. Master resolves the durable link and source order itself.
         // Losing IPC cannot erase PREPARE; the master's bounded periodic drain repairs it.
         try {
@@ -730,10 +727,16 @@ export default class MainDSWorker extends HyperionWorker {
 
     private getProtocolAbiProofReader(): ProtocolAbiProofReader {
         return this.protocolAbiProofReader ??= new ProtocolAbiProofReader({chainId: this.chainId,
+            diskHistory:this.getProtocolAbiProofReaderOptions(),
             profile: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
-            store: new ProtocolAbiFrontierStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0, {readOnly: true}),
+            store: new ProtocolAbiFrontierStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0, {readOnly: true, recordMemo: new ProtocolAbiFrontierRecordMemo()}),
+            historicalCertificates:this.conf.settings.protocol_abi_coordination?.historical_certificates!==undefined,
             requireAttemptScope: this.workerAttemptScopeRequired,
             maxAncestryBlocks: this.conf.settings.protocol_abi_coordination?.recovery_window_blocks});
+    }
+    private getProtocolAbiProofReaderOptions():ReturnType<typeof diskAbiHistoryOptions> {
+        return this.diskHistory??=diskAbiHistoryOptions(this.diskAbiHistoryConfiguration,this.client,this.chain,this.chainId,
+            {id:this.protocolId,profileId:this.protocol.profileId,components:this.protocolComponents??[]},this.protocol,this.conf.settings.es_replicas??0);
     }
 
     private initConsumer() {
@@ -744,22 +747,8 @@ export default class MainDSWorker extends HyperionWorker {
                 if (!data) return;
                 this.captureWorkerAttemptDelivery(data, consumer, 'source-delivery');
                 if (this.actionSourceAdmissionEnabled) this.captureActionAdmissionDelivery(data, consumer);
-                if (this.usesExtensionProtocol) this.captureProtocolSourceDelivery(data, consumer);
+                if (this.usesProtocolSourceBindings) this.captureProtocolSourceDelivery(data, consumer);
                 this.consumerQueue.push(data).catch(console.log);
-            });
-            consumer.on('drain', () => {
-                if (consumer !== this.ch) return;
-                this.waitToSend = false;
-                while (this.backpressureQueue.length > 0) {
-                    const msg = this.backpressureQueue.shift();
-                    let status: boolean;
-                    try {status = msg.publish ? msg.publish() : this.controlledSendToQueue(msg.queue, msg.payload, msg.options);}
-                    catch (error) {msg.reject?.(error); continue;}
-                    msg.resolve?.();
-                    if (!status) {
-                        break;
-                    }
-                }
             });
         }
     }
@@ -992,7 +981,7 @@ export default class MainDSWorker extends HyperionWorker {
                             inline_count: transaction.dispatch.inlineCount, filtered: transaction.dispatch.filtered,
                             live: process.env['live_mode'], [actionSourceAdmissionHeader]: admission.id,
                             action_trace_ordinal: transaction.traceOrdinal,
-                            ...(this.usesExtensionProtocol ? {[protocolSourceSelectionHeader]: this.activeSourceSelectionId} : {})};
+                            ...(this.usesProtocolSourceBindings ? {[protocolSourceSelectionHeader]: this.activeSourceSelectionId} : {})};
                         await this.routeToPool(transaction.dispatch.body, headers, scope.owner, transaction.dispatch.canonicalJson);
                         if (process.env['live_mode'] === 'true') onBlockTransactions.push(transaction.transactionId);
                     }
@@ -1048,7 +1037,7 @@ export default class MainDSWorker extends HyperionWorker {
                                     filtered,
                                     live: process.env['live_mode'],
                                     ...(this.activeActionSource?.admission ? {[actionSourceAdmissionHeader]: this.activeActionSource.admission.id} : {}),
-                                    ...(this.usesExtensionProtocol ? {[protocolSourceSelectionHeader]: this.activeSourceSelectionId} : {})
+                                    ...(this.usesProtocolSourceBindings ? {[protocolSourceSelectionHeader]: this.activeSourceSelectionId} : {})
                                 }, this.activeActionSource?.owner);
                             } catch (e) {
                                 if (this.actionSourceAdmissionEnabled) throw e;
@@ -1090,7 +1079,7 @@ export default class MainDSWorker extends HyperionWorker {
         this.local_block_count++;
     }
 
-    routeToPool(trace, headers, owner?: ActionPublicationOwner, canonicalPayload?: string) {
+    async routeToPool(trace, headers, owner?: ActionPublicationOwner, canonicalPayload?: string) {
 
         let first_action;
         if (trace['action_traces'][0] && trace['action_traces'][0].length === 2) {
@@ -1192,51 +1181,12 @@ export default class MainDSWorker extends HyperionWorker {
         const payload = canonicalPayload === undefined ? bufferFromJson(trace, true) : Buffer.from(canonicalPayload);
         if (owner) return this.publishAdmitted(owner, pool_queue, payload, headers);
 
-        if (!this.waitToSend) {
-            if (this.ch_ready) {
-                this.controlledSendToQueue(pool_queue, payload, { headers });
-                return true;
-            } else {
-                return false;
-            }
-        } else {
-            const scope = currentProofConsumerScope();
-            if (scope) {
-                const channel = this.ch, sent = Buffer.from(payload), options = {headers: structuredClone(headers)};
-                void scope.operation(() => new Promise<void>((resolve, reject) => {
-                    const publish = scope.bindCallback(() => {
-                        if (!channel || channel !== this.ch || !this.ch_ready) throw new Error('Original queued source publisher is unavailable');
-                        return this.controlledSendToQueue(pool_queue, sent, options);
-                    });
-                    const entry = {publish, resolve: () => {scope.signal.removeEventListener('abort', abort); resolve();},
-                        reject: (error: unknown) => {scope.signal.removeEventListener('abort', abort); reject(error);}};
-                    const abort = () => {
-                        const index = this.backpressureQueue.indexOf(entry); if (index !== -1) this.backpressureQueue.splice(index, 1);
-                        entry.reject(scope.signal.reason);
-                    };
-                    scope.signal.addEventListener('abort', abort, {once: true}); this.backpressureQueue.push(entry);
-                })).catch(() => {});
-            } else this.backpressureQueue.push({
-                queue: pool_queue,
-                payload: payload,
-                options: { headers }
-            });
-            return false;
-        }
+        return this.controlledSendToQueue(pool_queue, payload, {headers});
     }
 
-    controlledSendToQueue(pool_queue: string, payload: Buffer, options: Options.Publish): boolean {
-        this.assertWorkerAttemptActive();
-        if (this.ch) {
-            const enqueueResult = this.workerBufferedPublication(this.ch, () => this.ch!.sendToQueue(pool_queue, payload, options));
-            if (!enqueueResult) {
-                this.waitToSend = true;
-            }
-            return enqueueResult;
-        } else {
-            hLog("Channel was not created!");
-            return false;
-        }
+    async controlledSendToQueue(pool_queue: string, payload: Buffer, options: Options.Publish): Promise<boolean> {
+        await this.publishDurableWorkerOutput(pool_queue, payload, options);
+        return true;
     }
 
     // createSerialBuffer(inputArray: Uint8Array) {
@@ -1753,7 +1703,7 @@ export default class MainDSWorker extends HyperionWorker {
             const key2 = `${contractRowDelta.code}:*`;
             const key3 = `*:${contractRowDelta.table}`;
 
-            if (!deferDynamic) this.pushToDynamicTableQueue(contractRowDelta);
+            if (!deferDynamic) await this.pushToDynamicTableQueue(contractRowDelta);
 
             // strict code::table handlers
             if (this.tableHandlers[key]) {
@@ -1820,14 +1770,8 @@ export default class MainDSWorker extends HyperionWorker {
             this.stageProtocolPublication(() => undefined, 0); return Promise.resolve();
         }
         this.assertWorkerAttemptActive();
-        const attempt = currentProofConsumerScope(), channel = this.ch;
-        const queue = (value: QueuePayload) => {
-            const publish = attempt?.bindCallback(() => {
-                if (!channel || channel !== this.ch || !this.ch_ready) throw new Error('Original derived publisher is unavailable');
-                return this.workerBufferedPublication(channel, () => channel.sendToQueue(value.queue, value.content, {headers: value.headers}));
-            });
-            return trackProofConsumerOperation(() => this.preIndexingQueue.push({...value, ...(publish ? {publish} : {})}));
-        };
+        const queue = (value: QueuePayload) => this.enqueueDurableWorkerOutput(this.preIndexingQueue,
+            value.queue, value.content, {headers: value.headers});
         if (!this.protocolDerivedPublications?.getStore()) return queue(payload);
         const retained: QueuePayload = {queue: payload.queue, content: Buffer.from(payload.content),
             ...(payload.headers !== undefined ? {headers: structuredClone(payload.headers)} : {})};
@@ -1902,7 +1846,7 @@ export default class MainDSWorker extends HyperionWorker {
             data: jsonRow.data,
             ...(jsonRow['protocol'] ? {protocol: jsonRow['protocol']} : {})
         };
-        this.enqueueDerivedPublication({
+        const publication = this.enqueueDerivedPublication({
             queue: this.chain + ":index_dynamic:" + (this.dyn_emit_idx),
             content: bufferFromJson(doc),
             headers: {
@@ -1911,11 +1855,12 @@ export default class MainDSWorker extends HyperionWorker {
                 block_num: jsonRow.block_num,
                 present: jsonRow.present
             }
-        }).catch(console.log);
+        });
         this.dyn_emit_idx++;
         if (this.dyn_emit_idx > this.conf.scaling.dyn_idx_queues) {
             this.dyn_emit_idx = 1;
         }
+        return publication;
     }
 
     async pushToDeltaQueue(bufferData: any, block_num) {
@@ -2436,7 +2381,7 @@ export default class MainDSWorker extends HyperionWorker {
                         this.temp_delta_counter++;
                     }
                     await revalidate();
-                    this.pushToDynamicTableQueue(dynamicPayload);
+                    await this.pushToDynamicTableQueue(dynamicPayload);
                     scope.accepting = false;
                     if (scope.failure) throw scope.failure;
                     // Builtin handlers can await and call several core publication helpers.

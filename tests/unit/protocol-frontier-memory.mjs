@@ -1,3 +1,26 @@
+import {Readable} from 'node:stream';
+import {Client, BaseConnection, Transport} from '@elastic/elasticsearch';
+
+/** Exercise the public SDK child/stream boundary over a controlled ES method transport. */
+export function withControlledHintChild(client) {
+    client.transport = {constructor: Transport};
+    client.child = options => {
+        class Connection extends BaseConnection {
+            async close() {}
+            async request(params, transportOptions) {
+                const parts = params.path.slice(1).split('/').map(decodeURIComponent);
+                if (params.method !== 'POST' || parts[1] !== '_mget') throw new Error('Unexpected controlled child request');
+                const query = new URLSearchParams(params.querystring);
+                const reply = await client.mget({index: parts[0], ...JSON.parse(params.body), _source: query.get('_source') === 'true'}, transportOptions);
+                return reply?.body instanceof Readable ? reply : {statusCode: 200,
+                    headers: {'content-type': 'application/json', 'x-elastic-product': 'Elasticsearch'},
+                    body: Readable.from([Buffer.from(JSON.stringify(reply))])};
+            }
+        }
+        return new Client({node: 'http://controlled.invalid:9200', Connection, Transport: options.Transport, maxRetries: 0});
+    };
+    return client;
+}
 /** Small ES transport fixture: independent index metadata, exact-ID documents and real CAS tokens. */
 export function frontierMemoryClient(replicas=0) {
     const documents=new Map(),mappings=new Map(),settings=new Map(),calls=[],sequences=new Map(),faults={};
@@ -10,6 +33,14 @@ export function frontierMemoryClient(replicas=0) {
     const note=(method,request)=>calls.push({method,request:structuredClone(request)});
     const client={
         indices:{
+            async get(request){
+                note('getIndex',request);if(!mappings.has(request.index))throw missingIndex(request.index);
+                const mapping=structuredClone(mappings.get(request.index)),setting=structuredClone(settings.get(request.index));
+                const left=await (faults.mapping?.(mapping,request)??{[request.index]:{mappings:mapping}});
+                const right=await (faults.settings?.(setting,request)??{[request.index]:{settings:setting}});
+                return Object.fromEntries([...new Set([...Object.keys(left),...Object.keys(right)])]
+                    .map(index=>[index,{...left[index],...right[index]}]));
+            },
             async create(request){
                 note('createIndex',request);await faults.beforeIndex?.(request);
                 if(mappings.has(request.index))throw Object.assign(new Error('index exists'),{meta:{statusCode:400,body:{error:{type:'resource_already_exists_exception'}}}});
@@ -44,6 +75,28 @@ export function frontierMemoryClient(replicas=0) {
             documents.set(key(request.index,request.id),{document:structuredClone(request.document),seq:result._seq_no,primaryTerm:1});
             return faults.receipt?.(result,request)??result;
         },
+        async mget(request,options){
+            note('mget',request);await faults.beforeMget?.(request,options);
+            if(!mappings.has(request.index))throw missingIndex(request.index);
+            const docs=request.ids.map(id=>{
+                const stored=documents.get(key(request.index,id));
+                return stored?{_index:request.index,_id:id,found:true,_seq_no:stored.seq,_primary_term:stored.primaryTerm,
+                    ...(request._source === true ? {_source:structuredClone(stored.document)} : {})}
+                    :{_index:request.index,_id:id,found:false};
+            });
+            // Keep document-read faults observable after the complete cloned response snapshot.
+            // Source-free membership hints deliberately do not read any document body.
+            if(request._source===true&&faults.read)for(let index=0;index<docs.length;index++){
+                const item=docs[index];
+                if(item.found)docs[index]=await(faults.read?.(item,{...request,id:item._id})??item);
+            }
+            const result=await (faults.mget?.({docs},request,options)??{docs});
+            if(options?.asStream){
+                const reply={statusCode:200,headers:{'content-type':'application/json','x-elastic-product':'Elasticsearch'},body:Readable.from([Buffer.from(JSON.stringify(result))])};
+                return faults.mgetStream?.(reply,request,options)??reply;
+            }
+            return result;
+        },
         async get(request){
             note('get',request);await faults.beforeRead?.(request);
             if(!mappings.has(request.index))throw missingIndex(request.index);
@@ -53,5 +106,6 @@ export function frontierMemoryClient(replicas=0) {
             return faults.read?.(result,request)??result;
         },
     };
-    return {client,documents,mappings,settings,calls,faults,key};
+    withControlledHintChild(client);
+    return {client,documents,mappings,settings,sequences,calls,faults,key};
 }

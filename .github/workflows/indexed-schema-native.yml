@@ -1,0 +1,54 @@
+name: Indexed cbfb native MongoDB engineering
+# Retired source-pin qualification: manual only, see docs/qualification/retired-source-pins.md.
+on:
+  workflow_dispatch:
+jobs:
+  indexed-native:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['24.22.1', '26.4.0']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: |
+          npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false
+          npm ci --allow-git=all --ignore-scripts=false
+          test "$(bun --version)" = "$(cat .bun-version)"
+          test "$(bun -p process.versions.typescript)" = "7.0.2"
+          bun check -p tsconfig.json
+          bun check -p packages/backend-mongodb/tsconfig.json
+          npm run build
+      - run: |
+          mkdir -p out
+          node scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.mjs --profile indexed-schema-all-cbfb-root-native-wire34-engineering-v1 > out/indexed-wire34-cbfb-native-source-${{ matrix.node }}.json
+      - env:
+          HYPERION_NATIVE_RUNNER_SOURCE: scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-runner.mjs
+          HYPERION_NATIVE_CONTROLLER_SOURCE: scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-ci.mjs
+        run: node --test scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.test.mjs scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-offline.test.mjs scripts/qualification/indexed-schema-mongodb/all-cbfb-native-teardown.test.mjs scripts/qualification/indexed-schema-mongodb/wire34-cbfb-migration.test.mjs
+      - run: npm run test:indexed:finite
+        env:
+          HYPERION_INDEXED_TEST_PROFILE: cbfb
+      - run: npm run test:indexed:cbfb:package
+        env:
+          HYPERION_INDEXED_TEST_PROFILE: cbfb
+      - run: node scripts/qualification/indexed-schema-mongodb/wire34-cbfb-native-ci.mjs --profile indexed-schema-mongodb-wire34-cbfb-linux-gha-v1 out/indexed-wire34-cbfb-native-${{ matrix.node }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: indexed-wire34-cbfb-native-${{ matrix.node }}
+          path: |
+            out/indexed-wire34-cbfb-native-source-${{ matrix.node }}.json
+            out/indexed-wire34-cbfb-native-${{ matrix.node }}/
+            out/indexed-packed-*/receipt.json
+            out/indexed-packed-*/*.stdout
+            out/indexed-packed-*/*.stderr
+            out/indexed-packed-*/failed.json
+          if-no-files-found: error

@@ -2,6 +2,7 @@ import { z } from "zod/v4";
 
 import {AlertManagerOptions} from "../indexer/modules/alertsManager.js";
 import {resolvePortableStateConfiguration, type PortableStateConfiguration} from '../indexer/projection/config.js';
+import {resolveStatefulOwnerConfigurationV2, type StatefulOwnerConfigurationV2} from '../indexer/projection/stateful-config.js';
 
 /**
  * Contract usage statistics structure
@@ -57,10 +58,14 @@ export interface TieredIndexAllocationSettings {
 }
 
 export interface MainSettings {
+    /** Qualification-only encoded SHiP source-credit reservations; downstream/projection accounting is separate. */
+    source_credit_capacity?: import('../indexer/helpers/source-credit-capacity.js').SourceCreditCapacityConfiguration;
     /** Executable protocol selection is fixed for the worker lifetime. */
     protocol?: import("../indexer/protocol/selection.js").ChainProtocolConfiguration;
     reader_recovery_window_blocks?: number;
-    protocol_abi_coordination?: {max_pending_blocks?: number; recovery_window_blocks?: number};
+    protocol_abi_history?: import('../indexer/protocol/disk-abi-history.js').DiskAbiHistoryConfiguration;
+    protocol_abi_coordination?: {max_pending_blocks?: number; recovery_window_blocks?: number; qualification_genesis_start?: true;
+        historical_certificates?: {interface_version: 1; max_commits_per_drain: number; max_commit_bytes_per_drain: number; max_ms_per_drain: number; allow_pending_work?:true}};
     use_global_agent?: boolean;
     process_prefix?: string;
     ignore_snapshot?: boolean;
@@ -282,6 +287,7 @@ export interface HyperionConfig {
     };
     features: {
         portable_state?: PortableStateConfiguration;
+        stateful_owner_v2?: StatefulOwnerConfigurationV2;
         streaming: {
             enable: boolean,
             traces: boolean,
@@ -429,15 +435,27 @@ const TieredIndexAllocationSettingsSchema = z.object({
 });
 
 export const HyperionSettingsConfigSchema = z.object({
+    source_credit_capacity: z.object({interface_version: z.literal(1), qualification_only: z.literal(true),
+        maximum_ingress_bytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER)}).strict().optional(),
     protocol: z.discriminatedUnion('provider', [
         z.object({provider: z.literal('antelope')}).strict(),
         z.object({provider: z.literal('extension'), package: z.string().regex(/^(?:@[a-z0-9_.-]+\/)?[a-z0-9_.-]+$/),
             profileId: z.string().regex(/^[a-z][a-z0-9._-]{0,127}$/)}).strict(),
     ]).optional(),
     reader_recovery_window_blocks: z.number().int().positive().optional(),
+    protocol_abi_history: z.object({interface_version:z.literal(1),manifest:z.string().min(1),manifest_sha256:z.string().regex(/^[0-9a-f]{64}$/),
+        producer_profile_id:z.string().min(1).max(128),node_revision:z.string().regex(/^[0-9a-f]{40}$/),ship_abi_sha256:z.string().regex(/^[0-9a-f]{64}$/)}).strict().optional(),
     protocol_abi_coordination: z.object({
+        qualification_genesis_start: z.literal(true).optional(),
         max_pending_blocks: z.number().int().min(1).max(4096).optional(),
         recovery_window_blocks: z.number().int().min(1).max(4096).optional(),
+        historical_certificates: z.object({
+            interface_version: z.literal(1),
+            allow_pending_work: z.literal(true).optional(),
+            max_commits_per_drain: z.number().int().min(1).max(256),
+            max_commit_bytes_per_drain: z.number().int().min(1024).max(128 * 1024 * 1024),
+            max_ms_per_drain: z.number().int().min(1).max(30000),
+        }).strict().optional(),
     }).strict().optional(),
     use_global_agent: z.boolean().optional(),
     process_prefix: z.string().optional(),
@@ -561,6 +579,9 @@ const ContractStateSchema = z.object({
 });
 
 const FeaturesSchema = z.object({
+    stateful_owner_v2: z.custom<StatefulOwnerConfigurationV2>(value => {
+        try {return resolveStatefulOwnerConfigurationV2(value) !== undefined;} catch {return false;}
+    }, 'Invalid stateful owner version2 configuration').optional(),
     portable_state: z.custom<PortableStateConfiguration>(value => {
         try {return resolvePortableStateConfiguration(value, '0'.repeat(64)) !== undefined;} catch {return false;}
     }, 'Invalid portable state backend or projection definitions').optional(),

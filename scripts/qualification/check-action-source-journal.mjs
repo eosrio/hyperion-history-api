@@ -7,6 +7,10 @@ import {basename, dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {Client} from '@elastic/elasticsearch';
 
+// Fail before run identity, timers, Docker, output or store effects when CI selects an engineering source set.
+if (process.env.HYPERION_NATIVE_SOURCE_PROFILE)
+    (await import('../../tests/unit/stateful-engineering-source-admission.mjs')).admitNativeSourceEnvironment();
+
 // This component fixture accepts no borrowed URL, credentials, image override,
 // operator namespace or live cluster settings. All mutations stay in this run.
 const image = 'docker.elastic.co/elasticsearch/elasticsearch@sha256:c40a1fb2bc6976821e5625d2329992a1e9c29df576e5955fdcba02421abf0d3c';

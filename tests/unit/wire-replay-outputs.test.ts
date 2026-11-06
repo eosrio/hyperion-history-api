@@ -299,7 +299,7 @@ describe('Wire replay output qualification guards (constructed component records
         const {source, memory, readStart} = await storedFixture();
         const result = await assertWireReplayOutputs(memory.client as any, 'owned', source, '_only_nodes:fixture-data');
         expect(result.sourceProofs).toHaveLength(119); expect(result.coordinatorCommits).toBe(119);
-        expect(memory.calls.slice(readStart).every((row: any) => ['getMapping', 'getSettings', 'get'].includes(row.method))).toBe(true);
+        expect(memory.calls.slice(readStart).every((row: any) => ['getIndex', 'getMapping', 'getSettings', 'get'].includes(row.method))).toBe(true);
         expect(memory.calls.slice(readStart).filter((row: any) => row.method === 'get').every((row: any) => row.request.preference === '_only_nodes:fixture-data')).toBe(true);
         const controlIndex = 'owned-protocol-abi-frontier-v1'; memory.settings.get(controlIndex)['index.number_of_replicas'] = '0';
         await expect(assertWireReplayOutputs(memory.client as any, 'owned', source)).rejects.toThrow('durability or retention is incompatible');
@@ -313,7 +313,7 @@ describe('Wire replay output qualification guards (constructed component records
         const chunk = memory.documents.get(memory.key(observations.index, manifest.document.chunk_ids[0]));
         chunk.document.payload = Buffer.from('corrupt payload').toString('base64');
         await expect(assertWireReplayOutputs(memory.client as any, 'owned', source)).rejects.toThrow('chunk integrity mismatch');
-        expect(memory.calls.slice(readStart).every((row: any) => ['getMapping', 'getSettings', 'get'].includes(row.method))).toBe(true);
+        expect(memory.calls.slice(readStart).every((row: any) => ['getIndex', 'getMapping', 'getSettings', 'get'].includes(row.method))).toBe(true);
     });
     it.each(['identity', 'payer', 'source', 'tombstone', 'value', 'numeric table', 'ABI binding'] as const)('rejects wrong KV output: %s', mode => {
         const {expected, actual} = ready(), first = actual.deltas[0]._source;

@@ -4,7 +4,7 @@ import { API, APIClient } from '@wharfkit/antelope';
 import { queue, QueueObject } from 'async';
 
 import cluster, { Worker } from 'cluster';
-import {randomUUID} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 
 import { createWriteStream, existsSync, mkdirSync, readFileSync, symlinkSync, unlinkSync, writeFileSync, WriteStream } from 'fs';
 
@@ -42,25 +42,199 @@ import { HyperionIndexerMonitor } from './indexerMonitor.js';
 import { HyperionLifecycleManager } from './lifecycleManager.js';
 import { HyperionModuleLoader } from './loader.js';
 import { HyperionQueueMonitor } from './queueMonitor.js';
+import {resolveSourceCreditCapacity, SourceCreditCapacityCoordinator, isSourceCreditCapacityRequest,
+    type SourceCreditCapacityReply, type SourceCreditCapacityOptions} from '../helpers/source-credit-capacity.js';
 import {loadChainProtocol} from '../protocol/selection.js';
 import {ProtocolAbiCoordinator} from '../protocol/abi-coordinator.js';
+import {DiskAbiHistoryCatalog} from '../protocol/disk-abi-history.js';
 import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
-import {ProtocolSourceBindingStore} from '../protocol/source-bindings.js';
+import {ProtocolSourceBindingStore, type ProtocolSourcePosition} from '../protocol/source-bindings.js';
 import {ProtocolAbiObservationStore} from '../protocol/abi-observation-store.js';
 import {isProtocolAbiCoordinatorRequest, type ProtocolAbiCoordinatorReply} from '../protocol/abi-coordinator-rpc.js';
 import {ensureProtocolActionMapping} from '../protocol/action-proof-mapping.js';
 import {resolvePortableStateConfiguration} from '../projection/config.js';
+import {resolveStatefulOwnerConfigurationV2} from '../projection/stateful-config.js';
+import {StatefulWorkerProbeBroker} from '../projection/stateful-control.js';
 import {WorkerAttemptSupervisor, type WorkerAttemptRole} from '../protocol/worker-attempt-supervisor.js';
+import {ActionAttemptAdjudicator, type CurrentAttemptCanonicalBlock} from '../history/action-attempt-adjudicator.js';
+import {ActionSourceAdmissionStore} from '../history/action-source-admission.js';
+import {actionConfigurationSnapshot} from '../history/action-producer-epoch.js';
 import {assertActionSequenceTemplateReadback, ensureActionSequenceMappings,
     ensureActionSequenceWriteTemplate} from '../history/action-sequence-storage.js';
 
 import Timeout = NodeJS.Timeout;
 import { IPermission } from '../../interfaces/table-permissions.js';
 
+interface ActionLibAnchor {readonly worker: Worker; readonly blockNum: number; readonly blockId: string}
+
 export class HyperionMaster {
+    private sourceCreditCapacity?: SourceCreditCapacityCoordinator<Worker>;
+    private sourceCreditOptions?: SourceCreditCapacityOptions | null;
+    private sourceCreditRestartRequired = false;
+    private sourceCreditConfiguration(): SourceCreditCapacityOptions | null {
+        if (this.sourceCreditOptions === undefined) this.sourceCreditOptions = this.conf?.settings?.source_credit_capacity === undefined
+            ? null : resolveSourceCreditCapacity(this.conf) ?? null;
+        return this.sourceCreditOptions;
+    }
+    private assertSourceCreditConfigurationUnchanged(configuration: HyperionConfig): void {
+        const next = configuration.settings?.source_credit_capacity === undefined ? null : resolveSourceCreditCapacity(configuration) ?? null;
+        if (JSON.stringify(next) !== JSON.stringify(this.sourceCreditConfiguration()))
+            throw new Error('Source-credit configuration changed; controlled restart required');
+    }
+    private handleSourceCreditCapacity(worker: Worker, message: WorkerMessage): void {
+        if (!isSourceCreditCapacityRequest(message)) return;
+        let data: SourceCreditCapacityReply['data'];
+        try {
+            const options = this.sourceCreditConfiguration();
+            this.assertSourceCreditConfigurationUnchanged(this.conf);
+            if (!options || this.shutdownStarted || this.mode_transition
+                || !this.workerMap.some(value => value.wref === worker && value.worker_role === 'continuous_reader'))
+                throw new Error('Source-credit capacity lacks a current qualification reader');
+            this.sourceCreditCapacity ??= new SourceCreditCapacityCoordinator(options);
+            if (!this.sourceCreditCapacity.matches(options)) throw new Error('Source-credit configuration changed; controlled restart required');
+            data = {ok: true, result: this.sourceCreditCapacity.update(worker, message.data)};
+        } catch (error) {data = {ok: false, error: String((error as Error)?.message ?? error).slice(0, 512)};}
+        try {worker.send({event: 'source_credit_capacity_reply', mId: message.mId, data} satisfies SourceCreditCapacityReply,
+            error => {if (error) this.replacePressureCarrier(worker);});}
+        catch {this.replacePressureCarrier(worker);}
+    }
+    getSourceCreditCapacitySnapshot() {return this.sourceCreditCapacity?.snapshot() ?? null;}
+    private statefulProbes?: StatefulWorkerProbeBroker<Worker>;
+    async probeStatefulOwner(target: string, signal: AbortSignal): Promise<boolean> {
+        const configuration = resolveStatefulOwnerConfigurationV2(this.conf.features.stateful_owner_v2, this.conf.features.portable_state);
+        if (!configuration) return false;
+        const isCurrent = (worker: Worker) => this.workerMap.some(definition => definition.wref === worker && definition.worker_role === 'projection')
+            && this.workerAttemptSupervisor?.ownsActiveWorker(worker, 'projection') === true;
+        this.statefulProbes ??= new StatefulWorkerProbeBroker(configuration.api.maximumPendingProbes, configuration.api.timeoutMs, isCurrent);
+        const workers = this.workerMap.filter(definition => definition.worker_role === 'projection' && definition.wref && isCurrent(definition.wref));
+        return workers.length === 1 ? this.statefulProbes.probe(workers[0].wref!, target, signal) : false;
+    }
     // Own physical Worker objects independently of the replaceable logical workerMap entries.
     private workerAttemptSupervisor?: WorkerAttemptSupervisor;
-    private get attemptSupervisor(): WorkerAttemptSupervisor {return this.workerAttemptSupervisor ??= new WorkerAttemptSupervisor();}
+    private actionAttemptAdjudicator?: ActionAttemptAdjudicator;
+    private actionCanonicalLib?: ActionLibAnchor;
+    private readonly protocolSourceProbes = new Map<string, {worker: Worker; readerSessionId: string;
+        generation: string; resolve: (current: boolean) => void}>();
+    private probePhysicalReversibleSource(worker: Worker, readerSessionId: string, generation: string,
+                                          source: ProtocolSourcePosition): Promise<boolean> {
+        return new Promise(resolve => {
+            const requestId = randomUUID();
+            let timer: Timeout;
+            const finish = (current: boolean) => {
+                if (!this.protocolSourceProbes.delete(requestId)) return;
+                clearTimeout(timer);
+                resolve(current);
+            };
+            timer = setTimeout(() => finish(false), 5000);
+            this.protocolSourceProbes.set(requestId, {worker, readerSessionId, generation, resolve: finish});
+            try {worker.send({event: 'protocol_source_probe_request', data: {requestId, readerSessionId, generation, source}},
+                error => {if (error) finish(false);});}
+            catch {finish(false);}
+        });
+    }
+    private get attemptSupervisor(): WorkerAttemptSupervisor {
+        if (!this.workerAttemptSupervisor) {
+            const supervisor = new WorkerAttemptSupervisor({onEnd: evidence => this.attemptAdjudicatorFor(supervisor).enqueue(evidence)});
+            this.workerAttemptSupervisor = supervisor;
+        }
+        return this.workerAttemptSupervisor;
+    }
+    /** Canonical identity checks do not decode a chain-specific signed block header. */
+    private async readCanonicalRpcBlock(blockNum: number) {
+        if (!Number.isSafeInteger(blockNum) || blockNum < 1 || blockNum > 0xffffffff)
+            throw new Error('Invalid canonical RPC block number');
+        const response = await this.rpc.call<unknown>({path: '/v1/chain/get_block', params: {block_num_or_id: blockNum}});
+        const block = response as {block_num?: unknown; id?: unknown; previous?: unknown};
+        if (!block || typeof block !== 'object' || Array.isArray(block) || block.block_num !== blockNum
+            || typeof block.id !== 'string' || !/^[0-9a-f]{64}$/i.test(block.id)
+            || typeof block.previous !== 'string' || !/^[0-9a-f]{64}$/i.test(block.previous))
+            throw new Error('RPC returned an inconsistent canonical block identity');
+        return {blockId: block.id.toLowerCase(), previousBlockId: blockNum === 1 ? null : block.previous.toLowerCase()};
+    }
+    private captureActionLibAnchor(blockNum: number): () => ActionLibAnchor {
+        const anchor = this.actionCanonicalLib, coordinator = this.protocolAbiCoordinator, source = this.protocolAbiSource;
+        const readerSessionId = source?.readerSessionId, generation = source?.generation;
+        const sourceFence = coordinator && source && generation ? coordinator.retainSourceFence(source.readerSessionId, generation) : undefined;
+        let lastValidatedBlockNum = anchor?.blockNum ?? 0, lastValidatedBlockId = anchor?.blockId;
+        return () => {
+            const current = this.actionCanonicalLib;
+            if (!anchor || this.shutdownStarted || this.liveReader?.wref !== anchor.worker
+                || !anchor.worker.isConnected() || anchor.worker.isDead() || anchor.blockNum < blockNum
+                || !this.workerMap.some(definition => definition.wref === anchor.worker && definition.worker_role === 'continuous_reader')
+                || !current || current.worker !== anchor.worker || current.blockNum < lastValidatedBlockNum
+                || current.blockNum === lastValidatedBlockNum && current.blockId !== lastValidatedBlockId
+                || this.protocolAbiCoordinator !== coordinator || this.protocolAbiSource !== source
+                || source?.readerSessionId !== readerSessionId || source?.generation !== generation
+                || (coordinator ? !source || !generation || source.worker !== anchor.worker
+                    || !this.isCurrentProtocolLiveReader(anchor.worker) || !sourceFence?.() : !!source))
+                throw new Error('Current live SHIP irreversible anchor is unavailable');
+            lastValidatedBlockNum = current.blockNum; lastValidatedBlockId = current.blockId;
+            return anchor;
+        };
+    }
+    private attemptAdjudicatorFor(supervisor: WorkerAttemptSupervisor): ActionAttemptAdjudicator {
+        if (this.actionAttemptAdjudicator) return this.actionAttemptAdjudicator;
+        const canonicalChecks = new WeakMap<CurrentAttemptCanonicalBlock, () => void>();
+        return this.actionAttemptAdjudicator = new ActionAttemptAdjudicator(supervisor,
+            new ActionSourceAdmissionStore(this.esClient, this.chain, this.conf.settings.es_replicas ?? 0),
+            new ProtocolSourceBindingStore(this.esClient, this.chain, this.conf.settings.es_replicas ?? 0, {readOnly: true}), {
+                configurationSha256: () => createHash('sha256').update(actionConfigurationSnapshot(this.conf, this.cm.filters,
+                    this.mLoader.snapshotActionHandlers())).digest('hex'),
+                canonicalBlock: async blockNum => {
+                    const info = await this.rpc.v1.chain.get_info();
+                    if (info.head_block_num.toNumber() < blockNum) throw new Error('Canonical node is behind the original worker source');
+                    const irreversible = info.last_irreversible_block_num.toNumber() >= blockNum;
+                    const checkAnchor = irreversible && this.conf.indexer.live_reader ? this.captureActionLibAnchor(blockNum) : undefined;
+                    const live = !irreversible ? this.protocolAbiSource : undefined, coordinator = this.protocolAbiCoordinator;
+                    const readerSessionId = live?.readerSessionId, generation = live?.generation;
+                    const sourceFence = live && generation ? coordinator?.retainSourceFence(live.readerSessionId, generation) : undefined;
+                    // RPC alone can lag a SHIP fork. An authenticated live reader's LIB anchors its branch.
+                    if (checkAnchor) {
+                        const lib = checkAnchor();
+                        const anchored = await this.readCanonicalRpcBlock(lib.blockNum);
+                        checkAnchor();
+                        if (anchored.blockId !== lib.blockId)
+                            throw new Error('RPC and live SHIP irreversible branches differ');
+                    }
+                    const block = await this.readCanonicalRpcBlock(blockNum);
+                    checkAnchor?.();
+                    const observation = Object.freeze({chainId: String(info.chain_id).toLowerCase(), ...block, irreversible});
+                    canonicalChecks.set(observation, () => {
+                        if (this.shutdownStarted) throw new Error('Canonical action observation is no longer current');
+                        checkAnchor?.();
+                        if (!irreversible && (!live || !generation || !coordinator || this.protocolAbiSource !== live
+                            || this.protocolAbiCoordinator !== coordinator || live.readerSessionId !== readerSessionId
+                            || live.generation !== generation || !this.isCurrentProtocolLiveReader(live.worker)
+                            || !live.worker.isConnected() || live.worker.isDead() || !sourceFence?.()))
+                            throw new Error('Canonical action source scope is no longer current');
+                    });
+                    return observation;
+                },
+                assertCanonicalCurrent: block => {
+                    const check = canonicalChecks.get(block);
+                    if (!check) throw new Error('Unissued canonical action observation');
+                    check();
+                },
+                reversibleSelection: async (selectionId, source, readerSessionId) => {
+                    const live = this.protocolAbiSource, coordinator = this.protocolAbiCoordinator;
+                    if (!live?.generation || !coordinator || live.readerSessionId !== readerSessionId
+                        || !this.isCurrentProtocolLiveReader(live.worker)) return false;
+                    const generation = live.generation;
+                    if (!await coordinator.currentlyAdmittedSource(selectionId, source, readerSessionId, generation)) return false;
+                    if (!await this.probePhysicalReversibleSource(live.worker, readerSessionId, generation, source)) return false;
+                    // The reader barrier may have processed a fork and changed the coordinator during the round trip.
+                    const admitted = await coordinator.currentlyAdmittedSource(selectionId, source, readerSessionId, generation);
+                    return admitted && this.protocolAbiSource === live && live.generation === generation
+                        && this.isCurrentProtocolLiveReader(live.worker);
+                },
+                targetUuid: async name => {
+                    const settings = await this.esClient.indices.getSettings({index: name, flat_settings: true});
+                    const uuid = settings[name]?.settings?.['index.uuid'];
+                    if (Object.keys(settings).length !== 1 || typeof uuid !== 'string') throw new Error('Action target is unavailable');
+                    return uuid;
+                }
+            });
+    }
     // global configuration
     conf: HyperionConfig;
 
@@ -206,6 +380,7 @@ export class HyperionMaster {
         }
 
         this.conf = this.cm.config;
+        this.sourceCreditConfiguration(); // Capture valid opt-in before clients and keep it fixed for this master lifetime.
 
         if (this.conf.settings.use_global_agent) {
             const require = createRequire(import.meta.url);
@@ -284,9 +459,16 @@ export class HyperionMaster {
 
     initHandlerMap() {
         this.msgHandlerMap = {
+            source_credit_capacity_request: (worker: Worker, message: WorkerMessage) => {this.handleSourceCreditCapacity(worker, message);},
             reader_pressure_ready: (worker: Worker) => { this.syncReaderPressure(worker); },
             protocol_abi_coordinator_request: async (worker: Worker, msg: WorkerMessage) => {
                 await this.handleProtocolAbiCoordinatorRequest(worker, msg);
+            },
+            protocol_source_probe_reply: (worker: Worker, msg: WorkerMessage) => {
+                const reply = msg.data, pending = this.protocolSourceProbes.get(reply?.requestId);
+                if (pending?.worker !== worker || pending.readerSessionId !== reply.readerSessionId
+                    || pending.generation !== reply.generation || typeof reply.current !== 'boolean') return;
+                pending.resolve(reply.current);
             },
             protocol_abi_source_revoked: (worker: Worker, msg: WorkerMessage) => {
                 if (!this.isCurrentProtocolLiveReader(worker) || typeof msg.data?.readerSessionId !== 'string') return;
@@ -302,6 +484,7 @@ export class HyperionMaster {
                 if (this.workerMap.some(definition => definition.wref === worker && definition.worker_role === 'projection'))
                     debugLog('Portable state projection progress:', msg.data);
             },
+            stateful_owner_probe_reply: (worker: Worker, msg: WorkerMessage) => {this.statefulProbes?.accept(worker, msg.data);},
             skipped_block: (_worker: Worker, msg: WorkerMessage) => {
                 if (msg.block_num) {
                     this.indexerMonitor.consumedBlocks++;
@@ -531,9 +714,13 @@ export class HyperionMaster {
                     }
                 }
             },
-            lib_update: (_worker: Worker, msg: WorkerMessage) => {
+            lib_update: (worker: Worker, msg: WorkerMessage) => {
+                if (this.liveReader?.wref !== worker) return;
                 // publish LIB to hub
                 if (msg.data) {
+                    const blockNum = Number(msg.data.block_num), blockId = String(msg.data.block_id).toLowerCase();
+                    if (!Number.isSafeInteger(blockNum) || blockNum < 1 || !/^[0-9a-f]{64}$/.test(blockId)) return;
+                    this.actionCanonicalLib = {worker, blockNum, blockId};
                     // save local lib
                     this.lastIrreversibleBlock = msg.data.block_num;
 
@@ -619,21 +806,48 @@ export class HyperionMaster {
         };
     }
 
+    private validateQualificationGenesisStart(): void {
+        if (!this.conf.settings.protocol_abi_coordination?.qualification_genesis_start) return;
+        const indexer=this.conf.indexer;
+        if (!/^[a-z0-9][a-z0-9_-]{0,127}$/.test(this.chain) || this.conf.settings.protocol?.provider!=='extension'
+            || !indexer.live_reader || !indexer.live_only_mode || indexer.start_on!==1 || indexer.stop_on!==0
+            || this.conf.settings.preview || indexer.rewrite || indexer.purge_queues || indexer.disable_reading
+            || !indexer.fetch_block || !indexer.fetch_traces || !indexer.fetch_deltas)
+            throw new Error('Qualification genesis requires a fresh live-only native source with full block and delta fetch');
+    }
+
     private async initializeProtocolAbiCoordinator(): Promise<void> {
         // A bulk-only process must never acquire or replace live-source ownership.
-        if (this.conf.settings.protocol?.provider !== 'extension' || !this.conf.indexer.live_reader || this.protocolAbiCoordinator) return;
+        if ((this.conf.settings.protocol?.provider !== 'extension' && this.engineering?.exactActionSequenceStorage !== true)
+            || !this.conf.indexer.live_reader || this.protocolAbiCoordinator) return;
         try {
-            const selected = await loadChainProtocol(this.conf.settings.protocol);
+            const selected = await loadChainProtocol(this.conf.settings.protocol, {sourceEvidence: true});
             const replicas = this.conf.settings.es_replicas ?? 0;
             const options = this.conf.settings.protocol_abi_coordination;
-            const coordinator = new ProtocolAbiCoordinator({chainId: this.manager.conn.chains[this.chain].chain_id,
-                profile: {id: selected.id, profileId: selected.provider.profileId, components: selected.components ?? []},
+            if (options?.qualification_genesis_start) {
+                this.validateQualificationGenesisStart();
+                if (typeof selected.provider.verifyNativeGenesis!=='function')
+                    throw new Error('Qualification genesis requires a native genesis verifier');
+
+            }
+            const chainId=this.manager.conn.chains[this.chain].chain_id;
+            const profile={id:selected.id,profileId:selected.provider.profileId,components:selected.components??[]};
+            const diskAbiHistory=this.conf.settings.protocol_abi_history
+                ?DiskAbiHistoryCatalog.fromConfiguration(this.conf.settings.protocol_abi_history,chainId,profile):undefined;
+            const coordinator = new ProtocolAbiCoordinator({chainId,profile,diskAbiHistory,
                 ownerId: randomUUID(), bindings: new ProtocolSourceBindingStore(this.esClient, this.chain, replicas),
                 observations: new ProtocolAbiObservationStore(this.esClient, this.chain, replicas),
                 store: new ProtocolAbiFrontierStore(this.esClient, this.chain, replicas),
                 verifyNativeGenesis: selected.provider.verifyNativeGenesis?.bind(selected.provider),
                 nativeActionInterfaceVersion: selected.provider.nativeActions?.interfaceVersion,
-                maxPendingBlocks: options?.max_pending_blocks, recoveryWindowBlocks: options?.recovery_window_blocks});
+                maxPendingBlocks: options?.max_pending_blocks, recoveryWindowBlocks: options?.recovery_window_blocks,
+                qualificationGenesisStart: options?.qualification_genesis_start,
+                historicalCertificates: options?.historical_certificates && {interfaceVersion: 1,
+                    ...(options.historical_certificates.allow_pending_work===true?{allowPendingWork:true as const}:{}),
+                    maxCommitsPerDrain: options.historical_certificates.max_commits_per_drain,
+                    maxCommitBytesPerDrain: options.historical_certificates.max_commit_bytes_per_drain,
+                    maxMillisecondsPerDrain: options.historical_certificates.max_ms_per_drain},
+                onHistoricalError: error => hLog('Historical state source remains unavailable:', error)});
             await coordinator.start();
             this.protocolAbiCoordinator = coordinator;
             this.protocolAbiDrainTimer = setInterval(() => this.requestProtocolAbiDrain(), 1000).unref();
@@ -731,7 +945,11 @@ export class HyperionMaster {
             const db = this.manager.mongodbClient.db(`${this.manager.conn.mongodb.database_prefix}_${this.manager.chain}`);
 
             try {
-                this.cm.loadConfigJson();
+                this.cm.loadConfigJson(next => {
+                    try {this.assertSourceCreditConfigurationUnchanged(next);}
+                    catch (error) {this.sourceCreditRestartRequired = true; throw error;}
+                });
+                this.sourceCreditRestartRequired = false;
                 this.conf = this.cm.config;
 
                 // After loading config
@@ -745,7 +963,7 @@ export class HyperionMaster {
                 hLog(`Failed to load configuration: ${error.message}`);
                 return {
                     success: false,
-                    message: 'Failed to load configuration.'
+                    message: this.sourceCreditRestartRequired ? String(error.message).slice(0, 512) : 'Failed to load configuration.'
                 };
             }
 
@@ -1289,7 +1507,8 @@ export class HyperionMaster {
         await this.setupDSPool();
         const portable = resolvePortableStateConfiguration(this.conf.features.portable_state,
             this.manager.conn.chains[this.chain].chain_id);
-        if (portable) this.addWorker({worker_role: 'projection'});
+        const stateful = resolveStatefulOwnerConfigurationV2(this.conf.features.stateful_owner_v2, portable);
+        if (portable || stateful) this.addWorker({worker_role: 'projection'});
     }
 
     launchWorkers() {
@@ -1297,12 +1516,22 @@ export class HyperionMaster {
         this.workerMap.forEach((wrk: HyperionWorkerDef) => {
             if (!wrk.wref && wrk.worker_id && !wrk.reader_incomplete) {
                 const reader = wrk.worker_role === 'reader' || wrk.worker_role === 'continuous_reader';
-                const worker = cluster.fork(reader ? {...wrk, reader_pressure_sync: 'true'} : wrk);
+                if (reader && this.sourceCreditRestartRequired) {
+                    hLog('Reader replacement awaits restored source-credit configuration or controlled master restart');
+                    return;
+                }
+                const worker = cluster.fork(reader ? {...wrk, reader_pressure_sync: 'true',
+                    reader_source_credit_capacity: JSON.stringify(this.sourceCreditConfiguration())} : wrk);
                 wrk.wref = worker;
                 // Node owns Worker.id and uses it to remove exited registry entries.
                 // Hyperion's logical slot ID remains in wrk.worker_id and the child env.
+                if (reader && this.sourceCreditConfiguration()) worker.once('exit', () => this.sourceCreditCapacity?.exited(worker));
                 if (wrk.worker_role && ['deserializer', 'ds_pool_worker', 'projection'].includes(wrk.worker_role))
                     this.attemptSupervisor.attach(worker, wrk.worker_role as WorkerAttemptRole);
+                if (wrk.worker_role === 'projection') {
+                    worker.once('exit', () => this.statefulProbes?.retired(worker));
+                    worker.once('disconnect', () => this.statefulProbes?.retired(worker));
+                }
                 worker.on('message', (msg) => {
                     // The supervisor owns this event, including retired physical owners.
                     if (msg?.event === 'worker_attempt_request') return;
@@ -1429,23 +1658,71 @@ export class HyperionMaster {
         return this.queueMonitor.getPressureSnapshot();
     }
 
+    private pressureReady?: WeakSet<Worker>;
+    private pressureDeliveries?: WeakMap<Worker, {pending: boolean; dirty: boolean; observed: boolean; failed: boolean; token: object}>;
+
+    private replacePressureCarrier(worker: Worker): void {
+        if (this.shutdownStarted || this.mode_transition) return;
+        if (!this.workerMap.some(value => value.wref === worker)) return;
+        hLog('Reader pressure carrier unavailable; requesting worker replacement');
+        try { worker.kill(); } catch (error) { hLog('Reader pressure worker termination failed:', error); }
+    }
+
+    private sendReaderPressure(worker: Worker): void {
+        if (this.shutdownStarted || this.mode_transition) return;
+        const definition = this.workerMap.find(value => value.wref === worker);
+        const role = definition?.worker_role;
+        if (!this.pressureReady?.has(worker) || (role !== 'reader' && role !== 'continuous_reader')) return;
+        const deliveries = this.pressureDeliveries ??= new WeakMap();
+        let state = deliveries.get(worker);
+        if (!state) { state = {pending: false, dirty: false, observed: false, failed: false, token: {}}; deliveries.set(worker, state); }
+        if (state.failed) return;
+        if (state.pending) { state.dirty = true; return; }
+        state.pending = true; state.dirty = false; state.observed = false;
+        const token = state.token = {};
+        const complete = (error: Error | null) => {
+            if (!this.workerMap.some(value => value.wref === worker) || deliveries.get(worker) !== state || state.token !== token || state.failed) return;
+            state.token = {}; // One callback owns each physical send, even if invoked twice.
+            state.pending = false;
+            if (error) { state.failed = true; this.replacePressureCarrier(worker); return; }
+            if (state.dirty) this.sendReaderPressure(worker);
+        };
+        try { worker.send({event: 'reader_pressure_state', paused: this.queueMonitor.isReaderPaused(role)}, complete); }
+        catch (error) { complete(error instanceof Error ? error : new Error(String(error))); }
+    }
+
     /** A newly forked reader stays closed until its current pressure state arrives. */
     syncReaderPressure(worker: Worker): void {
+        if (this.shutdownStarted) return;
         const definition = this.workerMap.find(value => value.wref === worker);
         const role = definition?.worker_role;
         if (role !== 'reader' && role !== 'continuous_reader') return;
-        try {
-            worker.send({event: 'reader_pressure_state', paused: this.queueMonitor.isReaderPaused(role)}, error => {
-                if (error) hLog('Reader pressure synchronization failed:', error);
-            });
-        } catch (error) { hLog('Reader pressure synchronization failed:', error); }
+        (this.pressureReady ??= new WeakSet()).add(worker);
+        this.sendReaderPressure(worker);
+    }
+
+    reconcileReaderPressure(): void {
+        if (this.shutdownStarted || this.mode_transition) return;
+        for (const definition of this.workerMap) {
+            const worker = definition.wref;
+            if (!worker || !this.pressureReady?.has(worker) || (definition.worker_role !== 'reader' && definition.worker_role !== 'continuous_reader')) continue;
+            const state = this.pressureDeliveries?.get(worker);
+            if (state?.failed) this.replacePressureCarrier(worker);
+            else if (state?.pending) {
+                if (state.observed) { state.failed = true; this.replacePressureCarrier(worker); }
+                else state.observed = true;
+            } else this.sendReaderPressure(worker);
+        }
     }
 
     sendToRole(role: string, payload: any) {
         this.workerMap
             .filter((value) => value.worker_role === role)
             .forEach((value) => {
-                value.wref?.send(payload);
+                if (!value.wref) return;
+                if ((role === 'reader' || role === 'continuous_reader') && payload?.source === 'queue-pressure' && (payload.event === 'pause' || payload.event === 'resume'))
+                    this.sendReaderPressure(value.wref);
+                else value.wref.send(payload);
             });
     }
 
@@ -1736,6 +2013,7 @@ export class HyperionMaster {
 
     // Main start function
     async runMaster() {
+        this.validateQualificationGenesisStart();
         // config checks
         if (!this.conf.scaling.max_queue_limit) {
             hLog(`scaling.max_queue_limit is not defined!`);
@@ -2201,20 +2479,21 @@ export class HyperionMaster {
                 }
                 hLog(`New worker defined: ${workerReference.worker_role} for ${queueName}`);
                 setTimeout(() => {
-                    this.launchWorkers();
-                    setTimeout(() => {
-                        if (workerReference.worker_role === 'deserializer' && workerReference.wref) {
-                            workerReference.wref.send({
-                                event: 'initialize_abi',
-                                data: this.cachedInitABI
-                            });
-                        }
-                    }, 1000);
+                    this.relaunchDisconnectedWorker(worker, workerReference);
                 }, 5000);
             } else {
                 hLog(`The worker #${worker.id} has disconnected`);
             }
         }
+    }
+
+    private relaunchDisconnectedWorker(_worker: Worker, workerReference: HyperionWorkerDef): void {
+        this.launchWorkers();
+        setTimeout(() => {
+            if (workerReference.worker_role === 'deserializer' && workerReference.wref) {
+                workerReference.wref.send({event: 'initialize_abi', data: this.cachedInitABI});
+            }
+        }, 1000);
     }
 
     private async verifyMongoDbClient() {

@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "profile": "stateful-owner-v2-root741-native429-wire69-native45-linux-gitlf-engineering",
+  "qualificationOnly": true,
+  "assemblyProfile": "operator-list-mongodb-root741-native429-47d5c2c-linux-gitlf-engineering",
+  "productSource": {
+    "repository": "eosrio/hyperion-history-api",
+    "commit": "47d5c2c6552788146dac51cfef086b2c766b2b19",
+    "tree": "3ca3717044a9040a126d143cbbc894c128b9c9a6"
+  },
+  "rootSDK": "7412889a14c84342551fd864ea3ebfcf28849385",
+  "rootSDKTree": "c486de0538bf33b4d7a199147e97ba763d731bab",
+  "nativeSDK": "429a1bf1d3bddb746fa662de9529480890b7368f",
+  "nativeSDKTree": "c9658c4dfb4bdf59bcc40ca272fd14fd6e1b8d2f",
+  "wireSDK": "58d68c5cea81490bbb1c9a7736d633d465bab3ef",
+  "wireSDKPackageSha256": "2e11db52cf8d150e30d165bafb962b50c6ad0cc764770714ea7fdca48a5e4684",
+  "wireSDKFiles": {
+    "files": 31,
+    "sha256": "df919dbdbfe8eb6c0b0f05a7f4b4ddabf42095d9da1e2621d0adba250fd3b7cc",
+    "format": "sorted-path-sha256-pairs-v1"
+  },
+  "wire": {
+    "commit": "69a66064c077a405341f5aaf15e84b88b8d86ccb",
+    "tree": "97adfecdfd02d881493f950b2cf5a9a32d2a030b",
+    "packageSha256": "1e455544de9256a1504293498af802ee1ebf952b6048d6758e37a6218c6ac390",
+    "descriptorSha256": "19fc9804da7e9ec5744733cdc191cd430bb807d73c25dcb98014bf4ca3ef20b8",
+    "nodeSha256": "31627f132686a1eea8cdf91a1312923f43c33df28949514041ff844621f43a37",
+    "rustSha256": "c8815e5ece1d6f8dbd662ea96ba277d00c077231659bf0d029f6a7120a4db838",
+    "npmLockSha256": "a7bbbb10d86a698d23c44b0ec73774a72a3ec915d11ff5d51c0892dfc9553943"
+  },
+  "helperSources": {
+    "tests/unit/stateful-engineering-source-admission.mjs": "c5be4c31c2a76117ed7a8c50e34d3921d461ea37e94cdf323b5901dfeb2adb01",
+    "tests/unit/current-stateful-engineering-source-admission.mjs": "4e47b6dfab9eb7d8d7b80c64cecd3989abcc44860c555cbdafc42bb899729172",
+    "scripts/qualification/operator-list-mongodb/linux-source-profile.mjs": "5ece724186a09044f532e57de727a427ccc47644093f7bd537d8d9fa6572e3bb",
+    "scripts/qualification/operator-list-mongodb/source-profile.mjs": "696cdc012c57fd62d09d7ff50fc2791498de380895d98ea44a9d346a17c7de85",
+    "scripts/qualification/operator-list-mongodb/inventory.mjs": "77978a3afd409840f32e9800a0d6d770bef9cdab525c3d1d3764cd7452d9e15f",
+    "scripts/qualification/operator-list-mongodb/assembly-diagnostics.mjs": "d3bf730fd5d79723bbdc5ff123035d7d0ef9b2bfc155704c146435890aa90231",
+    "scripts/qualification/operator-list-mongodb/contract.mjs": "66cd0ca999ac6ce993f1616dddfad5337f9e099ddc5f1eca4feea3073fa115ea"
+  },
+  "historicalSnapshot": "tests/fixtures/engineering-profiles/historical-native39-9c4dd228/manifest.json",
+  "historicalHelperSha256": "9c4dd22874e2a6610a4aa07dc6ec64f219ec42e539eba2e240abfc7c85e621ed",
+  "acceptance": {
+    "runtime": "pending",
+    "physicalMongoDB": "pending",
+    "retainedWire1480": "pending-original-180000ms-control",
+    "managedAPI": "pending",
+    "publicHTTP": "pending",
+    "atomicParity": "pending"
+  },
+  "callerSources": [
+    [
+      "src/api/helpers/stateful-owner.ts",
+      "8bdf6914852f2d9f008adbfd81fe83c0b3f94d6a2928f5567147a9030f72cb82"
+    ],
+    [
+      "src/indexer/connections/stateful-complete-kind-client.ts",
+      "37ee22762dda7b1a10c9adbe036e1e0b2d19b8d39b9c2cc5391fca83ba0fb906"
+    ],
+    [
+      "src/indexer/connections/manager.class.ts",
+      "e5949cd8f0a539439a01e032770d9891e5037c801076335c52fb7ebb8da19807"
+    ],
+    [
+      "src/indexer/projection/stateful-plugin.ts",
+      "4b1fbd3ba70be572020f8cf4e2928c3f6894ffe9e5503aa247cb74be47960622"
+    ],
+    [
+      "src/indexer/projection/stateful-registry.ts",
+      "f9dad39ff1a9911cba887e75bb11fe4cfdad2896f94a6a6d2eda31cc9d6783d6"
+    ],
+    [
+      "src/indexer/workers/projection.ts",
+      "596e0969a1e0613f817d5ec65abcadaa2ac896c682bf7b18029e45cb999d4ad1"
+    ],
+    [
+      "src/indexer/projection/controller.ts",
+      "eadbbebe2b4ae7d19e372c1132174cbedc6c258ea83d17b98c2c7a9bbf8429b6"
+    ],
+    [
+      "src/indexer/projection/runtime.ts",
+      "697c2ed177bc51e04cb9170debf644d595bcc7bcc1f4c8f7735f1415648f6785"
+    ],
+    [
+      "src/indexer/helpers/bounded-json.ts",
+      "9c62cc0fbb69fe34dc739d4904690dd506c10335590aba2a3d1e6a5dc068b5b7"
+    ]
+  ],
+  "workloadGuards": {
+    "tests/unit/wire-managed-state-v2-native.mjs": {
+      "historicalSha256": "32bbfc3e8a698edf1a506385dc1e346de4e4cf4c63ebb6ffeec879308e172eb3",
+      "replace": {
+        "selected": "STATEFUL_CURRENT_NATIVE_API_SOURCE_PROFILE",
+        "historical": "STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE"
+      }
+    },
+    "tests/unit/protocol-abi-history-native.mjs": {
+      "historicalSha256": "612f35aa346ee159730dff227791e9a4ce7f32da158e4c638e8c5c9cd0535b89",
+      "replace": {
+        "selected": "STATEFUL_CURRENT_NATIVE_API_SOURCE_PROFILE",
+        "historical": "STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE"
+      }
+    },
+    "scripts/qualification/stateful-complete-kind-mongodb/runner.mjs": {
+      "historicalSha256": "9053323d4da7f6c859d199564de71a892c0101db727fff8f59c2a83c86a22d9d",
+      "replace": {
+        "selected": "stateful-owner-v2-root741-native429-wire69-native45-linux-gitlf-engineering",
+        "historical": "stateful-owner-v2-7412889-69a6606-complete-kind-engineering"
+      }
+    },
+    "scripts/qualification/operator-list-mongodb/ci.mjs": {
+      "historicalSha256": "0e4b9b203bc6712503967c3352dc06d7ef94b5e62023e7b5d3747bb98b3c246d",
+      "replace": {
+        "selected": "from './linux-source-profile.mjs'",
+        "historical": "from './source-profile.mjs'"
+      }
+    },
+    "scripts/qualification/operator-list-mongodb/runner.mjs": {
+      "historicalSha256": "005e183efe9353e53a81307f356aef57b7a9fd580df413c24a616add34cc4510",
+      "replace": {
+        "selected": "from './linux-source-profile.mjs'",
+        "historical": "from './source-profile.mjs'"
+      }
+    },
+    "scripts/qualification/operator-list-mongodb/contract.mjs": {
+      "historicalSha256": "5e014824e5aa214f677bf2ebf8b115c275f89162f84d93c60f3adfdf657e48cd",
+      "replace": {
+        "selected": "operator-list-mongodb-root741-native429-47d5c2c-linux-gitlf-engineering",
+        "historical": "operator-list-mongodb-root741-native429-47d5c2c-engineering"
+      }
+    },
+    "scripts/qualification/stateful-complete-kind-mongodb/ci.mjs": {
+      "historicalSha256": "d24b28d2a8465a7cc47cb4350e0259bba2d3b3278c00f9c94760c16fdae731d9",
+      "replace": null
+    }
+  },
+  "originalLimits": {
+    "retainedWireBlocks": 1480,
+    "retainedWireTimeoutMS": 180000,
+    "nativeCases": 17,
+    "nativeComponentMS": 300000
+  }
+}

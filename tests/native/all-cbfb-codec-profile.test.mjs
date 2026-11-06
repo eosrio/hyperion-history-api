@@ -1,0 +1,74 @@
+// Current mixed-SDK successor. Historical SDK49 suite runs unchanged at e19fc9af.
+// Pure installed-source admission checks: no child process, temporary copy or service.
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import {admitNativeApiSourceOptions,admitCoordinatedNativeSourceOptions,STATEFUL_ALL_CBFB_SOURCE_PROFILE as profile,
+ STATEFUL_NATIVE_CLEANUP_TRACE_API_SOURCE_PROFILE as priorTrace,STATEFUL_NATIVE_CLEANUP_API_SOURCE_PROFILE as priorCleanup,
+ STATEFUL_NATIVE_SNAPSHOT_API_SOURCE_PROFILE as priorSnapshot,STATEFUL_CURRENT_NATIVE_API_SOURCE_PROFILE as priorCurrent,
+ STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE as priorCodec,STATEFUL_COMPLETE_KIND_METADATA_API_SOURCE_PROFILE as metadata,
+ STATEFUL_COMPLETE_KIND_API_SOURCE_PROFILE as first,STATEFUL_COMPLETE_KIND_COMMANDS_API_SOURCE_PROFILE as commands,
+ STATEFUL_COMPLETE_KIND_EXECUTOR_API_SOURCE_PROFILE as executor} from '../unit/stateful-engineering-source-admission.mjs';
+import {DESCRIPTOR} from '../../scripts/qualification/indexed-schema-mongodb/all-cbfb-assembly.mjs';
+const ASSEMBLY=DESCRIPTOR.observation;
+import {assertAllCbfbOptions as assertSdk49Options,assertAllCbfbDependencies as assertSdk49Dependencies,observeAllCbfbSourceOptions as observeSdk49SourceOptions} from '../unit/all-cbfb-source-admission.mjs';
+import {assertSdk49Runtime} from '../unit/sdk49-indexed-source-admission.mjs';
+import {OPERATOR_LIST_ASSEMBLY as operatorAssembly} from '../../scripts/qualification/operator-list-mongodb/all-cbfb-source-profile.mjs';
+import {OPERATOR_LIST_ASSEMBLY as historicalOperatorAssembly} from '../../scripts/qualification/operator-list-mongodb/linux-cleanup-source-profile.mjs';
+
+test('current operator-list metadata agrees with actual current CBFB inventories and separates underlying product from CI checkout',()=>{
+ const actual=observeSdk49SourceOptions({engineeringSourceProfile:profile}),manifest=JSON.parse(readFileSync(new URL('../fixtures/engineering-profiles/all-cbfb-linux.json',import.meta.url))),
+  sha=bytes=>createHash('sha256').update(bytes).digest('hex'),paths={rootBuild:'build',nativeBuild:'packages/backend-mongodb/dist',rootSDK:'node_modules/@eosrio/hyperion-sdk/dist',nativeSDK:'packages/backend-mongodb/node_modules/@eosrio/hyperion-sdk/dist'};
+ assert.equal(operatorAssembly.profile,actual.profile);assert.deepEqual(operatorAssembly.pins,actual.observation.pins);
+ assert.deepEqual(Object.keys(operatorAssembly.trees),Object.keys(actual.observation.trees));
+ for(const [name,rows]of Object.entries(actual.observation.trees))assert.deepEqual(operatorAssembly.trees[name],{path:paths[name],files:rows.length,sha256:sha(JSON.stringify(rows)),textLF:false});
+ assert.deepEqual(Object.fromEntries(Object.entries(operatorAssembly.trees).map(([name,value])=>[name,value.files])),{"rootBuild":552,"nativeBuild":66,"rootSDK":37,"nativeSDK":37});
+ const expectedPaths=[...new Set([...ASSEMBLY.sources,...manifest.routeSources].map(row=>row.path))].sort();assert.deepEqual(operatorAssembly.sourceFiles.map(row=>row.path),expectedPaths);
+ for(const row of operatorAssembly.sourceFiles){const bytes=readFileSync(new URL('../../'+row.path,import.meta.url));assert.equal(bytes.length,row.bytes);assert.equal(sha(bytes),row.sha256);}
+ assert.deepEqual(operatorAssembly.underlyingProductSource,{commit:'2f636372bd8fe82c86ebd46179cc96fbe9d81241',tree:'36eff358421dc9f19c4112c5375144b2ba4e5e22'});
+ for(const field of ['productSource','checkout','sourceHead','assemblyEvidence'])assert.equal(field in operatorAssembly,false);
+ assert.deepEqual(operatorAssembly.ciIdentitySourcePaths,['tests/unit/all-cbfb-source-admission.mjs','tests/fixtures/engineering-profiles/all-cbfb-linux.json']);
+ assert.deepEqual(operatorAssembly.dependencies,actual.dependencies);assert.deepEqual(operatorAssembly.sdkPackages,manifest.sdkPackages);
+ assert.equal(operatorAssembly.wire.commit,actual.wireRevision);assert.equal(operatorAssembly.wire.sdkRevision,actual.wireSdkRevision);assert.deepEqual(operatorAssembly.wire.sdkFiles,actual.wireSdkFiles);
+ for(const field of ['fixture','platform','runtimeEvidence','engineeringCandidate'])assert.deepEqual(operatorAssembly[field],historicalOperatorAssembly[field]);
+ assert(Object.isFrozen(operatorAssembly)&&Object.isFrozen(operatorAssembly.trees.nativeBuild)&&Object.isFrozen(operatorAssembly.sourceFiles));
+});
+
+test('current CBFB captures complete pinned source, SDK, native, Wire and dependency inventories before platform admission',()=>{
+ const options={engineeringSourceProfile:profile},observed=observeSdk49SourceOptions(options);
+ const actual=process.platform==='linux'?admitNativeApiSourceOptions(options):observed;
+ assert.equal(actual.profile,profile);assert.equal(actual.qualificationOnly,true);assert.equal(actual.wireRevision,'69a66064c077a405341f5aaf15e84b88b8d86ccb');
+ assert.equal(actual.sdkRevision,'cbfb26694b90b52266d1e0b9b5dbf6f8389e736b');assert.equal(actual.nativeSDKRevision,'cbfb26694b90b52266d1e0b9b5dbf6f8389e736b');assert.equal(actual.nativeSDKRevision,actual.sdkRevision);
+ assert.equal(actual.wireSdkRevision,'58d68c5cea81490bbb1c9a7736d633d465bab3ef');assert.deepEqual(actual.observation.trees,ASSEMBLY.trees);
+ assert.deepEqual(actual.observation.sources,ASSEMBLY.sources);assert.deepEqual(actual.observation.pins,ASSEMBLY.pins);
+ assert.equal(actual.dependencies['root:mongodb'].version,'7.2.0');assert.equal(actual.dependencies['native:mongodb'].version,'7.2.0');
+ assert.equal(actual.dependencies['root:bson'].version,'7.2.0');assert.equal(actual.dependencies['native:bson'].version,'7.3.3');
+ assert.equal(actual.runtimeAcceptance,'pending');
+ if(process.platform==='linux')assert.deepEqual(admitCoordinatedNativeSourceOptions(options),actual);
+ else assert.throws(()=>admitCoordinatedNativeSourceOptions(options),/runtime platform/);
+});
+test('explicit selection and every scoped dependency inventory fail closed',()=>{
+ let accessed=0;
+ for(const input of [{},{engineeringSourceProfile:'unknown'},{engineeringSourceProfile:profile,nativeMarker:'true'},
+  {get engineeringSourceProfile(){accessed++;return profile;}},{engineeringSourceProfile:profile,extra:true}])assert.throws(()=>assertSdk49Options(input));
+ assert.equal(accessed,0);assert.deepEqual(assertSdk49Options({engineeringSourceProfile:profile,nativeMarker:false}),{nativeMarker:false});
+ const actual=observeSdk49SourceOptions({engineeringSourceProfile:profile}).dependencies;
+ for(const name of ['root:mongodb','root:bson','native:mongodb','native:bson'])for(const mutation of [
+  value=>value[name].version='0.0.0',value=>value[name].files[0].sha256='0'.repeat(64),
+  value=>value[name].files.pop(),value=>value[name].files.push({...value[name].files[0],path:'unexpected'})]){
+  const value=structuredClone(actual);mutation(value);assert.throws(()=>assertSdk49Dependencies(value),/scoped MongoDB\/BSON packages/);
+ }
+});
+test('Linux runtime admission uses reviewed executable identities and retains the separate 26.13 candidate',()=>{
+ const base={platform:'linux',arch:'x64',node:'v24.22.1',sha256:'e32e2d16081cf644f88392934288086e7662529d0d43277c34f7aad2207cfafb'};
+ assert.deepEqual(assertSdk49Runtime(base),{engineeringRuntimeCandidate:false,runtimeAcceptance:'pending'});
+ assert.deepEqual(assertSdk49Runtime({...base,node:'v26.13.0',sha256:'a'.repeat(64)}),{engineeringRuntimeCandidate:true,runtimeAcceptance:'pending'});
+ for(const value of [{...base,platform:'win32'},{...base,arch:'arm64'},{...base,node:'v24.19.0'},{...base,sha256:'a'.repeat(64)}])assert.throws(()=>assertSdk49Runtime(value));
+});
+test('historical complete-kind profiles remain frozen and refuse the installed current CBFB assembly',()=>{
+ for(const prior of [priorTrace,priorCleanup,priorSnapshot,priorCurrent])
+  assert.throws(()=>admitNativeApiSourceOptions({engineeringSourceProfile:prior}),/Git-LF helper/);
+ assert.throws(()=>admitNativeApiSourceOptions({engineeringSourceProfile:priorCodec}),/Unqualified coordinated lock source/);
+ for(const prior of [first,commands,executor,metadata])assert.throws(()=>admitNativeApiSourceOptions({engineeringSourceProfile:prior}),/Wire source revision/);
+});

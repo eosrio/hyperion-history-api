@@ -229,8 +229,9 @@ try {
 
     // This consumer has no write or index-creation methods. All authority must
     // come from the settled certificate, never from a consumer-side CAS repair.
-    const readClient={get:request=>client.get(request),indices:{
-        getMapping:request=>client.indices.getMapping(request),getSettings:request=>client.indices.getSettings(request)}};
+    const readClient={get:(...args)=>client.get(...args),indices:{
+        get:(...args)=>client.indices.get(...args),getMapping:(...args)=>client.indices.getMapping(...args),
+        getSettings:(...args)=>client.indices.getSettings(...args)}};
     const readStore=new ProtocolAbiFrontierStore(readClient,frontierChain,0,{readOnly:true});
     const proofReader=new ProtocolAbiProofReader({chainId:context.chainId,profile:context.protocol,store:readStore,maxAncestryBlocks:2});
     const secondProof=await proofReader.open(frontierSecond.input.source,frontierSecond.selected);

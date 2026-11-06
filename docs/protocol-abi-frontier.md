@@ -75,6 +75,19 @@ fetch eligibility only. Missing native evidence or a later source gap still fail
 derived light-block document uses the decoded zero header parent for block 1; it does not mutate the
 original absent SHiP position. Any later missing predecessor is rejected.
 
+A deliberately isolated qualification run may opt into
+`settings.protocol_abi_coordination.qualification_genesis_start: true`. It requires the selected
+extension's native genesis verifier, a live-only reader with `start_on: 1`, `stop_on: 0`, full block,
+trace and delta fetches, and reading enabled without preview, rewrite or queue purge. The operator must own a
+fresh, separate chain namespace and verify its Elasticsearch history and RabbitMQ queues independently;
+this option does not establish cross-service ownership. An empty coordinator control is initialized with
+`replayFromBlock: 1` only after a complete-copy control CAS; that value is a source request boundary, not
+a canonical head or proof. Existing same-profile control resumes its retained head and replay boundary
+without reseeding. A different profile is refused. The selected reader still verifies chain/session and
+SHiP retention before issuing the request, including after recovery or a pressure pause. Native genesis
+and ordinary subsequent observations must still pass all original validation and durable publication.
+The flag does not bypass shared backpressure, repair incomplete actions, or qualify a full sync.
+
 The real-source fixture retains the unchanged [Tools PR58](https://github.com/eosrio/hyperion-tools/pull/58)
 capture. Its production parser/coordinator/proof/runtime exercise uses in-memory broker/storage seams.
 The companion unchanged actual block-2–4 capture establishes contiguous forward processing with ordinary

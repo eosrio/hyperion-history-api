@@ -1,4 +1,5 @@
-import {controlledAttemptLifecycle} from './worker-attempt-fixture.mjs';
+import {controlledAttemptLifecycle as installAttemptLifecycle, controlledDurableOutputTransport} from './worker-attempt-fixture.mjs';
+function controlledAttemptLifecycle(worker, role) {controlledDurableOutputTransport(worker, role); installAttemptLifecycle(worker, role);}
 import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
 import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync} from 'node:fs';
@@ -277,14 +278,15 @@ try {
     const retryPublication=publications.at(-1),retryMessage={content:retryPublication.content,properties:{headers:retryPublication.headers}};
     (controlledAttemptLifecycle(main, 'deserializer'), main).captureProtocolSourceDelivery(retryMessage,main.ch);await main.mLoader.parser.parseMessage(main,[retryMessage]);await draining;
     assert.equal(sourceAcks.length,beforeQueueFailure+1);
-    // Native/default helpers retain their immediate sink and buffer behavior.
+    // Native/default history helpers use the same controlled durable transport; streams keep their ordinary buffer.
     const nativeQueue=[],nativeStreams=[],nativeWorker=Object.assign(Object.create(MainDS.prototype),{chain:'native-fixture',
         conf:{settings:{},features:{streaming:{deltas:true}},scaling:{indexing_queues:1,ad_idx_queues:1}},
         emit_idx:1,delta_emit_idx:1,allowStreaming:true,preIndexingQueue:{push:value=>{nativeQueue.push(value);return Promise.resolve();}},
         ch:{publish(_exchange,_queue,content){nativeStreams.push(content);return true;}}});
+    nativeWorker.ch_ready = true; controlledDurableOutputTransport(nativeWorker, 'deserializer');
     assert.equal(nativeWorker.usesExtensionProtocol,false);
     const nativeContent=Buffer.from('native');await nativeWorker.pushToDeltaQueue(nativeContent,1);
-    assert.equal(nativeQueue[0].content,nativeContent);assert.equal(nativeQueue[0].headers.block_num,1);
+    assert.deepEqual(nativeQueue[0].content,nativeContent);assert.equal(nativeQueue[0].headers.block_num,1);
     nativeWorker.pushToDeltaStreamingQueue(nativeContent,{code:'eosio',table:'proposal',scope:'alice',payer:'alice'});
     assert.equal(nativeStreams[0],nativeContent);
     delete process.env.live_mode;

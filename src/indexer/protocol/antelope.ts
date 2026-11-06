@@ -1,6 +1,7 @@
 import {ABI, Serializer} from '@wharfkit/antelope';
 import type {ProtocolProvider} from '@eosrio/hyperion-sdk/protocol';
 import type {ContractDecoder} from './contract-cache.js';
+import {observeAntelopeBlockAbi} from './antelope-observations.js';
 
 let nextAlias = 1n;
 
@@ -74,6 +75,7 @@ export async function createAntelopeProvider(): Promise<{provider: ProtocolProvi
             };
         },
         normalizeDelta(input) { return {kind: 'passthrough', value: input.value}; },
+        observeBlockAbi: observeAntelopeBlockAbi,
     };
     return {provider, decoder};
 }

@@ -5,7 +5,7 @@ import {AmqpConfig} from "../../interfaces/hyperionConnections.js";
 export async function createConnection(config: AmqpConfig): Promise<ChannelModel> {
     try {
         const amqp_url = getAmpqUrl(config);
-        const conn = await connect(amqp_url);
+        const conn = await connect(amqp_url, {noDelay: true});
         debugLog("[AMQP] connection established");
         return conn;
     } catch (e: any) {

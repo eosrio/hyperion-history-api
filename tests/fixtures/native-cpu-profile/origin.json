@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "d95d797fc3de8c695e2817a2952eedebeb4b3241",
+  "case": "h252-n24-mon-con-r1",
+  "originalRunStatus": "failed",
+  "archive": {
+    "bytes": 8171909,
+    "sha256": "1c0bedb73c3c18f4dd8b8e36216f8d2a62f071ae189e292a7f67a80559c8ea1f"
+  },
+  "member": {
+    "path": "h252-n24-mon-con-r1/observer/master-0/worker-2098088.cpuprofile",
+    "bytes": 708700,
+    "sha256": "01e4bc6d485fbc462ac2f3274cd389a6d3833e742aecbc6aa99c297b8e025ccd"
+  },
+  "sourceReport": {
+    "member": "h252-n24-mon-con-r1/report.json",
+    "bytes": 1526917,
+    "sha256": "2cede3b5163476d93ba4c84c0416572480da7fb8df24c5f058d748599f2a853e"
+  },
+  "packed": {
+    "bytes": 61299,
+    "sha256": "e07a6b382be15ddbf9e2a744422fc11bcd689614f9eb7ab1e6a46369c7ca27a9"
+  },
+  "base64": {
+    "bytes": 81733,
+    "sha256": "88f3634f6215cd968b50992d989f907cb8d3ce95d8e43769262decf586d21608"
+  },
+  "observations": {
+    "samples": 40572,
+    "negativeDeltaIndex": 45,
+    "negativeDeltaMicros": -4,
+    "elapsedMicros": 409102260,
+    "signedDeltaSum": 409102052
+  },
+  "transformation": "Exact raw profile bytes, deterministic gzip and base64 only. No sample/delta repair, normalization, reordering or failed-run promotion.",
+  "scope": "Native Node24.19.0/V8 13.6.233.17 engineering capture; no invocation-count, function-CPU, full recovery or release qualification claim."
+}

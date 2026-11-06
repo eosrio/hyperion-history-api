@@ -1,4 +1,4 @@
-import {controlledAttemptLifecycle} from './worker-attempt-fixture.mjs';
+
 /** Original Wire prefix through actual emitted workers/admission with controlled transports.
  * Engineering native capability only; no installed activation, consensus or live-service qualification. */
 import assert from 'node:assert/strict';
@@ -8,11 +8,16 @@ import {tmpdir} from 'node:os';
 import {basename, dirname, join, resolve} from 'node:path';
 import {EventEmitter} from 'node:events';
 import {createHash} from 'node:crypto';
-import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
 
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {createWireNativeActions, resolveCodecProfile} from '@eosrio/hyperion-wire-plugin';
+import {admitNativeSourceEnvironment} from './stateful-engineering-source-admission.mjs';
+const nativeSourceAdmission = admitNativeSourceEnvironment();
+const {controlledAttemptLifecycle} = await import('./worker-attempt-fixture.mjs');
+const {frontierMemoryClient} = await import('./protocol-frontier-memory.mjs');
+const {proofReadBridge} = await import('./protocol-proof-read-bridge.mjs');
+const {createWireNativeActions, resolveCodecProfile} = await import('@eosrio/hyperion-wire-plugin');
+
 let nativeAddonResolutions = 0;
 const hooks = registerHooks({resolve(specifier, context, next) {
     if (specifier.includes('node-abieos')) {nativeAddonResolutions++; throw new Error('Wire admission resolved the Antelope native addon');}
@@ -23,7 +28,11 @@ const directory = mkdtempSync(join(tmpdir(), 'hyperion-native-worker-original-')
 const chain = 'native-worker-original', chainId = '9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d', blockId = number => number.toString(16).padStart(64, '0');
 const hash = value => createHash('sha256').update(value).digest('hex');
 const events = [], sourceFrames = [], blockWrites = [], cache = [];
-let reader, coordinator, draining = Promise.resolve();
+let reader, coordinator, bridge, draining = Promise.resolve();
+const measureProofPair = process.argv.includes('--measure-proof-pair');
+const expectedOpeningWalks = Number(process.argv.find(value => value.startsWith('--expect-opening-walks='))?.split('=')[1] ?? 1);
+assert([1, 2].includes(expectedOpeningWalks));
+const proofPairMeasurements = [];
 process.send = (event, callback) => {
     events.push(event);
     if (event.event === 'protocol_abi_prepared') draining = coordinator.drain();
@@ -105,7 +114,7 @@ try {
         import('../../build/indexer/history/action-producer-epoch.js')]);
     const installed = await loadChainProtocol(config.settings.protocol);
     assert.equal(installed.provider.nativeActions, undefined);
-    assert(installed.components.every(component => component.sourceRevision === '7167659e9c043cb3351074fcacb40200cc57f3a3'));
+    assert(installed.components.every(component => component.sourceRevision === nativeSourceAdmission.wireRevision));
     const descriptor = JSON.parse(readFileSync(join(wireRoot, 'dist/protocol-provider.json')));
     for (const id of ['wire-sysio-6508c9e8-engineering-v1', 'wire-sysio-7dede884-engineering-v1']) {
         const profile = descriptor.profiles.find(profile => profile.id === id); assert(profile);
@@ -119,6 +128,7 @@ try {
     const originalTrace = originalCodec.decode('transaction_trace[]', Buffer.from(template[1].traces, 'hex'))[0][1];
     const originalBlock = originalCodec.decode('signed_block', Buffer.from(template[1].block, 'hex'));
     const memory = frontierMemoryClient(), bindings = new ProtocolSourceBindingStore(memory.client, chain);
+    if (measureProofPair) bridge = await proofReadBridge(memory);
     const observations = new ProtocolAbiObservationStore(memory.client, chain), frontier = new ProtocolAbiFrontierStore(memory.client, chain);
     const admissionStore = new ActionSourceAdmissionStore(memory.client, chain), targetName = `${chain}-action-v1-000001`;
     memory.settings.set(targetName, {'index.uuid': 'owned-wire-admission-target'});
@@ -238,7 +248,10 @@ try {
             fault = number === 34 ? 'value' : number === 35 ? 'metadata' : undefined;
             const priorFault = memory.faults.beforeRead;
             memory.faults.beforeRead = request => {if (request.id.startsWith('h45abist1:')) throw new Error('Native worker must not read deployed ABI states');};
-            await pool.processMessages(prepared.messages); memory.faults.beforeRead = priorFault;
+            if (bridge && expected.has(number)) bridge.begin();
+            await pool.processMessages(prepared.messages);
+            if (bridge && expected.has(number)) proofPairMeasurements.push({blockNum: number, ...bridge.end()});
+            memory.faults.beforeRead = priorFault;
             assert.equal(poolConsumer.acked.at(-1), prepared.messages.at(-1));
             const output = poolPublisher.sent.slice(before); assert.equal(output.length, 1);
             const document = JSON.parse(output[0].payload), metadata = document.protocol;
@@ -282,11 +295,23 @@ try {
     await assert.rejects(consuming, error => error.statusCode === 503);
     assert.equal(poolConsumer.acked.length, ackBefore); assert.equal(poolConsumer.streamed.length, streamBefore); assert.equal(cache.length, cacheBefore);
     assert.equal(nativeAddonResolutions, 0);
+    if (bridge) {
+        console.log(JSON.stringify({scenario: 'actual-ds-original-wire-proof-pair', businessOraclesPassed: true,
+            expectedOpeningWalks, nativeNode: process.version, measurements: proofPairMeasurements,
+            controlledImmutableCasStorage: true, actualPinnedClientHttpDocumentGets: true,
+            metadataTransport: 'controlled-memory, counted separately', liveQualification: false}));
+        for (const measurement of proofPairMeasurements) {
+            assert.equal(measurement.logical.length, measurement.http.length, 'Each logical document read has one actual HTTP attempt');
+            assert.equal(measurement.certificateManifests, expectedOpeningWalks, 'Actual DS must open canonical source once');
+            assert.equal(measurement.commitManifests, expectedOpeningWalks, 'At the unchanged source head each opening walks one commit');
+        }
+    }
     console.log(JSON.stringify({passed: true, originalBlocks: 397, nativeActions: results, originalWireSource: true,
         installedNativeActivation: false, fullWorkerQualification: false, controlledBrokerStorage: true,
         sourceAdmission: true, exactConfirmedBytes: true, unknownAbiIndependent: true, tamperedOutputRawIncomplete: true,
         finalConfirmRevocationFenced: true, genesisActionAdmissionIncomplete: true, nativeAddonResolutions}));
 } finally {
+    await bridge?.close();
     reader?.coordinatorRpc?.cancel(); reader?.shipSession?.close?.();
     process.send = previousSend; process.chdir(previousDirectory); hooks.deregister();
     const ownedDirectory = resolve(directory); assert.equal(dirname(ownedDirectory), resolve(tmpdir()));

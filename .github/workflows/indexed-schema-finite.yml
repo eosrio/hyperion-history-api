@@ -1,0 +1,48 @@
+name: Indexed cbfb finite engineering
+# Retired source-pin qualification: manual only, see docs/qualification/retired-source-pins.md.
+on:
+  workflow_dispatch:
+jobs:
+  finite-cbfb:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['24.x', '26.x']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: |
+          npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false
+          npm ci --allow-git=all --ignore-scripts=false
+          test "$(bun --version)" = "$(cat .bun-version)"
+          test "$(bun -p process.versions.typescript)" = "7.0.2"
+          bun check -p tsconfig.json
+          bun check -p packages/backend-mongodb/tsconfig.json
+          npm run build
+      - run: |
+          mkdir -p out
+          node scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.mjs --profile indexed-schema-all-cbfb-root-native-wire34-engineering-v1 > out/indexed-wire34-cbfb-source.json
+      - run: node --test scripts/qualification/indexed-schema-mongodb/wire34-cbfb-assembly.test.mjs packages/backend-mongodb/tests/indexed-int64-membership.test.mjs scripts/qualification/indexed-schema-mongodb/wire34-cbfb-migration.test.mjs
+      - run: npm run test:indexed:finite
+        env:
+          HYPERION_INDEXED_TEST_PROFILE: cbfb
+      - run: npm run test:indexed:cbfb:package
+        env:
+          HYPERION_INDEXED_TEST_PROFILE: cbfb
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: indexed-wire34-cbfb-finite-${{ matrix.node }}
+          path: |
+            out/indexed-wire34-cbfb-source.json
+            out/indexed-packed-*/receipt.json
+            out/indexed-packed-*/*.stdout
+            out/indexed-packed-*/*.stderr
+            out/indexed-packed-*/failed.json
+          if-no-files-found: error

@@ -1,11 +1,12 @@
 import { Client } from "@elastic/elasticsearch";
 import { EventEmitter } from "events";
+import {queue as asyncQueue} from 'async';
 import type {ProtocolProvider, ProtocolShipSession, ProtocolComponent} from "@eosrio/hyperion-sdk/protocol";
 import {loadChainProtocol} from "../protocol/selection.js";
 import {ContractDecoder, protocolBytes, protocolNumber} from "../protocol/contract-cache.js";
 import {protocolAbiCaptureDigest, type ProtocolAbiObservationRecord} from '../protocol/abi-observation-store.js';
 import type {ProtocolSourcePosition} from '../protocol/source-bindings.js';
-import { Channel, ConfirmChannel } from "amqplib";
+import { Channel, ConfirmChannel, type Options } from "amqplib";
 
 import { HyperionConfig } from "../../interfaces/hyperionConfig.js";
 import { ConnectionManager } from "../connections/manager.class.js";
@@ -23,12 +24,18 @@ import { WorkerProfiler } from "../helpers/profiler.js";
 import {ActionSourceAdmissionStore} from '../history/action-source-admission.js';
 import {publishAdmittedAction, bindActionPublicationOwnerToScope, type ActionPublicationOwner} from '../history/action-confirmed-publication.js';
 import {createHash, randomUUID} from 'node:crypto';
-import {serialize} from 'node:v8';
+import {serialize, deserialize} from 'node:v8';
+import {WorkerProofDemandObserver} from '../history/action-proof-demand-enrollment.js';
 import type {Message} from 'amqplib';
 import {actionHistoryImmutableJson} from '../history/action-history-manifest.js';
 import {WorkerAttemptClient, createControlledLocalAttemptClient, type WorkerAttempt} from '../protocol/worker-attempt-client.js';
 import type {WorkerAttemptBinding, WorkerAttemptKind, WorkerAttemptRole} from '../protocol/worker-attempt-supervisor.js';
 import {currentProofConsumerScope, assertProofConsumerCapability, trackProofConsumerOperation} from '../protocol/proof-consumer-scope.js';
+
+const maximumProjectionInitializationAttempts = 4;
+const durablePublicationBounds = {maximumPending: 1024, maximumBytes: 128 * 1024 * 1024};
+interface DurableWorkerPublications {pending: Set<Promise<void>>; bytes: number; failure?: unknown}
+interface DurableWorkerPublication {queue: string; content: Buffer; headers: unknown; publish: () => Promise<void>; signal?: AbortSignal}
 
 // Broker-decoded headers may contain bytes, timestamps or undefined fields, unlike portable action JSON.
 function workerAttemptHeadersSha256(headers: unknown): string {
@@ -116,7 +123,13 @@ export abstract class HyperionWorker {
     private actionAdmissionStore?: ActionSourceAdmissionStore;
     private readonly actionAdmissionOwners = new WeakMap<object, Channel>();
     protected workerAttemptClient?: WorkerAttemptClient;
-    private workerAttemptDeliveries?: WeakMap<object, {handle: WorkerAttempt; payloadSha256: string; headersSha256: string | null; consumer: Channel}>;
+    private workerAttemptDeliveries?: WeakMap<object, {handle: WorkerAttempt; receiptId: string; payloadSha256: string; headersSha256: string | null; consumer: Channel}>;
+    private proofDemandObserver?: WorkerProofDemandObserver;
+    /** Explicit internal engineering injection; ordinary workers do not enroll diagnostics. */
+    configureProofDemandObserver(observer: WorkerProofDemandObserver): void {
+        if (this.workerAttemptDeliveries || !(observer instanceof WorkerProofDemandObserver)) throw new Error('Observer must be installed before physical receipt');
+        this.proofDemandObserver = observer;
+    }
     private workerAttemptChannels?: WeakMap<object, string>;
     private workerAttemptChannelListeners?: WeakSet<object>;
 
@@ -154,11 +167,27 @@ export abstract class HyperionWorker {
         const payloadSha256 = createHash('sha256').update(message.content).digest('hex');
         let headersSha256: string | null;
         try {headersSha256 = workerAttemptHeadersSha256(message.properties?.headers ?? {});} catch {headersSha256 = null;}
-        const handle = this.attemptClient().capture({kind, receiptId: randomUUID(), payloadSha256, headersSha256,
+        const receiptId = randomUUID();
+        const handle = this.attemptClient().capture({kind, receiptId, payloadSha256, headersSha256,
             consumerId: this.attemptChannelId(channel), publisherId: this.attemptChannelId(this.cch),
             queue: typeof process.env.worker_queue === 'string' ? process.env.worker_queue : null,
             deliveryTag: Number.isSafeInteger(message.fields?.deliveryTag) ? message.fields.deliveryTag : null});
-        this.workerAttemptDeliveries.set(message, {handle, payloadSha256, headersSha256, consumer: channel});
+        this.workerAttemptDeliveries.set(message, {handle, receiptId, payloadSha256, headersSha256, consumer: channel});
+        if (kind === 'ds-delivery' && this.proofDemandObserver) try {
+            const content = Object.getOwnPropertyDescriptor(message, 'content')?.value;
+            const properties = Object.getOwnPropertyDescriptor(message, 'properties')?.value;
+            const headers = properties && Object.getOwnPropertyDescriptor(properties, 'headers')?.value;
+            this.proofDemandObserver.capture(receiptId, content, headers);
+        } catch {}
+    }
+    protected observeProofDemandBinding(message: Message, admission: {source: {inventoryInput: {source: any; sourceSelectionId?: string}; previousBlockId: string | null}; id: string}, traceOrdinal: number): void {
+        try {
+            const receipt = this.workerAttemptDeliveries?.get(message); if (!receipt) return;
+            const source = admission.source.inventoryInput.source;
+            this.proofDemandObserver?.bound(receipt.receiptId, {admissionId: admission.id, traceOrdinal,
+                source: {chainId: source.chainId, blockNum: source.blockNum, blockId: source.blockId,
+                    previousBlockId: admission.source.previousBlockId, selectionId: admission.source.inventoryInput.sourceSelectionId ?? null}});
+        } catch {}
     }
     async runWorkerAttemptDelivery<T>(message: Message, operation: () => T | Promise<T>): Promise<T> {
         if (!this.tracksWorkerAttempts) return operation();
@@ -172,14 +201,40 @@ export abstract class HyperionWorker {
             return operation();
         });
     }
-    async runProjectionAttempt<T>(kind: Extract<WorkerAttemptKind, 'projection-initialization' | 'projection-frame'>,
-                                  metadata: unknown, operation: () => T | Promise<T>): Promise<T> {
+    private captureProjectionAttempt(client: WorkerAttemptClient, kind: Extract<WorkerAttemptKind, 'projection-initialization' | 'projection-frame'>,
+                                     metadata: unknown): WorkerAttempt {
         const bytes = actionHistoryImmutableJson(metadata), digest = createHash('sha256').update(bytes).digest('hex');
-        const client = this.attemptClient(), handle = client.capture({kind, receiptId: randomUUID(), payloadSha256: digest,
-            headersSha256: createHash('sha256').update('{}').digest('hex'), consumerId: null, publisherId: null, queue: null, deliveryTag: null});
-        return client.run(handle, operation);
+        return client.capture({kind, receiptId: randomUUID(), payloadSha256: digest,
+                headersSha256: createHash('sha256').update('{}').digest('hex'), consumerId: null, publisherId: null, queue: null, deliveryTag: null});
+    }
+    async runProjectionAttempt<T>(kind: Extract<WorkerAttemptKind, 'projection-initialization' | 'projection-frame'>,
+                                  metadata: unknown, operation: () => T | Promise<T>, mayRetryInitialization?: () => boolean): Promise<T> {
+        const client = this.attemptClient();
+        for (let attempt = 1; ; attempt++) {
+            const handle = this.captureProjectionAttempt(client, kind, metadata);
+            try {return await client.run(handle, operation);}
+            catch (error) {
+                if (kind !== 'projection-initialization' || attempt >= maximumProjectionInitializationAttempts || !mayRetryInitialization?.()
+                    || !client.consumeProjectionInitializationRetry(handle, error)) throw error;
+            }
+        }
+    }
+    async runProjectionFrameAttempt(metadata: unknown, operation: () => Promise<boolean>, mayContinue: () => boolean): Promise<boolean> {
+        const client = this.attemptClient(), handle = this.captureProjectionAttempt(client, 'projection-frame', metadata);
+        try {return await client.run(handle, operation);}
+        catch (error) {
+            if (!mayContinue() || !client.consumeProjectionFrameDeferral(handle, error)) throw error;
+            // False means no successful frame in this drain, never source coverage or application authority.
+            // The worker's next normal drain reads durable checkpoint+1 in a fresh accepted scope.
+            return false;
+        }
     }
     async bindWorkerAttempt(fields: WorkerAttemptBinding): Promise<void> {await this.attemptClient().bindCurrent(fields);}
+    /** A fresh store return is forwarded by its original scoped worker; controlled fixtures have no parent authority. */
+    async observeFreshActionWrite(result: object): Promise<boolean> {
+        const client = this.attemptClient();
+        return client.mode === 'managed' ? client.observeFreshActionWrite(result) : false;
+    }
     markWorkerAcknowledgementAttempt(): void {if (currentProofConsumerScope()) this.attemptClient().markAcknowledgementAttempt();}
     settleOriginalWorkerDelivery(message: Message, negative = false): void {
         if (!this.tracksWorkerAttempts) {negative ? this.ch?.nack(message) : this.ch?.ack(message); return;}
@@ -190,6 +245,89 @@ export abstract class HyperionWorker {
         else {this.markWorkerAcknowledgementAttempt(); retained.consumer.ack(message);}
     }
     assertWorkerAttemptActive(): void {currentProofConsumerScope()?.assertActive();}
+    private durablePublications?: WeakMap<object, DurableWorkerPublications>;
+    /** Unscoped legacy consumers must replace this physical owner after a failed required publication. */
+    protected hasUnscopedDurablePublicationFailure(): boolean {return !!this.durablePublications?.get(this)?.failure;}
+    protected createDurableWorkerOutputQueue() {
+        const waiting = new Set<(error: unknown) => void>();
+        const tasks = asyncQueue<DurableWorkerPublication>((task, callback) => {
+            Promise.resolve().then(task.publish).then(() => callback(), error => callback(error instanceof Error ? error : new Error(String(error))));
+        }, 1);
+        return {
+            get paused() {return tasks.paused;}, pause: () => tasks.pause(), resume: () => tasks.resume(),
+            kill: () => {for (const cancel of [...waiting]) cancel(new Error('Durable worker output queue was retired')); tasks.kill();},
+            push: (task: DurableWorkerPublication): Promise<void> => new Promise((resolve, reject) => {
+                const cleanup = () => {waiting.delete(cancel); task.signal?.removeEventListener('abort', abort);};
+                const cancel = (error: unknown) => {tasks.remove(entry => entry.data === task); cleanup(); reject(error);};
+                const abort = () => cancel(task.signal!.reason);
+                waiting.add(cancel);
+                task.signal?.addEventListener('abort', abort, {once: true});
+                if (task.signal?.aborted) {abort(); return;}
+                tasks.push(task, error => {
+                    cleanup();
+                    if (error) reject(error); else resolve();
+                });
+            })
+        };
+    }
+    private publicationGroup(): DurableWorkerPublications {
+        this.durablePublications ??= new WeakMap();
+        const key = currentProofConsumerScope() ?? this;
+        let group = this.durablePublications.get(key);
+        if (!group) {group = {pending: new Set(), bytes: 0}; this.durablePublications.set(key, group);}
+        return group;
+    }
+    /** Transport durability only. No action membership, projection or source-progress evidence is issued. */
+    publishDurableWorkerOutput(queue: string, payload: Buffer, options: Options.Publish = {}): Promise<void> {
+        return this.scheduleDurableWorkerOutput(queue, payload, options, task => task.publish());
+    }
+    protected enqueueDurableWorkerOutput(output: {push(task: DurableWorkerPublication): Promise<unknown>},
+                                         queue: string, payload: Buffer, options: Options.Publish = {}): Promise<void> {
+        return this.scheduleDurableWorkerOutput(queue, payload, options, task => output.push(task));
+    }
+    private scheduleDurableWorkerOutput(queue: string, payload: Buffer, options: Options.Publish,
+                                        dispatch: (task: DurableWorkerPublication) => Promise<unknown>): Promise<void> {
+        this.assertWorkerAttemptActive();
+        const group = this.publicationGroup();
+        if (group.failure) throw group.failure;
+        try {
+            // Preserve AMQP's typed headers while bounding and detaching them before asynchronous I/O.
+            workerAttemptHeadersSha256(options.headers ?? {});
+            const headers = serialize(options.headers ?? {}), bytes = payload.length + headers.length;
+            if (group.pending.size >= durablePublicationBounds.maximumPending || group.bytes + bytes > durablePublicationBounds.maximumBytes) {
+                const error = new Error('Worker durable publication budget exhausted'); group.failure ??= error; throw error;
+            }
+            const consumer = this.ch, publisher = this.cch;
+            if (!consumer || !publisher || !this.ch_ready || !this.cch_ready) throw new Error('Original durable worker publisher is unavailable');
+            const owner = bindActionPublicationOwnerToScope({consumer, publisher,
+                current: () => this.ch === consumer && this.cch === publisher && this.ch_ready && this.cch_ready});
+            const content = Buffer.from(payload), retainedOptions = {...options, headers: deserialize(headers)};
+            const operation = () => publishAdmittedAction(owner, queue, content, retainedOptions);
+            const publish = currentProofConsumerScope()?.bindCallback(operation) ?? operation;
+            let resolve!: (value: PromiseLike<void>) => void, reject!: (error: unknown) => void;
+            const publication = new Promise<void>((yes, no) => {resolve = yes; reject = no;});
+            // Register custody before async.queue can schedule a task or synchronously reject it.
+            group.bytes += bytes;
+            group.pending.add(publication);
+            void publication.then(() => {group.pending.delete(publication); group.bytes -= bytes;}, error => {
+                group.failure ??= error instanceof Error ? error : new Error(String(error));
+                group.pending.delete(publication); group.bytes -= bytes;
+            });
+            try {
+                resolve(trackProofConsumerOperation(async () => {await dispatch({queue, content, headers: retainedOptions.headers,
+                    publish, signal: currentProofConsumerScope()?.signal});}));
+            } catch (error) {reject(error);}
+            return publication;
+        } catch (error) {group.failure ??= error instanceof Error ? error : new Error(String(error)); throw error;}
+    }
+    /** Also covers host helpers whose promise a hook did not await; a failed output cannot be hidden. */
+    async flushDurableWorkerOutputs(): Promise<void> {
+        this.assertWorkerAttemptActive();
+        const group = this.publicationGroup();
+        while (group.pending.size) await Promise.allSettled([...group.pending]);
+        this.assertWorkerAttemptActive();
+        if (group.failure) throw group.failure;
+    }
     /** Observable backpressure after synchronous byte handoff; no physical flush or broker confirmation. */
     workerBufferedPublication(channel: Channel, send: () => boolean): boolean {
         const scope = currentProofConsumerScope(); if (!scope) return send();
@@ -233,6 +371,13 @@ export abstract class HyperionWorker {
 
     /** Internal engineering seam. Public activation requires the remaining #225 qualification gates. */
     get actionSourceAdmissionEnabled(): boolean {return false;}
+
+    private actionSourceBindingMode?: boolean;
+    /** Shared source lifecycle; builtin live qualification uses the existing engineering admission gate. */
+    get usesProtocolSourceBindings(): boolean {
+        if (this.usesExtensionProtocol) return true;
+        return this.actionSourceBindingMode ??= this.actionSourceAdmissionEnabled && this.conf?.indexer?.live_reader === true;
+    }
 
     getActionAdmissionStore(): ActionSourceAdmissionStore {
         return this.actionAdmissionStore ??= new ActionSourceAdmissionStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0);
@@ -374,7 +519,7 @@ export abstract class HyperionWorker {
     }
 
     private async initializeProtocol() {
-        const selected = await loadChainProtocol(this.conf.settings.protocol);
+        const selected = await loadChainProtocol(this.conf.settings.protocol, {sourceEvidence: this.usesProtocolSourceBindings});
         this.protocol = selected.provider;
         this.protocolId = selected.id;
         this.protocolComponents = selected.components;

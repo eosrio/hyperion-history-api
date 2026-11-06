@@ -63,9 +63,24 @@ export function bsonBytes(value: object): number {
     return BSON.calculateObjectSize(value);
 }
 
-/** Actual additional BSON array metadata bytes plus the independently encoded image documents. */
+const descriptorBytes = new WeakMap<object, number>();
+/** Undo descriptors are never edited after creation, so each object is encoded at most once. */
+function undoDescriptorBytes(item: UndoDescriptor): number {
+    let bytes = descriptorBytes.get(item);
+    if (bytes === undefined) {
+        bytes = bsonBytes(item);
+        descriptorBytes.set(item, bytes);
+    }
+    return bytes;
+}
+
+/**
+ * Actual additional BSON array metadata bytes plus the independently encoded image documents.
+ * A BSON array element costs its type byte, its decimal index key with a terminator, and its value.
+ */
 export function retainedBytes(undo: readonly UndoDescriptor[]): number {
-    return bsonBytes({ undo }) - bsonBytes({ undo: [] }) + undo.reduce((total, item) => total + item.imageBytes, 0);
+    return undo.reduce((total, item, index) =>
+        total + 2 + String(index).length + undoDescriptorBytes(item) + item.imageBytes, 0);
 }
 
 export function rollbackView(metadata: RollbackMetadata): ProjectionRollbackReadView {

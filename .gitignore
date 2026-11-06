@@ -66,3 +66,6 @@ reports/
 
 # Local qualification inputs, reports and helper scratch directories
 /out/
+
+# Python qualification helper caches
+__pycache__/

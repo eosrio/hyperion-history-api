@@ -1,16 +1,26 @@
 import {createHash} from 'node:crypto';
 import type {Client} from '@elastic/elasticsearch';
 import type {ProtocolProvider} from '@eosrio/hyperion-sdk/protocol';
+import type {StatefulOwnerDeclarationV2} from '@eosrio/hyperion-sdk/projection-stateful-owner-v2';
+import type {CapturedStatefulSourceV2} from '@eosrio/hyperion-sdk/projection-stateful-source-v2';
+import type {StatefulSelector} from '@eosrio/hyperion-sdk/projection-stateful';
 import {ProjectionContractError, type ProjectionBlock, type ProjectionCheckpoint, type ProjectionDefinition} from '@eosrio/hyperion-sdk/projection';
-import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
+import {ProtocolAbiFrontierStore, ProtocolAbiFrontierRecordMemo} from '../protocol/abi-frontier-store.js';
 import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, type ProtocolAbiProofView} from '../protocol/abi-proof.js';
-import {ProtocolAbiObservationStore, protocolAbiObservationId} from '../protocol/abi-observation-store.js';
-import {ProtocolSourceBindingStore, type ProtocolSourceProfile} from '../protocol/source-bindings.js';
+import {ProtocolAbiObservationStore, protocolAbiObservationId, type ProtocolAbiObservationRecord} from '../protocol/abi-observation-store.js';
+import {ProtocolSourceBindingStore, type ProtocolSourceContext, type ProtocolSourceSelection, type ProtocolSourceProfile} from '../protocol/source-bindings.js';
 import {protocolImmutableJson} from '../protocol/immutable-bundle-store.js';
 import {protocolDeployment} from '../protocol/deployments.js';
 import {verifyNativeGenesisRecord} from '../protocol/native-genesis.js';
 import type {ProjectionFrame, ProjectionTableChange} from './runtime.js';
 import {currentProofConsumerScope, trackProofConsumerOperation} from '../protocol/proof-consumer-scope.js';
+import {ProtocolNativeActionReader} from '../protocol/native-authorization.js';
+import {ProtocolNativeObservationStore} from '../protocol/native-observation-store.js';
+import {decodeStatefulSourceV2, statefulActionMetadataSelection} from './stateful-source.js';
+import {statefulAbiEpoch} from './stateful-abi-epoch.js';
+import {diskAbiHistoryOptions} from '../protocol/disk-abi-history-options.js';
+import type {DiskAbiHistoryConfiguration} from '../protocol/disk-abi-history.js';
+import {ProtocolSourceBindingReadError} from '../protocol/source-bindings.js';
 
 const json = protocolImmutableJson;
 const digest = (value: Uint8Array | string) => createHash('sha256').update(value).digest('hex');
@@ -19,6 +29,8 @@ const unavailable = (message: string): never => {throw new ProtocolAbiProofUnava
 export interface PortableProjectionSourceOptions {
     client: Client; chain: string; chainId: string; profile: ProtocolSourceProfile; provider: ProtocolProvider;
     maxAncestryBlocks?: number; replicas?: number; requireAttemptScope?: boolean;
+    historicalCertificates?: boolean;
+    diskAbiHistory?:DiskAbiHistoryConfiguration;
 }
 export interface PortableProjectionSourceEvidence {
     readonly certificateId: string; readonly commitId: string; readonly selectionId: string;
@@ -27,6 +39,26 @@ export interface PortableProjectionSourceEvidence {
 }
 export interface PortableProjectionFrame {
     readonly frame: ProjectionFrame; readonly proof: ProtocolAbiProofView; readonly evidence: PortableProjectionSourceEvidence;
+}
+/** Original certified locators available before reading or interpreting retained capture bodies. */
+export interface PortableProjectionRawTarget {
+    readonly block: ProjectionBlock;
+    readonly reference: {readonly commitId: string; readonly selectionId: string;
+        readonly observationId: string; readonly observationDigest: string};
+}
+/** Internal source boundary; this packet is not a plugin input or a public serving grant. */
+export interface PortableProjectionOriginalBlock {
+    readonly target: PortableProjectionRawTarget;
+    readonly proof: ProtocolAbiProofView;
+    readonly selection: ProtocolSourceSelection;
+    readonly context: ProtocolSourceContext;
+    readonly observation: ProtocolAbiObservationRecord;
+    readonly evidence: PortableProjectionSourceEvidence;
+}
+export interface PortableStatefulFrameV2 {
+    readonly source: CapturedStatefulSourceV2;
+    readonly proof: ProtocolAbiProofView;
+    readonly evidence: PortableProjectionSourceEvidence;
 }
 /** A known canonical target can be durably fenced even when its retained input cannot be used. */
 export class PortableProjectionFrameError extends Error {
@@ -44,14 +76,18 @@ export class PortableProjectionSource {
     private readonly reader: ProtocolAbiProofReader;
     private readonly options: PortableProjectionSourceOptions;
     private readonly maximumAncestry: number;
+    private readonly diskHistory:ReturnType<typeof diskAbiHistoryOptions>;
     constructor(options: PortableProjectionSourceOptions) {
         this.maximumAncestry = options.maxAncestryBlocks ?? 256;
         this.options = {...options, profile: JSON.parse(json(options.profile))};
-        this.store = new ProtocolAbiFrontierStore(options.client, options.chain, options.replicas ?? 0, {readOnly: true});
+        this.store = new ProtocolAbiFrontierStore(options.client, options.chain, options.replicas ?? 0, {readOnly: true, recordMemo: new ProtocolAbiFrontierRecordMemo()});
         this.bindings = new ProtocolSourceBindingStore(options.client, options.chain, options.replicas ?? 0, {readOnly: true});
         this.observations = new ProtocolAbiObservationStore(options.client, options.chain, options.replicas ?? 0, undefined, {readOnly: true});
+        this.diskHistory=diskAbiHistoryOptions(options.diskAbiHistory,options.client,options.chain,options.chainId,
+            this.options.profile,options.provider,options.replicas??0);
         this.reader = new ProtocolAbiProofReader({chainId: options.chainId, profile: this.options.profile,
-            store: this.store, maxAncestryBlocks: this.maximumAncestry, requireAttemptScope: options.requireAttemptScope});
+            store: this.store, maxAncestryBlocks: this.maximumAncestry, requireAttemptScope: options.requireAttemptScope,
+            historicalCertificates: options.historicalCertificates,diskHistory:this.diskHistory});
     }
     private async retained<T>(operation: () => Promise<T>): Promise<T> {
         const scope = currentProofConsumerScope(this.options.requireAttemptScope);
@@ -67,11 +103,40 @@ export class PortableProjectionSource {
     }
     async open(checkpoint: ProjectionCheckpoint): Promise<ProtocolAbiProofView> {
         if (!Number.isSafeInteger(checkpoint.blockNum) || checkpoint.blockNum < 1) unavailable('Checkpoint zero grants no source coverage');
+        if(this.diskHistory&&await this.diskHistory.catalog.covers({chainId:this.options.chainId,...checkpoint}))
+            return this.reader.open({chainId:this.options.chainId,...checkpoint});
         await this.control();
         return this.reader.open({chainId: this.options.chainId, ...checkpoint});
     }
+    async head(): Promise<ProjectionCheckpoint> {
+        if(this.diskHistory){const baseline=await this.diskHistory.catalog.baseline();
+            try{const control=await this.control();if(control.head.blockNum>baseline.source.blockNum){
+                const proof=await this.open({blockNum:control.head.blockNum,blockId:control.head.blockId});await this.revalidate(proof);
+                return Object.freeze({blockNum:proof.source.blockNum,blockId:proof.source.blockId});}}
+            catch(error){if(!(error instanceof ProtocolAbiProofUnavailableError)||error.code!=='projection_source_unavailable')throw error;}
+            return Object.freeze({blockNum:baseline.source.blockNum,blockId:baseline.source.blockId});}
+        const control = await this.control();
+        const proof = await this.open({blockNum: control.head.blockNum, blockId: control.head.blockId});
+        await this.revalidate(proof);
+        return Object.freeze({blockNum: proof.source.blockNum, blockId: proof.source.blockId});
+    }
+    /** Resolve one immutable template version from an actual canonical view, never from operator ABI pins. */
+    async statefulSelectors(templates: readonly Omit<StatefulSelector, 'abiDeployment' | 'abiSha256'>[]): Promise<{
+        selectors: readonly StatefulSelector[]; proof: ProtocolAbiProofView}> {
+        const selected = JSON.parse(json(templates)) as typeof templates;
+        const proof = await this.open(await this.head()), epochs = new Map<string, ReturnType<typeof statefulAbiEpoch>>();
+        const selectors: StatefulSelector[] = [];
+        for (const template of selected) {
+            let epoch = epochs.get(template.contract);
+            if (!epoch) {epoch = statefulAbiEpoch(await this.reader.finalState(proof, template.contract)); epochs.set(template.contract, epoch);}
+            selectors.push(Object.freeze({...template, abiDeployment: epoch.id, abiSha256: epoch.abiSha256}));
+        }
+        await this.revalidate(proof);
+        return Object.freeze({selectors: Object.freeze(selectors), proof});
+    }
     async revalidate(proof: ProtocolAbiProofView): Promise<void> {
         this.reader.assertConsumerScope(proof);
+        if(this.diskHistory&&await this.diskHistory.catalog.covers(proof.source)){await this.reader.revalidate(proof);return;}
         await this.control();
         await this.reader.revalidate(proof);
     }
@@ -112,12 +177,28 @@ export class PortableProjectionSource {
             || settled.head.commitId !== control.head.commitId)
             throw new ProjectionContractError('projection.stale-view', 'Canonical ABI head changed during definition validation');
     }
-    /** Bounded certified ancestry; missing old input never becomes an empty frame. */
-    async frame(blockNum: number, definition: ProjectionDefinition,
-                admitCanonicalTarget?: (block: ProjectionBlock) => Promise<void>): Promise<PortableProjectionFrame> {
+    private async canonicalTarget(blockNum: number, admitCanonicalTarget?: (block: ProjectionBlock) => Promise<void>) {
         if (!Number.isSafeInteger(blockNum) || blockNum < 1) unavailable('Invalid source height');
+        if(this.diskHistory){const blockId=await this.diskHistory.catalog.blockId(blockNum);
+            if(blockId){let publication;
+                try{publication=await this.retained(()=>this.bindings.readPublishedSource(this.options.chainId,blockId));}
+                catch(error){if(error instanceof ProtocolSourceBindingReadError&&['missing','incomplete'].includes(error.code))
+                    throw new ProtocolAbiProofUnavailableError('source_publication_pending','Original source capture has not been published');throw error;}
+                const proof=await this.reader.open({chainId:this.options.chainId,blockNum,blockId},publication.selectionId);
+                await admitCanonicalTarget?.(Object.freeze({blockNum,blockId,previousBlockId:proof.source.previousBlockId??zero}));
+                return {proof,commit:publication};}}
         const control = await this.control();
         if (blockNum > control.head.blockNum) unavailable('Next projection source has not committed');
+        if (control.head.blockNum - blockNum > this.maximumAncestry && this.options.historicalCertificates === true) {
+            const proof = await this.reader.openHistorical(blockNum);
+            const commit: any = await this.retained(() => this.store.readCommit(proof.commitId));
+            await this.revalidate(proof);
+            if (proof.source.blockNum !== blockNum || commit.selectionId !== proof.selectionId)
+                unavailable('Historical projection source authority changed');
+            await admitCanonicalTarget?.(Object.freeze({blockNum, blockId: proof.source.blockId,
+                previousBlockId: proof.source.previousBlockId ?? zero}));
+            return {commit, proof};
+        }
         if (control.head.blockNum - blockNum > this.maximumAncestry) {
             const head = await this.open({blockNum: control.head.blockNum, blockId: control.head.blockId});
             const target = Object.freeze({blockNum: head.source.blockNum, blockId: head.source.blockId,
@@ -141,7 +222,16 @@ export class PortableProjectionSource {
         // Admission failures stay outside the interpretation catch: no contract work has started yet.
         await admitCanonicalTarget?.(Object.freeze({blockNum, blockId: proof.source.blockId,
             previousBlockId: proof.source.previousBlockId ?? zero}));
-        try {
+        return {commit, proof};
+    }
+    private rawTarget(commit: any, proof: ProtocolAbiProofView): PortableProjectionRawTarget {
+        if (!/^h45abi1:[0-9a-f]{64}$/.test(commit.observationId) || !/^[0-9a-f]{64}$/.test(commit.observationDigest))
+            unavailable('Canonical source lacks an original observation reference');
+        return Object.freeze({block: Object.freeze({blockNum: proof.source.blockNum, blockId: proof.source.blockId,
+            previousBlockId: proof.source.previousBlockId ?? zero}), reference: Object.freeze({commitId: proof.commitId,
+            selectionId: proof.selectionId, observationId: commit.observationId as string, observationDigest: commit.observationDigest as string})});
+    }
+    private async originalCapture(commit: any, proof: ProtocolAbiProofView): Promise<Omit<PortableProjectionOriginalBlock, 'target'>> {
         const {selection, context} = await this.retained(() => this.bindings.readSelection(proof.selectionId));
         const link = await this.retained(() => this.bindings.readObservationLink(proof.selectionId));
         const observation = await this.retained(() => this.observations.read(link.observationId));
@@ -155,6 +245,71 @@ export class PortableProjectionSource {
         const evidence = Object.freeze({certificateId: proof.certificateId, commitId: proof.commitId,
             selectionId: proof.selectionId, observationId: link.observationId, observationDigest: link.observationDigest,
             captureSha256: selection.captureSha256, frameSha256: selection.frameSha256});
+        return Object.freeze({proof, selection, context, observation, evidence});
+    }
+    /**
+     * The actual mixed-input owner must retain the raw target before a missing/malformed capture
+     * can fail. No decoded data/time/hash placeholder is needed by that admission callback.
+     */
+    async originalBlock(blockNum: number, admitRawTarget: (target: PortableProjectionRawTarget) => Promise<void>): Promise<PortableProjectionOriginalBlock> {
+        if (!Number.isSafeInteger(blockNum) || blockNum < 1) unavailable('Invalid source height');
+        const scope = currentProofConsumerScope(this.options.requireAttemptScope);
+        const {commit, proof} = await this.canonicalTarget(blockNum);
+        scope?.assertActive();
+        const target = this.rawTarget(commit, proof);
+        await trackProofConsumerOperation(() => admitRawTarget(target), scope);
+        scope?.assertActive();
+        const original = await this.originalCapture(commit, proof);
+        await this.revalidate(proof);
+        return Object.freeze({...original, target});
+    }
+    /** Complete original action/table input under the version2 owner, independent of history filters. */
+    async statefulBlock(blockNum: number, declaration: StatefulOwnerDeclarationV2,
+        admitRawTarget: (target: PortableProjectionRawTarget) => Promise<void>,
+        metadataOptions: import('@eosrio/hyperion-sdk/projection-stateful-source-v2').StatefulActionMetadataOptionsV2 = {}): Promise<PortableStatefulFrameV2> {
+        const metadata = statefulActionMetadataSelection(metadataOptions);
+        const packet = await this.originalBlock(blockNum, admitRawTarget);
+        if (blockNum === 1) verifyNativeGenesisRecord(packet.observation, this.options.provider.verifyNativeGenesis?.bind(this.options.provider));
+        let native: ProtocolNativeActionReader | undefined;
+        let nativeView: Awaited<ReturnType<ProtocolNativeActionReader['open']>> | undefined;
+        const authorize = this.options.provider.nativeActions ? async (input: Parameters<ProtocolNativeActionReader['authorize']>[1]) => {
+            if (!native) native = new ProtocolNativeActionReader({chainId: this.options.chainId, profile: this.options.profile,
+                provider: this.options.provider, proofReader: this.reader,
+                store: new ProtocolNativeObservationStore(this.options.client, this.options.chain, this.options.replicas ?? 0,
+                    undefined, {readOnly: true})});
+            nativeView ??= await native.open(packet.proof.source, packet.proof.selectionId);
+            const decision = await native.authorize(nativeView, input);
+            if (decision.kind !== 'contract') unavailable('Selected stateful action is not a qualified contract action');
+        } : undefined;
+        const source = await decodeStatefulSourceV2(declaration, packet, this.options.provider, this.reader, authorize, metadata);
+        if (native && nativeView) await native.revalidate(nativeView);
+        await this.revalidate(packet.proof);
+        return Object.freeze({source, proof: packet.proof, evidence: packet.evidence});
+    }
+    /** The completed view's applicable epochs and current ancestry govern version2 serving. */
+    async assertStatefulView(proof: ProtocolAbiProofView, declaration: StatefulOwnerDeclarationV2): Promise<void> {
+        this.reader.assertConsumerScope(proof);
+        if (declaration.projection.definition.binding.chainId !== this.options.chainId) unavailable('Stateful view chain differs');
+        const groups = new Map<string, typeof declaration.projection.definition.selectors[number][]>();
+        for (const selector of declaration.projection.definition.selectors) {
+            const key = json([selector.kind, selector.contract, selector.name]);
+            groups.set(key, [...groups.get(key) ?? [], selector]);
+        }
+        for (const selectors of groups.values()) {
+            const epoch = statefulAbiEpoch(await this.reader.finalState(proof, selectors[0].contract));
+            if (!selectors.some(selector => selector.abiDeployment === epoch.id && selector.abiSha256 === epoch.abiSha256))
+                unavailable('Completed stateful view lacks its applicable selector ABI epoch');
+        }
+        await this.revalidate(proof);
+    }
+    /** Bounded certified ancestry; missing old input never becomes an empty frame. */
+    async frame(blockNum: number, definition: ProjectionDefinition,
+                admitCanonicalTarget?: (block: ProjectionBlock) => Promise<void>): Promise<PortableProjectionFrame> {
+        if (!Number.isSafeInteger(blockNum) || blockNum < 1) unavailable('Invalid source height');
+        const scope = currentProofConsumerScope(this.options.requireAttemptScope);
+        const {commit, proof} = await this.canonicalTarget(blockNum, admitCanonicalTarget);
+        try {
+        const {selection, context, observation, evidence} = await this.originalCapture(commit, proof);
         const selectedDefinitionDeployment = await this.definitionState(proof, definition, true);
         if (blockNum === 1) {
             verifyNativeGenesisRecord(observation, this.options.provider.verifyNativeGenesis?.bind(this.options.provider));
@@ -223,6 +378,8 @@ export class PortableProjectionSource {
                 previousBlockId}, changes}, proof, evidence};
         } finally {session.close?.();}
         } catch (error) {
+            // Preserve exact error ownership after cancellation; wrapping cannot grant or erase recovery authority.
+            if (scope?.signal.aborted) throw error;
             throw new PortableProjectionFrameError({blockNum, blockId: proof.source.blockId,
                 previousBlockId: proof.source.previousBlockId ?? zero}, error);
         }

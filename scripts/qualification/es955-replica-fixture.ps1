@@ -2,11 +2,19 @@ param(
     [Parameter(Mandatory)][ValidateSet('create','cleanup')][string]$Action,
     [Parameter(Mandatory)][string]$StateFile,
     [switch]$ExposeRabbitManagement,
+    # Broker-restart qualification needs the configured endpoints to survive a container restart.
+    [switch]$PinRabbitPorts,
+    # Replica-restart qualification records fixed loopback HTTP endpoints before creation.
+    [switch]$PinElasticsearchPorts,
     # Pressure qualification keeps its one-MiB default. Actual source journals can require larger individual writes.
     [ValidateRange(1,256)][int]$IndexingPressureLimitMb=1
 )
 $ErrorActionPreference='Stop'
 $label='es198-replicas'
+if ($PinRabbitPorts -and ($Action -ne 'create' -or -not $ExposeRabbitManagement)) {
+    throw 'Pinned Rabbit ports require create with exposed management'
+}
+if ($PinElasticsearchPorts -and $Action -ne 'create') { throw 'Pinned Elasticsearch ports require create' }
 function Invoke-FixtureDocker([string[]]$Arguments) {
     $result=& docker @Arguments
     if ($LASTEXITCODE -ne 0) { throw "Docker failed: $($Arguments[0])" }
@@ -32,41 +40,72 @@ if ($Action -eq 'create') {
     foreach ($position in 0..2) {
         $name=$names[$position]; $volume="$name-data"; $data=$position -lt 2
         $entry=@{name=$name;role=if($data){'data'}else{'master'};containerId=$null;volume=$volume;url=$null}
-        $state.nodes+=@($entry); Save-State $state
-        $null=Invoke-FixtureDocker @('volume','create','--label',"io.eosrio.qualifier=$label",'--label',"io.eosrio.run=$run",$volume)
-        $heap=if($data){'1g'}else{'512m'}
-        $roles=if($data){'master,data,ingest'}else{'master'}
-        $memory=if($data){'3g'}else{'1536m'}
-        $cpus=if($data){'2'}else{'1'}
-        $args=@('run','-d','--name',$name,'--hostname',$name,'--network',$network,
-            '--label',"io.eosrio.qualifier=$label",'--label',"io.eosrio.run=$run",'--cpus',$cpus,'--memory',$memory,
-            '-p','127.0.0.1::9200','--mount',"type=volume,src=$volume,dst=/usr/share/elasticsearch/data",
-            '-e',"cluster.name=$($state.clusterName)",'-e',"node.name=$name",'-e',"node.roles=$roles",
-            '-e',"discovery.seed_hosts=$($names -join ',')",'-e',"cluster.initial_master_nodes=$($names -join ',')",
-            '-e','xpack.security.enabled=false','-e','xpack.security.autoconfiguration.enabled=false','-e','xpack.ml.enabled=false',
-            '-e','ingest.geoip.downloader.enabled=false','-e',"indexing_pressure.memory.limit=$($IndexingPressureLimitMb)mb",
-            '-e','cluster.routing.allocation.disk.watermark.low=20gb','-e','cluster.routing.allocation.disk.watermark.high=10gb',
-            '-e','cluster.routing.allocation.disk.watermark.flood_stage=5gb','-e',"ES_JAVA_OPTS=-Xms$heap -Xmx$heap",$state.esImage)
-        $cid=(Invoke-FixtureDocker $args).Trim()
-        $entry.containerId=$cid; Save-State $state
-        $url='http://'+(Invoke-FixtureDocker @('port',$cid,'9200/tcp')).Trim()
-        $entry.url=$url; $entry.heap=$heap; $entry.memory=$memory; $entry.cpus=$cpus; $entry.dockerArgs=$args
-        Save-State $state
+        $httpLease=$null
+        if ($PinElasticsearchPorts) {
+            $httpLease=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0)
+            $httpLease.ExclusiveAddressUse=$true; $httpLease.Start()
+            $entry.pinnedHttpPort=$httpLease.LocalEndpoint.Port
+            $entry.url="http://127.0.0.1:$($entry.pinnedHttpPort)"
+        }
+        try {
+            $state.nodes+=@($entry); Save-State $state
+            $null=Invoke-FixtureDocker @('volume','create','--label',"io.eosrio.qualifier=$label",'--label',"io.eosrio.run=$run",$volume)
+            $heap=if($data){'1g'}else{'512m'}
+            $roles=if($data){'master,data,ingest'}else{'master'}
+            $memory=if($data){'3g'}else{'1536m'}
+            $cpus=if($data){'2'}else{'1'}
+            $httpBinding=if($PinElasticsearchPorts){"127.0.0.1:$($entry.pinnedHttpPort):9200"}else{'127.0.0.1::9200'}
+            $args=@('run','-d','--name',$name,'--hostname',$name,'--network',$network,
+                '--label',"io.eosrio.qualifier=$label",'--label',"io.eosrio.run=$run",'--cpus',$cpus,'--memory',$memory,
+                '-p',$httpBinding,'--mount',"type=volume,src=$volume,dst=/usr/share/elasticsearch/data",
+                '-e',"cluster.name=$($state.clusterName)",'-e',"node.name=$name",'-e',"node.roles=$roles",
+                '-e',"discovery.seed_hosts=$($names -join ',')",'-e',"cluster.initial_master_nodes=$($names -join ',')",
+                '-e','xpack.security.enabled=false','-e','xpack.security.autoconfiguration.enabled=false','-e','xpack.ml.enabled=false',
+                '-e','ingest.geoip.downloader.enabled=false','-e',"indexing_pressure.memory.limit=$($IndexingPressureLimitMb)mb",
+                '-e','cluster.routing.allocation.disk.watermark.low=20gb','-e','cluster.routing.allocation.disk.watermark.high=10gb',
+                '-e','cluster.routing.allocation.disk.watermark.flood_stage=5gb','-e',"ES_JAVA_OPTS=-Xms$heap -Xmx$heap",$state.esImage)
+            if ($httpLease) { $httpLease.Stop() }
+            $cid=(Invoke-FixtureDocker $args).Trim()
+            $entry.containerId=$cid; Save-State $state
+            $url='http://'+(Invoke-FixtureDocker @('port',$cid,'9200/tcp')).Trim()
+            if ($PinElasticsearchPorts -and $url -ne $entry.url) { throw 'Elasticsearch bind differs from recorded intent' }
+            $entry.url=$url; $entry.heap=$heap; $entry.memory=$memory; $entry.cpus=$cpus; $entry.dockerArgs=$args
+            Save-State $state
+        } finally { if ($httpLease) { $httpLease.Stop() } }
     }
     $brokerName="$network-rabbit"; $brokerVolume="$brokerName-data"
     $state.broker=@{name=$brokerName;containerId=$null;volume=$brokerVolume;url=$null}; Save-State $state
     $null=Invoke-FixtureDocker @('volume','create','--label',"io.eosrio.qualifier=$label",'--label',"io.eosrio.run=$run",$brokerVolume)
-    $brokerArgs=@('run','-d','--name',$brokerName,'--hostname',$brokerName,'--network',$network,
-        '--label',"io.eosrio.qualifier=$label",'--label',"io.eosrio.run=$run",'--cpus','1','--memory','1g',
-        '-p','127.0.0.1::5672','--mount',"type=volume,src=$brokerVolume,dst=/var/lib/rabbitmq",
-        '-e','RABBITMQ_DEFAULT_USER=qualifier','-e','RABBITMQ_DEFAULT_PASS=qualifier-test-only')
-    if ($ExposeRabbitManagement) { $brokerArgs+=@('-p','127.0.0.1::15672') }
-    $brokerArgs+=@($state.rabbitImage)
-    $brokerId=(Invoke-FixtureDocker $brokerArgs).Trim()
+    $leases=@(); $pinnedPorts=$null
+    try {
+        if ($PinRabbitPorts) {
+            # Keep both leases until immediately before Docker binds them. A competing bind fails creation;
+            # do not retry on different ports after recording the endpoint intent.
+            foreach ($unused in 1..2) {
+                $lease=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0)
+                $leases+=@($lease); $lease.ExclusiveAddressUse=$true; $lease.Start()
+            }
+            $pinnedPorts=@{amqp=$leases[0].LocalEndpoint.Port;management=$leases[1].LocalEndpoint.Port}
+            $state.broker.pinnedPorts=$pinnedPorts; Save-State $state
+        }
+        $amqpBinding=if($PinRabbitPorts){"127.0.0.1:$($pinnedPorts.amqp):5672"}else{'127.0.0.1::5672'}
+        $brokerArgs=@('run','-d','--name',$brokerName,'--hostname',$brokerName,'--network',$network,
+            '--label',"io.eosrio.qualifier=$label",'--label',"io.eosrio.run=$run",'--cpus','1','--memory','1g',
+            '-p',$amqpBinding,'--mount',"type=volume,src=$brokerVolume,dst=/var/lib/rabbitmq",
+            '-e','RABBITMQ_DEFAULT_USER=qualifier','-e','RABBITMQ_DEFAULT_PASS=qualifier-test-only')
+        if ($ExposeRabbitManagement) {
+            $managementBinding=if($PinRabbitPorts){"127.0.0.1:$($pinnedPorts.management):15672"}else{'127.0.0.1::15672'}
+            $brokerArgs+=@('-p',$managementBinding)
+        }
+        $brokerArgs+=@($state.rabbitImage)
+        foreach ($lease in $leases) { $lease.Stop() }
+        $brokerId=(Invoke-FixtureDocker $brokerArgs).Trim()
+    } finally { foreach ($lease in $leases) { $lease.Stop() } }
     $state.broker.containerId=$brokerId; Save-State $state
     $brokerHost=(Invoke-FixtureDocker @('port',$brokerId,'5672/tcp')).Trim()
     $state.broker=@{name=$brokerName;containerId=$brokerId;volume=$brokerVolume;
         url="amqp://qualifier:qualifier-test-only@$brokerHost";dockerArgs=$brokerArgs}
+    if ($PinRabbitPorts) { $state.broker.pinnedPorts=$pinnedPorts }
     if ($ExposeRabbitManagement) {
         $state.broker.managementUrl='http://'+(Invoke-FixtureDocker @('port',$brokerId,'15672/tcp')).Trim()
     }

@@ -1,0 +1,43 @@
+{
+  "base": "7b53542111709cf8b225b381077e498e25bc5d61",
+  "files": {
+    "tests/unit/stateful-engineering-source-admission.mjs": {
+      "baseSha256": "744146da90341e2a415138ab7b768a21df5293551d0e974d3c92af0fc5c4f060",
+      "remove": [
+        "import {STATEFUL_WIRE34_CBFB_SOURCE_PROFILE, admitWire34CbfbSourceOptions} from './wire34-cbfb-source-admission.mjs';\nexport {STATEFUL_WIRE34_CBFB_SOURCE_PROFILE};\n",
+        "    if (profile === STATEFUL_WIRE34_CBFB_SOURCE_PROFILE)\n        return admitWire34CbfbSourceOptions({nativeMarker, engineeringSourceProfile: profile});\n",
+        "    if (admission.profile === STATEFUL_WIRE34_CBFB_SOURCE_PROFILE) return admission;\n",
+        "\n// Explicit retained-fixture cohort selection; historical/default admission predicates above stay unchanged.\nexport function retainedWireSourceProfile() {\n    const selected = process.env.HYPERION_NATIVE_SOURCE_PROFILE;\n    assert(selected === undefined || selected === '' || selected === STATEFUL_ALL_CBFB_SOURCE_PROFILE\n        || selected === STATEFUL_WIRE34_CBFB_SOURCE_PROFILE, 'Unknown retained Wire source profile');\n    return selected === STATEFUL_WIRE34_CBFB_SOURCE_PROFILE ? selected : STATEFUL_ALL_CBFB_SOURCE_PROFILE;\n}\n"
+      ],
+      "replace": []
+    },
+    "tests/unit/wire-managed-state-v2-native.mjs": {
+      "baseSha256": "7cbab89a9fe58fe4e5a3d82458693b0aae164147dd8bf2af5e34d34694567bbb",
+      "remove": [],
+      "replace": [
+        [
+          "import {admitCoordinatedNativeSourceOptions, retainedWireSourceProfile} from './stateful-engineering-source-admission.mjs';",
+          "import {admitCoordinatedNativeSourceOptions, STATEFUL_ALL_CBFB_SOURCE_PROFILE} from './stateful-engineering-source-admission.mjs';"
+        ],
+        [
+          "admitCoordinatedNativeSourceOptions({engineeringSourceProfile: retainedWireSourceProfile()});",
+          "admitCoordinatedNativeSourceOptions({engineeringSourceProfile: STATEFUL_ALL_CBFB_SOURCE_PROFILE});"
+        ]
+      ]
+    },
+    "tests/unit/protocol-abi-history-native.mjs": {
+      "baseSha256": "cde010313600f8a322fa489c3fc9b9331a3eb98aabbd74b9a058814b94b34b9d",
+      "remove": [],
+      "replace": [
+        [
+          "import {admitCoordinatedNativeSourceOptions, retainedWireSourceProfile} from './stateful-engineering-source-admission.mjs';",
+          "import {admitCoordinatedNativeSourceOptions, STATEFUL_ALL_CBFB_SOURCE_PROFILE} from './stateful-engineering-source-admission.mjs';"
+        ],
+        [
+          "admitCoordinatedNativeSourceOptions({engineeringSourceProfile: retainedWireSourceProfile()});",
+          "admitCoordinatedNativeSourceOptions({engineeringSourceProfile: STATEFUL_ALL_CBFB_SOURCE_PROFILE});"
+        ]
+      ]
+    }
+  }
+}

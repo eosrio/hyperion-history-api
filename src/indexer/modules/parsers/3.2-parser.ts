@@ -130,7 +130,7 @@ export default class HyperionParser extends BaseParser {
 
             // Observe full source inputs before root-only, whitelist or max-inline filtering.
             // Storage failure escapes without reaching the source acknowledgment below.
-            const observation = worker.usesExtensionProtocol
+            const observation = worker.usesProtocolSourceBindings
                 ? await worker.prepareProtocolAbiObservations(res) : undefined;
             // Decode the complete vector before root-only can omit it. Missing and encoded-empty remain distinct.
             let sourceTraces: unknown;
@@ -220,8 +220,9 @@ export default class HyperionParser extends BaseParser {
                 if (worker.actionSourceAdmissionEnabled) {
                     await worker.ackAdmittedSourceDelivery(message);
                 } else if (worker.usesExtensionProtocol) {
-                    worker.ackProtocolSourceDelivery(message);
+                    await worker.ackProtocolSourceDelivery(message);
                 } else if (worker.ch && worker.ch_ready) {
+                    await worker.flushDurableWorkerOutputs();
                     worker.settleOriginalWorkerDelivery(message);
                 }
             } catch (e) {

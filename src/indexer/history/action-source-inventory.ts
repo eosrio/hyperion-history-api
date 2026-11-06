@@ -322,6 +322,7 @@ function wireInputs(input: ActionSourceInventoryInput, transactions: readonly {i
 function expectedGroups(source: ActionSourceInventoryPosition, transactionId: string, selected: Occurrence[],
                         dispatch: ActionSourceDispatch, policy: ActionSourceInventoryPolicy, wire: boolean,
                         selectionId: string | null): ActionSourceExpectedGroup[] {
+    const certified = selectionId !== null;
     const committed = selected.filter(value => value.action.except === null);
     const metadata = new Map<number, ObjectValue>();
     let usageIncluded = false;
@@ -333,7 +334,7 @@ function expectedGroups(source: ActionSourceInventoryPosition, transactionId: st
             act: {account: action.act.account, name: action.act.name, authorization: authorization(action.act.authorization)}};
         if (action.context_free !== false) result.context_free = action.context_free;
         if (action.error_code !== null) result.error_code = action.error_code;
-        if (wire) result.protocol = {schemaVersion: 1,
+        if (certified) result.protocol = {schemaVersion: 1,
             source: {chainId: source.chainId, blockNum: source.blockNum, blockId: source.blockId},
             selectionId, input: occurrence.input};
         if (!usageIncluded) {
@@ -355,13 +356,13 @@ function expectedGroups(source: ActionSourceInventoryPosition, transactionId: st
     for (const occurrence of committed) {
         const canonical = occurrence.creator > 0 && digestByOrdinal.get(occurrence.creator) === occurrence.receipt!.act_digest
             ? occurrence.creator : occurrence.ordinal;
-        const key = wire ? String(occurrence.input!.inputActionOrdinal) : occurrence.receipt!.act_digest + ':' + canonical;
+        const key = certified ? String(occurrence.input!.inputActionOrdinal) : occurrence.receipt!.act_digest + ':' + canonical;
         const group = groups.get(key) ?? []; group.push(occurrence); groups.set(key, group);
     }
     return [...groups.values()].map(members => {
-        const representative = wire ? members.find(value => value.ordinal === value.input!.inputActionOrdinal) ?? members[0] : members[0];
+        const representative = certified ? members.find(value => value.ordinal === value.input!.inputActionOrdinal) ?? members[0] : members[0];
         const result = metadata.get(representative.ordinal)!;
-        const counterReceipt = wire ? representative.receipt! : members[members.length - 1].receipt!;
+        const counterReceipt = certified ? representative.receipt! : members[members.length - 1].receipt!;
         result.code_sequence = counterReceipt.code_sequence; result.abi_sequence = counterReceipt.abi_sequence;
         result.act_digest = members[0].receipt!.act_digest;
         result.receipts = members.map(value => {
@@ -370,7 +371,7 @@ function expectedGroups(source: ActionSourceInventoryPosition, transactionId: st
             return entry;
         });
         return {actionOrdinals: members.map(value => value.ordinal), representativeActionOrdinal: representative.ordinal,
-            inputActionOrdinal: wire ? representative.input!.inputActionOrdinal : null, metadata: result};
+            inputActionOrdinal: certified ? representative.input!.inputActionOrdinal : null, metadata: result};
     });
 }
 
@@ -426,6 +427,7 @@ export function deriveActionSourceInventory(original: ActionSourceInventoryInput
         const selectionId = input.sourceSelectionId ?? null;
         if (wire) requireValue(typeof selectionId === 'string' && /^h45srcsel1:[0-9a-f]{64}$/.test(selectionId), 'Wire source selection is required');
         else requireValue(input.wireActionInputs === undefined, 'Antelope source cannot use Wire observation expectations');
+        if (selectionId !== null) requireValue(typeof selectionId === 'string' && /^h45srcsel1:[0-9a-f]{64}$/.test(selectionId), 'Invalid source selection');
         let rootAllowed = true;
         if (policy.rootOnly) {
             requireValue(Array.isArray(input.rootActions), 'Root-only requires original packed-block root actions');
@@ -434,6 +436,20 @@ export function deriveActionSourceInventory(original: ActionSourceInventoryInput
         }
         const parsed = parseSourceTransactions(input.traces, wire);
         if (wire) wireInputs(input, parsed);
+        else if (selectionId !== null) {
+            // Derive Antelope membership from original bytes, independently of provider observations.
+            for (const transaction of parsed) {
+                const origins = inputOrigins(transaction.occurrences, 'Protocol');
+                for (const occurrence of transaction.occurrences) {
+                    const {action, receipt: sourceReceipt} = occurrence;
+                    requireValue(sourceReceipt && action.except === null, 'Source-bound Antelope needs committed occurrences');
+                    occurrence.input = {transactionId: transaction.id, actionOrdinal: occurrence.ordinal,
+                        receiver: action.receiver, account: action.act.account, name: action.act.name,
+                        rawHex: action.act.data.toLowerCase(), globalSequence: sourceReceipt.global_sequence,
+                        receiptAbiSequence: String(sourceReceipt.abi_sequence), inputActionOrdinal: origins.get(occurrence.ordinal)!};
+                }
+            }
+        }
         const transactions: ActionSourceTransactionInventory[] = parsed.map(({id, raw, trace, traceOrdinal, occurrences}) => {
             const traceSha256 = hash(json(raw));
             const retained = policy.maxInline && occurrences.length > policy.maxInline ? occurrences.slice(0, policy.maxInline) : occurrences;

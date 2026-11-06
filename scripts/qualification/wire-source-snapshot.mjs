@@ -1,0 +1,139 @@
+// Inert file collection/materialization shared by the actual replay snapshot path and focused controls.
+// No admission/runtime module is imported, and no child, service, socket or process stop exists here.
+import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+import {mkdir, writeFile} from 'node:fs/promises';
+import {dirname, join} from 'node:path';
+
+export const engineeringAdmissionSourcePaths = Object.freeze([
+    'tests/unit/wire34-cbfb-source-admission.mjs',
+    'tests/fixtures/engineering-profiles/wire34-cbfb-linux.json',
+    'scripts/qualification/wire34-cbfb/contract.mjs',
+    'tests/unit/all-cbfb-source-admission.mjs',
+    'tests/fixtures/engineering-profiles/all-cbfb-linux.json',
+    'scripts/qualification/indexed-schema-mongodb/all-cbfb-contract.mjs',
+    'scripts/qualification/indexed-schema-mongodb/all-cbfb-routing.json',
+    'scripts/qualification/indexed-schema-mongodb/all-cbfb-ci-source-check.mjs',
+    'scripts/qualification/indexed-schema-mongodb/all-cbfb-contract.test.mjs',
+    'scripts/qualification/indexed-schema-mongodb/all-cbfb-assembly.mjs',
+    'scripts/qualification/indexed-schema-mongodb/all-cbfb-assembly.json',
+    'scripts/qualification/indexed-schema-mongodb/all-cbfb-assembly.test.mjs',
+    'scripts/qualification/operator-list-mongodb/all-cbfb-source-profile.mjs',
+    'tests/unit/all-cbfb-source-admission-native.mjs',
+    'tests/native/all-cbfb-codec-profile.test.mjs',
+    'tests/native/all-cbfb-caller-routing.test.mjs',
+    'tests/native/all-cbfb-source-tamper.test.mjs',
+    'tests/unit/stateful-engineering-source-admission.mjs',
+    'tests/native/projection-manager-lifecycle.test.mjs',
+    'tests/native/bounded-json-string-encoding.test.mjs',
+    'scripts/qualification/indexed-schema-mongodb/retained-string-encoding.md',
+    'tests/unit/fixtures/wire-native-genesis/ship-preflight-20261020.json',
+    'tests/unit/projection-manager-fixture.mjs',
+    'tests/unit/projection-startup-fencing.mjs',
+    'tests/unit/projection-controller-startup.mjs',
+    'tests/unit/worker-attempt-quiescence-worker.mjs',
+    'tests/native/current-cbfb-caller-routing.test.mjs',
+    'tests/unit/portable-state-raw-target.mjs',
+    'tests/unit/projection-frame-source-fence.mjs',
+    'tests/unit/protocol-native-api.mjs',
+    'tests/unit/worker-attempt-supervisor.test.ts',
+    'tests/unit/worker-failure-lineage.mjs',
+    'tests/unit/protocol-native-lag-replay.mjs',
+    'tests/fixtures/portable-mapping-retry.mjs',
+    'tests/native/current-cbfb-source-tamper.test.mjs',
+    'tests/unit/stateful-engineering-source-admission.test.ts',
+    'scripts/qualification/indexed-schema-mongodb/current-cbfb-ci.md',
+    '.github/workflows/indexed-schema-finite.yml',
+    '.github/workflows/indexed-schema-native.yml',
+    'tests/unit/current-cbfb-source-admission.mjs',
+    'tests/fixtures/engineering-profiles/current-cbfb-linux.json',
+    'scripts/qualification/indexed-schema-mongodb/current-cbfb-contract.mjs',
+    'scripts/qualification/indexed-schema-mongodb/current-cbfb-routing.json',
+    'scripts/qualification/indexed-schema-mongodb/current-cbfb-ci-source-check.mjs',
+    'scripts/qualification/indexed-schema-mongodb/current-cbfb-contract.test.mjs',
+    'scripts/qualification/indexed-schema-mongodb/cbfb-assembly.mjs',
+    'scripts/qualification/indexed-schema-mongodb/cbfb-assembly.json',
+    'scripts/qualification/operator-list-mongodb/current-cbfb-source-profile.mjs',
+    'tests/unit/current-cbfb-source-admission-native.mjs',
+    'tests/native/current-cbfb-codec-profile.test.mjs',
+    'tests/unit/sdk49-indexed-source-admission.mjs',
+    'tests/fixtures/engineering-profiles/sdk49-indexed-linux.json',
+    'scripts/qualification/indexed-schema-mongodb/assembly.mjs',
+    'scripts/qualification/indexed-schema-mongodb/assembly.json',
+    'scripts/qualification/indexed-schema-mongodb/sdk49-ci-source-check.mjs',
+    'scripts/qualification/indexed-schema-mongodb/sdk49-ci-routing.md',
+    '.github/workflows/build.yml',
+    'scripts/qualification/operator-list-mongodb/sdk49-source-profile.mjs',
+    'scripts/qualification/operator-list-mongodb/assembly-diagnostics.test.mjs',
+    'scripts/qualification/operator-list-mongodb/ci.mjs',
+    'scripts/qualification/operator-list-mongodb/runner.mjs',
+    'scripts/qualification/stateful-complete-kind-mongodb/runner.mjs',
+    'scripts/qualification/wire-source-snapshot.mjs',
+    'scripts/qualification/wire-source-snapshot.test.mjs',
+    'tests/native/current-stateful-source-profile.test.mjs',
+    'tests/native/stateful-complete-kind-codec-profile.test.mjs',
+    'tests/unit/stateful-complete-kind-source-admission-native.mjs',
+    'tests/unit/protocol-abi-history-native.mjs',
+    'tests/unit/wire-managed-state-v2-native.mjs',
+    'tests/unit/portable-state-source-fixture.mjs',
+    'packages/backend-mongodb/tests/fixture.mjs',
+    'tests/unit/stateful-host-fixture.mjs',
+    'tests/native/retained-workload-progress.mjs',
+    'tests/native/retained-workload-test.mjs',
+    'tests/native/retained-workload-progress.test.mjs',
+    'scripts/qualification/indexed-schema-mongodb/retained-wire-diagnostics.md',
+    'tests/unit/current-stateful-engineering-source-admission.mjs',
+    'tests/unit/native-snapshot-source-admission.mjs',
+    'tests/unit/native-cleanup-source-admission.mjs',
+    'tests/unit/native-cleanup-trace-source-admission.mjs',
+    'tests/fixtures/engineering-profiles/current-native45-linux.json',
+    'tests/fixtures/engineering-profiles/native-snapshot-linux.json',
+    'tests/fixtures/engineering-profiles/native-cleanup-linux.json',
+    'tests/fixtures/engineering-profiles/native-cleanup-trace-linux.json',
+    'scripts/qualification/operator-list-mongodb/linux-source-profile.mjs',
+    'scripts/qualification/operator-list-mongodb/linux-snapshot-source-profile.mjs',
+    'scripts/qualification/operator-list-mongodb/linux-cleanup-source-profile.mjs',
+    'scripts/qualification/operator-list-mongodb/linux-profile.json',
+    'scripts/qualification/operator-list-mongodb/snapshot-profile.json',
+    'scripts/qualification/operator-list-mongodb/cleanup-profile.json',
+    'scripts/qualification/operator-list-mongodb/source-profile.mjs',
+    'scripts/qualification/operator-list-mongodb/profile.json',
+    'scripts/qualification/operator-list-mongodb/inventory.mjs',
+    'scripts/qualification/operator-list-mongodb/assembly-diagnostics.mjs',
+    'scripts/qualification/operator-list-mongodb/contract.mjs',
+]);
+const maximumBytes = 64 * 1024 * 1024;
+const portable = path => {
+    assert.ok(typeof path === 'string' && /^(?:[A-Za-z0-9_@.-]+\/)*[A-Za-z0-9_@.-]+$/.test(path)
+        && path.split('/').every(part => part !== '.' && part !== '..'), 'Invalid snapshot source path');
+    return path;
+};
+
+/**
+ * @param {{repo: string, prefix: string, componentFiles: ReadonlyMap<string, Uint8Array>, runtimeSources: readonly string[],
+ * engineeringSelected: boolean, output?: string, readSource: (path: string) => Promise<Buffer>}} options
+ * @returns {Promise<Record<string, string>>}
+ */
+export async function captureWireSourceSnapshot({repo, prefix, componentFiles, runtimeSources, engineeringSelected, output, readSource}) {
+    assert.equal(typeof engineeringSelected, 'boolean'); assert.equal(typeof readSource, 'function'); portable(prefix);
+    const members = new Map(); let total = 0;
+    const add = (file, bytes) => {
+        portable(file); assert.ok(bytes instanceof Uint8Array, 'Raw snapshot source bytes required');
+        assert.ok(!members.has(file), 'Duplicate snapshot source'); total += bytes.byteLength;
+        assert.ok(total <= maximumBytes, 'source evidence exceeds byte bound'); members.set(file, bytes);
+    };
+    for (const [file, bytes] of componentFiles) add(prefix + '/' + portable(file), bytes);
+    // Every engineering choice loads the same dispatcher graph, including historical/default-refusal branches.
+    if (engineeringSelected) for (const file of engineeringAdmissionSourcePaths) add(file, await readSource(join(repo, file)));
+    for (const file of runtimeSources) if (!members.has(file)) add(file, await readSource(join(repo, portable(file))));
+    /** @type {Record<string, string>} */
+    const hashes = {};
+    for (const [file, bytes] of members) {
+        hashes[file] = createHash('sha256').update(bytes).digest('hex');
+        if (output) {
+            const target = join(output, 'sources', file); await mkdir(dirname(target), {recursive: true});
+            await writeFile(target, bytes, {flag: 'wx'});
+        }
+    }
+    return hashes;
+}

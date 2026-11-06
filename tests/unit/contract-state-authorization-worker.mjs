@@ -1,5 +1,6 @@
 /** Actual emitted producer method with owned queue/config only; no service or source-capture qualification. */
 import assert from 'node:assert/strict';
+import {controlledDurableOutputTransport} from './worker-attempt-fixture.mjs';
 import {registerHooks} from 'node:module';
 import {randomUUID} from 'node:crypto';
 import {lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
@@ -39,6 +40,8 @@ try {
             allowedDynamicContracts: new Set(allowed), preIndexingQueue: {async push(payload) {
                 sent.push({queue: payload.queue, content: Buffer.from(payload.content), headers: structuredClone(payload.headers)});
             }}});
+        worker.ch = {}; worker.ch_ready = true;
+        controlledDurableOutputTransport(worker, 'deserializer');
         return {worker, sent};
     };
     const row = {code: 'contracta', table: 'records', scope: 'alice', primary_key: '18446744073709551615', payer: 'alice',

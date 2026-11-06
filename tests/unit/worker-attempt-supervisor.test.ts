@@ -1,4 +1,5 @@
 import {expect, it} from 'bun:test';
+import {createProjectionManagerFixture} from './projection-manager-fixture.mjs';
 import {EventEmitter} from 'node:events';
 import {randomUUID} from 'node:crypto';
 import {setImmediate as turn} from 'node:timers/promises';
@@ -35,6 +36,23 @@ it('authenticates the exact physical owner and ends only after its held root fin
     expect(ends).toHaveLength(1); expect(describeWorkerAttemptEnd(supervisor, ends[0])).toMatchObject({status: 'quiescent', acknowledgementAttempted: true, rootResult: 'returned'});
     expect(() => describeWorkerAttemptEnd(supervisor, {} as any)).toThrow('Unissued');
     expect(supervisor.snapshot().active).toBe(0); first.client.dispose(); replacement.client.dispose();
+});
+
+it('master request ownership rejects unregistered, wrong-role, fenced and retired physical workers', async () => {
+    const supervisor = new WorkerAttemptSupervisor(), owner = connection(supervisor);
+    expect(supervisor.ownsActiveWorker(owner.physical, 'deserializer')).toBe(false);
+    let announce!: () => void, release!: () => void;
+    const entered = new Promise<void>(resolve => {announce = resolve;}), held = new Promise<void>(resolve => {release = resolve;});
+    const work = owner.client.run(owner.client.capture(descriptor()), async () => {announce(); await held;});
+    await entered;
+    expect(supervisor.ownsActiveWorker(owner.physical, 'deserializer')).toBe(true);
+    expect(supervisor.ownsActiveWorker(owner.physical, 'projection')).toBe(false);
+    expect(supervisor.ownsActiveWorker({...owner.physical}, 'deserializer')).toBe(false);
+    supervisor.fenceActive(); expect(supervisor.ownsActiveWorker(owner.physical, 'deserializer')).toBe(false);
+    release(); await work;
+    expect(supervisor.ownsActiveWorker(owner.physical, 'deserializer')).toBe(true);
+    supervisor.retire(owner.physical); expect(supervisor.ownsActiveWorker(owner.physical, 'deserializer')).toBe(false);
+    supervisor.observeExit(owner.physical); owner.client.dispose();
 });
 
 it('keeps controlled local scopes explicitly without a master accepted end', async () => {
@@ -130,7 +148,7 @@ it('does not open a projection database after held protocol initialization loses
             fields: [{name: 'owner', path: ['owner'], type: 'string'}], initialization: {kind: 'genesis'}}]}},
             indexer: {live_reader: true}},
         protocol: {profileId: 'controlled-native-profile', verifyNativeGenesis() {}}, profiler: {stopReporting() {}},
-        manager: {conn: {mongodb: {}}, mongodbClient: {async connect() {connections++; throw new Error('Controlled unexpected connection');}}}});
+        manager: createProjectionManagerFixture({async connect() {connections++; throw new Error('Controlled unexpected connection');}})});
     worker.installControlledAttemptLifecycle('projection');
     const run = worker.runProjectionAttempt.bind(worker);
     worker.runProjectionAttempt = (kind: any, metadata: any, operation: any) => run(kind, metadata, () => {

@@ -6,20 +6,22 @@ import {basename,dirname,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {registerHooks} from 'node:module';
-import {validateProtocolNativeActions} from '@eosrio/hyperion-sdk/protocol';
-import {createWireNativeActions,resolveCodecProfile} from '@eosrio/hyperion-wire-plugin';
-import {loadChainProtocol} from '../../build/indexer/protocol/selection.js';
-import {ProtocolAbiCoordinator} from '../../build/indexer/protocol/abi-coordinator.js';
-import {ProtocolAbiProofReader} from '../../build/indexer/protocol/abi-proof.js';
-import {ProtocolAbiFrontierStore} from '../../build/indexer/protocol/abi-frontier-store.js';
-import {ProtocolAbiObservationStore,protocolAbiCaptureDigest} from '../../build/indexer/protocol/abi-observation-store.js';
-import {ProtocolSourceBindingStore} from '../../build/indexer/protocol/source-bindings.js';
-import {ProtocolNativeObservationStore} from '../../build/indexer/protocol/native-observation-store.js';
-import {ProtocolNativeActionReader} from '../../build/indexer/protocol/native-authorization.js';
-import {protocolNativeInputInventory,snapshotProtocolNativeDecisions} from '../../build/indexer/protocol/native-observation-facts.js';
-import {deriveProtocolActionInputs} from '../../build/indexer/history/action-source-inventory.js';
-import {protocolBytes} from '../../build/indexer/protocol/contract-cache.js';
-import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
+import {admitNativeSourceEnvironment} from './stateful-engineering-source-admission.mjs';
+const nativeSourceAdmission = admitNativeSourceEnvironment();
+const {validateProtocolNativeActions} = await import('@eosrio/hyperion-sdk/protocol');
+const {createWireNativeActions,resolveCodecProfile} = await import('@eosrio/hyperion-wire-plugin');
+const {loadChainProtocol} = await import('../../build/indexer/protocol/selection.js');
+const {ProtocolAbiCoordinator} = await import('../../build/indexer/protocol/abi-coordinator.js');
+const {ProtocolAbiProofReader} = await import('../../build/indexer/protocol/abi-proof.js');
+const {ProtocolAbiFrontierStore} = await import('../../build/indexer/protocol/abi-frontier-store.js');
+const {ProtocolAbiObservationStore,protocolAbiCaptureDigest} = await import('../../build/indexer/protocol/abi-observation-store.js');
+const {ProtocolSourceBindingStore} = await import('../../build/indexer/protocol/source-bindings.js');
+const {ProtocolNativeObservationStore} = await import('../../build/indexer/protocol/native-observation-store.js');
+const {ProtocolNativeActionReader} = await import('../../build/indexer/protocol/native-authorization.js');
+const {protocolNativeInputInventory,snapshotProtocolNativeDecisions} = await import('../../build/indexer/protocol/native-observation-facts.js');
+const {deriveProtocolActionInputs} = await import('../../build/indexer/history/action-source-inventory.js');
+const {protocolBytes} = await import('../../build/indexer/protocol/contract-cache.js');
+const {frontierMemoryClient} = await import('./protocol-frontier-memory.mjs');
 
 // This is an internal engineering capability. Installed descriptors/providers stay inactive.
 registerHooks({resolve(specifier,context,next){if(specifier.includes('node-abieos'))throw new Error('Wire imported legacy addon');return next(specifier,context);}});
@@ -46,7 +48,7 @@ try {
     assert.equal(receipt.complete,true);assert.equal(receipt.chainId,chainId);assert.equal(receipt.start,1);assert.equal(receipt.endExclusive,2401);
     const selected=await loadChainProtocol({provider:'extension',package:'@eosrio/hyperion-wire-plugin',profileId:originalManifest.profileId});
     assert.equal(selected.provider.nativeActions,undefined);
-    assert(selected.components.every(component=>component.sourceRevision==='7167659e9c043cb3351074fcacb40200cc57f3a3'));
+    assert(selected.components.every(component=>component.sourceRevision===nativeSourceAdmission.wireRevision));
     const descriptor=JSON.parse(readFileSync(join(wireRoot,'dist/protocol-provider.json')));
     const legacyProfiles=['wire-sysio-6508c9e8-engineering-v1','wire-sysio-7dede884-engineering-v1'].map(id=>{
         const profile=descriptor.profiles.find(profile=>profile.id===id);assert(profile);return profile;

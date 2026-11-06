@@ -4,7 +4,7 @@ import {fileURLToPath} from 'node:url';
 import {HyperionModuleLoader} from '../../src/indexer/modules/loader.js';
 
 function loader() {
-    return new HyperionModuleLoader({config: {settings: {chain: 'handler-test', parser: '3.2'}, plugins: {}},
+    return new HyperionModuleLoader({config: {settings: {chain: 'handler-test', parser: '3.2'}, features: {}, plugins: {}},
         connections: {chains: {'handler-test': {chain_id: '1'.repeat(64)}}}} as any);
 }
 
@@ -97,6 +97,12 @@ describe('emitted loader activation readiness', () => {
                 mkdirSync(join(directory, 'build', 'indexer', 'helpers'));
                 writeFileSync(join(directory, 'package.json'), JSON.stringify({type: 'module'}));
                 writeFileSync(join(modules, 'loader.js'), readFileSync(new URL(${JSON.stringify(productionLoader)})));
+                for (const member of ['projection/stateful-inventory.js', 'protocol/immutable-bundle-store.js',
+                    'protocol/bounded-document-read.js', 'protocol/proof-consumer-scope.js', 'helpers/bounded-json.js']) {
+                    const target = join(directory, 'build', 'indexer', member);
+                    mkdirSync(dirname(target), {recursive: true});
+                    writeFileSync(target, readFileSync(new URL('../' + member, ${JSON.stringify(productionLoader)})));
+                }
                 writeFileSync(join(directory, 'build', 'indexer', 'helpers', 'common_functions.js'), 'export function hLog() {}');
                 writeFileSync(join(modules, 'parsers', 'fixture-parser.js'), 'export default class {}');
                 let release, entered;
@@ -129,7 +135,7 @@ describe('emitted loader activation readiness', () => {
                     'globalThis.activation.events.push("plugin"); this.actionHandlers = [{contract:"alpha", action:"override", handler(value) {value.marker="plugin";}}];}}');
                 const {HyperionModuleLoader} = await import(pathToFileURL(join(modules, 'loader.js')).href);
                 const loader = new HyperionModuleLoader({config: {settings: {chain: 'handler-ready', parser: 'fixture'},
-                    plugins: {ordered: {enabled: true}}}, connections: {chains: {'handler-ready': {chain_id: chainId}}}});
+                    features: {}, plugins: {ordered: {enabled: true}}}, connections: {chains: {'handler-ready': {chain_id: chainId}}}});
                 let settled = false;
                 const initialized = loader.init().then(() => {settled = true;});
                 await importing;

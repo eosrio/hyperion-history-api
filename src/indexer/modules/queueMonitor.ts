@@ -19,6 +19,8 @@ export class HyperionQueueMonitor {
 
     private queueMonitoringInterval?: Timeout;
     private readonly readingPaused = {reader: true, continuous_reader: true};
+    // Startup and failed observations are untrusted, not evidence of an over-budget queue.
+    private readonly pressureLatched = {reader: false, continuous_reader: false};
     private checking = false;
     private sample: PressureSample = {status: 'missing', sampled_at: null, reason: 'not_sampled', queues: [], scopes: null};
 
@@ -45,13 +47,14 @@ export class HyperionQueueMonitor {
         return this.readingPaused[role];
     }
 
-    private updateReader(role: 'reader' | 'continuous_reader', aboveLimit: boolean, canResume: boolean) {
-        if (aboveLimit && !this.readingPaused[role]) {
-            this.master.sendToRole(role, {event: 'pause', source: 'queue-pressure'});
-            this.readingPaused[role] = true;
-        } else if (!aboveLimit && canResume && this.readingPaused[role]) {
-            this.master.sendToRole(role, {event: 'resume', source: 'queue-pressure'});
-            this.readingPaused[role] = false;
+    private updateReader(role: 'reader' | 'continuous_reader', aboveLimit: boolean, canResume: boolean, unknown = false) {
+        if (aboveLimit) this.pressureLatched[role] = true;
+        const paused = unknown || aboveLimit || (this.pressureLatched[role] && !canResume);
+        if (!paused) this.pressureLatched[role] = false;
+        if (paused !== this.readingPaused[role]) {
+            this.readingPaused[role] = paused;
+            try { this.master.sendToRole(role, {event: paused ? 'pause' : 'resume', source: 'queue-pressure'}); }
+            catch (error) { hLog(`Reader pressure delivery request failed for ${role}:`, error); }
         }
     }
 
@@ -90,7 +93,12 @@ export class HyperionQueueMonitor {
                 if (!Number.isSafeInteger(size) || size < 0) { reason = 'invalid_metric'; throw new Error(`Invalid queue size for ${queue}`); }
                 observations.push({queue, scope: item.scope, size, limit: item.limit, resume_trigger: this.conf.scaling.resume_trigger});
                 const state = pressure[item.scope];
-                if (size >= item.limit) state.above = true;
+                if (size >= item.limit) {
+                    state.above = true;
+                    // Preserve valid over-budget evidence even if a later queue read fails.
+                    if (item.scope !== 'live') this.pressureLatched.reader = true;
+                    if (item.scope !== 'bulk') this.pressureLatched.continuous_reader = true;
+                }
                 if (size >= this.conf.scaling.resume_trigger) state.resume = false;
                 if (item.ingestor && size > limit) {
                     if (!autoscaleConsumers[queue]) autoscaleConsumers[queue] = 0;
@@ -102,18 +110,21 @@ export class HyperionQueueMonitor {
                     }
                 }
             }
-            this.updateReader('reader', pressure.shared.above || pressure.bulk.above, pressure.shared.resume && pressure.bulk.resume);
-            this.updateReader('continuous_reader', pressure.shared.above || pressure.live.above, pressure.shared.resume && pressure.live.resume);
+            this.updateReader('reader', pressure.shared.above || (hasBulk && pressure.bulk.above), pressure.shared.resume && pressure.bulk.resume, !hasBulk);
+            this.updateReader('continuous_reader', pressure.shared.above || (hasLive && pressure.live.above), pressure.shared.resume && pressure.live.resume, !hasLive);
             this.sample = {status: 'current', sampled_at: new Date().toISOString(), reason: null, queues: observations,
                 scopes: {bulk: hasBulk, live: hasLive, shared: [...queues.values()].some(item => item.scope === 'shared')}};
         } catch (error) {
             this.sample = {status: 'failed', sampled_at: new Date().toISOString(), reason, queues: [], scopes: null};
             // Unknown queue pressure must not release either reader.
-            this.updateReader('reader', true, false);
-            this.updateReader('continuous_reader', true, false);
-            hLog('Queue monitoring failed; readers paused:', error);
+            this.updateReader('reader', false, false, true);
+            this.updateReader('continuous_reader', false, false, true);
+            hLog('Queue monitoring failed; reader pause requested:', error);
         } finally {
             this.checking = false;
+            // Reconcile the current physical readers on the existing bounded
+            // poll cadence, including when startup synchronization was lost.
+            this.master.reconcileReaderPressure?.();
         }
     }
 

@@ -1,7 +1,11 @@
+import {ProtocolSourceEquivalence} from '../../indexer/protocol/source-equivalence.js';
+import {ProtocolSourceBindingStore} from '../../indexer/protocol/source-bindings.js';
+import {diskAbiHistoryOptions} from '../../indexer/protocol/disk-abi-history-options.js';
+import {ProtocolAbiObservationStore} from '../../indexer/protocol/abi-observation-store.js';
 import {createHash} from 'node:crypto';
 import type {FastifyInstance, FastifyRequest} from 'fastify';
 import {loadChainProtocol} from '../../indexer/protocol/selection.js';
-import {ProtocolAbiFrontierStore} from '../../indexer/protocol/abi-frontier-store.js';
+import {ProtocolAbiFrontierStore, ProtocolAbiFrontierRecordMemo} from '../../indexer/protocol/abi-frontier-store.js';
 import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError,
     type ProtocolActionProofMetadata, type ProtocolAbiProofView} from '../../indexer/protocol/abi-proof.js';
 import {ProtocolNativeActionReader, ProtocolNativeActionUnavailableError,
@@ -10,7 +14,7 @@ import {ProtocolNativeObservationStore} from '../../indexer/protocol/native-obse
 import {protocolImmutableJson} from '../../indexer/protocol/immutable-bundle-store.js';
 import {parseProtocolNativeActionMetadata} from '../../indexer/protocol/native-action-metadata.js';
 import {isProtocolHex} from '../../indexer/protocol/hex.js';
-import {assertProtocolProofRequestActive, withProtocolProofRequest} from './protocol-proof-request.js';
+import {assertProtocolProofRequestActive, protocolProofScope, withProtocolProofRequest} from './protocol-proof-request.js';
 import {assertNativeDerivedOutput, nativeResponseOutputs, nativeSourceOutput, type NativeOutputEvidence} from './protocol-action-output.js';
 
 type ActionMetadata = ProtocolActionProofMetadata | ProtocolNativeActionProofMetadata;
@@ -47,8 +51,13 @@ export class ProtocolActionConsumer {
         if (!chainId) throw unavailable('Configured chain identity is unavailable');
         const profile = {id: selected.id, profileId: selected.provider.profileId, components: selected.components ?? []};
         this.reader = new ProtocolAbiProofReader({chainId, profile,
+            diskHistory:diskAbiHistoryOptions(host.manager.config.settings.protocol_abi_history,host.elastic,chain,chainId,
+                profile,selected.provider,host.manager.config.settings.es_replicas??0),
+            sourceEquivalence: new ProtocolSourceEquivalence(new ProtocolSourceBindingStore(host.elastic,chain,host.manager.config.settings.es_replicas ?? 0,{readOnly:true}),
+                new ProtocolAbiObservationStore(host.elastic,chain,host.manager.config.settings.es_replicas ?? 0,undefined,{readOnly:true})),
+            historicalCertificates: host.manager.config.settings.protocol_abi_coordination?.historical_certificates !== undefined,
             maxAncestryBlocks: host.manager.config.settings.protocol_abi_coordination?.recovery_window_blocks,
-            store: new ProtocolAbiFrontierStore(host.elastic, chain, host.manager.config.settings.es_replicas ?? 0, {readOnly: true})});
+            store: new ProtocolAbiFrontierStore(host.elastic, chain, host.manager.config.settings.es_replicas ?? 0, {readOnly: true, recordMemo: new ProtocolAbiFrontierRecordMemo()})});
         this.nativeReader = selected.provider.nativeActions ? new ProtocolNativeActionReader({chainId, profile,
             provider: selected.provider, proofReader: this.reader,
             store: new ProtocolNativeObservationStore(host.elastic, chain,
@@ -81,6 +90,7 @@ function unavailable(message: string): ProtocolAbiProofUnavailableError {
 }
 
 function requestProofs(request: object) {
+    request = protocolProofScope(request);
     let value = requests.get(request);
     if (!value) {value = {actions: [], views: [], classifications: [], native: []}; requests.set(request, value);}
     return value;
@@ -191,7 +201,7 @@ async function resolveNative(fastify: FastifyInstance, scope: object, metadata: 
         const membership = await reader.waitForOpen(metadata.source, metadata.selectionId, options);
         if (membership.nativeActionInterfaceVersion !== 1)
             throw unavailable('has no canonical native-classification epoch');
-        const view = await nativeReader.open(metadata.source, metadata.selectionId, options);
+        const view = await nativeReader.waitForOpen(metadata.source, metadata.selectionId, options);
         const decision = await nativeReader.authorize(view, metadata.input, options);
         if (decision.kind !== 'native') throw unavailable('does not select a supported native origin');
         const canonical = await nativeReader.metadata(decision.grant, options);
@@ -368,7 +378,7 @@ export function protocolResponseForReturn(fastify: FastifyInstance, route: strin
 export async function revalidateProtocolActionScope(fastify: FastifyInstance, scope: object,
     output?: {readonly body: any; readonly route: string}): Promise<void> {
     assertProtocolProofRequestActive(scope);
-    const proofs = requests.get(scope);
+    const proofs = requests.get(protocolProofScope(scope));
     if (!proofs) return;
     // Capture all actual source/output obligations before the first await. Provider callbacks can still
     // hold earlier public actions, but no callback receives these detached outgoing snapshots.

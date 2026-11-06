@@ -9,7 +9,7 @@ function probe(body: string) {
         import assert from 'node:assert/strict';
         import {mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync} from 'node:fs';
         import {tmpdir} from 'node:os';
-        import {join} from 'node:path';
+        import {dirname, join} from 'node:path';
         import {pathToFileURL} from 'node:url';
         const directory = mkdtempSync(join(tmpdir(), 'hyperion-loader # % '));
         try {
@@ -32,7 +32,7 @@ function probe(body: string) {
             console.log('module-loader-probe-passed');
         } finally { rmSync(directory, {recursive: true, force: true}); }
     `;
-    const child = spawnSync('node', ['--input-type=module', '--eval', script], {
+    const child = spawnSync(process.env.HYPERION_NATIVE_NODE ?? 'node', ['--input-type=module', '--eval', script], {
         encoding: 'utf8', timeout: 10000
     });
     expect({status: child.status, error: child.error?.message, stdout: child.stdout, stderr: child.stderr})
@@ -68,6 +68,12 @@ describe('Module loader Node filesystem imports', () => {
                 'export function hLog(...args) { console.log(...args); }');
             // Preserve the emitted production implementation byte for byte.
             writeFileSync(join(modules, 'loader.js'), readFileSync(new URL(productionLoader)));
+            for (const member of ['projection/stateful-inventory.js', 'protocol/immutable-bundle-store.js',
+                'protocol/bounded-document-read.js', 'protocol/proof-consumer-scope.js', 'helpers/bounded-json.js']) {
+                const target = join(directory, 'build', 'indexer', member);
+                mkdirSync(dirname(target), {recursive: true});
+                writeFileSync(target, readFileSync(new URL('../' + member, productionLoader)));
+            }
             cm.config.settings.parser = 'fixture # %';
             cm.config.plugins = {'plugin # %': {enabled: true}};
             writeFileSync(join(modules, 'parsers', 'fixture # %-parser.js'),

@@ -1,3 +1,4 @@
+import type {ProtocolSourceEquivalence,ProtocolSourceEquivalenceReceipt} from './source-equivalence.js';
 import {createHash} from 'node:crypto';
 import {currentProofConsumerScope, assertProofConsumerCapability, trackProofConsumerOperation, proofConsumerSignal, type ProofConsumerScope} from './proof-consumer-scope.js';
 import {setTimeout as delay} from 'node:timers/promises';
@@ -8,9 +9,12 @@ import {ProtocolAbiFrontierReadError,type ProtocolAbiFrontierStore} from './abi-
 import {protocolImmutableJson} from './immutable-bundle-store.js';
 import {isProtocolHex} from './hex.js';
 import type {ProtocolAbiCoordinatorControl} from './abi-coordinator.js';
-import {validNativeGenesisCoverage, type ProtocolNativeGenesisCoverage} from './native-genesis.js';
+import {validNativeGenesisCoverage, verifyNativeGenesisRecord, type ProtocolNativeGenesisCoverage} from './native-genesis.js';
 import type {ProjectionFrame} from '../projection/runtime.js';
 import type {ProtocolNativeActionProofMetadata, ProtocolNativeActionSourceMetadata} from './native-authorization.js';
+import {historicalAddressIdentity, historicalRootCertificate, ProtocolAbiHistoricalAddressReadError} from './abi-history.js';
+import type {diskAbiHistoryOptions} from './disk-abi-history-options.js';
+import {assertProtocolAbiObservationFacts} from './abi-observation-facts.js';
 
 export interface ProtocolAbiProofSource {readonly chainId:string;readonly blockNum:number;readonly blockId:string}
 export type ProtocolAbiProofBinding=Omit<ProtocolAbiActionInput,'rawHex'> & {readonly rawSha256:string;readonly stateId:string|null};
@@ -36,10 +40,22 @@ export interface ProtocolAbiActionOccurrence {readonly binding:ProtocolAbiProofB
 export interface ProtocolAbiResolvedAction {readonly binding:ProtocolAbiProofBinding;readonly state:ProtocolAbiAccountState}
 export interface ProtocolAbiProofReadOptions {readonly signal?:AbortSignal}
 export interface ProtocolAbiProofReaderOptions {
+    readonly diskHistory?:ReturnType<typeof diskAbiHistoryOptions>;
     readonly chainId:string;readonly profile:ProtocolSourceProfile;readonly store:ProtocolAbiFrontierStore;
     readonly maxAncestryBlocks?:number;
     /** Internal worker wiring only; public/API readers remain independent. */
     readonly requireAttemptScope?:boolean;
+    /** Internal opt-in exact historical-address port; unchanged recent ancestry remains bounded. */
+    readonly historicalCertificates?:boolean;
+    readonly sourceEquivalence?:ProtocolSourceEquivalence;
+}
+// Internal provenance: only a missing certificate manifest can represent the activation publication gap.
+const unsettledCertificateErrors=new WeakSet<object>();
+export function isUnsettledCertificate(error:unknown):boolean {
+    return typeof error==='object'&&error!==null&&unsettledCertificateErrors.has(error);
+}
+export function transferUnsettledCertificate(source:unknown,target:object):void {
+    if(isUnsettledCertificate(source))unsettledCertificateErrors.add(target);
 }
 export class ProtocolAbiProofUnavailableError extends Error {
     readonly statusCode=503;
@@ -52,13 +68,16 @@ export interface ProtocolAbiHeadCertificate {
     ownerId:string;generation:string;head:Head;
 }
 interface CanonicalCommit {
-    source:ProtocolSourcePosition;previousCommitId:string|null;selectionId:string;
+    kind?:'canonical-abi-block'|'disk-abi-baseline';catalogId?:string;
+    source:ProtocolSourcePosition;previousCommitId:string|null;selectionId:string;observationId:string|null;observationDigest:string|null;
     status:'complete'|'incomplete';stateRootId:string|null;bindings:ProtocolAbiProofBinding[];
     coverageStart:number|null;lastGlobalSequence:string|null;
     nativeGenesis?:ProtocolNativeGenesisCoverage;
     nativeActionInterfaceVersion?:1;
 }
-interface Issued {certificate:ProtocolAbiHeadCertificate;commit:CanonicalCommit;scope?:ProofConsumerScope}
+interface HistoricalActivation {rootId:string;certificateId:string;anchor:ProtocolAbiHeadCertificate['head']}
+interface Issued {certificate:ProtocolAbiHeadCertificate;commit:CanonicalCommit;scope?:ProofConsumerScope;historicalCertificateId?:string;
+    sourceEvidence?:ProtocolSourceEquivalenceReceipt}
 type OriginalActionInput=Omit<ProtocolAbiActionInput,'inputActionOrdinal'> & {inputActionOrdinal?:number};
 const hex64=/^[0-9a-f]{64}$/;
 const text=(value:unknown):value is string=>typeof value==='string'&&value.length>0&&value.length<=256&&value.isWellFormed();
@@ -94,9 +113,12 @@ export function protocolAbiCertificateForControl(control:ProtocolAbiCoordinatorC
 
 /** Read-only applicability checks; primary-visible control may revoke authority, never grant it. */
 export class ProtocolAbiProofReader {
+    private readonly diskIssued=new WeakMap<ProtocolAbiProofView,{scope?:ProofConsumerScope;states:Map<string,ProtocolAbiAccountState|null>;nativeGenesis?:ProtocolNativeGenesisCoverage}>();
     private readonly profile:ProtocolSourceProfile;
     private readonly maximumAncestry:number;
     private readonly issued=new WeakMap<ProtocolAbiProofView,Issued>();
+    /** Frozen memoized commits already structurally valid for this reader's fixed chain/profile/catalog. */
+    private readonly validatedCommits=new WeakSet<object>();
     private activeReads=0;
     constructor(private readonly options:ProtocolAbiProofReaderOptions) {
         if(!hex64.test(options.chainId))throw new Error('Invalid ABI proof chain');
@@ -109,16 +131,17 @@ export class ProtocolAbiProofReader {
     /** Independent issuance/cancellation state over storage that cannot initialize or write indices. */
     asReadOnly():ProtocolAbiProofReader {
         return new ProtocolAbiProofReader({chainId:this.options.chainId,profile:this.profile,
-            store:this.options.store.asReadOnly(),maxAncestryBlocks:this.maximumAncestry,requireAttemptScope:this.options.requireAttemptScope});
+            store:this.options.store.asReadOnly(),maxAncestryBlocks:this.maximumAncestry,requireAttemptScope:this.options.requireAttemptScope,
+            historicalCertificates:this.options.historicalCertificates,sourceEquivalence:this.options.sourceEquivalence,diskHistory:this.options.diskHistory});
     }
     private consume<T>(view:ProtocolAbiProofView|undefined, operation:()=>Promise<T>):Promise<T> {
-        const issued=view&&this.issued.get(view),scope=issued?issued.scope:currentProofConsumerScope(this.options.requireAttemptScope);
+        const issued=view&&(this.issued.get(view)??this.diskIssued.get(view)),scope=issued?issued.scope:currentProofConsumerScope(this.options.requireAttemptScope);
         assertProofConsumerCapability(scope);
         return trackProofConsumerOperation(operation,scope);
     }
     /** Private host capability check before adjacent source reads; it grants no fresh canonical authority. */
     assertConsumerScope(view:ProtocolAbiProofView):void {
-        const issued=this.issued.get(view);
+        const issued=this.issued.get(view)??this.diskIssued.get(view);
         if(!issued)unavailable('invalid_proof','ABI proof view was not issued by this reader');
         assertProofConsumerCapability(issued.scope);
         currentProofConsumerScope(this.options.requireAttemptScope);
@@ -133,7 +156,11 @@ export class ProtocolAbiProofReader {
         this.activeReads++;
         try{const result=await trackProofConsumerOperation(operation);this.assertActive(signal);return result;}catch(error:any){
             this.assertActive(signal);
-            if(error instanceof ProtocolAbiFrontierReadError)unavailable(error.code==='invalid'?'invalid_proof':code,error.message);
+            if(error instanceof ProtocolAbiFrontierReadError){
+                const failure=new ProtocolAbiProofUnavailableError(error.code==='invalid'?'invalid_proof':code,error.message);
+                if(code==='certificate_unavailable'&&error.recordKind==='certificate'&&error.code==='missing')unsettledCertificateErrors.add(failure);
+                throw failure;
+            }
             if(error?.meta?.statusCode===404&&error?.meta?.body?.error?.type==='index_not_found_exception')
                 unavailable('authority_unavailable','Canonical ABI projection has not been initialized');
             throw error;
@@ -152,7 +179,21 @@ export class ProtocolAbiProofReader {
         requireProof(validHead(value.head),'Invalid canonical ABI authority head');
         return protocolAbiCertificateForControl(value);
     }
-    private validateCommit(value:any):CanonicalCommit {
+    private async validateCommit(value:any):Promise<CanonicalCommit> {
+        if(value?.kind==='disk-abi-baseline'){
+            const catalog=this.options.diskHistory?.catalog;
+            requireProof(catalog,'Disk ABI baseline requires the configured validated catalog');
+            const baseline=await catalog.baseline();
+            requireProof(value.schemaVersion===1&&value.chainId===this.options.chainId&&this.sameProfile(value.profile)
+                &&text(value.generation)&&value.catalogId===baseline.catalogId&&json(value.source)===json(baseline.source)
+                &&value.previousCommitId===null&&value.selectionId===null&&value.observationId===null&&value.observationDigest===null
+                &&value.status==='complete'&&value.reason===null&&value.coverageStart===1&&value.lastGlobalSequence===baseline.lastGlobalSequence
+                &&Array.isArray(value.bindings)&&value.bindings.length===0&&value.nativeGenesis===undefined
+                &&value.stateRootId===this.options.store.stateRootIdFor(baseline.states.map(state=>({account:state.account,state})))
+                &&(value.nativeActionInterfaceVersion===undefined||value.nativeActionInterfaceVersion===1),'Invalid disk ABI baseline');
+            await catalog.revalidate();return value;
+        }
+        if(value&&typeof value==='object'&&this.validatedCommits.has(value))return value;
         requireProof(value?.schemaVersion===1&&value.kind==='canonical-abi-block'&&value.chainId===this.options.chainId
             &&this.sameProfile(value.profile)&&text(value.generation)&&ident('h45srcsel1',value.selectionId)
             &&value.source?.chainId===this.options.chainId&&uint(value.source.blockNum,1)&&hex64.test(value.source.blockId)
@@ -163,6 +204,9 @@ export class ProtocolAbiProofReader {
             &&(value.lastGlobalSequence===null||sequence(value.lastGlobalSequence))
             &&(value.coverageStart===null||(uint(value.coverageStart,1)&&value.coverageStart<=value.source.blockNum)),
             'Invalid canonical ABI commit');
+        if(value.catalogId!==undefined||this.options.diskHistory){const catalog=this.options.diskHistory?.catalog;
+            requireProof(catalog&&value.catalogId===catalog.catalogId&&value.source.blockNum>(await catalog.baseline()).source.blockNum,
+                'Canonical ABI tail differs from configured disk history');}
         if(value.status==='incomplete')requireProof(value.bindings.length===0&&value.stateRootId===null
             &&value.coverageStart===null&&value.lastGlobalSequence===null,'Incomplete ABI commit grants knowledge');
         else requireProof(ident('h45abi1',value.observationId)&&hex64.test(value.observationDigest)
@@ -182,6 +226,7 @@ export class ProtocolAbiProofReader {
                 &&(binding.stateId===null||ident('h45abist1',binding.stateId))&&!seen.has(key),'Invalid ABI input binding');
             seen.add(key);
         }
+        if(Object.isFrozen(value))this.validatedCommits.add(value);
         return value;
     }
     async open(source:ProtocolAbiProofSource,selectionId?:string,{signal}:ProtocolAbiProofReadOptions={}):Promise<ProtocolAbiProofView> {
@@ -191,16 +236,21 @@ export class ProtocolAbiProofReader {
             &&(selectionId===undefined||ident('h45srcsel1',selectionId)),'Invalid requested ABI source');
         // Snapshot caller-owned data before any storage await.
         source=copy(source);
+        this.assertActive(signal);
+        if(this.options.diskHistory&&await this.options.diskHistory.catalog.covers(source)){
+            this.assertActive(signal);return this.openDisk(source,selectionId,signal);}
         const certificate=await this.authority(signal);
         if(certificate.head.blockNum<source.blockNum)unavailable('source_pending','Requested ABI source has not committed');
-        if(certificate.head.blockNum-source.blockNum>this.maximumAncestry)
+        if(certificate.head.blockNum-source.blockNum>this.maximumAncestry) {
+            if(this.options.historicalCertificates)return this.openHistorical(source.blockNum,{source,selectionId,signal});
             unavailable('ancestry_unavailable','Requested ABI source is outside verified ancestry');
+        }
         const certificateId=this.options.store.certificateId(certificate);
         const stored=await this.retained(()=>this.options.store.readCertificate(certificateId,signal),'certificate_unavailable',signal);
         requireProof(json(stored)===json(certificate),'Settled ABI certificate does not match the observed authority');
         let commitId=certificate.head.commitId,commit:CanonicalCommit|undefined,child:CanonicalCommit|undefined;
         for(let distance=0;distance<=this.maximumAncestry;distance++){
-            commit=this.validateCommit(await this.retained(()=>this.options.store.readCommit(commitId,signal),'ancestry_unavailable',signal));
+            commit=await this.validateCommit(await this.retained(()=>this.options.store.readCommit(commitId,signal),'ancestry_unavailable',signal));
             if(!child){
                 requireProof(json({blockNum:commit.source.blockNum,blockId:commit.source.blockId,commitId,stateRootId:commit.stateRootId,
                     lastGlobalSequence:commit.lastGlobalSequence,coverageStart:commit.coverageStart})===json(certificate.head),
@@ -213,14 +263,114 @@ export class ProtocolAbiProofReader {
             child=commit;commitId=commit.previousCommitId;
         }
         requireProof(commit&&commit.source.blockNum===source.blockNum,'Requested ABI source was not resolved');
-        if(commit.source.blockId!==source.blockId||(selectionId!==undefined&&selectionId!==commit.selectionId))
-            unavailable('source_not_canonical','Requested ABI source selection is not canonical');
+        if(commit.source.blockId!==source.blockId) unavailable('source_not_canonical','Requested ABI source selection is not canonical');
+        let sourceEvidence:ProtocolSourceEquivalenceReceipt|undefined;
+        if(selectionId!==undefined&&selectionId!==commit.selectionId) {
+            const evidence=this.options.sourceEquivalence&&await this.retained(()=>this.options.sourceEquivalence!.open(selectionId,commit!.selectionId,commit!,signal),'retained_data_unavailable',signal);
+            if(!evidence)unavailable('source_not_canonical','Requested ABI source selection is not canonical');
+            sourceEvidence=evidence;
+        }
         if(commit.status!=='complete')unavailable('source_incomplete','Requested ABI source has incomplete knowledge');
-        const view=freeze(copy({certificateId,commitId,selectionId:commit.selectionId,source:commit.source,bindings:commit.bindings,
+        const view=freeze(copy({certificateId,commitId,selectionId:selectionId??commit.selectionId,source:commit.source,bindings:commit.bindings,
             ...(commit.nativeActionInterfaceVersion===1?{nativeActionInterfaceVersion:1 as const}:{})}));
-        this.issued.set(view,{certificate:freeze(copy(certificate)),commit:freeze(copy(commit)),scope:currentProofConsumerScope()});
+        this.issued.set(view,{certificate:freeze(copy(certificate)),commit:freeze(copy(commit)),scope:currentProofConsumerScope(),sourceEvidence});
         await this.revalidate(view,{signal});return view;
         });
+    }
+    /** A locator is never authority: validate its settled certificate/commit under fresh current ownership. */
+    async openHistorical(blockNum:number,{source,selectionId,signal}:ProtocolAbiProofReadOptions&{
+        source?:ProtocolAbiProofSource;selectionId?:string}={}):Promise<ProtocolAbiProofView> {
+        return this.consume(undefined,async()=>{
+        signal=proofConsumerSignal(signal);
+        this.assertActive(signal);
+        requireProof(this.options.historicalCertificates===true&&uint(blockNum,1)&&blockNum<=0xffffffff,'Historical ABI source is not enabled or height is invalid');
+        if(source)source=copy(source);
+        const catalog=this.options.diskHistory?.catalog;
+        if(catalog){const position=await catalog.blockId(blockNum);
+            if(position){if(source&&source.blockId!==position)unavailable('source_not_canonical','Requested source differs from pinned irreversible history');
+                return this.openDisk({chainId:this.options.chainId,blockNum,blockId:position},selectionId,signal);}}
+        const current=await this.authority(signal);
+        if(current.head.blockNum<blockNum)unavailable('source_pending','Requested historical ABI source has not committed');
+        const root=await this.activatedHistoricalRoot(current,signal);
+        const active=async()=>{
+            const fresh=await this.authority(signal);
+            if(fresh.ownerId!==current.ownerId||fresh.generation!==current.generation||fresh.head.blockNum<current.head.blockNum
+                ||(fresh.head.blockNum===current.head.blockNum&&json(fresh.head)!==json(current.head)))
+                unavailable('authority_changed','Historical ABI source authority changed during opening');
+            await this.assertHistoricalRoot(root,current,signal);
+        };
+        let address;
+        try {address=await this.retained(()=>this.options.store.readHistoricalAddressRoot(root.rootId,historicalAddressIdentity(current,blockNum),signal),
+            'historical_source_unavailable',signal);}
+        catch(error) {
+            if(error instanceof ProtocolAbiHistoricalAddressReadError)unavailable('historical_source_unavailable',error.message);
+            throw error;
+        }
+        await active();
+        const raw:any=await this.retained(()=>this.options.store.readCertificate(address.certificateId,signal),'certificate_unavailable',signal);
+        await active();
+        requireProof(validHead(raw?.head)&&json(raw)===json({...current,head:raw.head})
+            &&raw.head.blockNum===blockNum&&raw.head.coverageStart===1
+            &&this.options.store.certificateId(raw)===address.certificateId,'Historical settled certificate differs from current identity');
+        const certificate=raw as ProtocolAbiHeadCertificate;
+        const commit=await this.validateCommit(await this.retained(()=>this.options.store.readCommit(certificate.head.commitId,signal),'ancestry_unavailable',signal));
+        await active();
+        requireProof(json({blockNum:commit.source.blockNum,blockId:commit.source.blockId,commitId:certificate.head.commitId,
+            stateRootId:commit.stateRootId,lastGlobalSequence:commit.lastGlobalSequence,coverageStart:commit.coverageStart})===json(certificate.head),
+            'Historical settled head differs from its immutable commit');
+        if(source&&(source.chainId!==this.options.chainId||source.blockNum!==blockNum||source.blockId!==commit.source.blockId))
+            unavailable('source_not_canonical','Historical source selection differs');
+        if(commit.status!=='complete'||commit.coverageStart!==1)unavailable('source_incomplete','Historical source lacks complete genesis coverage');
+        let sourceEvidence:ProtocolSourceEquivalenceReceipt|undefined;
+        if(selectionId!==undefined&&selectionId!==commit.selectionId) {
+            const evidence=this.options.sourceEquivalence&&await this.retained(()=>this.options.sourceEquivalence!.open(selectionId,commit.selectionId,commit,signal),'retained_data_unavailable',signal);
+            if(!evidence)unavailable('source_not_canonical','Historical source selection differs');
+            sourceEvidence=evidence;
+        }
+        await active();
+        const view=freeze(copy({certificateId:address.certificateId,commitId:certificate.head.commitId,selectionId:selectionId??commit.selectionId,
+            source:commit.source,bindings:commit.bindings,...(commit.nativeActionInterfaceVersion===1?{nativeActionInterfaceVersion:1 as const}:{})}));
+        this.issued.set(view,{certificate:freeze(copy(certificate)),commit:freeze(copy(commit)),scope:currentProofConsumerScope(),
+            historicalCertificateId:address.certificateId,sourceEvidence});
+        await this.revalidate(view,{signal});return view;
+        });
+    }
+    private async assertHistoricalRoot(root:HistoricalActivation,current:ProtocolAbiHeadCertificate,signal?:AbortSignal):Promise<void> {
+        const stored=await this.retained(()=>this.options.store.readControl(signal),'authority_unavailable',signal),value:any=stored?.value;
+        if(value?.ownerId!==current.ownerId||value?.generation!==current.generation||value?.historical?.interfaceVersion!==1
+            ||value.historical.addressRootId!==root.rootId||value.historical.activationCertificateId!==root.certificateId
+            ||json(value.historical.anchor)!==json(root.anchor)
+            ||value.chainId!==this.options.chainId||json(value.profile)!==json(this.profile)
+            ||value.phase!=='following'||value.gap!==null||value.replayFromBlock!==null)
+            unavailable('authority_changed','Activated historical address root changed');
+    }
+    private async activatedHistoricalRoot(current:ProtocolAbiHeadCertificate,signal?:AbortSignal):Promise<HistoricalActivation> {
+        const stored=await this.retained(()=>this.options.store.readControl(signal),'authority_unavailable',signal),value:any=stored?.value;
+        const rootId=value?.historical?.addressRootId,certificateId=value?.historical?.activationCertificateId,anchor=value?.historical?.anchor;
+        requireProof(value?.schemaVersion===1&&Number.isSafeInteger(value.revision)&&value.revision>=0
+            &&value.source&&ident('h45srcctx1',value.source.contextId)&&text(value.source.readerSessionId),
+            'Invalid canonical ABI control during historical root selection');
+        // A fresh control head can advance between authority() and this read. Retry only
+        // a structurally valid same-owner/generation forward observation, never missing root data.
+        if(value?.ownerId===current.ownerId&&value?.generation===current.generation
+            &&value.chainId===this.options.chainId&&json(value.profile)===json(this.profile)
+            &&value.phase==='following'&&value.gap===null&&value.replayFromBlock===null
+            &&validHead(value.head)&&value.head.blockNum>current.head.blockNum
+            &&value.historical?.interfaceVersion===1&&ident('h45abiroot1',rootId)&&ident('h45abicert1',certificateId)
+            &&validHead(anchor)&&anchor.coverageStart===1&&anchor.blockNum<=value.head.blockNum
+            &&(anchor.blockNum!==value.head.blockNum||json(anchor)===json(value.head))
+            &&this.options.store.certificateId(historicalRootCertificate({...current,head:anchor},rootId))===certificateId)
+            unavailable('authority_changed','Canonical ABI head advanced during historical root selection');
+        if(value?.ownerId!==current.ownerId||value?.generation!==current.generation||value.historical?.interfaceVersion!==1
+            ||!ident('h45abiroot1',rootId)||!ident('h45abicert1',certificateId)||!validHead(anchor)||anchor.coverageStart!==1
+            ||anchor.blockNum>current.head.blockNum||anchor.blockNum===current.head.blockNum&&json(anchor)!==json(current.head)
+            ||json(value.head)!==json(current.head))
+            unavailable('historical_source_unavailable','Current coordinator has no settled historical address root');
+        const certificate=historicalRootCertificate({...current,head:anchor},rootId);
+        requireProof(this.options.store.certificateId(certificate)===certificateId,'Historical activation certificate address differs');
+        const actual=await this.retained(()=>this.options.store.readCertificate(certificateId,signal),'certificate_unavailable',signal);
+        requireProof(json(actual)===json(certificate),'Historical root certificate differs from the selected control');
+        const root={rootId,certificateId,anchor:copy(anchor)};await this.assertHistoricalRoot(root,current,signal);return root;
     }
     async waitForOpen(source:ProtocolAbiProofSource,selectionId?:string,
                       options:{timeoutMs?:number;signal?:AbortSignal}={}):Promise<ProtocolAbiProofView> {
@@ -249,7 +399,7 @@ export class ProtocolAbiProofReader {
                 }catch(error){
                     if(controller.signal.aborted)throw reason();
                     if(!(error instanceof ProtocolAbiProofUnavailableError)
-                        ||!['authority_unavailable','source_pending','certificate_unavailable','proof_busy'].includes(error.code))throw error;
+                        ||!['authority_unavailable','authority_changed','source_pending','certificate_unavailable','proof_busy'].includes(error.code))throw error;
                     try{await delay(50,undefined,{signal:controller.signal});}
                     catch(stopped){if(controller.signal.aborted)throw reason();throw stopped;}
                 }
@@ -260,20 +410,55 @@ export class ProtocolAbiProofReader {
             controller.signal.removeEventListener('abort',onAbort);controller.abort();}
         });
     }
-    async revalidate(view:ProtocolAbiProofView,{signal}:ProtocolAbiProofReadOptions={}):Promise<void> {
+    private async revalidateCurrent(view:ProtocolAbiProofView,{signal}:ProtocolAbiProofReadOptions,opening:boolean):Promise<void> {
         return this.consume(view,async()=>{
         signal=proofConsumerSignal(signal);
+        if(this.diskIssued.has(view)){this.assertActive(signal);await this.options.diskHistory!.catalog.revalidate();this.assertActive(signal);return;}
         const issued=this.issued.get(view);if(!issued)unavailable('invalid_proof','ABI proof view was not issued by this reader');
-        const current=await this.authority(signal),prior=issued.certificate;
+        let current=await this.authority(signal);const prior=issued.certificate;
         if(current.ownerId!==prior.ownerId||current.generation!==prior.generation||current.head.blockNum<prior.head.blockNum
             ||(current.head.blockNum===prior.head.blockNum&&json(current.head)!==json(prior.head)))
             unavailable('authority_changed','Canonical ABI authority changed during consumption');
+        if(view.selectionId!==issued.commit.selectionId) {
+            if(!issued.sourceEvidence||!this.options.sourceEquivalence || !await this.retained(()=>this.options.sourceEquivalence!.revalidate(issued.sourceEvidence!,view.selectionId,issued.commit.selectionId,issued.commit,signal),'retained_data_unavailable',signal))
+                unavailable('source_not_canonical','Requested ABI source evidence changed during consumption');
+            const fresh=await this.authority(signal);
+            if(fresh.ownerId!==current.ownerId||fresh.generation!==current.generation||fresh.head.blockNum<current.head.blockNum
+                ||fresh.head.blockNum===current.head.blockNum&&json(fresh.head)!==json(current.head))
+                unavailable('authority_changed','Canonical ABI authority changed during source verification');
+            current=fresh;
+        }
+        if(opening&&current.head.blockNum-issued.commit.source.blockNum>this.maximumAncestry)
+            if(!issued.historicalCertificateId)unavailable('ancestry_unavailable','Requested ABI source is outside verified ancestry');
+        if(issued.historicalCertificateId) {
+            const root=await this.activatedHistoricalRoot(current,signal);
+            let address;
+            try {address=await this.retained(()=>this.options.store.readHistoricalAddressRoot(root.rootId,historicalAddressIdentity(current,view.source.blockNum),signal),
+                'historical_source_unavailable',signal);}
+            catch(error) {if(error instanceof ProtocolAbiHistoricalAddressReadError)unavailable('historical_source_unavailable',error.message);throw error;}
+            requireProof(address.certificateId===issued.historicalCertificateId,'Historical source membership changed');
+            await this.assertHistoricalRoot(root,current,signal);
+            const fresh=await this.authority(signal);
+            if(fresh.ownerId!==current.ownerId||fresh.generation!==current.generation||fresh.head.blockNum<current.head.blockNum
+                ||fresh.head.blockNum===current.head.blockNum&&json(fresh.head)!==json(current.head))
+                unavailable('authority_changed','Historical source changed during revalidation');
+        }
         });
+    }
+    async revalidate(view:ProtocolAbiProofView,options:ProtocolAbiProofReadOptions={}):Promise<void> {
+        return this.revalidateCurrent(view,options,false);
+    }
+    /** Final NEW worker opening handoff, never adoption of another reader's view or a wider window. */
+    async revalidateOpening(view:ProtocolAbiProofView,options:ProtocolAbiProofReadOptions={}):Promise<void> {
+        return this.revalidateCurrent(view,options,true);
     }
     /** An issued, current proof of native empty application state supplies the actual 0 -> 1 frame. */
     async nativeGenesisFrame(view:ProtocolAbiProofView,options:ProtocolAbiProofReadOptions={}):Promise<ProjectionFrame> {
         return this.consume(view,async()=>{
         options={...options,signal:proofConsumerSignal(options.signal)};
+        const disk=this.diskIssued.get(view);
+        if(disk){if(!disk.nativeGenesis)unavailable('native_genesis_unavailable','Catalog view has no verified native genesis source');
+            await this.revalidate(view,options);return freeze({chainId:view.source.chainId,block:{blockNum:1,blockId:view.source.blockId,previousBlockId:disk.nativeGenesis.previousBlockId},changes:[]});}
         const issued=this.issued.get(view);if(!issued)unavailable('invalid_proof','ABI proof view was not issued by this reader');
         const facts=issued.commit.nativeGenesis;
         if(!facts)unavailable('native_genesis_unavailable','Source has no verified native genesis application state');
@@ -284,12 +469,12 @@ export class ProtocolAbiProofReader {
     }
     private actionBinding(view:ProtocolAbiProofView,input:OriginalActionInput,signal?:AbortSignal):ProtocolAbiProofBinding {
         this.assertActive(signal);
-        const issued=this.issued.get(view);if(!issued)unavailable('invalid_proof','ABI proof view was not issued by this reader');
+        const issued=this.issued.get(view);if(!issued&&!this.diskIssued.has(view))unavailable('invalid_proof','ABI proof view was not issued by this reader');
         requireProof(input&&hex64.test(input.transactionId)&&ordinal(input.actionOrdinal,1)&&[input.receiver,input.account].every(text)&&actionName(input.name)
             &&isProtocolHex(input.rawHex)&&sequence(input.globalSequence)&&sequence(input.receiptAbiSequence,false,0xffffffffn)
             &&(input.inputActionOrdinal===undefined||ordinal(input.inputActionOrdinal,1)),'Invalid original ABI input');
         input=copy(input);
-        const binding=issued.commit.bindings.find(value=>value.transactionId===input.transactionId&&value.actionOrdinal===input.actionOrdinal);
+        const binding=(issued?.commit.bindings??view.bindings).find(value=>value.transactionId===input.transactionId&&value.actionOrdinal===input.actionOrdinal);
         if(!binding||binding.receiver!==input.receiver||binding.account!==input.account||binding.name!==input.name
             ||binding.globalSequence!==input.globalSequence||binding.receiptAbiSequence!==input.receiptAbiSequence
             ||(input.inputActionOrdinal!==undefined&&binding.inputActionOrdinal!==input.inputActionOrdinal)
@@ -311,6 +496,9 @@ export class ProtocolAbiProofReader {
         return this.consume(view,async()=>{
         signal=proofConsumerSignal(signal);
         const binding=this.actionBinding(view,input,signal);
+        const disk=this.diskIssued.get(view);
+        if(disk){const state=disk.states.get(binding.stateId??'');if(!state?.present||!state.abiHex||state.account!==binding.account)unavailable('abi_state_unavailable','Catalog ABI state is unknown, absent or empty');
+            await this.revalidate(view,{signal});return freeze({binding,state});}
         if(!binding.stateId)unavailable('abi_state_unavailable','Action input ABI state is unknown');
         const state=this.state(await this.retained(()=>this.options.store.readAccountState(binding.stateId!,signal),undefined,signal),view,binding.account);
         await this.revalidate(view,{signal});return freeze({binding,state});
@@ -320,6 +508,9 @@ export class ProtocolAbiProofReader {
         return this.consume(view,async()=>{
         signal=proofConsumerSignal(signal);
         this.assertActive(signal);
+        if(this.diskIssued.has(view)){const state=await this.options.diskHistory!.catalog.finalState(account,view.source.blockNum);
+            if(!state?.present||!state.abiHex)unavailable('abi_state_unavailable','Catalog ABI state is unknown, absent or empty');
+            await this.revalidate(view,{signal});return state;}
         const issued=this.issued.get(view);if(!issued)unavailable('invalid_proof','ABI proof view was not issued by this reader');
         requireProof(text(account),'Invalid final ABI account');
         const state=this.state(await this.retained(()=>this.options.store.readAccount(issued.commit.stateRootId,account,signal),undefined,signal),view,account);
@@ -332,14 +523,18 @@ export class ProtocolAbiProofReader {
         return this.consume(view,async()=>{
         signal=proofConsumerSignal(signal);
         this.assertActive(signal);
+        if(this.diskIssued.has(view)){atBlockNum??=view.source.blockNum;requireProof(uint(atBlockNum,1)&&atBlockNum<=view.source.blockNum,'Invalid catalog ABI inspection position');
+            const state=await this.options.diskHistory!.catalog.finalState(account,atBlockNum);await this.revalidate(view,{signal});return state;}
         const issued=this.issued.get(view);if(!issued)unavailable('invalid_proof','ABI proof view was not issued by this reader');
         atBlockNum??=view.source.blockNum;
+        if(this.options.diskHistory&&uint(atBlockNum,1)&&atBlockNum<=view.source.blockNum&&await this.options.diskHistory.catalog.blockId(atBlockNum)){
+            const state=await this.options.diskHistory.catalog.finalState(account,atBlockNum);await this.revalidate(view,{signal});return state;}
         requireProof(text(account)&&uint(atBlockNum,1)&&atBlockNum<=view.source.blockNum
             &&view.source.blockNum-atBlockNum<=this.maximumAncestry,'Invalid ABI inspection ancestry');
         let commit=issued.commit;
         while(commit.source.blockNum>atBlockNum){
             requireProof(commit.previousCommitId,'ABI inspection ancestry is not retained');
-            const previous=this.validateCommit(await this.retained(()=>this.options.store.readCommit(commit.previousCommitId!,signal),'ancestry_unavailable',signal));
+            const previous=await this.validateCommit(await this.retained(()=>this.options.store.readCommit(commit.previousCommitId!,signal),'ancestry_unavailable',signal));
             requireProof(previous.status==='complete'&&previous.source.blockNum+1===commit.source.blockNum
                 &&previous.source.blockId===commit.source.previousBlockId,'ABI inspection ancestry is not complete and contiguous');
             commit=previous;
@@ -355,6 +550,9 @@ export class ProtocolAbiProofReader {
         return this.knownState(value,view,account);
     }
     private knownState(value:any,view:ProtocolAbiProofView,account:string):ProtocolAbiAccountState {
+        if(value?.account===account&&value.source?.blockNum<=view.source.blockNum
+            &&(value.source.blockNum!==view.source.blockNum||value.source.blockId===view.source.blockId)
+            &&this.options.diskHistory?.catalog.matchesState(value))return freeze(copy(value));
         requireProof(value&&value.account===account&&typeof value.present==='boolean'&&isProtocolHex(value.abiHex)
             &&this.sameProfile(value.protocol)&&value.source?.chainId===this.options.chainId
             &&uint(value.source.blockNum,1)&&value.source.blockNum<=view.source.blockNum&&hex64.test(value.source.blockId)
@@ -364,5 +562,44 @@ export class ProtocolAbiProofReader {
             :value.source.phase==='native-effect'&&hex64.test(value.source.action?.transactionId)
                 &&ordinal(value.source.action?.actionOrdinal,1)&&sequence(value.source.action?.globalSequence),'Invalid ABI state epoch');
         return freeze(copy(value));
+    }
+
+    private async openDisk(source:ProtocolAbiProofSource,selectionId:string|undefined,signal?:AbortSignal):Promise<ProtocolAbiProofView> {
+        const disk=this.options.diskHistory!,position=await disk.catalog.source(source.blockNum),states=new Map<string,ProtocolAbiAccountState|null>();
+        let bindings:ProtocolAbiProofBinding[]=[],nativeGenesis:ProtocolNativeGenesisCoverage|undefined;
+        if(selectionId!==undefined){
+            const {selection:selected,context}=await this.retained(()=>disk.bindings.readSelection(selectionId,signal),undefined,signal);
+            requireProof(json(selected.source)===json(position)&&context.chainId===source.chainId&&this.sameProfile(context.protocol),'Catalog source association mismatch');
+            await disk.catalog.assertSchema(context.schemaJson);
+            const link=await this.retained(()=>disk.bindings.readObservationLink(selectionId,signal),undefined,signal);
+            const record=await this.retained(()=>disk.observations.read(link.observationId,signal),undefined,signal);
+            requireProof(json(record.source)===json({...position,inputSha256:selected.captureSha256})
+                &&record.capture.schemaJson===context.schemaJson&&this.sameProfile(record.protocol)
+                &&hash(Buffer.from(json(record)))===link.observationDigest,'Catalog observation differs from original source');
+            if(record.observation.status==='native-genesis'){
+                const facts=verifyNativeGenesisRecord(record,disk.verifyNativeGenesis);
+                nativeGenesis={previousBlockId:facts.previousBlockId,applicationState:facts.applicationState};
+            }else {
+            if(record.observation.status!=='observed')unavailable('source_incomplete','Catalog source ABI observations are incomplete');
+            const facts=record.observation.facts;assertProtocolAbiObservationFacts(facts);
+            const origins=new Map<string,{input:ProtocolAbiActionInput;state:ProtocolAbiAccountState|null}>(),seen=new Set<string>();let prior=0n;
+            for(const input of [...facts.actionInputs].sort((a,b)=>BigInt(a.globalSequence)<BigInt(b.globalSequence)?-1:1)){
+                requireProof(BigInt(input.globalSequence)>prior,'Catalog source has duplicate receipt sequence');prior=BigInt(input.globalSequence);
+                const own=input.transactionId+':'+input.actionOrdinal,origin=input.transactionId+':'+input.inputActionOrdinal;
+                requireProof(!seen.has(own),'Catalog source has duplicate action');seen.add(own);
+                let state:ProtocolAbiAccountState|null;
+                if(input.actionOrdinal===input.inputActionOrdinal){requireProof(input.receiver===input.account,'Catalog notification cannot claim first-receiver identity');
+                    state=await disk.catalog.actionState(input,source.blockNum);origins.set(origin,{input,state});}
+                else {const original=origins.get(origin);requireProof(original&&input.receiver!==input.account
+                    &&original.input.account===input.account&&original.input.name===input.name&&original.input.rawHex===input.rawHex
+                    &&BigInt(original.input.globalSequence)<BigInt(input.globalSequence),'Catalog notification differs from its original input');state=original.state;}
+                const {rawHex,...rest}=input,stateId=state?state.source.observationId:null;if(stateId)states.set(stateId,state);
+                bindings.push({...rest,rawSha256:hash(Buffer.from(rawHex,'hex')),stateId});
+            }
+            }
+        }
+        const view=freeze({certificateId:disk.catalog.catalogId,commitId:'h45abidiskblock1:'+hash(Buffer.from(json(position))),
+            selectionId:selectionId??('h45abidiskselection1:'+hash(Buffer.from(json(position)))),source:position,bindings,nativeActionInterfaceVersion:1 as const});
+        this.diskIssued.set(view,{scope:currentProofConsumerScope(),states,nativeGenesis});await this.revalidate(view,{signal});return view;
     }
 }

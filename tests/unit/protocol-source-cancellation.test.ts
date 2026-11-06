@@ -8,7 +8,7 @@ const chain='cancellable-source';
 const gate=()=>{let release!:()=>void;const promise=new Promise<void>(resolve=>{release=resolve;});return {promise,release};};
 function transportSignals(memory:ReturnType<typeof frontierMemoryClient>){
     const signals:Array<AbortSignal|undefined>=[];
-    for(const [owner,name] of [[memory.client,'get'],[memory.client.indices,'getMapping'],[memory.client.indices,'getSettings']] as const){
+    for(const [owner,name] of [[memory.client,'get'],[memory.client.indices,'get']] as const){
         const original=(owner as any)[name];
         (owner as any)[name]=(request:any,options?:{signal?:AbortSignal})=>{signals.push(options?.signal);return original(request,options);};
     }
@@ -131,8 +131,8 @@ describe('cancellable retained protocol source reads',()=>{
             const f=await fixture(),item=f.reads.find(item=>item.name===name)!,entered=gate(),release=gate();
             const cancelled=new AbortController(),healthy=new AbortController(),reason=new Error('Only the first consumer stopped');let held=false;
             if(phase==='mapping'){
-                const original=f.memory.client.indices.getMapping;
-                f.memory.client.indices.getMapping=async(request:any,options?:{signal?:AbortSignal})=>{
+                const original=f.memory.client.indices.get;
+                f.memory.client.indices.get=async(request:any,options?:{signal?:AbortSignal})=>{
                     if(!held&&options?.signal===cancelled.signal){held=true;entered.release();await release.promise;}
                     return original(request,options);
                 };

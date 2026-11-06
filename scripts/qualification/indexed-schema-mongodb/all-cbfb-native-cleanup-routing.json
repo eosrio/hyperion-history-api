@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "base": "e893852e9bd5ec3e29818946d30ec88e43421417",
+  "scope": "Only first-failure, diagnostic rendering, resource ledgers and cleanup/finalization boundaries; workload/query/oracle/resource/deadline bodies remain exact",
+  "files": [
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-native-runner.mjs",
+      "historicalSha256": "a5834f4a3a51e4eea6251ba679fadcfc9dcdc9ba67f6da825f25733cd778aa93",
+      "changes": [
+        {
+          "historical": "export async function run(options){",
+          "current": "const safeFailure=(error,depth=0)=>{try{const code=error?.code,cause=error?.cause;return{name:String(error?.name??'Error').slice(0,64),code:typeof code==='string'?code.slice(0,128):Number.isSafeInteger(code)?code:null,message:String(error?.message??error).slice(0,512),...(depth<2&&cause?{cause:safeFailure(cause,depth+1)}:{})};}catch{return{name:'Error',code:null,message:'Failure details unavailable'};}};\nclass NativeReadLedger extends Set{#opened=0;#closed=0;get opened(){return this.#opened;}get closed(){return this.#closed;}add(read){const present=this.has(read),result=super.add(read);if(!present)this.#opened++;return result;}delete(read){const result=super.delete(read);if(result)this.#closed++;return result;}}\nexport async function run(options){",
+          "count": 1
+        },
+        {
+          "historical": "reads=new Set()",
+          "current": "reads=new NativeReadLedger()",
+          "count": 1
+        },
+        {
+          "historical": "primary,serial=100;",
+          "current": "primary,hasPrimary=false,serial=100;\n const retainPrimary=error=>{if(!hasPrimary){hasPrimary=true;primary=error;}};",
+          "count": 1
+        },
+        {
+          "historical": "error:failure(error),trace:[start,trace.length]",
+          "current": "error:safeFailure(error),trace:[start,trace.length]",
+          "count": 1
+        },
+        {
+          "historical": " }catch(error){primary=error;report.failure=failure(error);}\n finally{\n  phase={name:'cleanup'};const cleanup={managedClientsClosed:false,sessionsEnded:false,readsClosed:reads.size===0,cursorsClosed:false,failpointDisabled:false,databaseDropped:false,adminClosed:false};report.cleanup=cleanup;\n  const clean=async(name,work)=>{try{await work();}catch(error){primary??=error;cleanup[name]=failure(error);}};\n  await clean('failpointFailure',async()=>{if(failpointGranted){await disable();cleanup.failpointDisabled=true;}});\n  await clean('managedClientFailure',async()=>{for(const pool of pools)await pool.close();cleanup.managedClientsClosed=clients.filter(row=>row.label.startsWith('managed-')).every(row=>row.closed);assert(cleanup.managedClientsClosed);});\n  await clean('sessionFailure',async()=>{cleanup.sessionsEnded=sessions.every(row=>row.ended);assert(cleanup.sessionsEnded);assert(cleanup.readsClosed);cleanup.sessionCount=sessions.length;});\n  await clean('cursorFailure',async()=>{cleanup.cursors=verifyCursorClosure(trace);cleanup.cursorsClosed=true;});\n  await clean('databaseFailure',async()=>{if(owned){const record=await admin.db(options.database).collection('_qualification_owner').findOne({_id:marker});assert.equal(record?.scope,PLAN.scope);await admin.db(options.database).dropDatabase({writeConcern:{w:'majority',j:true}});assert.deepEqual(await admin.db(options.database).listCollections().toArray(),[]);cleanup.databaseDropped=true;}});\n  await clean('adminFailure',async()=>{await admin.close();cleanup.adminClosed=clients.find(row=>row.label==='admin').closed;assert(cleanup.adminClosed);});for(const stop of stops)stop();\n  report.status=primary?'failed':'passed-native-indexed-only';report.traceEvents=trace.length;report.successfulQueryAttestations=attestations;report.acceptance.nativeMongoDB=primary?'failed':'passed-native-indexed-only';if(primary)report.failure??=failure(primary);\n  for(const [name,value]of [['trace.json',trace],['samples.json',samples],['explain.json',explains],['report.json',report]])json(join(options.output,name),value);\n  json(join(options.output,'sha256.json'),['trace.json','samples.json','explain.json','report.json'].map(path=>{const raw=readFileSync(join(options.output,path));return {path,bytes:raw.length,sha256:sha(raw)};}));\n }if(primary)throw primary;return report;",
+          "current": " }catch(error){retainPrimary(error);report.failure=safeFailure(primary);}\n finally{\n  phase={name:'cleanup'};const cleanup={managedClientsClosed:false,sessionsEnded:false,readsClosed:false,cursorsClosed:false,failpointDisabled:false,databaseDropped:false,adminClosed:false};report.cleanup=cleanup;\n  const clean=async(name,work)=>{try{await work();return true;}catch(error){retainPrimary(error);cleanup[name]=safeFailure(error);return false;}};\n  const resourceClosure={managedClients:pools.length?'unproved':'not-created',sessions:sessions.length?'unproved':'not-opened',reads:reads.opened?'unproved':'not-opened',cursors:'unproved'};\n  await clean('failpointFailure',async()=>{if(failpointGranted){await disable();cleanup.failpointDisabled=true;}});\n  let poolsClosed=true;for(const [index,pool]of pools.entries())if(!await clean('managedClientFailure:'+index,async()=>{await pool.close();}))poolsClosed=false;\n  await clean('managedClientFailure',async()=>{const managed=clients.filter(row=>row.label.startsWith('managed-'));if(pools.length&&managed.length){assert(poolsClosed,'An actual pool close failed');assert(managed.every(row=>row.closed));cleanup.managedClientsClosed=true;resourceClosure.managedClients='closed';}});\n  await clean('sessionFailure',async()=>{cleanup.sessionCount=sessions.length;if(sessions.length){assert(sessions.every(row=>row.ended));cleanup.sessionsEnded=true;resourceClosure.sessions='closed';}});\n  await clean('readFailure',async()=>{cleanup.reads={opened:reads.opened,closed:reads.closed,live:reads.size};if(reads.opened){assert.equal(reads.size,0);assert.equal(reads.opened,reads.closed);cleanup.readsClosed=true;resourceClosure.reads='closed';}});\n  await clean('cursorFailure',async()=>{cleanup.cursors=verifyCursorClosure(trace);if(cleanup.cursors.opened){cleanup.cursorsClosed=true;resourceClosure.cursors='closed';}else resourceClosure.cursors='not-opened';});\n  report.resourceClosure=resourceClosure;\n  if(!owned)report.databaseCleanupSkipped={reason:'owned-database-not-created'};\n  else{const missing=['managedClientsClosed','sessionsEnded','readsClosed','cursorsClosed'].filter(key=>cleanup[key]!==true);\n   if(missing.length){report.databaseCleanupSkipped={reason:'closure-not-proved',missing,resourceClosure:{...resourceClosure}};retainPrimary(new Error('Owned database retained because native resource closure is unproved'));}\n   else await clean('databaseFailure',async()=>{const record=await admin.db(options.database).collection('_qualification_owner').findOne({_id:marker});assert.equal(record?.scope,PLAN.scope);await admin.db(options.database).dropDatabase({writeConcern:{w:'majority',j:true}});assert.deepEqual(await admin.db(options.database).listCollections().toArray(),[]);cleanup.databaseDropped=true;});}\n  await clean('adminFailure',async()=>{await admin.close();cleanup.adminClosed=clients.find(row=>row.label==='admin').closed;assert(cleanup.adminClosed);});for(const [index,stop]of stops.entries())await clean('traceDetachFailure:'+index,async()=>{stop();});\n  const refresh=()=>{report.status=hasPrimary?'failed':'passed-native-indexed-only';report.acceptance.nativeMongoDB=hasPrimary?'failed':'passed-native-indexed-only';if(hasPrimary)report.failure??=safeFailure(primary);};\n  refresh();report.traceEvents=trace.length;report.successfulQueryAttestations=attestations;\n  for(const [name,value]of [['trace.json',trace],['samples.json',samples],['explain.json',explains],['report.json',report]])await clean('evidenceFailure:'+name,async()=>{if(name==='report.json')refresh();json(join(options.output,name),value);});\n  await clean('checksumEvidenceFailure',async()=>{json(join(options.output,'sha256.json'),['trace.json','samples.json','explain.json','report.json'].map(path=>{const raw=readFileSync(join(options.output,path));return {path,bytes:raw.length,sha256:sha(raw)};}));});refresh();\n }if(hasPrimary)throw primary;return report;",
+          "count": 1
+        },
+        {
+          "historical": "console.error(JSON.stringify({status:'failed',error:failure(error)}));process.exitCode=1;",
+          "current": "try{console.error(JSON.stringify({status:'failed',error:safeFailure(error)}));}catch{}process.exitCode=1;",
+          "count": 1
+        }
+      ],
+      "currentSha256": "ca9b73f331af289af121ce47f75d6000a2faab2157b7b39a410151478c0680be"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-native-ci.mjs",
+      "historicalSha256": "b6e8eb1248c68211efb5bfd27a697ad1681ce34935198174ddfb5cedccb2bec5",
+      "changes": [
+        {
+          "historical": "export async function runCI(profile,output){",
+          "current": "const safeFailure=(error,depth=0)=>{try{const code=error?.code,cause=error?.cause;return{name:String(error?.name??'Error').slice(0,64),code:typeof code==='string'?code.slice(0,128):Number.isSafeInteger(code)?code:null,message:String(error?.message??error).slice(0,512),...(depth<2&&cause?{cause:safeFailure(cause,depth+1)}:{})};}catch{return{name:'Error',code:null,message:'Failure details unavailable'};}};\nexport async function runCI(profile,output){",
+          "count": 1
+        },
+        {
+          "historical": " let fixture,child,original;const stop=()=>{original??=new Error('Indexed native CI controller interrupted');child?.kill('SIGTERM');};const check=()=>{if(original)throw original;};",
+          "current": " let fixture,child,original,hasPrimary=false;\n const retainPrimary=error=>{if(!hasPrimary){hasPrimary=true;original=error;}};\n const stop=()=>{retainPrimary(new Error('Indexed native CI controller interrupted'));try{child?.kill('SIGTERM');}catch(error){report.interruptFailure=safeFailure(error);}};const check=()=>{if(hasPrimary)throw original;};",
+          "count": 1
+        },
+        {
+          "historical": " }catch(error){original??=error;report.failure=failure(original);if(error!==original)report.secondaryFailure=failure(error);}\n finally{\n  if(fixture){try{report.diagnostics=fixture.diagnostics();json(join(output,'before-cleanup.json'),report);}catch(error){original??=error;report.evidenceFailure=failure(error);}\n   try{await fixture.cleanup();assert.equal(fixture.cleanupResult.verified,true);}catch(error){original??=error;report.cleanupFailure=failure(error);}}\n  process.off('SIGINT',stop);process.off('SIGTERM',stop);if(original)report.failure??=failure(original);\n  report.status=original?'failed':'passed-native-indexed-only';json(join(output,'controller.json'),report);\n }if(original)throw original;return report;",
+          "current": " }catch(error){retainPrimary(error);report.failure=safeFailure(original);if(error!==original)report.secondaryFailure=safeFailure(error);}\n finally{\n  const clean=async(name,work)=>{try{await work();}catch(error){retainPrimary(error);report[name]=safeFailure(error);}};\n  if(fixture){await clean('evidenceFailure',async()=>{report.diagnostics=fixture.diagnostics();json(join(output,'before-cleanup.json'),report);});await clean('cleanupFailure',async()=>{await fixture.cleanup();assert.equal(fixture.cleanupResult.verified,true);});}\n  for(const name of ['SIGINT','SIGTERM'])await clean('listenerCleanupFailure:'+name,async()=>{process.off(name,stop);});\n  const refresh=()=>{if(hasPrimary)report.failure??=safeFailure(original);report.status=hasPrimary?'failed':'passed-native-indexed-only';};refresh();await clean('finalEvidenceFailure',async()=>{json(join(output,'controller.json'),report);});refresh();\n }if(hasPrimary)throw original;return report;",
+          "count": 1
+        }
+      ],
+      "currentSha256": "fb08e765349e8fa91e43e0ed67ea1c28e612f7179981aa6c98bc6d5eacad3d01"
+    }
+  ]
+}

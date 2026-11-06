@@ -15,13 +15,17 @@ the dependency tree, matching `.github/workflows/build.yml`:
 npm ci
 npm run typecheck
 npm run build
-bun test tests/unit
+npm test
 ```
 
 `npm run typecheck` runs `bun check -p tsconfig.json` over the complete application
 project. Use it for routine development feedback and the CI typecheck gate.
 `npm run build` uses the pinned TypeScript 7 compiler to emit Node.js JavaScript
 and source maps. `bun check` performs checking only and does not emit artifacts.
+
+`npm test` runs `bun test ./tests/unit`. Keep the `./` prefix: Bun treats a bare
+path as a substring filter and can also discover copied fixtures beneath `out/`.
+See [Bun's test discovery rules](https://bun.sh/docs/test/discovery).
 
 Hyperion 4.5 requires Node.js 24 or newer. The workflow runs this sequence on Node.js 24 and 26
 for pushes and pull requests to `main`, `dev`, and `release/4.5`. Bun checks and runs the unit tests against

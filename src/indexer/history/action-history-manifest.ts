@@ -13,7 +13,9 @@ export interface ActionHistoryTransactionPlan {
 /** Expected source membership, prepared before output publication; surviving ES rows cannot construct it. */
 export interface ActionHistoryBlockPlan {
     readonly schemaVersion: 1;
-    readonly source: Readonly<{chainId: string; blockNum: number; blockId: string; previousBlockId: string; captureSha256: string}>;
+    readonly source: Readonly<{chainId: string; blockNum: number; blockId: string; previousBlockId: string; captureSha256: string;
+        /** Exact retained input context for source-scoped plans. Legacy plans omit it. */
+        retainedSourceId?: string}>;
     readonly producer: Readonly<{protocolId: string; profileId: string; codeRevision: string; configurationSha256: string; pluginsSha256: string}>;
     readonly target: Readonly<{name: string; uuid: string}>;
     readonly transactions: readonly ActionHistoryTransactionPlan[];
@@ -109,8 +111,11 @@ function freeze<T>(value: T): T {
 }
 
 function validatePlan(record: any): ActionHistoryBlockPlan {
+    const sourceFields = ['chainId', 'blockNum', 'blockId', 'previousBlockId', 'captureSha256'];
+    const scoped = Object.hasOwn(record?.source ?? {}, 'retainedSourceId');
     if (!keys(record, ['schemaVersion', 'source', 'producer', 'target', 'transactions']) || record.schemaVersion !== 1 ||
-        !keys(record.source, ['chainId', 'blockNum', 'blockId', 'previousBlockId', 'captureSha256']) ||
+        !keys(record.source, scoped ? [...sourceFields, 'retainedSourceId'] : sourceFields) ||
+        (scoped && (typeof record.source.retainedSourceId !== 'string' || !/^h45actionsource1:[0-9a-f]{64}$/.test(record.source.retainedSourceId))) ||
         !digest(record.source.chainId) || !uint32(record.source.blockNum, 1) || !digest(record.source.blockId) ||
         !digest(record.source.previousBlockId) || !digest(record.source.captureSha256) ||
         !keys(record.producer, ['protocolId', 'profileId', 'codeRevision', 'configurationSha256', 'pluginsSha256']) ||

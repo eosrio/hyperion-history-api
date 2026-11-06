@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "qualificationOnly": true,
+  "base": "0d29df02420fa6a3adcb5ec4a932a2efd19da44c",
+  "authorization": {
+    "task": "task_wire34_parent_combined_integration_20261105",
+    "event": "evt_20261105T035149_613e40d89553",
+    "historicalWorkflowException": "Retire only the old automatic PR trigger and add historical-source comments; retain its complete jobs body and all thirteen other frozen managed files"
+  },
+  "sourcePatches": [
+    {
+      "role": "Build/projection/operator-list/journal",
+      "commit": "434d1bc6b711bb62b4835972ea6a5e46e7d6f4c8",
+      "artifact": "art_20261105T034418_aeb7c0d7dd65",
+      "bytes": 368640,
+      "sha256": "b5453441280bbc7a6d84632e87839d97b7a5cc753d511a18e3bf1e63ff4388ef"
+    },
+    {
+      "role": "Managed Atomic successor",
+      "commit": "a5a0725a2d72c3dcc29f3c8de8e0c3b01dbdf2bb",
+      "bytes": 693211,
+      "sha256": "48e727c0841c92d1179b3f82bb624ab38e198f6862743b1adacd7c232e98705d",
+      "artifact": "art_20261105T033403_8a55d916419a"
+    }
+  ],
+  "historicalManagedSource": {
+    "commit": "7b53542111709cf8b225b381077e498e25bc5d61",
+    "Wire": "69a66064c077a405341f5aaf15e84b88b8d86ccb",
+    "workflow": ".github/workflows/atomic-managed.yml",
+    "originalWorkflowSha256": "96ca555c12cc124dab0d879a4af615c8b9414944e1ffd626f36f36f65adadd2c",
+    "originalJobBodySha256": "2c3da6bb5ee4d498f4a2bc4fd05068349c7bec361f78715a2309f336b80e9699",
+    "sourceURL": "https://github.com/eosrio/hyperion-history-api/tree/7b53542111709cf8b225b381077e498e25bc5d61",
+    "dispatchRequirement": "Use a ref resolving to the original immutable source; manual dispatch on current source correctly fails the frozen Wire69 admission"
+  },
+  "currentManagedSource": {
+    "workflow": ".github/workflows/atomic-managed-wire34-cbfb.yml",
+    "profile": "managed-atomic77-hapi-wire34-cbfb-linux-engineering-v1",
+    "inputRoots": [
+      "out/wire34-managed-inputs/atomic",
+      "out/wire34-managed-inputs/mixed"
+    ],
+    "atomicCommit": "1bc686bd7ed7d433b2cb7c3a04a762c0c832ad97",
+    "mixedCommit": "c1b98a52a872b6c070ada32243c8286607e86883"
+  },
+  "globalCycleExceptions": [
+    "tests/fixtures/engineering-profiles/wire34-cbfb-linux.json",
+    "tests/unit/wire34-cbfb-source-admission.mjs"
+  ],
+  "captureOrder": [
+    "Wire34 assembly/native metadata",
+    "managed source profile",
+    "whole global source census and reader",
+    "independent re-observation of all saved metadata"
+  ],
+  "acceptance": {
+    "LinuxCI": "pending",
+    "managedHTTP": "pending",
+    "WireReplay": "pending",
+    "AtomicParity": "pending",
+    "release": "pending"
+  }
+}

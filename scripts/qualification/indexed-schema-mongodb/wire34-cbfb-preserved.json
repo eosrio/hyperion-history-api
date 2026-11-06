@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "source": "817276966ce004bf4082199c356fb66b33376675",
+  "scope": "frozen legacy modules/descriptors and exact active-workflow predecessor text; no runtime acceptance",
+  "files": [
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-assembly.json",
+      "bytes": 192872,
+      "sha256": "b2c0fc9c670bee2f5395a3f7622645ec6b82b697e15fd09a972d301391f5988b"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-assembly.mjs",
+      "bytes": 2397,
+      "sha256": "653f307781de9cc94a9808fda08ca0c6498b7e1531ff83fcdca05581b5ab210b"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-assembly.test.mjs",
+      "bytes": 1056,
+      "sha256": "cde56770585bb6216f2d46e7debb5edb5c2204e918307f9f6f735626234d1dfa"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-ci-source-check.mjs",
+      "bytes": 1911,
+      "sha256": "69957368feda0f8f8d7be5b8d6495d62eff18c259e62ec6802be3cb40af4100a"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-ci.md",
+      "bytes": 3252,
+      "sha256": "949b3061fc9325bac414d9043217c565d3124ebf93dc07e7fe811a40ed05f04b"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-contract.mjs",
+      "bytes": 1344,
+      "sha256": "596088415808e76c92883789d58287717e65b0385a22fba5f232ae3454f6afac"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-contract.test.mjs",
+      "bytes": 22183,
+      "sha256": "be8b23a47077ebe17acae58e26d326ce1438b508d4ad797c4d77a6b4e11760a1"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-native-assembly.mjs",
+      "bytes": 4401,
+      "sha256": "97b07af93c4a6434ce368f756d46f2cbf28d5dc6a5d3eab12af21bf0bf3b5a5e"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-native-ci.mjs",
+      "bytes": 10433,
+      "sha256": "fb08e765349e8fa91e43e0ed67ea1c28e612f7179981aa6c98bc6d5eacad3d01"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-native-cleanup-routing.json",
+      "bytes": 11989,
+      "sha256": "17368dcac96f225168e06bb70bf37568a35cdccd3914d5340faa02e82c1ad3d6"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-native-contract.mjs",
+      "bytes": 11895,
+      "sha256": "45bc1b1e35c88b7c78258dd8fed99726fe9b011e716080d84260ef4b253b09fa"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-native-offline.test.mjs",
+      "bytes": 8813,
+      "sha256": "cfca9c777a123e73f22b37f079fd9bd5f8abfdff6166ee32b3d4bb11221dc979"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-native-profile.json",
+      "bytes": 208915,
+      "sha256": "f79021619e672e27bcf018e8569d5b79de5a61615fd25b8d952f2b3dc094c704"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-native-runner.mjs",
+      "bytes": 44817,
+      "sha256": "ca9b73f331af289af121ce47f75d6000a2faab2157b7b39a410151478c0680be"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-native-teardown.test.mjs",
+      "bytes": 17117,
+      "sha256": "ccda6901c274f9243e805ddc6f6f4b363958cc2af1e9d28cc4c06acd0533cb8e"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-native-trace.mjs",
+      "bytes": 17001,
+      "sha256": "c630c7774aff8adcfb801f83b522c9f5b5264c1886a3cc08ca35ee191c3f2304"
+    },
+    {
+      "path": "scripts/qualification/indexed-schema-mongodb/all-cbfb-routing.json",
+      "bytes": 277852,
+      "sha256": "21ccbc8948db2abf4644bc8bd9e4e277cbead3cd62b63ebf822e5af1d6914d31"
+    },
+    {
+      "path": "tests/fixtures/engineering-profiles/all-cbfb-linux.json",
+      "bytes": 14124,
+      "sha256": "5ecf9ad3f5ae32b7184c3b364be7ea3af1d68e5df0be5e40b60017a8eb15162d"
+    },
+    {
+      "path": "tests/unit/all-cbfb-source-admission.mjs",
+      "bytes": 7902,
+      "sha256": "a3f465c14bccf3323c8845e5011c13c81d2652142b8229945c1c2819ef7bbbdf"
+    }
+  ],
+  "workflowSources": {
+    ".github/workflows/indexed-schema-finite.yml": "name: Indexed cbfb finite engineering\non:\n  pull_request:\n    paths:\n      - '.github/workflows/indexed-schema-finite.yml'\n      - 'scripts/qualification/indexed-schema-mongodb/*cbfb-*'\n      - 'packages/backend-mongodb/**'\n      - 'package.json'\n      - 'package-lock.json'\n  workflow_dispatch:\njobs:\n  finite-cbfb:\n    runs-on: ubuntu-24.04\n    strategy:\n      fail-fast: false\n      matrix:\n        node: ['24.x', '26.x']\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4\n        with:\n          node-version: ${{ matrix.node }}\n      - uses: oven-sh/setup-bun@v2\n        with:\n          bun-version-file: .bun-version\n      - run: |\n          npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false\n          npm ci --allow-git=all --ignore-scripts=false\n          test \"$(bun --version)\" = \"$(cat .bun-version)\"\n          test \"$(bun -p process.versions.typescript)\" = \"7.0.2\"\n          bun check -p tsconfig.json\n          bun check -p packages/backend-mongodb/tsconfig.json\n          npm run build\n      - run: node scripts/qualification/indexed-schema-mongodb/all-cbfb-assembly.mjs --profile indexed-schema-all-cbfb-root-native-wire69-engineering-v1 > indexed-cbfb-source.json\n      - run: node --test scripts/qualification/indexed-schema-mongodb/all-cbfb-assembly.test.mjs packages/backend-mongodb/tests/indexed-int64-membership.test.mjs\n      - run: npm run test:indexed:finite\n        env:\n          HYPERION_INDEXED_TEST_PROFILE: cbfb\n      - run: npm run test:indexed:cbfb:package\n        env:\n          HYPERION_INDEXED_TEST_PROFILE: cbfb\n      - uses: actions/upload-artifact@v4\n        if: always()\n        with:\n          name: indexed-cbfb-finite-${{ matrix.node }}\n          path: |\n            indexed-cbfb-source.json\n            out/indexed-packed-*/receipt.json\n            out/indexed-packed-*/*.stdout\n            out/indexed-packed-*/*.stderr\n            out/indexed-packed-*/failed.json\n          if-no-files-found: error\n",
+    ".github/workflows/indexed-schema-native.yml": "name: Indexed cbfb native MongoDB engineering\non:\n  workflow_dispatch:\n  pull_request:\n    paths:\n      - '.github/workflows/indexed-schema-native.yml'\n      - 'scripts/qualification/indexed-schema-mongodb/**'\n      - 'src/api/helpers/stateful-owner.ts'\n      - 'src/indexer/projection/stateful-*.ts'\n      - 'packages/backend-mongodb/**'\n      - 'package.json'\n      - 'package-lock.json'\njobs:\n  indexed-native:\n    runs-on: ubuntu-22.04\n    timeout-minutes: 15\n    strategy:\n      fail-fast: false\n      matrix:\n        node: ['24.22.1', '26.4.0']\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4\n        with:\n          node-version: ${{ matrix.node }}\n      - uses: oven-sh/setup-bun@v2\n        with:\n          bun-version-file: .bun-version\n      - run: |\n          npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false\n          npm ci --allow-git=all --ignore-scripts=false\n          test \"$(bun --version)\" = \"$(cat .bun-version)\"\n          test \"$(bun -p process.versions.typescript)\" = \"7.0.2\"\n          bun check -p tsconfig.json\n          bun check -p packages/backend-mongodb/tsconfig.json\n          npm run build\n      - run: node scripts/qualification/indexed-schema-mongodb/all-cbfb-assembly.mjs --profile indexed-schema-all-cbfb-root-native-wire69-engineering-v1 > indexed-cbfb-native-source-${{ matrix.node }}.json\n      - run: node --test scripts/qualification/indexed-schema-mongodb/all-cbfb-assembly.test.mjs scripts/qualification/indexed-schema-mongodb/all-cbfb-native-offline.test.mjs scripts/qualification/indexed-schema-mongodb/all-cbfb-native-teardown.test.mjs\n      - run: npm run test:indexed:finite\n        env:\n          HYPERION_INDEXED_TEST_PROFILE: cbfb\n      - run: npm run test:indexed:cbfb:package\n        env:\n          HYPERION_INDEXED_TEST_PROFILE: cbfb\n      - run: node scripts/qualification/indexed-schema-mongodb/all-cbfb-native-ci.mjs --profile indexed-schema-mongodb-all-cbfb-linux-gha-v1 indexed-cbfb-native-${{ matrix.node }}\n      - uses: actions/upload-artifact@v4\n        if: always()\n        with:\n          name: indexed-cbfb-native-${{ matrix.node }}\n          path: |\n            indexed-cbfb-native-source-${{ matrix.node }}.json\n            indexed-cbfb-native-${{ matrix.node }}/\n            out/indexed-packed-*/receipt.json\n            out/indexed-packed-*/*.stdout\n            out/indexed-packed-*/*.stderr\n            out/indexed-packed-*/failed.json\n          if-no-files-found: error\n"
+  }
+}

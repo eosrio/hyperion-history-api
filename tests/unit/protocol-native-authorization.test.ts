@@ -317,7 +317,7 @@ describe('native authorization host-contract controls (synthetic protocol, actua
 
     it('carries one signal to every nested read and preserves exact pre-abort/late-abort reasons without affecting siblings', async () => {
         const fixture = await nativeAuthorizationFixture(), reader = fixture.reader(), signals: any[] = [], controller = new AbortController();
-        for (const [owner, name] of [[fixture.client, 'get'], [fixture.client.indices, 'getMapping'], [fixture.client.indices, 'getSettings']] as const) {
+        for (const [owner, name] of [[fixture.client, 'get'], [fixture.client.indices, 'get']] as const) {
             const original = owner[name]; owner[name] = (request: any, options: any) => {signals.push(options?.signal); return original(request, options);};
         }
         const view = await open(fixture, reader, controller.signal), result = await reader.authorize(view, fixture.selected.inputs[0], {signal: controller.signal});

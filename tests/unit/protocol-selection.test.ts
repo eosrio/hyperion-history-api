@@ -240,7 +240,9 @@ test('installed legacy Wire profiles keep native actions inactive and deployed c
     const script=`
         import assert from 'node:assert/strict'; import {readFileSync} from 'node:fs';
         import {dirname,resolve} from 'node:path'; import {fileURLToPath} from 'node:url';
-        import {loadChainProtocol} from ${JSON.stringify(loader)};
+        const {admitNativeSourceEnvironment}=await import(${JSON.stringify(new URL('./stateful-engineering-source-admission.mjs',import.meta.url).href)});
+        const nativeSourceAdmission=admitNativeSourceEnvironment();
+        const {loadChainProtocol}=await import(${JSON.stringify(loader)});
         const root=dirname(dirname(fileURLToPath(import.meta.resolve('@eosrio/hyperion-wire-plugin/protocol-provider.json'))));
         const read=path=>readFileSync(resolve(root,path));const json=path=>JSON.parse(read(path));
         const descriptor=json('dist/protocol-provider.json');
@@ -251,7 +253,7 @@ test('installed legacy Wire profiles keep native actions inactive and deployed c
             const selected=await loadChainProtocol({provider:'extension',package:'@eosrio/hyperion-wire-plugin',profileId:profile.id});
             assert.equal('nativeActions' in selected.provider,false,'Wire runtime unexpectedly exposes native actions');
             assert.deepEqual(selected.components.map(component=>component.sourceRevision),
-                ['7167659e9c043cb3351074fcacb40200cc57f3a3','7167659e9c043cb3351074fcacb40200cc57f3a3']);
+                [nativeSourceAdmission.wireRevision,nativeSourceAdmission.wireRevision]);
             const codec=selected.provider.contractCodec;
             const abi=codec.decodeAbi(codec.encodeAbi({version:'sysio::abi/1.3',structs:[
                 {name:'record',base:'',fields:[{name:'value',type:'uint32'}]}]}));

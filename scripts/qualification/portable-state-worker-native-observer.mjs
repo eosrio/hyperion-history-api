@@ -1,5 +1,6 @@
 /** Read-only observations of actual production calls; no provider, decision, receipt or outcome substitution. */
 import assert from 'node:assert/strict';
+import cluster from 'node:cluster';
 import {createHash} from 'node:crypto';
 import {openSync, writeSync, fsyncSync, closeSync, readFileSync, realpathSync, statSync} from 'node:fs';
 import {isAbsolute, join} from 'node:path';
@@ -8,6 +9,19 @@ import {ActionSourceAdmissionStore} from '../../build/indexer/history/action-sou
 import {HyperionWorker} from '../../build/indexer/workers/hyperionWorker.js';
 import {default as Deserializer} from '../../build/indexer/workers/deserializer.js';
 import {actionHistoryImmutableJson} from '../../build/indexer/history/action-history-manifest.js';
+import {UndiciConnection} from '@elastic/transport';
+import {ProtocolAbiProofReader} from '../../build/indexer/protocol/abi-proof.js';
+import {ImmutableProtocolBundleStore} from '../../build/indexer/protocol/immutable-bundle-store.js';
+import {ObserverIoMetrics, installProofMetrics} from './portable-state-worker-proof-metrics.mjs';
+import {WorkerAttemptClient} from '../../build/indexer/protocol/worker-attempt-client.js';
+import {WorkerAttemptSupervisor} from '../../build/indexer/protocol/worker-attempt-supervisor.js';
+import {installProjectionDiagnostics} from './portable-state-projection-diagnostics.mjs';
+import {installWorkerRejectionDiagnostics} from './worker-rejection-diagnostics.mjs';
+import DSPool from '../../build/indexer/workers/ds-pool.js';
+import StateReader from '../../build/indexer/workers/state-reader.js';
+import ProjectionWorker from '../../build/indexer/workers/projection.js';
+import {createWireBacklogCapture, installWireBacklogCapture, writeWireBacklogCapture} from './wire-backlog-capture.mjs';
+import {currentProofConsumerScope} from '../../build/indexer/protocol/proof-consumer-scope.js';
 
 assert.equal(process.env.HYPERION_PORTABLE_NATIVE_QUALIFICATION, '1');
 const chain = process.env.CHAIN_NAME;
@@ -22,14 +36,54 @@ const directory = realpathSync(process.env.ES198_OBSERVER_DIR); assert.ok(statSy
 const descriptor = openSync(join(directory, `native-${process.pid}.jsonl`), 'wx');
 const hash = value => createHash('sha256').update(value).digest('hex');
 let sequence = 0, bytes = 0;
+const observerIo = new ObserverIoMetrics();
 const record = (event, value) => {
     const line = JSON.stringify({kind: 'native_boundary', event, sequence: ++sequence, pid: process.pid,
         role: process.env.worker_role || 'master', monotonicNs: process.hrtime.bigint().toString(), ...value}) + '\n';
     bytes += Buffer.byteLength(line); assert.ok(bytes <= 24 * 1024 * 1024, 'native observer byte budget');
-    writeSync(descriptor, line); fsyncSync(descriptor);
+    observerIo.write(Buffer.byteLength(line), () => writeSync(descriptor, line));
+    observerIo.sync(() => fsyncSync(descriptor));
 };
 record('start', {profileId: config.settings.protocol.profileId, observationOnly: true});
-process.once('exit', () => {record('exit', {bytes}); closeSync(descriptor);});
+const proofMetrics = installProofMetrics({ProofReader: ProtocolAbiProofReader, BundleStore: ImmutableProtocolBundleStore,
+    Connection: UndiciConnection, record});
+const stageTimings = process.env.HYPERION_PORTABLE_NATIVE_STAGE_TIMING === '1'
+    ? (await import('./portable-native-stage-timing.mjs')).installNativeWorkerStageTimings({enabled: true}) : undefined;
+let backlogCapture;
+const portableStages = process.env.HYPERION_PORTABLE_NATIVE_STAGE_TIMING === '1' && process.env.worker_role === 'projection'
+    ? (await import('./portable-state-stage-observer.mjs')).installPortableStageObserver({
+        Controller: (await import('../../build/indexer/projection/controller.js')).PortableStateController,
+        Runtime: (await import('../../build/indexer/projection/runtime.js')).DeclarativeProjectionRuntime,
+        currentScope: (await import('../../build/indexer/protocol/proof-consumer-scope.js')).currentProofConsumerScope, record}) : undefined;
+const projectionDiagnostics = cluster.isPrimary || process.env.worker_role === 'projection'
+    ? installProjectionDiagnostics({WorkerClient: WorkerAttemptClient, Supervisor: WorkerAttemptSupervisor,
+        Master: cluster.isPrimary ? (await import('../../build/indexer/modules/master.js')).HyperionMaster : undefined, record})
+    : undefined;
+const rejectionDiagnostics = installWorkerRejectionDiagnostics({Pool: DSPool, Reader: StateReader, Projection: ProjectionWorker,
+    WorkerClient: WorkerAttemptClient, WorkerHost: HyperionWorker,
+    Master: cluster.isPrimary ? (await import('../../build/indexer/modules/master.js')).HyperionMaster : undefined,
+    Supervisor: cluster.isPrimary ? WorkerAttemptSupervisor : undefined, cluster, record});
+process.once('exit', () => {
+    if (backlogCapture) {
+        const started = process.hrtime.bigint();
+        try {
+            const receipt = writeWireBacklogCapture(backlogCapture, join(directory, `backlog-${process.pid}.json`));
+            record('backlog_capture_written', {...receipt, elapsedNs: (process.hrtime.bigint() - started).toString()});
+            if (receipt.omitted || receipt.failures) process.exitCode = 1;
+        } catch (error) {
+            record('backlog_capture_failed', {message: String(error).slice(0, 512), restorable: false}); process.exitCode = 1;
+        }
+    }
+    // Snapshot excludes this summary row and the following exit row's own writes/syncs.
+    record('observer_metrics', {coverage: 'before-this-row', io: observerIo.snapshot(), proofs: proofMetrics.snapshot(),
+        projectionDiagnostics: projectionDiagnostics?.snapshot(), rejectionDiagnostics: rejectionDiagnostics.snapshot(),
+        ...(stageTimings ? {stageTimings: stageTimings.snapshot()} : {}),
+        ...(portableStages ? {portableStages: portableStages.snapshot()} : {})});
+    record('exit', {bytes}); closeSync(descriptor);
+    if (proofMetrics.snapshot().reportFailures || projectionDiagnostics?.snapshot().reportFailures
+        || rejectionDiagnostics.snapshot().reportFailures || stageTimings?.snapshot().reportFailures
+        || portableStages?.snapshot().failures || portableStages?.snapshot().omitted) process.exitCode = 1;
+});
 
 const prepare = ProtocolNativeObservationStore.prototype.prepare;
 ProtocolNativeObservationStore.prototype.prepare = async function (selectionId, input, ...args) {
@@ -66,6 +120,36 @@ HyperionWorker.prototype.publishAdmitted = async function (owner, queue, content
     const result = await publication.call(this, owner, queue, content, headers, ...args);
     record('admitted_publish_confirmed', origin); return result;
 };
+// Confirmed action handoffs call the publication helper directly, bypassing publishAdmitted.
+// Observe the actual owned AMQP send and its broker callback without replacing either result.
+const actionPublicationOwner = HyperionWorker.prototype.actionPublicationOwner;
+const observedPublishers = new WeakSet();
+HyperionWorker.prototype.actionPublicationOwner = function (...args) {
+    const owner = actionPublicationOwner.apply(this, args), publisher = owner.publisher;
+    if (!observedPublishers.has(publisher)) {
+        observedPublishers.add(publisher);
+        const sendToQueue = publisher.sendToQueue;
+        publisher.sendToQueue = function (queue, content, options, callback) {
+            if (!queue.startsWith(chain + ':index_actions:'))
+                return sendToQueue.call(this, queue, content, options, callback);
+            assert.equal(typeof callback, 'function', 'admitted action publication requires a broker confirm callback');
+            assert.equal(options.persistent, true); assert.equal(options.mandatory, true);
+            const canonicalPayloadSha256 = hash(actionHistoryImmutableJson(JSON.parse(content.toString())));
+            const payloadSha256 = hash(content);
+            assert.equal(canonicalPayloadSha256, payloadSha256, 'admitted production action bytes must be canonical');
+            const origin = {queue, payloadSha256, canonicalPayloadSha256, bytes: content.length,
+                headers: structuredClone(options.headers), messageId: options.messageId,
+                persistent: options.persistent, mandatory: options.mandatory};
+            record('admitted_broker_publish_begin', origin);
+            return sendToQueue.call(this, queue, content, options, error => {
+                record(error ? 'admitted_broker_nack' : 'admitted_broker_confirmed',
+                    error ? {...origin, error: String(error)} : origin);
+                return callback(error);
+            });
+        };
+    }
+    return owner;
+};
 const sourceAck = Deserializer.prototype.ackAdmittedSourceDelivery;
 Deserializer.prototype.ackAdmittedSourceDelivery = function (message, ...args) {
     const admission = this.activeActionSource?.admission;
@@ -87,3 +171,20 @@ HyperionWorker.prototype.captureActionAdmissionDelivery = function (message, cha
     }
     return result;
 };
+
+// Explicit diagnostic opt-in only. Existing environment sanitization prevents ambient activation.
+if (process.env.ES198_WIRE_BACKLOG_CAPTURE !== undefined) {
+    assert.equal(process.env.ES198_WIRE_BACKLOG_CAPTURE, '1');
+    assert.equal(process.env.ES198_CPU_PROFILE, '0');
+    assert.equal(process.env.HYPERION_PORTABLE_NATIVE_STAGE_TIMING, undefined);
+    const birthTicks = process.platform === 'linux'
+        ? readFileSync('/proc/self/stat', 'utf8').split(') ').at(-1).split(' ')[19] : null;
+    if (birthTicks !== null) assert.match(birthTicks, /^[1-9][0-9]*$/);
+    backlogCapture = createWireBacklogCapture({enabled: true, identity: {chain, chainId: null,
+        sourceAuthority: 'requires-separate-verified-source-snapshot',
+        sourceHead: process.env.ES198_WIRE_BACKLOG_CAPTURE_HEAD, profileId: config.settings.protocol.profileId,
+        configurationSha256: hash(readFileSync(process.env.CONFIG_JSON)), pid: process.pid, parentPid: process.ppid,
+        birthTicks, birthObservation: birthTicks === null ? 'unsupported-platform' : 'proc-stat'}});
+    installWireBacklogCapture({capture: backlogCapture, WorkerHost: HyperionWorker, Reader: StateReader,
+        currentScope: () => currentProofConsumerScope()});
+}

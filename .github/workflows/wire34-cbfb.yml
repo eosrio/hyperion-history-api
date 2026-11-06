@@ -1,0 +1,93 @@
+name: Wire34 CBFB Linux qualification
+# Retired source-pin qualification: manual only, see docs/qualification/retired-source-pins.md.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  wire34-cbfb:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["24.22.1", "26.4.0"]
+    env:
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-all-cbfb-root-native-wire34-linux-engineering-v1
+      HYPERION_INDEXED_TEST_PROFILE: cbfb
+      NODE_OPTIONS: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Record actual runner resources before effects
+        timeout-minutes: 1
+        run: node scripts/qualification/wire34-cbfb/ci.mjs before
+      - name: Install the native and root committed locks with normal preparation
+        timeout-minutes: 8
+        run: |
+          npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false
+          npm ci --allow-git=all --ignore-scripts=false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - name: Check Bun TypeScript and emit the complete native and root projects
+        timeout-minutes: 5
+        run: |
+          test "$(bun --version)" = "1.4.4"
+          test "$(bun -p process.versions.typescript)" = "7.0.2"
+          npm run typecheck
+          bun check -p packages/backend-mongodb/tsconfig.json
+          npm run build
+      - name: Check pure source identity workflow routing and bounded custody
+        timeout-minutes: 3
+        run: node --test tests/native/wire34-cbfb-source-profile.test.mjs tests/native/wire34-linux-workflow.test.mjs tests/native/retained-workload-progress.test.mjs
+      - name: Admit the actual clean Git source and installed emitted cohort
+        id: source_admission
+        timeout-minutes: 3
+        run: |
+          node scripts/qualification/wire34-cbfb/source-check.mjs > out/wire34-linux/git.json
+          node tests/unit/wire34-cbfb-source-admission.mjs --admit-wire34-cbfb > out/wire34-linux/source.json
+          node scripts/qualification/wire34-cbfb/ci.mjs receipts
+      - name: Run one unprofiled original retained 1..1480 acceptance
+        id: retained
+        timeout-minutes: 5
+        run: node scripts/qualification/wire34-cbfb/ci.mjs retained
+      - name: Run the independent original historical source authority suite
+        id: history
+        if: always() && !cancelled() && steps.source_admission.outcome == 'success'
+        timeout-minutes: 5
+        run: node scripts/qualification/wire34-cbfb/ci.mjs history
+      - name: Compare default process isolation on Node 26 (diagnostic only)
+        id: isolated_diagnostic
+        if: always() && !cancelled() && steps.source_admission.outcome == 'success' && matrix.node == '26.4.0'
+        timeout-minutes: 5
+        run: node scripts/qualification/wire34-cbfb/ci.mjs isolated
+      - name: Capture separate CPU diagnostics only after retained acceptance failure
+        id: cpu_diagnostic
+        if: failure() && !cancelled() && steps.retained.outcome == 'failure'
+        timeout-minutes: 4
+        run: node scripts/qualification/wire34-cbfb/ci.mjs cpu
+      - name: Record actual runner resources after every outcome
+        if: always()
+        timeout-minutes: 1
+        run: node scripts/qualification/wire34-cbfb/ci.mjs after
+      - name: Retain original receipts progress and bounded closed streams
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wire34-cbfb-${{ matrix.node }}-${{ github.run_attempt }}
+          path: |
+            out/wire34-linux/*.json
+            out/wire34-linux/*.stdout
+            out/wire34-linux/*.stderr
+            out/wire34-linux/cpu-export/*.cpuprofile
+            out/wire-managed-diagnostic-*/progress.jsonl
+          if-no-files-found: error
+          retention-days: 14

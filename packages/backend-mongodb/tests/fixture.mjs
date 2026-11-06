@@ -39,10 +39,14 @@ export function databaseFixture() {
         foreignErrors: false,
         beforeFind: null,
         failFindAndModify: null,
+        failUpdate: null,
+        failTransaction: null,
+        retryTransaction: false,
         native,
         get storage() { return storage; },
     };
     const mapFor = (name, session) => {
+        if (session?.hasEnded) throw new Error('Session has ended');
         const selected = session?.storage ?? storage;
         if (!selected.has(name)) selected.set(name, new Map());
         return selected.get(name);
@@ -60,6 +64,7 @@ export function databaseFixture() {
     const update = (collection, filter, change, session) => {
         const records = mapFor(collection, session);
         for (const [key, record] of records) if (matches(record, filter)) {
+            fixture.copyObserver?.('update', null);
             const changed = { ...record, ...copy(change.$set) };
             records.set(key, changed);
             return changed;
@@ -81,11 +86,17 @@ export function databaseFixture() {
         async findOne(filter, options) {
             native.push({ command: 'findOne', name, options });
             if (fixture.beforeFind) await fixture.beforeFind(name, options);
+            fixture.copyObserver?.('findOne', null);
             return copy([...mapFor(name, options?.session).values()].find(record => matches(record, filter)) ?? null);
         },
         async updateOne(filter, change, options) {
             native.push({ command: 'update', name, options });
-            return { acknowledged: true, matchedCount: update(name, filter, change, options?.session) === null ? 0 : 1 };
+            const fault = fixture.failUpdate; fixture.failUpdate = null;
+            if (fault === 'before') throw new Error('injected pre-persistence update rejection');
+            if (fault === 'miss') return { acknowledged: true, matchedCount: 0 };
+            const matchedCount = update(name, filter, change, options?.session) === null ? 0 : 1;
+            if (fault === 'after') throw new Error('injected lost durable update receipt');
+            return { acknowledged: true, matchedCount };
         },
         async findOneAndUpdate(filter, change, options) {
             native.push({ command: 'findAndModify', name, filter: copy(filter), change: copy(change), options });
@@ -137,7 +148,7 @@ export function databaseFixture() {
         },
         async countDocuments(filter, options) {
             native.push({ command: 'count', name, options, filter });
-            assert.ok(options.session);
+            assert.ok(options.session || options.limit === 1, 'Only bounded empty-genesis probes may run outside a transaction');
             return [...mapFor(name, options.session).values()].filter(record => matches(record, filter)).slice(0, options.limit).length;
         },
     });
@@ -155,14 +166,29 @@ export function databaseFixture() {
         startSession() {
             const session = {
                 storage: null,
+                hasEnded: false,
                 async withTransaction(operation, options) {
+                    if (session.hasEnded) throw new Error('Session has ended');
                     native.push({ command: 'transaction', options });
+                    const start = native.length;
+                    fixture.copyObserver?.('transaction', storage);
                     session.storage = copy(storage);
-                    const result = await operation(session);
-                    storage = session.storage;
+                    let result = await operation(session);
+                    if (session.hasEnded) throw new Error('Session has ended');
+                    if (fixture.retryTransaction) {fixture.retryTransaction = false; fixture.copyObserver?.('transaction', storage); session.storage = copy(storage); result = await operation(session);}
+                    if (session.hasEnded) throw new Error('Session has ended');
+                    const fault = fixture.failTransaction; fixture.failTransaction = null;
+                    if (fault === 'before') throw new Error('injected unknown before commit');
+                    if (native.slice(start).some(n => n.options?.session === session && ['insert','update','replace','delete','deleteMany','findAndModify'].includes(n.command))) storage = session.storage;
+                    if (fault === 'after') throw new Error('injected lost commit acknowledgment');
                     return result;
                 },
-                async endSession() { native.push({ command: 'endSession' }); },
+                async endSession() {
+                    native.push({ command: 'endSession' });
+                    session.hasEnded = true;
+                    // Audit records retain session identity, never obsolete transaction database copies.
+                    session.storage = null;
+                },
             };
             return session;
         },

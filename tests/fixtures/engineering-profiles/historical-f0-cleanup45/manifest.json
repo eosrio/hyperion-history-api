@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "executable": false,
+  "sourceCommit": "f0d99742a12b36a08e1d5a536ed6c57522cc78f4",
+  "files": [
+    {
+      "path": "tests/native/current-stateful-source-profile.test.mjs",
+      "snapshot": "tests/fixtures/engineering-profiles/historical-f0-cleanup45/current-stateful-source-profile.test.mjs.txt",
+      "bytes": 7395,
+      "sha256": "c2513d34b8ce4f418edaa7d8c31a1bffd99430472abe5b1ee8bf9c67970ea3cf"
+    },
+    {
+      "path": "tests/native/stateful-complete-kind-codec-profile.test.mjs",
+      "snapshot": "tests/fixtures/engineering-profiles/historical-f0-cleanup45/stateful-complete-kind-codec-profile.test.mjs.txt",
+      "bytes": 3525,
+      "sha256": "a1b96639cfc43833a6540871f4fceb14260cfbb813de4f7a8f8530b58bcefd29"
+    },
+    {
+      "path": "tests/unit/stateful-complete-kind-source-admission-native.mjs",
+      "snapshot": "tests/fixtures/engineering-profiles/historical-f0-cleanup45/stateful-complete-kind-source-admission-native.mjs.txt",
+      "bytes": 14651,
+      "sha256": "5e35e9ec3a0e1ce620d6e46ed37d5a583be423d8ba36b6539bb1512083b319d4"
+    }
+  ]
+}

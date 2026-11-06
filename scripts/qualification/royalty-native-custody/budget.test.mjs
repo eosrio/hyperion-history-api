@@ -1,0 +1,2 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {evidenceBudget} from './budget.mjs';
+test('BSON, JSON and checksum bytes share the original finite evidence allowance',()=>{const items=[['a.json',{a:1}],['b.json',[]]],total=evidenceBudget(17,items,10000);assert(evidenceBudget(17,items,total)===total);assert.throws(()=>evidenceBudget(17,items,total-1),/combined/);assert.throws(()=>evidenceBudget(-1,items,100));});

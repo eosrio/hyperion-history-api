@@ -1,0 +1,15 @@
+component,pid,role,proofOpens,immutableGets,bundleReads,commitValidationCalls,httpGetAttempts,httpCompleted,httpErrors,httpNonSuccess,compressedBodyBytes,utf8ReencodedBodyBytes,unknownBodySizes,observerWriteCalls,observerSyncCalls,observerWriteNs,observerSyncNs
+api,933285,master,60,240,120,60,1080,1080,0,0,0,4174100,0,61,61,1269300,422519002
+master,933284,master,0,0,0,0,0,0,0,0,0,0,0,1,1,19383,6292615
+master,933336,continuous_reader,0,0,0,0,0,0,0,0,0,0,0,1,1,54278,14891908
+master,933337,deserializer,2423,3079,1757,661,19359,19359,0,435,0,79547564,0,8015,8015,143097150,68862788433
+master,933338,deserializer,0,0,0,0,0,0,0,0,0,0,0,1,1,35859,6172080
+master,933344,ingestor,0,0,0,0,0,0,0,0,0,0,0,1,1,16504,6101583
+master,933350,ingestor,0,0,0,0,0,0,0,0,0,0,0,1,1,38565,6269661
+master,933356,ingestor,0,0,0,0,0,0,0,0,0,0,0,1,1,24164,6115973
+master,933362,ingestor,0,0,0,0,0,0,0,0,0,0,0,1,1,42173,6260656
+master,933368,ingestor,0,0,0,0,0,0,0,0,0,0,0,1,1,27536,6330702
+master,933374,ingestor,0,0,0,0,0,0,0,0,0,0,0,1,1,33083,6170692
+master,933381,ingestor,0,0,0,0,0,0,0,0,0,0,0,1,1,18579,8089027
+master,933387,ds_pool_worker,1663,71401,35719,34056,224144,224144,0,37,0,889726188,0,5106,5106,88929788,39195936158
+master,933388,projection,2423,8374,4407,1984,39220,39220,0,440,0,158007132,0,2424,2424,50218747,22550149328

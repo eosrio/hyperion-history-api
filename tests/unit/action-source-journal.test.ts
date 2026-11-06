@@ -58,8 +58,8 @@ function replaceRecord(memory: ReturnType<typeof frontierMemoryClient>, index: s
 function writes(memory: ReturnType<typeof frontierMemoryClient>) {return memory.calls.filter((call: any) => ['create', 'index'].includes(call.method));}
 function captureIo(memory: ReturnType<typeof frontierMemoryClient>, after: (method: string, request: any) => void = () => {}) {
     const seen: Array<{method: string; request: any; signal?: AbortSignal}> = [];
-    for (const [owner, name, method] of [[memory.client.indices, 'create', 'createIndex'], [memory.client.indices, 'getMapping', 'getMapping'],
-        [memory.client.indices, 'getSettings', 'getSettings'], [memory.client, 'get', 'get'], [memory.client, 'create', 'create'],
+    for (const [owner, name, method] of [[memory.client.indices, 'create', 'createIndex'], [memory.client.indices, 'get', 'getIndex'],
+        [memory.client, 'get', 'get'], [memory.client, 'create', 'create'],
         [memory.client, 'index', 'index']] as const) {
         const original = owner[name].bind(owner);
         (owner as any)[name] = async (request: any, options?: any) => {
@@ -71,6 +71,27 @@ function captureIo(memory: ReturnType<typeof frontierMemoryClient>, after: (meth
 }
 
 describe('durable action source membership journal', () => {
+    it('retains complete session provenance in distinct source-scoped plans and refuses changes within one plan', async () => {
+        const {journal} = fixture(1), legacy = plan();
+        const firstPlan = {...legacy, source: {...legacy.source, retainedSourceId: 'h45actionsource1:' + hex('a')},
+            transactions: legacy.transactions.slice(0, 1)};
+        const secondPlan = {...firstPlan, source: {...firstPlan.source, retainedSourceId: 'h45actionsource1:' + hex('b')}};
+        const firstId = (await journal.preparePlan(firstPlan)).id, secondId = (await journal.preparePlan(secondPlan)).id;
+        // Constructed locator shapes test byte identity only; they confer no native/source authority.
+        const first = {...action(), protocol: {selectionId: 'h45srcsel1:' + hex('c'), native: {linkId: 'h45srcnat1:' + hex('d')}}};
+        const second = {...action(), protocol: {selectionId: 'h45srcsel1:' + hex('e'), native: {linkId: 'h45srcnat1:' + hex('f')}}};
+        expect(first.act.data).toEqual(second.act.data);
+        expect(fingerprintActionHistoryEffect(first).documentSha256).not.toBe(fingerprintActionHistoryEffect(second).documentSha256);
+        const original = await journal.recordFragment(firstId, txA, [first]);
+        const recovered = await journal.recordFragment(secondId, txA, [second]);
+        expect(original.id).not.toBe(recovered.id);
+        const firstSeal = await journal.seal(firstId), secondSeal = await journal.seal(secondId);
+        expect(firstSeal.manifest.fragments[0]).toEqual(original.fragment);
+        expect(secondSeal.manifest.fragments[0]).toEqual(recovered.fragment);
+        await expect(journal.recordFragment(firstId, txA, [second])).rejects.toThrow('Immutable ABI observation conflict');
+        expect(await journal.readManifest(firstId)).toEqual(firstSeal);
+        expect(await journal.readManifest(secondId)).toEqual(secondSeal);
+    });
     it('stores a strict independent namespace and survives restart with source-ordered complete membership', async () => {
         const {memory, journal, id, source, fragments} = await prepared(1), sealed = await journal.seal(id);
         expect(journal.index).toBe('fixture-history-source-journal-v1');
@@ -355,7 +376,7 @@ describe('journal cancellation through immutable preparation and repair', () => 
         expect(memory.calls.length).toBe(0);
     });
 
-    it.each(['createIndex', 'getMapping', 'getSettings', 'get', 'create', 'index'])('forwards cancellation to %s and prevents subsequent I/O after it completes', async target => {
+    it.each(['createIndex', 'getIndex', 'get', 'create', 'index'])('forwards cancellation to %s and prevents subsequent I/O after it completes', async target => {
         const {memory, journal} = fixture(); if (target === 'index' || target === 'get') await journal.preparePlan(plan());
         const controller = new AbortController(), reason = new Error('cancel after ' + target); let triggered = false;
         const calls = captureIo(memory, method => {if (!triggered && method === target) {triggered = true; controller.abort(reason);}});

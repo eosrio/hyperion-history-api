@@ -8,9 +8,12 @@
     "typecheck": "bun check -p tsconfig.json",
     "build": "npm run build --prefix packages/backend-mongodb && tsc",
     "build:watch": "tsc --watch",
-    "postinstall": "npm run build && npm run fix-permissions",
+    "postinstall": "npm ci --prefix packages/backend-mongodb && npm run build && npm run fix-permissions",
     "fix-permissions": "node scripts/fix-permissions.cjs",
-    "test": "bun test tests/unit"
+    "test": "bun test ./tests/unit",
+    "test:indexed:finite": "node --test packages/backend-mongodb/tests/indexed-schema-model.test.mjs packages/backend-mongodb/tests/indexed-schema-effects.test.mjs packages/backend-mongodb/tests/indexed-schema-cursor.test.mjs packages/backend-mongodb/tests/indexed-schema-attachment.test.mjs packages/backend-mongodb/tests/indexed-schema-owner.test.mjs tests/unit/stateful-indexed-host-finite.mjs",
+    "test:indexed:package": "node scripts/check-indexed-package.mjs",
+    "test:indexed:cbfb:package": "node scripts/check-indexed-cbfb-package.mjs"
   },
   "engines": {
     "node": ">=24"
@@ -29,8 +32,8 @@
     "@elastic/elasticsearch": "8.19.1",
     "@eosrio/hyperion-backend-mongodb": "file:packages/backend-mongodb",
     "@eosrio/hyperion-plugin-core": "^0.1.0",
-    "@eosrio/hyperion-sdk": "git+https://github.com/eosrio/hyperion-sdk.git#339b5c93d1338968c18ed14254961439dcab16a0",
-    "@eosrio/hyperion-wire-plugin": "git+https://github.com/eosrio/hyperion-wire-plugin.git#7167659e9c043cb3351074fcacb40200cc57f3a3",
+    "@eosrio/hyperion-sdk": "git+https://github.com/eosrio/hyperion-sdk.git#cbfb26694b90b52266d1e0b9b5dbf6f8389e736b",
+    "@eosrio/hyperion-wire-plugin": "git+https://github.com/eosrio/hyperion-wire-plugin.git#1e7547ff52740ecaa88d7867d3ec887a2febaa58",
     "@eosrio/node-abieos": "4.2.0-f7d5b45",
     "@fastify/autoload": "6.3.1",
     "@fastify/cors": "11.2.0",
@@ -49,7 +52,7 @@
     "cli-progress": "3.12.0",
     "commander": "14.0.3",
     "dotenv": "17.4.2",
-    "fastify": "5.8.5",
+    "fastify": "5.12.7",
     "fastify-plugin": "5.1.0",
     "flatstr": "1.0.12",
     "global-agent": "4.1.3",

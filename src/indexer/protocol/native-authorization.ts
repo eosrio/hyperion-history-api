@@ -4,7 +4,7 @@ import {serialize, deserialize} from 'node:v8';
 import {validateProtocolNativeActions, type ProtocolAbiActionInput, type ProtocolNativeActions,
     type ProtocolNativeActionDecision, type ProtocolProvider} from '@eosrio/hyperion-sdk/protocol';
 import {deriveProtocolActionOccurrences, type ProtocolOriginalActionOccurrence} from '../history/action-source-inventory.js';
-import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, type ProtocolAbiProofSource,
+import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, transferUnsettledCertificate, type ProtocolAbiProofSource,
     type ProtocolAbiProofView, type ProtocolAbiProofReadOptions} from './abi-proof.js';
 import {ProtocolNativeObservationStore, NativeObservationReadError} from './native-observation-store.js';
 import type {ProtocolNativeActionProofMetadata, ProtocolNativeActionIncompleteMetadata} from './native-action-metadata.js';
@@ -29,6 +29,15 @@ export interface ProtocolNativeActionReaderOptions {
     readonly provider: ProtocolProvider;
     readonly store: ProtocolNativeObservationStore;
     readonly proofReader: ProtocolAbiProofReader;
+}
+/** Host-internal worker pairing. Standalone/API construction retains independent issuance. */
+export interface ProtocolNativeWorkerReaders {
+    readonly proofs: ProtocolAbiProofReader;
+    readonly native: ProtocolNativeActionReader;
+    waitForOpen(source: ProtocolAbiProofSource, selectionId: string,
+        options?: ProtocolAbiProofReadOptions & {timeoutMs?: number}): Promise<{
+        readonly view: ProtocolAbiProofView; readonly nativeView: ProtocolNativeActionView;
+    }>;
 }
 export class ProtocolNativeActionUnavailableError extends Error {
     readonly statusCode = 503;
@@ -101,6 +110,29 @@ export class ProtocolNativeActionReader {
         this.proofs = options.proofReader.asReadOnly();
     }
 
+    /** One fresh canonical opening, followed by the unchanged whole native-source verification.
+     * Only this operation can unpack its own native view into the paired issuer's existing handles.
+     * No view-adoption API, retained-pair lookup or cross-attempt opening cache is exposed.
+     */
+    static forWorker(options: ProtocolNativeActionReaderOptions): ProtocolNativeWorkerReaders {
+        const native = new ProtocolNativeActionReader(options), proofs = native.proofs;
+        return Object.freeze({native, proofs, async waitForOpen(source: ProtocolAbiProofSource, selectionId: string,
+            options: ProtocolAbiProofReadOptions & {timeoutMs?: number} = {}) {
+            const scope = currentProofConsumerScope(true), signal = proofConsumerSignal(options.signal);
+            return trackProofConsumerOperation(async () => {
+                const nativeView = await native.openSelected(source, selectionId, {...options, signal}, true, async proof => {
+                    // Ordinary consumption permits monotone head progress. A NEW joint opening
+                    // still needs the original bound after replay, within the existing eight slots.
+                    await native.read(() => proofs.revalidateOpening(proof, {signal}), signal);
+                    assertProofConsumerCapability(scope); currentProofConsumerScope(true); signal?.throwIfAborted();
+                });
+                assertProofConsumerCapability(scope); currentProofConsumerScope(true); signal?.throwIfAborted();
+                const issued = native.views.get(nativeView)!;
+                return Object.freeze({view: issued.proof, nativeView});
+            }, scope);
+        }});
+    }
+
     private consume<T>(issued: IssuedView | undefined, operation: () => Promise<T>): Promise<T> {
         const scope = issued ? issued.scope : currentProofConsumerScope();
         assertProofConsumerCapability(scope); return trackProofConsumerOperation(operation, scope);
@@ -111,7 +143,10 @@ export class ProtocolNativeActionReader {
         catch (error) {
             if (error instanceof ProofConsumerFencedError) throw error;
             signal?.throwIfAborted();
-            if (error instanceof ProtocolAbiProofUnavailableError) unavailable(error.code, error.message);
+            if (error instanceof ProtocolAbiProofUnavailableError) {
+                const failure = new ProtocolNativeActionUnavailableError(error.code, error.message);
+                transferUnsettledCertificate(error, failure); throw failure;
+            }
             if (error instanceof NativeObservationReadError || error instanceof ProtocolSourceBindingReadError
                 || error instanceof ImmutableProtocolBundleReadError) {
                 unavailable('native_retained_' + error.code, 'Required native source evidence is unavailable or invalid');
@@ -136,7 +171,7 @@ export class ProtocolNativeActionReader {
 
     private async openSelected(source: ProtocolAbiProofSource, selectionId: string,
                                {signal, timeoutMs}: ProtocolAbiProofReadOptions & {timeoutMs?: number},
-                               wait: boolean): Promise<ProtocolNativeActionView> {
+                               wait: boolean, finishWorkerOpening?: (proof: ProtocolAbiProofView) => Promise<void>): Promise<ProtocolNativeActionView> {
         return this.consume(undefined,async () => {
         signal = proofConsumerSignal(signal);
         signal?.throwIfAborted();
@@ -215,6 +250,7 @@ export class ProtocolNativeActionReader {
             }
             for (const decision of decisions) current.decisions.set(key(decision.origin), decision);
             await this.revalidateIssued(current, {signal});
+            if (finishWorkerOpening) await finishWorkerOpening(proof);
             const handle = Object.freeze({}) as ProtocolNativeActionView;
             this.views.set(handle, current); return handle;
         } finally {this.activeOpens--; signal?.throwIfAborted();}

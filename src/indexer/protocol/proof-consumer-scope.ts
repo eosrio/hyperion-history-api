@@ -3,11 +3,15 @@ import {isPromise} from 'node:util/types';
 
 const contexts = new AsyncLocalStorage<ProofConsumerScope>();
 const ends = new WeakMap<object, ProofConsumerScope>();
+const fenceFailures = new WeakMap<object, ProofConsumerScope>();
 declare const endBrand: unique symbol;
 export interface ProofConsumerEnd {readonly [endBrand]: true}
 export class ProofConsumerFencedError extends Error {
     readonly code = 'worker_attempt_fenced';
     constructor() {super('Original worker attempt no longer permits proof use or host effects'); this.name = 'ProofConsumerFencedError';}
+}
+function issueFenceError(scope: ProofConsumerScope): ProofConsumerFencedError {
+    const error = new ProofConsumerFencedError(); fenceFailures.set(error, scope); return error;
 }
 
 /** Private local ownership. Counts are diagnostics; only actual promises issue a drained end. */
@@ -27,7 +31,7 @@ export class ProofConsumerScope {
         this.signal = this.controller.signal;
     }
     assertActive(): void {
-        if (this.fenced) throw new ProofConsumerFencedError();
+        if (this.fenced) throw issueFenceError(this);
         const current = contexts.getStore();
         if (current && current !== this) throw new Error('Proof capability belongs to another worker attempt');
     }
@@ -74,7 +78,10 @@ export class ProofConsumerScope {
     }
     fence(): void {
         if (this.fenced) return;
-        this.fenced = true; this.controller.abort(new ProofConsumerFencedError());
+        this.fenced = true; this.controller.abort(issueFenceError(this));
+    }
+    ownsFenceError(error: unknown): error is ProofConsumerFencedError {
+        return typeof error === 'object' && error !== null && fenceFailures.get(error) === this;
     }
     /** Call after the whole root, including original ACK attempt and finalizers. No deadline fabricates drain. */
     closeAndDrain(): Promise<ProofConsumerEnd> {

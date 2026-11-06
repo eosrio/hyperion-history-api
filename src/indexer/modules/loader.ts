@@ -8,6 +8,8 @@ import { BaseParser } from "./parsers/base-parser.js";
 import { hLog } from "../helpers/common_functions.js";
 import { ActionTrace } from "../../interfaces/action-trace.js";
 import { HyperionPlugin, HyperionStreamHandler } from "@eosrio/hyperion-plugin-core";
+import {statefulHookInventory} from '../projection/stateful-inventory.js';
+import type {StatefulPluginV2} from '../projection/stateful-plugin.js';
 
 export class HyperionModuleLoader {
 
@@ -24,8 +26,12 @@ export class HyperionModuleLoader {
     private readonly actionHandlersReady: Promise<void>;
     public parser?: BaseParser;
     public plugins: HyperionPlugin[];
+    private readonly statefulPluginEntries = new Map<HyperionPlugin, {entrypoint: string; hookArtifact: string; configuration: unknown}>();
+    statefulPluginsV2(): readonly {plugin: HyperionPlugin & StatefulPluginV2; entrypoint: string; hookArtifact: string; configuration: unknown}[] {
+        return [...this.statefulPluginEntries].map(([plugin, entry]) => ({plugin: plugin as HyperionPlugin & StatefulPluginV2, ...entry}));
+    }
 
-    constructor(private cm: ConfigurationModule) {
+    constructor(private cm: ConfigurationModule, private readonly pluginRoot = join(import.meta.dirname, '../../../', 'plugins')) {
         this.plugins = [];
         this.conn = cm.connections;
         this.config = cm.config;
@@ -149,7 +155,7 @@ export class HyperionModuleLoader {
 
     // main loader function for plugin modules
     private async loadPlugins() {
-        const base = join(import.meta.dirname, '../../../', 'plugins');
+        const base = this.pluginRoot;
 
         if (!existsSync(base)) {
             return;
@@ -176,8 +182,20 @@ export class HyperionModuleLoader {
             if (this.config.plugins.hasOwnProperty(key)) {
                 if (pState[key] && pState[key].enabled && this.config.plugins[key] && this.config.plugins[key].enabled) {
                     try {
-                        const pMod = (await import(pathToFileURL(join(base, key, 'build', 'index.js')).href)).default;
+                        const entrypoint = join(base, key, 'build', 'index.js');
+                        let hookArtifact: string | undefined;
+                        if (this.config.features.stateful_owner_v2) try {hookArtifact = await statefulHookInventory(entrypoint);}
+                        catch (error) {hLog(`Stateful inventory unavailable for plugin "${key}":`, error);}
+                        const pMod = (await import(pathToFileURL(entrypoint).href)).default;
                         const pl = new pMod(this.config.plugins[key]) as HyperionPlugin;
+                        if (hookArtifact !== undefined) {
+                            try {
+                                if (await statefulHookInventory(entrypoint) !== hookArtifact) throw new Error('Stateful hook code changed during plugin loading');
+                                if (typeof (pl as unknown as Partial<StatefulPluginV2>).getStatefulProjectionsV2 === 'function')
+                                    this.statefulPluginEntries.set(pl, {entrypoint, hookArtifact,
+                                        configuration: JSON.parse(JSON.stringify(this.config.plugins[key]))});
+                            } catch (error) {hLog(`Stateful registration unavailable for plugin "${key}":`, error);}
+                        }
                         if (pl.actionHandlers) {
                             this.loadPluginActionHandlers(pl.actionHandlers);
                         }
