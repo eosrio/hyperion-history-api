@@ -49,6 +49,14 @@ export interface ProtocolAbiProofReaderOptions {
     readonly historicalCertificates?:boolean;
     readonly sourceEquivalence?:ProtocolSourceEquivalence;
 }
+// Internal provenance: only a missing certificate manifest can represent the activation publication gap.
+const unsettledCertificateErrors=new WeakSet<object>();
+export function isUnsettledCertificate(error:unknown):boolean {
+    return typeof error==='object'&&error!==null&&unsettledCertificateErrors.has(error);
+}
+export function transferUnsettledCertificate(source:unknown,target:object):void {
+    if(isUnsettledCertificate(source))unsettledCertificateErrors.add(target);
+}
 export class ProtocolAbiProofUnavailableError extends Error {
     readonly statusCode=503;
     constructor(readonly code:string,message:string){super(message);this.name='ProtocolAbiProofUnavailableError';}
@@ -146,7 +154,11 @@ export class ProtocolAbiProofReader {
         this.activeReads++;
         try{const result=await trackProofConsumerOperation(operation);this.assertActive(signal);return result;}catch(error:any){
             this.assertActive(signal);
-            if(error instanceof ProtocolAbiFrontierReadError)unavailable(error.code==='invalid'?'invalid_proof':code,error.message);
+            if(error instanceof ProtocolAbiFrontierReadError){
+                const failure=new ProtocolAbiProofUnavailableError(error.code==='invalid'?'invalid_proof':code,error.message);
+                if(code==='certificate_unavailable'&&error.recordKind==='certificate'&&error.code==='missing')unsettledCertificateErrors.add(failure);
+                throw failure;
+            }
             if(error?.meta?.statusCode===404&&error?.meta?.body?.error?.type==='index_not_found_exception')
                 unavailable('authority_unavailable','Canonical ABI projection has not been initialized');
             throw error;
@@ -331,6 +343,20 @@ export class ProtocolAbiProofReader {
     private async activatedHistoricalRoot(current:ProtocolAbiHeadCertificate,signal?:AbortSignal):Promise<HistoricalActivation> {
         const stored=await this.retained(()=>this.options.store.readControl(signal),'authority_unavailable',signal),value:any=stored?.value;
         const rootId=value?.historical?.addressRootId,certificateId=value?.historical?.activationCertificateId,anchor=value?.historical?.anchor;
+        requireProof(value?.schemaVersion===1&&Number.isSafeInteger(value.revision)&&value.revision>=0
+            &&value.source&&ident('h45srcctx1',value.source.contextId)&&text(value.source.readerSessionId),
+            'Invalid canonical ABI control during historical root selection');
+        // A fresh control head can advance between authority() and this read. Retry only
+        // a structurally valid same-owner/generation forward observation, never missing root data.
+        if(value?.ownerId===current.ownerId&&value?.generation===current.generation
+            &&value.chainId===this.options.chainId&&json(value.profile)===json(this.profile)
+            &&value.phase==='following'&&value.gap===null&&value.replayFromBlock===null
+            &&validHead(value.head)&&value.head.blockNum>current.head.blockNum
+            &&value.historical?.interfaceVersion===1&&ident('h45abiroot1',rootId)&&ident('h45abicert1',certificateId)
+            &&validHead(anchor)&&anchor.coverageStart===1&&anchor.blockNum<=value.head.blockNum
+            &&(anchor.blockNum!==value.head.blockNum||json(anchor)===json(value.head))
+            &&this.options.store.certificateId(historicalRootCertificate({...current,head:anchor},rootId))===certificateId)
+            unavailable('authority_changed','Canonical ABI head advanced during historical root selection');
         if(value?.ownerId!==current.ownerId||value?.generation!==current.generation||value.historical?.interfaceVersion!==1
             ||!ident('h45abiroot1',rootId)||!ident('h45abicert1',certificateId)||!validHead(anchor)||anchor.coverageStart!==1
             ||anchor.blockNum>current.head.blockNum||anchor.blockNum===current.head.blockNum&&json(anchor)!==json(current.head)

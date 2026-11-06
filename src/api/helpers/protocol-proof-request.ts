@@ -2,7 +2,7 @@ import type {FastifyRequest} from 'fastify';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {performance} from 'node:perf_hooks';
 import {setTimeout as delay} from 'node:timers/promises';
-import {ProtocolAbiProofUnavailableError, type ProtocolAbiProofReadOptions} from '../../indexer/protocol/abi-proof.js';
+import {ProtocolAbiProofUnavailableError, isUnsettledCertificate, type ProtocolAbiProofReadOptions} from '../../indexer/protocol/abi-proof.js';
 import {ProtocolNativeActionUnavailableError} from '../../indexer/protocol/native-authorization.js';
 
 const cancelled = () => new ProtocolAbiProofUnavailableError('proof_cancelled', 'ABI proof request was cancelled');
@@ -70,7 +70,7 @@ export async function withProtocolProofTransaction<T>(scope: object, operation: 
             catch (error) {
                 lifetime.signal.throwIfAborted();
                 if (deadline === undefined || !(error instanceof ProtocolAbiProofUnavailableError || error instanceof ProtocolNativeActionUnavailableError)
-                    || error.code !== 'authority_changed') throw error;
+                    || (error.code !== 'authority_changed' && !isUnsettledCertificate(error))) throw error;
             } finally {
                 attempt.active = false; controller.abort(cancelled());
                 lifetime.signal.removeEventListener('abort', abort);

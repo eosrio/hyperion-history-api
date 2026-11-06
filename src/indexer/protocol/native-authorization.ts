@@ -4,7 +4,7 @@ import {serialize, deserialize} from 'node:v8';
 import {validateProtocolNativeActions, type ProtocolAbiActionInput, type ProtocolNativeActions,
     type ProtocolNativeActionDecision, type ProtocolProvider} from '@eosrio/hyperion-sdk/protocol';
 import {deriveProtocolActionOccurrences, type ProtocolOriginalActionOccurrence} from '../history/action-source-inventory.js';
-import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, type ProtocolAbiProofSource,
+import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, transferUnsettledCertificate, type ProtocolAbiProofSource,
     type ProtocolAbiProofView, type ProtocolAbiProofReadOptions} from './abi-proof.js';
 import {ProtocolNativeObservationStore, NativeObservationReadError} from './native-observation-store.js';
 import type {ProtocolNativeActionProofMetadata, ProtocolNativeActionIncompleteMetadata} from './native-action-metadata.js';
@@ -143,7 +143,10 @@ export class ProtocolNativeActionReader {
         catch (error) {
             if (error instanceof ProofConsumerFencedError) throw error;
             signal?.throwIfAborted();
-            if (error instanceof ProtocolAbiProofUnavailableError) unavailable(error.code, error.message);
+            if (error instanceof ProtocolAbiProofUnavailableError) {
+                const failure = new ProtocolNativeActionUnavailableError(error.code, error.message);
+                transferUnsettledCertificate(error, failure); throw failure;
+            }
             if (error instanceof NativeObservationReadError || error instanceof ProtocolSourceBindingReadError
                 || error instanceof ImmutableProtocolBundleReadError) {
                 unavailable('native_retained_' + error.code, 'Required native source evidence is unavailable or invalid');
