@@ -100,6 +100,76 @@ test('bounded FIFO captures old revisions and drains actual work before exact re
     assert.deepEqual((await runtime.query({filter: [], limit: 10})).rows, []);
 });
 
+const countingRollback = (adapter, before) => {
+    const calls = {count: 0};
+    calls.adapter = new Proxy(adapter, {get(target, key) {
+        if (key === 'rollback') return async request => {calls.count++; return before ? before(() => target.rollback(request)) : target.rollback(request);};
+        const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value;
+    }});
+    return calls;
+};
+
+test('a caller fenced while pending work drains never reaches the adapter and leaves the lane usable', async () => {
+    const {ContextualProjectionRuntime} = await import('../../build/indexer/projection/contextual-runtime.js');
+    const {ProofConsumerScope} = await import('../../build/indexer/protocol/proof-consumer-scope.js');
+    const fixture = databaseFixture(), calls = countingRollback(adapterFor(fixture)), scope = new ProofConsumerScope('contextual-rollback-drain');
+    const runtime = await ContextualProjectionRuntime.create({adapter: calls.adapter, definition, binding, genesis});
+    await runtime.process(frame(1, 'alice')); const b = await runtime.process(frame(2, 'bob'));
+    let release, entered;
+    const held = new Promise(resolve => {release = resolve;}), started = new Promise(resolve => {entered = resolve;});
+    fixture.beforeFind = async name => {
+        if (!name.endsWith('_metadata')) return;
+        fixture.beforeFind = null; entered(); await held;
+    };
+    const pending = runtime.process(frame(3, 'carol')); const pendingRejected = assert.rejects(pending, errorCode('projection.stale-revision'));
+    await started;
+    const undo = {binding, revision: b.view.revision, operationId: 'drain-fence', from: b.view.checkpoint,
+        ancestor: {blockNum: 1, blockId: hex(1)}, maxBlocks: 1};
+    const recovery = scope.run(() => runtime.rollback(undo));
+    await new Promise(resolve => setImmediate(resolve));
+    scope.fence(); release();
+    const error = await recovery.then(() => assert.fail('A fenced caller must not recover'), error => error);
+    assert.equal(scope.ownsFenceError(error), true); await pendingRejected; await scope.closeAndDrain();
+    assert.equal(calls.count, 0, 'A fence seen after drainage must precede every adapter rollback');
+    const current = await runtime.recovery(); assert.equal(current.rollback, null);
+    const next = await runtime.process(frame(current.checkpoint.blockNum + 1, 'dave'));
+    assert.equal(next.view.checkpoint.blockNum, current.checkpoint.blockNum + 1, 'A pre-write fence must not leave the runtime in recovery');
+    assert.deepEqual((await runtime.query({filter: [], limit: 10})).rows.map(row => row.value.owner), ['dave']);
+    await runtime.rollback({...undo, operationId: 'drain-fence-retry', revision: next.view.revision, from: next.view.checkpoint,
+        maxBlocks: next.view.checkpoint.blockNum - 1});
+    assert.equal(calls.count, 1);
+    assert.equal((await runtime.recovery()).checkpoint.blockNum, 1);
+});
+
+test('a caller fenced during a started rollback publishes nothing until an exact retry, and the work is retained until it settles', async () => {
+    const {ContextualProjectionRuntime} = await import('../../build/indexer/projection/contextual-runtime.js');
+    const {ProofConsumerScope} = await import('../../build/indexer/protocol/proof-consumer-scope.js');
+    const fixture = databaseFixture(), scope = new ProofConsumerScope('contextual-rollback-started');
+    let release, entered, holdRollback = true;
+    const held = new Promise(resolve => {release = resolve;}), started = new Promise(resolve => {entered = resolve;});
+    const calls = countingRollback(adapterFor(fixture), async call => {
+        if (!holdRollback) return call();
+        holdRollback = false; entered(); await held; return call();
+    });
+    const runtime = await ContextualProjectionRuntime.create({adapter: calls.adapter, definition, binding, genesis});
+    await runtime.process(frame(1, 'alice')); const b = await runtime.process(frame(2, 'bob'));
+    const undo = {binding, revision: b.view.revision, operationId: 'started-fence', from: b.view.checkpoint,
+        ancestor: {blockNum: 1, blockId: hex(1)}, maxBlocks: 1};
+    const recovery = scope.run(() => runtime.rollback(undo));
+    await started; scope.fence();
+    await assert.rejects(runtime.rollback(undo), errorCode('projection.apply-unavailable'), 'A fence does not release a physically running rollback');
+    release();
+    const error = await recovery.then(() => assert.fail('A fenced caller must not publish completion'), error => error);
+    assert.equal(scope.ownsFenceError(error), true); await scope.closeAndDrain();
+    assert.equal(calls.count, 1);
+    assert.equal((await runtime.recovery()).rollback.status, 'complete', 'The started rollback is durable');
+    await assert.rejects(runtime.process(frame(2, 'carol')), errorCode('projection.incomplete'));
+    assert.equal((await runtime.rollback(undo)).status, 'duplicate');
+    assert.equal(calls.count, 2);
+    const replacement = frame(2, 'carol'); replacement.block.blockId = hex(100);
+    assert.equal((await runtime.process(replacement)).view.checkpoint.blockId, hex(100));
+});
+
 test('mapping failure keeps its causal error when original failure-marking callbacks fence the scope', async () => {
     const {ContextualProjectionRuntime} = await import('../../build/indexer/projection/contextual-runtime.js');
     const {ProofConsumerScope} = await import('../../build/indexer/protocol/proof-consumer-scope.js');

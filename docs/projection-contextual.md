@@ -1,7 +1,7 @@
 # Opt-in original-context mapping and preserving MongoDB recovery
 
 [HAPI #359](https://github.com/eosrio/hyperion-history-api/issues/359) consumes the independently
-released [SDK contextual recovery family](https://github.com/eosrio/hyperion-sdk/issues/30), pinned
+released SDK contextual recovery family, pinned
 to merged commit `8d37e932df5e0e7d671c9682505de3dd55f0edb4` in both application and adapter locks.
 Wire remains pinned to its existing package, nested SDK, native components and source receipts;
 [the development build](development-build.md) describes the explicit two-SDK compatibility check.
@@ -53,6 +53,9 @@ draining actual pending work and submitting the original rollback plan. Queued o
 adopt a newly read revision. Stale planned checkpoints fail rather than being rewritten; completed
 exact recovery retries do not undo a replacement branch. Resumable rollback retains the existing
 operation ID, original source revision, exact `from`/ancestor identities and bounded step semantics.
+A caller fenced before the first adapter call changes nothing and the lane reopens. A caller fenced
+after rollback starts publishes nothing: the started work is retained until it settles, and the
+runtime stays in recovery until an exact retry.
 
 Mapping and its local FIFO remain per projection. Defaults/maxima match the existing runtime:
 32/256 pending frames, 16/64 MiB pending bytes, with the SDK's 4 MiB frame/batch ceiling. Unknown-size

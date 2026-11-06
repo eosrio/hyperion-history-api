@@ -239,15 +239,20 @@ export class ContextualProjectionRuntime {
     }
     /** The caller establishes canonical ancestry; exact intent is retained across restart/retry. */
     rollback(input: ProjectionRollbackRequest): Promise<ProjectionRollbackResult> {
+        const scope = currentProofConsumerScope();
         let request: ProjectionRollbackRequest;
         try {
+            scope?.assertActive();
             request = checked(validateProjectionRollbackRequest(input));
             if (!sameBinding(request.binding, this.binding)) throw new ProjectionContractError('projection.invalid-contract', 'Recovery names another projection');
         } catch (error) {return Promise.reject(error);}
         if (this.rollbackWork) return Promise.reject(new ProjectionContractError('projection.apply-unavailable', 'A contextual recovery call is running'));
-        const previous = this.lane; previous.active = false; this.recovering = true;
+        const previous = this.lane, wasRecovering = this.recovering; previous.active = false; this.recovering = true;
         const work = (async () => {
             await Promise.allSettled([...this.pending]);
+            // Cancellation before the first adapter call changed nothing durable: reopen the lane.
+            try {scope?.assertActive();}
+            catch (error) {this.lane = {revision: previous.revision, active: true}; this.recovering = wasRecovering; throw error;}
             let result: ProjectionRollbackResult;
             try {result = await this.adapter.rollback(request);}
             catch (error) {
@@ -268,6 +273,8 @@ export class ContextualProjectionRuntime {
                 || (result.status === 'in-progress' ? operation.status !== 'running'
                     : !['rolled-back', 'duplicate'].includes(result.status) || operation.status !== 'complete'))
                 throw new ProjectionContractError('projection.incomplete', 'Adapter did not return the exact contextual recovery intent');
+            // A started rollback is durable: a fenced caller publishes nothing and stays in recovery until an exact retry.
+            scope?.assertActive();
             if (result.status !== 'in-progress') {this.lane = {revision: state.revision, active: true}; this.recovering = false;}
             return {...result, recovery: state};
         })();
