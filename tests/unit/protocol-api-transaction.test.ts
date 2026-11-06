@@ -44,7 +44,7 @@ test('successive proof reads share one deadline instead of resetting it per acti
     expect(remaining[1]).toBeLessThan(remaining[0]);
 });
 
-for(const [phase,targetFence,mode] of [['native consumption',1,'success'],['final response',3,'success'],['mutated retry',3,'mutate'],['disconnected response',3,'abort'],['parsed POST retry',3,'post-key']] as const) test(`real root change during ${phase} rebuilds every action without duplicate proofs`,async()=>{
+for(const [phase,targetFence,mode] of [['native consumption',1,'success'],['final response',3,'success'],['final output mutation',3,'mutate'],['disconnected response',3,'abort'],['parsed POST retry',3,'post-key'],['continuous roots',3,'continuous']] as const) test(`real root change during ${phase} recovers proof reads with one query and no duplicate proofs`,async()=>{
     const source=await nativeAuthorizationFixture({nativeActionInterfaceVersion:1,historicalCertificates:true,maxAncestryBlocks:1});
     await source.append(3);await source.append(4);for(let i=0;i<4;i++)await source.coordinator.drain();
     const app=Fastify({logger:false});
@@ -68,7 +68,10 @@ for(const [phase,targetFence,mode] of [['native consumption',1,'success'],['fina
                 protocol:await reader.metadata(decision.grant)});
         }
         const raw=Object.assign(new EventEmitter(),{aborted:false,socket:Object.assign(new EventEmitter(),{destroyed:false})});
-        const scope={method:mode==='post-key'?'POST':'GET',body:mode==='post-key'?'{"limit":2}':undefined,query:{},routeOptions:{url:'/v2/history/get_actions'},url:'/v2/history/get_actions',raw},native=consumer.nativeReader!,original=native.revalidate.bind(native);let fences=0,attempts=0,guardFailures=0;
+        const scope={method:mode==='post-key'?'POST':'GET',body:mode==='post-key'?'{"limit":2}':undefined,query:{},routeOptions:{url:'/v2/history/get_actions'},url:'/v2/history/get_actions',raw},native=consumer.nativeReader!,original=native.revalidate.bind(native);let fences=0,attempts=0,guardFailures=0,mutateNext=false;
+        const verifyEnvelope=native.verifyEnvelope.bind(native);native.verifyEnvelope=async(...args)=>{
+            if(mutateNext){mutateNext=false;(args[1] as any).act.account='tampered';}return verifyEnvelope(...args);
+        };
         let hold:ReturnType<typeof holdRead>|undefined;
         native.revalidate=async (...args)=>{fences++;if(fences===targetFence){let controlReads=0;hold=holdRead(source.client,r=>r.index===source.frontier.controlIndex&&r.id==='control'&&++controlReads===2);}
             try{return await original(...args);}catch(error:any){if(error.code==='authority_changed')guardFailures++;throw error;}};
@@ -76,7 +79,6 @@ for(const [phase,targetFence,mode] of [['native consumption',1,'success'],['fina
         const pending=timedQuery(async()=>{
             attempts++;const actions=clone(originals);
             if(typeof scope.body==='string')scope.body=JSON.parse(scope.body);
-            if(mode==='mutate'&&attempts===2)actions[0].act.data={rawHex:'ff'};
             for(const action of actions){await protectProtocolAction(app,scope,action);delete (action as any).protocol;}
             return {actions};
         },app,scope as any,'get_actions');
@@ -88,13 +90,20 @@ for(const [phase,targetFence,mode] of [['native consumption',1,'success'],['fina
         await source.append(5);for(let i=0;i<4;i++)await source.coordinator.drain();
         const next=await source.coordinator.inspect();expect(next.generation).toBe(old.generation);
         expect(next.historical?.addressRootId).not.toBe(old.historical?.addressRootId);
+        if(mode==='mutate')mutateNext=true;
+        let advancing:Promise<void>|undefined;
+        if(mode==='continuous'){
+            const get=source.client.get.bind(source.client);
+            source.client.get=async(...args:any[])=>{await new Promise(resolve=>setTimeout(resolve,5));return get(...args);};
+            advancing=(async()=>{for(let height=6;height<=10;height++){await new Promise(resolve=>setTimeout(resolve,20));await source.append(height);await source.coordinator.drain();}})();
+        }
         hold.release();
         if(mode==='mutate'){await expect(pending).rejects.toMatchObject({statusCode:503});hold.restore();
-            expect(guardFailures).toBeGreaterThan(0);expect(attempts).toBe(2);expect(writes).toHaveLength(0);return;}
-        const cache=await pending;hold.restore();
-        expect(guardFailures).toBeGreaterThan(0);expect(attempts).toBe(2);expect(cache.actions).toHaveLength(2);
+            expect(attempts).toBe(1);expect(writes).toHaveLength(0);return;}
+        const cache=await pending;hold.restore();if(advancing){await advancing;expect((await source.coordinator.inspect()).head?.blockNum).toBe(10);}
+        expect(guardFailures).toBe(0);expect(attempts).toBe(1);expect(cache.actions).toHaveLength(2);
         expect(writes).toHaveLength(1);expect(JSON.parse(writes[0])._hyperion_protocol_abi_v3.actions).toHaveLength(2);
-        if(mode==='post-key'){expect(cacheKeys).toHaveLength(2);expect(new Set(cacheKeys).size).toBe(1);}
+        if(mode==='post-key'){expect(cacheKeys).toHaveLength(1);expect(new Set(cacheKeys).size).toBe(1);}
         expect(cache.actions.map((value:any)=>value.global_sequence)).toEqual(originals.map(value=>value.global_sequence));
     } finally {await app.close();}
 },10000);
@@ -128,7 +137,7 @@ test('raw history keeps its existing query lifetime without starting a five-seco
     } finally {await app.close();}
 },10000);
 
-test('cached decoded output reopens every grant after a real root change without rerunning the query or writing partial cache',async()=>{
+test('cached decoded output preserves grants after a real root change without rerunning the query or writing partial cache',async()=>{
     const source=await nativeAuthorizationFixture({nativeActionInterfaceVersion:1,historicalCertificates:true,maxAncestryBlocks:1});
     await source.append(3);await source.append(4);for(let i=0;i<4;i++)await source.coordinator.drain();
     const app=Fastify({logger:false});
@@ -175,9 +184,9 @@ test('cached decoded output reopens every grant after a real root change without
         const after=await source.coordinator.inspect();expect(after.generation).toBe(before.generation);
         expect(after.historical?.addressRootId).not.toBe(before.historical?.addressRootId);
         hold.release();const response=await pending;
-        expect(changedGuards).toBeGreaterThan(0);expect(sourceReads).toBe(1);expect(writes).toHaveLength(0);
+        expect(changedGuards).toBe(0);expect(sourceReads).toBe(1);expect(writes).toHaveLength(0);
         expect(stored).toBe(originalCapsule);expect(response.cached).toBe(true);expect(response.actions).toHaveLength(2);
-        expect(response._hyperion_protocol_abi_v3).toBeUndefined();expect(grants).toHaveLength(4);expect(new Set(grants).size).toBe(4);
+        expect(response._hyperion_protocol_abi_v3).toBeUndefined();expect(grants).toHaveLength(2);expect(new Set(grants).size).toBe(2);
     } finally {hold?.release();hold?.restore();await app.close();}
 },10000);
 
@@ -216,6 +225,11 @@ test('cached native response retries a real activation certificate publication g
         expect(writes).toHaveLength(1);const originalCapsule=stored;writes.length=0;
         const native=consumer.nativeReader!,revalidate=native.revalidate.bind(native),authorize=native.authorize.bind(native);
         let fences=0,missing=0;const grants:object[]=[];
+        const originalGet=source.client.get.bind(source.client);
+        source.client.get=async(request:any,...args:any[])=>{try{return await originalGet(request,...args);}catch(error:any){
+            if(error?.meta?.statusCode===404&&String(request.id).startsWith('h45abicert1:')){missing++;release.release();}
+            throw error;
+        }};
         const prepare=source.frontier.prepareCertificate.bind(source.frontier);
         source.frontier.prepareCertificate=async value=>{
             if((value as any).kind==='settled-historical-abi-address-root'){entered.release();await release.promise;}
@@ -225,14 +239,14 @@ test('cached native response retries a real activation certificate publication g
         native.revalidate=async(...args)=>{
             if(++fences===1){append=source.append(5);await entered.promise;}
             try{return await revalidate(...args);}catch(error:any){
-                if(error.code==='certificate_unavailable'){missing++;release.release();await append;}
+                if(error.code==='certificate_unavailable'){release.release();await append;}
                 throw error;
             }
         };
         const response=await timedQuery(query,app,request() as any,'get_actions');
-        expect(missing).toBe(1);expect(sourceReads).toBe(1);expect(writes).toHaveLength(0);
+        expect(missing).toBeGreaterThan(0);expect(sourceReads).toBe(1);expect(writes).toHaveLength(0);
         expect(stored).toBe(originalCapsule);expect(response.cached).toBe(true);expect(response.actions).toHaveLength(2);
-        expect(grants).toHaveLength(4);expect(new Set(grants).size).toBe(4);
+        expect(grants).toHaveLength(2);expect(new Set(grants).size).toBe(2);
     } finally {release.release();await app.close();}
 },10000);
 
@@ -271,6 +285,11 @@ test('cached native consumption retries a real activation certificate publicatio
         expect(writes).toHaveLength(1);const originalCapsule=stored;writes.length=0;
         const native=consumer.nativeReader!,revalidate=native.revalidate.bind(native),authorize=native.authorize.bind(native);
         let fences=0,missing=0;const grants:object[]=[];
+        const originalGet=source.client.get.bind(source.client);
+        source.client.get=async(request:any,...args:any[])=>{try{return await originalGet(request,...args);}catch(error:any){
+            if(error?.meta?.statusCode===404&&String(request.id).startsWith('h45abicert1:')){missing++;release.release();}
+            throw error;
+        }};
         const prepare=source.frontier.prepareCertificate.bind(source.frontier);
         source.frontier.prepareCertificate=async value=>{
             if((value as any).kind==='settled-historical-abi-address-root'){entered.release();await release.promise;}
@@ -279,10 +298,10 @@ test('cached native consumption retries a real activation certificate publicatio
         native.authorize=async(...args)=>{
             if(++fences===1){append=source.append(5);await entered.promise;}
             try{const decision=await authorize(...args);if(decision.kind==='native')grants.push(decision.grant);return decision;}
-            catch(error:any){if(error.code==='certificate_unavailable'){missing++;release.release();await append;}throw error;}
+            catch(error:any){if(error.code==='certificate_unavailable'){release.release();await append;}throw error;}
         };
         const response=await timedQuery(query,app,request() as any,'get_actions');
-        expect(missing).toBe(1);expect(sourceReads).toBe(1);expect(writes).toHaveLength(0);
+        expect(missing).toBeGreaterThan(0);expect(sourceReads).toBe(1);expect(writes).toHaveLength(0);
         expect(stored).toBe(originalCapsule);expect(response.cached).toBe(true);expect(response.actions).toHaveLength(2);
         expect(grants).toHaveLength(2);expect(new Set(grants).size).toBe(2);
     } finally {release.release();await app.close();}
@@ -297,7 +316,10 @@ test('missing certificate manifest is bounded and cancellable while a missing ch
         const manifest=source.memory.documents.get(source.memory.key(source.frontier.recordsIndex,id))!;
         const target=mode==='incomplete'?manifest.document.chunk_ids[0]:id;
         const key=source.memory.key(source.frontier.recordsIndex,target),saved=source.memory.documents.get(key)!;
-        source.memory.documents.delete(key);let attempts=0;
+        source.memory.documents.delete(key);let attempts=0,missingReads=0;
+        const read=source.client.get.bind(source.client);source.client.get=async(request:any,...args:any[])=>{
+            try{return await read(request,...args);}catch(error:any){if(request.id===target&&error?.meta?.statusCode===404)missingReads++;throw error;}
+        };
         const raw=Object.assign(new EventEmitter(),{aborted:false,socket:Object.assign(new EventEmitter(),{destroyed:false})}),scope={raw};
         const waiting=withProtocolProofTransaction(scope,()=>withProtocolProofRequest(scope,async options=>{
             attempts++;await native.revalidate(view,options);
@@ -305,7 +327,7 @@ test('missing certificate manifest is bounded and cancellable while a missing ch
         if(mode==='cancel')setTimeout(()=>raw.emit('aborted'),30);
         try {
             await expect(waiting).rejects.toMatchObject({code:mode==='missing'?'proof_timeout':mode==='cancel'?'proof_cancelled':'certificate_unavailable'});
-            if(mode==='incomplete')expect(attempts).toBe(1);else if(mode==='missing')expect(attempts).toBeGreaterThan(1);
+            expect(attempts).toBe(1);if(mode==='missing')expect(missingReads).toBeGreaterThan(1);
         } finally {source.memory.documents.set(key,saved);}
     }
 },10000);

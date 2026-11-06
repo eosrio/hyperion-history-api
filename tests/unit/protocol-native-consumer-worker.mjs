@@ -7,6 +7,7 @@ import {mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync} from 'node:
 import {tmpdir} from 'node:os';
 import {basename, dirname, join, resolve} from 'node:path';
 import {EventEmitter} from 'node:events';
+import {AsyncLocalStorage, AsyncResource} from 'node:async_hooks';
 import {createHash} from 'node:crypto';
 
 import {spawnSync} from 'node:child_process';
@@ -28,14 +29,18 @@ const directory = mkdtempSync(join(tmpdir(), 'hyperion-native-worker-original-')
 const chain = 'native-worker-original', chainId = '9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d', blockId = number => number.toString(16).padStart(64, '0');
 const hash = value => createHash('sha256').update(value).digest('hex');
 const events = [], sourceFrames = [], blockWrites = [], cache = [];
-let reader, coordinator, bridge, draining = Promise.resolve();
+let reader, coordinator, bridge, releaseRecoveryCertificate, draining = Promise.resolve();
 const measureProofPair = process.argv.includes('--measure-proof-pair');
+const workerProofRecovery = process.argv.includes('--worker-proof-recovery');
+// Reader ingress is a separate task, not a descendant of the active DS proof scope.
+const nativeConsumerOracle = new AsyncLocalStorage();
+const independentIngress = new AsyncResource('fixture-independent-reader-ingress');
 const expectedOpeningWalks = Number(process.argv.find(value => value.startsWith('--expect-opening-walks='))?.split('=')[1] ?? 1);
 assert([1, 2].includes(expectedOpeningWalks));
 const proofPairMeasurements = [];
 process.send = (event, callback) => {
     events.push(event);
-    if (event.event === 'protocol_abi_prepared') draining = coordinator.drain();
+    if (event.event === 'protocol_abi_prepared') draining = independentIngress.runInAsyncScope(() => coordinator.drain());
     callback?.(null); return true;
 };
 class ControlledConsumer extends EventEmitter {
@@ -90,7 +95,7 @@ try {
     const fixture = {profileId, handshake: JSON.parse(schemaJson), frameHex: readFileSync(join(sourceDir, 'block-000033.bin')).toString('hex')};
     const config = {settings: {chain, parser: '3.2', protocol: {provider: 'extension', package: '@eosrio/hyperion-wire-plugin', profileId},
         eosio_alias: 'sysio', system_contract: 'sysio', index_version: 'v1', index_partition_size: 1000, es_replicas: 0,
-        protocol_abi_coordination: {recovery_window_blocks: 256}},
+        protocol_abi_coordination: workerProofRecovery ? {recovery_window_blocks: 1, historical_certificates:{interface_version:1,max_commits_per_drain:32,max_commit_bytes_per_drain:16777216,max_ms_per_drain:3000}} : {recovery_window_blocks: 256}},
         indexer: {fetch_block: true, fetch_traces: true, fetch_deltas: true, process_deltas: false, disable_indexing: false, live_reader: true},
         features: {contract_console: false, failed_trx: false, streaming: {traces: true, deltas: false}},
         scaling: {ds_pool_size: 1, ds_queues: 1, routing_mode: 'round_robin', indexing_queues: 1, ad_idx_queues: 1},
@@ -136,8 +141,9 @@ try {
     const filters = {action_blacklist: new Set(), action_whitelist: new Set(), delta_blacklist: new Set(), delta_whitelist: new Set()};
     const cm = {config, filters}, parser = new Parser(cm), loader = Object.create(HyperionModuleLoader.prototype);
     Object.assign(loader, {handledActions: new Map(), handledDeltas: new Map(), parser, plugins: []});
-    let fault;
+    let fault, recoveryHook, recoveryHooks = 0;
     loader.handledActions.set('*', new Map([['onblock', async action => {
+        if (recoveryHook) {recoveryHooks++; await recoveryHook();}
         if (fault === 'value') action.act.data.timestamp = 'invalid-retained-value';
         if (fault === 'metadata') action.protocol.native.nativeKind = 'caller-selected';
     }]]));
@@ -178,7 +184,8 @@ try {
         }}});
     const profile = {id: selected.id, profileId, components: selected.components};
     coordinator = new ProtocolAbiCoordinator({chainId, profile, ownerId: 'native-worker-original-owner', bindings, observations, store: frontier,
-        verifyNativeGenesis: selected.provider.verifyNativeGenesis.bind(selected.provider), nativeActionInterfaceVersion: 1});
+        verifyNativeGenesis: selected.provider.verifyNativeGenesis.bind(selected.provider), nativeActionInterfaceVersion: 1,
+        ...(workerProofRecovery ? {historicalCertificates:{interfaceVersion:1,maxCommitsPerDrain:32,maxCommitBytesPerDrain:16777216,maxMillisecondsPerDrain:3000}} : {})});
     await coordinator.start();
     reader.coordinatorRpc = new ProtocolAbiCoordinatorRpc((request, callback) => {
         const input = request.data;
@@ -238,22 +245,95 @@ try {
     };
     const numberFrom = bytes => Number(codec.decode('result', bytes)[1].this_block.block_num);
     const results = [];
-    let lastPrepared;
+    let lastPrepared, recoveryObserved = false, missingReads = 0, consumerMissingReads = 0, historicalAddressReads = 0, consumerOracleReads = 0, independentProducerStateReads = 0; const preprepared = new Map();
+    // The frontier shares h45abist1 for contract ABI states and historical membership
+    // entries. This oracle permits only retained, intact address-entry envelopes;
+    // the real reader still verifies their exact activated root/source/certificate.
+    const isHistoricalAddressRead = request => {
+        const document = memory.documents.get(memory.key(request.index, request.id))?.document;
+        if (!document || !['manifest', 'chunk'].includes(document.kind)) return false;
+        const id = document.bundle_id, manifest = memory.documents.get(memory.key(request.index, id))?.document;
+        if (!manifest || manifest.kind !== 'manifest' || !id?.startsWith('h45abist1:')
+            || (request.id !== id && !manifest.chunk_ids.includes(request.id))) return false;
+        const chunks = manifest.chunk_ids.map(chunk => memory.documents.get(memory.key(request.index, chunk))?.document);
+        if (chunks.some(chunk => !chunk || chunk.kind !== 'chunk' || chunk.bundle_id !== id)) return false;
+        const bytes = Buffer.concat(chunks.map(chunk => Buffer.from(chunk.payload, 'base64')));
+        if (bytes.length !== manifest.byte_length || hash(bytes) !== manifest.digest) return false;
+        const envelope = JSON.parse(bytes.toString()), state = envelope.value;
+        return envelope.schemaVersion === 1 && envelope.chain === chain && envelope.kind === 'account-state'
+            && state?.kind === 'historical-certificate-address-entry' && state.account?.startsWith('h45abihist1:')
+            && state.address?.identity?.chainId === chainId && state.address?.certificateId?.startsWith('h45abicert1:');
+    };
     for (let number = 1; number <= 397; number++) {
         const bytes = readFileSync(join(sourceDir, 'block-' + String(number).padStart(6, '0') + '.bin'));
         assert.equal(bytes.length, frameIndex.get(number).bytes); assert.equal(hash(bytes), frameIndex.get(number).sha256);
-        const prepared = await prepare(bytes);
+        const prepared = preprepared.has(number) ? await preprepared.get(number) : await prepare(bytes);
+        if (workerProofRecovery && number === 33) {
+            for (const height of [34,35,36]) preprepared.set(height, await prepare(readFileSync(join(sourceDir, 'block-' + String(height).padStart(6,'0') + '.bin'))));
+            for (let i=0;i<3;i++) await coordinator.drain();
+            const old = await coordinator.inspect(); assert.equal(old.head.blockNum,36); assert.ok(old.historical);
+            const readGet=memory.client.get.bind(memory.client);
+            memory.client.get=async (...args)=>{try{return await readGet(...args);}catch(error){if(error?.meta?.statusCode===404 && String(args[0].id).startsWith('h45abicert1:')){missingReads++;if(nativeConsumerOracle.getStore()===true)consumerMissingReads++;}throw error;}};
+            // Start the next real canonical commit from the action hook. Its control CAS is
+            // settled before the certificate writer is released; DS keeps the same delivery.
+            const writeCertificate = frontier.prepareCertificate.bind(frontier);
+            let entered, release; const atGap = new Promise(resolve => {entered = resolve;});
+            const gate = new Promise(resolve => {release = resolve; releaseRecoveryCertificate = resolve;});
+            frontier.prepareCertificate = async value => {
+                if (value.kind === 'settled-historical-abi-address-root' && value.current.head.blockNum === 37) {entered(); await gate;}
+                return writeCertificate(value);
+            };
+            recoveryHook = async () => {
+                recoveryHook = undefined;
+                const next = readFileSync(join(sourceDir, 'block-000037.bin'));
+                preprepared.set(37, independentIngress.runInAsyncScope(() => prepare(next)));
+                let timer;
+                try {await Promise.race([atGap,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Historical certificate gap not reached')),10000);}),
+                    preprepared.get(37).then(()=>{throw new Error('Ingress completed without held historical certificate');})]);}
+                finally {clearTimeout(timer);}
+                const control = (await frontier.readControl()).value;
+                assert.equal(control.head.blockNum, 37);assert.equal(control.generation, old.generation);
+                assert.notEqual(control.historical.addressRootId, old.historical.addressRootId);
+                recoveryObserved = true;
+                setTimeout(release, 100);
+            };
+        }
         if (expected.has(number) || number === 34 || number === 35) {
-            const before = poolPublisher.sent.length, cacheBefore = cache.length, streamsBefore = poolConsumer.streamed.length;
+            const before = poolPublisher.sent.length, cacheBefore = cache.length, streamsBefore = poolConsumer.streamed.length, ackBefore = poolConsumer.acked.length;
             fault = number === 34 ? 'value' : number === 35 ? 'metadata' : undefined;
-            const priorFault = memory.faults.beforeRead;
-            memory.faults.beforeRead = request => {if (request.id.startsWith('h45abist1:')) throw new Error('Native worker must not read deployed ABI states');};
+            const priorGet = memory.client.get;
+            // Enforce at the consumer request boundary, before the optional HTTP bridge.
+            // The independent ingress/coordinator may legitimately prepare/read states;
+            // its AsyncResource was created outside this consumer-only oracle context.
+            memory.client.get = async (request, options) => {
+                if (nativeConsumerOracle.getStore() === true) {
+                    consumerOracleReads++;
+                    if (request.id.startsWith('h45abist1:')) {
+                        if (!workerProofRecovery || !isHistoricalAddressRead(request)) throw new Error('Native worker must not read deployed ABI states');
+                        historicalAddressReads++;
+                    }
+                } else if (request.id.startsWith('h45abist1:')) independentProducerStateReads++;
+                return priorGet.call(memory.client, request, options);
+            };
             if (bridge && expected.has(number)) bridge.begin();
-            await pool.processMessages(prepared.messages);
+            try {await nativeConsumerOracle.run(true, () => pool.processMessages(prepared.messages));}
+            catch (error) {
+                let current, inspectionTimer;
+                try {current = await Promise.race([coordinator.inspect().then(value => ({head: value.head?.blockNum,
+                    phase: value.phase, pending: value.pending.length, historicalAnchor: value.historical?.anchor?.blockNum})),
+                    new Promise((_, reject) => {inspectionTimer = setTimeout(() => reject(new Error('Diagnostic inspection exceeded250ms')), 250);})]);}
+                catch (inspection) {current = {inspectionError: inspection.message};}
+                finally {clearTimeout(inspectionTimer);}
+                console.error(JSON.stringify({fixtureFailure: true, blockNum: number, workerProofRecovery,
+                    recoveryObserved, recoveryHooks, missingReads, consumerMissingReads, historicalAddressReads,
+                    independentProducerStateReads, consumerOracleReads, coordinator: current,
+                    code: error.code ?? null, message: error.message}));
+                throw error;
+            } finally {memory.client.get = priorGet;}
+
             if (bridge && expected.has(number)) proofPairMeasurements.push({blockNum: number, ...bridge.end()});
-            memory.faults.beforeRead = priorFault;
             assert.equal(poolConsumer.acked.at(-1), prepared.messages.at(-1));
-            const output = poolPublisher.sent.slice(before); assert.equal(output.length, 1);
+            const output = poolPublisher.sent.slice(before); assert.equal(output.length, 1, 'Expected one original publication for block ' + number);
             const document = JSON.parse(output[0].payload), metadata = document.protocol;
             assert.equal(metadata.schemaVersion, 2); assert.equal(metadata.kind, 'native');
             assert.equal(metadata.selectionId, prepared.sourceSelectionId);
@@ -265,6 +345,7 @@ try {
             assert.deepEqual(sealed.manifest.fragments.flatMap(fragment => fragment.effects), [fingerprintActionHistoryEffect(document)]);
             assert.ok(poolConsumer.streamed.slice(streamsBefore).some(stream => stream.payload.equals(output[0].payload)));
             assert.ok(cache.slice(cacheBefore).some(entry => entry.values.get(document.global_sequence)?.equals(output[0].payload)));
+            if (workerProofRecovery && number === 33) {assert.equal(recoveryObserved, true);assert.equal(recoveryHooks, 1);assert.equal(poolConsumer.acked.length-ackBefore,1);assert.equal(poolPublisher.sent.length-before,1);await preprepared.get(37);assert.ok(missingReads>0, 'actual historical certificate manifest must be missing during the gap');assert.ok(consumerMissingReads>0, 'the original DS consumer must read the missing activation certificate');assert.ok(historicalAddressReads>0, 'actual activated historical membership must be read');assert.ok(independentProducerStateReads>0, 'independent coordinator state preparation must remain outside the consumer oracle');}
             if (expected.has(number)) {
                 const original = expected.get(number); assert.deepEqual(bytes, readFileSync(join(originalDir, 'block-' + String(number).padStart(6, '0') + '.bin')));
                 assert.deepEqual(document.act.data, original.expectedValue); assert.equal(metadata.input.rawHex, original.rawHex);
@@ -306,11 +387,14 @@ try {
             assert.equal(measurement.commitManifests, expectedOpeningWalks, 'At the unchanged source head each opening walks one commit');
         }
     }
+    assert.ok(consumerOracleReads>0, 'actual consumer reads must execute under the negative ABI-state oracle');
     console.log(JSON.stringify({passed: true, originalBlocks: 397, nativeActions: results, originalWireSource: true,
         installedNativeActivation: false, fullWorkerQualification: false, controlledBrokerStorage: true,
-        sourceAdmission: true, exactConfirmedBytes: true, unknownAbiIndependent: true, tamperedOutputRawIncomplete: true,
+        workerProofRecovery, recoveryObserved, recoveryHooks, missingReads, consumerMissingReads, historicalAddressReads, consumerOracleReads, independentProducerStateReads, sourceAdmission: true, exactConfirmedBytes: true, unknownAbiIndependent: true, tamperedOutputRawIncomplete: true,
         finalConfirmRevocationFenced: true, genesisActionAdmissionIncomplete: true, nativeAddonResolutions}));
 } finally {
+    releaseRecoveryCertificate?.();
+    independentIngress.emitDestroy();
     await bridge?.close();
     reader?.coordinatorRpc?.cancel(); reader?.shipSession?.close?.();
     process.send = previousSend; process.chdir(previousDirectory); hooks.deregister();

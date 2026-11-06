@@ -3,6 +3,7 @@ import {AsyncLocalStorage} from 'node:async_hooks';
 import {performance} from 'node:perf_hooks';
 import {setTimeout as delay} from 'node:timers/promises';
 import {ProtocolAbiProofUnavailableError, isUnsettledCertificate, type ProtocolAbiProofReadOptions} from '../../indexer/protocol/abi-proof.js';
+import {withProofReadRecovery} from '../../indexer/protocol/proof-consumer-scope.js';
 import {ProtocolNativeActionUnavailableError} from '../../indexer/protocol/native-authorization.js';
 
 const cancelled = () => new ProtocolAbiProofUnavailableError('proof_cancelled', 'ABI proof request was cancelled');
@@ -133,8 +134,9 @@ export async function withProtocolProofRequest<T>(scope: object,
     if (attempt) {
         assertProtocolProofRequestActive(scope);
         const deadline = attempt.startProof();
-        const value = await bounded(attempt.signal, () => operation({signal: attempt.signal,
-            timeoutMs: Math.max(1, Math.ceil(deadline - performance.now()))}));
+        const value = await bounded(attempt.signal, () => withProofReadRecovery({key:attempt.key,signal:attempt.signal,
+            remainingMs:()=>deadline-performance.now()}, () => operation({signal: attempt.signal,
+            timeoutMs: Math.max(1, Math.ceil(deadline - performance.now()))})));
         assertProtocolProofRequestActive(scope); return value;
     }
     const raw = (scope as Partial<FastifyRequest>).raw;

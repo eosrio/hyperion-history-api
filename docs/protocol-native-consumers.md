@@ -113,3 +113,19 @@ the earlier provider-injected consumer fixtures do not prove installed Wire acce
 Original Wire inputs remain unchanged, with synthetic notification/incomplete controls labelled
 separately. Controlled broker, storage and socket transports are consumer integration evidence.
 They do not establish live service, client/proxy reconnect, fork/LIB soak or release acceptance.
+
+
+Pure membership revalidation may recover a proven certificate-publication gap or a
+structurally valid historical-root advance under the same owner and generation.
+Every retry reads current source equivalence and exact historical membership again;
+missing chunks, corrupt evidence, missing coverage and ownership/fork changes keep
+their existing refusal behavior. Native observation, decoding, hooks, broker sends,
+cache writes and acknowledgments are never replayed by this recovery.
+
+HTTP transactions use their existing shared proof deadline and cancellation signal.
+Direct helpers and stream scopes keep their existing behavior. Workers share one
+monotonic five-second recovery budget per original delivery, starting at the first
+eligible transient. An expired recovery budget does not time out a healthy check,
+but a later transient cannot renew it. A timeout ends the caller wait; any physical
+read that ignores cancellation remains tracked by the original attempt until it
+actually settles, and its aborted continuation cannot authorize publication.
