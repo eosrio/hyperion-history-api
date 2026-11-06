@@ -685,6 +685,10 @@ export class ProtocolAbiCoordinator {
             if(current.pending.length&&!budget.allowPendingWork||performance.now()>=deadline)throw new HistoricalWorkYield();return current;
         };
         for(let count=0;count<budget.maxCommitsPerDrain&&walk.nextCommitId;count++) {
+            // Durable pending blocks permit background progress; a live RPC waiting on
+            // this serial lane gets priority after one completed historical work unit.
+            // Break so the existing bounded activation can preserve that partial work.
+            if(budget.allowPendingWork&&count>0&&this.queuedAdmissions)break;
             const work=walk.work??={commitId:walk.nextCommitId};
             if(!work.commit) {await checkpoint();work.commit=await this.readCommit(work.commitId);await this.assertHistoricalAuthority(anchor,epoch);}
             const {commitId,commit}=work;
