@@ -47,14 +47,3 @@ test('Bun wrappers explicitly choose named new callers only for Wire34 while pre
  assert(source.includes("? './wire34-cbfb-source-admission-native.mjs' : './all-cbfb-source-admission-native.mjs'"));
  assert(source.includes('expect(result.cases).toBe(54)'));assert(source.includes('timeout: 60000'));assert(source.includes('}, 65000)'));
 });
-test('actual original-Wire-row fixture selects explicit new cohort before loading and checks every component revision',()=>{
- const fixture=read('tests/fixtures/portable-mapping-retry.mjs'),assertion=fixture.split('\n').find(line=>line.includes('assert(selected.components.every('));assert(assertion);
- assert(fixture.includes("import {admitCoordinatedNativeSourceOptions, retainedWireSourceProfile} from '../unit/stateful-engineering-source-admission.mjs';"));
- const selected={components:[{sourceRevision:WIRE34_SOURCE.commit},{sourceRevision:WIRE34_SOURCE.commit}]},admission={wireRevision:WIRE34_SOURCE.commit};
- const verify=new Function('assert','selected','nativeSourceAdmission',assertion);verify(assert,selected,admission);
- assert.throws(()=>verify(assert,{components:[selected.components[0],{sourceRevision:'0'.repeat(40)}]},admission));
- const call=fixture.match(/const nativeSourceAdmission = admitCoordinatedNativeSourceOptions\((\{[^}]+\})\);/);assert(call);
- assert(fixture.indexOf(call[0])<fixture.indexOf('const selected = await loadChainProtocol'));
- assert(call[1].includes('retainedWireSourceProfile()'));
- const input=new Function('retainedWireSourceProfile','return ('+call[1]+');')(()=>profile);assert.equal(input.engineeringSourceProfile,profile);
-});

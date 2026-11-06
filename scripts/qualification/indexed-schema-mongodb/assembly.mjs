@@ -1,6 +1,6 @@
 // Exact source/emission observation only. No DB, socket, controller, child or process-lifecycle operations.
 import assert from 'node:assert/strict';
-import {readFileSync,readdirSync,lstatSync} from 'node:fs';
+import {existsSync,readFileSync,readdirSync,lstatSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {findPackageJSON} from 'node:module';
 import {join,relative,resolve} from 'node:path';
@@ -36,7 +36,10 @@ export function assertIndexedAssemblyObservation(observed){
 }
 export function observeIndexedAssembly(){
  const pkg=path=>JSON.parse(readFileSync(path,'utf8')),nativeRoot=join(root,'packages/backend-mongodb'),rootPkg=pkg(join(root,'package.json')),nativePkg=pkg(join(nativeRoot,'package.json'));
- const sources=ASSEMBLY.sources.map(row=>{const path=join(root,row.path),stat=lstatSync(path);assert(stat.isFile()&&!stat.isSymbolicLink()&&stat.size<=4*1024*1024);
+ const sources=ASSEMBLY.sources.map(row=>{const path=join(root,row.path);
+ // The manifest is history, so a later removal is recorded here; the exact comparison still refuses it.
+ if(!existsSync(path))return {path:row.path,missing:true};
+ const stat=lstatSync(path);assert(stat.isFile()&&!stat.isSymbolicLink()&&stat.size<=4*1024*1024);
  const bytes=readFileSync(path);return {path:row.path,bytes:bytes.length,sha256:sha(bytes)};});
  return {profile:PROFILE,pins:{rootSDK:rootPkg.dependencies['@eosrio/hyperion-sdk'],nativeSDK:nativePkg.devDependencies['@eosrio/hyperion-sdk'],
   Wire:rootPkg.dependencies['@eosrio/hyperion-wire-plugin'],rootCompiler:rootPkg.dependencies.typescript,nativeCompiler:nativePkg.devDependencies.typescript,

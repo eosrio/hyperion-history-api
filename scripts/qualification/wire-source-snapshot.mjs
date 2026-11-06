@@ -39,7 +39,6 @@ export const engineeringAdmissionSourcePaths = Object.freeze([
     'tests/unit/worker-attempt-supervisor.test.ts',
     'tests/unit/worker-failure-lineage.mjs',
     'tests/unit/protocol-native-lag-replay.mjs',
-    'tests/fixtures/portable-mapping-retry.mjs',
     'tests/native/current-cbfb-source-tamper.test.mjs',
     'tests/unit/stateful-engineering-source-admission.test.ts',
     'scripts/qualification/indexed-schema-mongodb/current-cbfb-ci.md',
