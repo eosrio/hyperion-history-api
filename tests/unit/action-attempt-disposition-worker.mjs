@@ -316,21 +316,24 @@ try {
         };
         if (proofControl.phase === 'open') {
             const {ProtocolAbiProofReader} = await import('../../build/indexer/protocol/abi-proof.js');
-            const originalWait = ProtocolAbiProofReader.prototype.waitForOpen;
-            ProtocolAbiProofReader.prototype.waitForOpen = async function(...args) {
-                const scope = currentProofConsumerScope();
-                if (scope?.id === proofAttemptId) {
-                    proofProbeKind = 'retained-open-helper';
-                    proofProbe = scope.bindCallback(() => this.open(args[0], args[1]));
-                }
-                try {return await originalWait.apply(this, args);}
-                catch (error) {
-                    if (scope?.id === proofAttemptId) previousSend.call(process, {
-                        event: 'qualification_proof_wait_rejected', code: error.code, readSettled: proofReadSettled
-                    });
-                    throw error;
-                }
-            };
+            // Live sources enter through openLiveSource, which must stay as cancellable as waitForOpen.
+            for (const name of ['waitForOpen', 'openLiveSource']) {
+                const originalWait = ProtocolAbiProofReader.prototype[name];
+                ProtocolAbiProofReader.prototype[name] = async function(...args) {
+                    const scope = currentProofConsumerScope();
+                    if (scope?.id === proofAttemptId) {
+                        proofProbeKind = 'retained-open-helper';
+                        proofProbe = scope.bindCallback(() => this.open(args[0], args[1]));
+                    }
+                    try {return await originalWait.apply(this, args);}
+                    catch (error) {
+                        if (scope?.id === proofAttemptId) previousSend.call(process, {
+                            event: 'qualification_proof_wait_rejected', code: error.code, readSettled: proofReadSettled
+                        });
+                        throw error;
+                    }
+                };
+            }
         }
     }
     const attemptLifecycle = (value, role) => {

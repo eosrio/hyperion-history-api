@@ -155,6 +155,13 @@ Existing single-call preparation, record formats and public plugin/backend inter
 With `allow_pending_work`, durable pending blocks and queued admissions do not interrupt this work, as
 elsewhere on that path, so only the deadline yields it.
 
+In that mode live heads do not enter the address queue, so head commits never wait for locator work and
+cannot fill the queue ahead of the walk. A second verified walk covers the heads above the older walk's
+anchor, down to the last covered head. The two take turns inside the same count, byte and time budgets, and
+either can finish first. Fresh locators keep up while new heads per drain stay under about half of
+`max_commits_per_drain`; beyond that they lag and catch up later, and older ancestry slows while both have
+work. This progress is process-local scheduling only, so a restart or a new generation walks again.
+
 The control and immutable frontier-record indices are dedicated, owned projections with strict mappings,
 stored source, request translog durability, all configured-copy receipts, exact-ID realtime reads, and
 refusal of pruning pipelines or ILM/rollover. Identical CAS repair needs a fresh complete receipt. A primary
