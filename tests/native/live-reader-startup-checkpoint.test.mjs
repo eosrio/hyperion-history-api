@@ -6,6 +6,7 @@ import {frontierMemoryClient} from '../unit/protocol-frontier-memory.mjs';
 const {ProtocolAbiCoordinator}=await import('../../build/indexer/protocol/abi-coordinator.js');
 const {ProtocolAbiFrontierStore}=await import('../../build/indexer/protocol/abi-frontier-store.js');
 const {ProtocolSourceBindingStore}=await import('../../build/indexer/protocol/source-bindings.js');
+const {protocolMetadataReadBoundMs}=await import('../../build/indexer/protocol/immutable-bundle-store.js');
 const {ProtocolAbiObservationStore}=await import('../../build/indexer/protocol/abi-observation-store.js');
 
 // Pure VM caller regression: real source methods, inert cargo/cluster/HTTP and a
@@ -238,7 +239,7 @@ test('master validates explicit genesis qualification before initializing the re
   const memory=frontierMemoryClient();f.master.esClient=memory.client;
   const profile={id:'wire',profileId:'seed-test',components:[{id:'wire-node',runtime:'node',version:'1.0.0',sourceRevision:'a'.repeat(40),sha256:'b'.repeat(64)}]};
   Object.assign(f.context,{loadChainProtocol:async()=>({id:profile.id,components:profile.components,provider:{profileId:profile.profileId,verifyNativeGenesis:()=>false}}),
-    randomUUID:()=> 'qualified-owner',ProtocolAbiCoordinator:class extends ProtocolAbiCoordinator {constructor(options){super({...options,profile:structuredClone(options.profile)});}},ProtocolAbiFrontierStore,ProtocolSourceBindingStore,ProtocolAbiObservationStore,setInterval:()=>({unref(){}})});
+    randomUUID:()=> 'qualified-owner',protocolMetadataReadBoundMs,ProtocolAbiCoordinator:class extends ProtocolAbiCoordinator {constructor(options){super({...options,profile:structuredClone(options.profile)});}},ProtocolAbiFrontierStore,ProtocolSourceBindingStore,ProtocolAbiObservationStore,setInterval:()=>({unref(){}})});
   f.master.failProtocolAbiCoordinator=()=>{};
   f.master.validateQualificationGenesisStart();
   await f.master.initializeProtocolAbiCoordinator();
