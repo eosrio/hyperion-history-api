@@ -62,7 +62,8 @@ test('actual captured Wire records retain canonical bytes, fresh frontier reads 
     }
     const readsMs = performance.now() - readsStarted, freshCalls = p.memory.calls.slice(beforeCalls);
     assert(freshCalls.length > iterations, 'Each iteration must traverse the real fresh store boundary');
-    const victim = commits[0], chunkId = victim.manifest.chunk_ids[0];
+    // An inline commit carries its payload in the manifest; an earlier two-document one in its chunk.
+    const victim = commits[0], chunkId = victim.manifest.chunk_ids?.[0] ?? victim.id;
     p.memory.faults.read = (result, request) => request.index === victim.index && request.id === chunkId
         ? {...result, _source: {...result._source, payload: 'AA=='}} : result;
     await assert.rejects(p.store.readCommit(victim.id), error => error.code === 'invalid');
