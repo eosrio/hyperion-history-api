@@ -1,0 +1,8 @@
+tests/native/protocol-index-metadata.test.mjs
+tests/native/protocol-staged-bundle-read.test.mjs
+tests/native/bounded-json-protocol-records.test.mjs
+tests/native/stateful-custody-fractions.test.mjs
+tests/native/protocol-genesis-seed.test.mjs
+tests/native/live-reader-startup-checkpoint.test.mjs
+tests/unit/protocol-abi-history-native.mjs
+tests/unit/protocol-abi-history-progress.test.mjs

@@ -1,0 +1,29 @@
+name: Inline record mutants
+on:
+  push:
+    branches: ["ci/inline-record-mutants"]
+jobs:
+  mutants:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-all-cbfb-root-native-wire34-linux-engineering-v1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+          cache: npm
+      - run: npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false
+      - run: npm ci --allow-git=all
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: node .ci-mutants/run.mjs
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutants
+          path: |
+            mutants.json
+            control-*.log
