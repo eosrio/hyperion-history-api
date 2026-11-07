@@ -10,6 +10,6 @@ for (const profileId of ['wire-sysio-6508c9e8-engineering-v1', 'wire-sysio-7dede
             new Response(child.stdout).text(), new Response(child.stderr).text()]);
         expect({code, stdout: stdout.slice(-5000), stderr}).toMatchObject({code: 0, stderr: ''});
         expect(JSON.parse(stdout.trim().split('\n').at(-1)!)).toEqual({passed: true, profileId,
-            guardedRoutes: 10, poisonedCache: true, disabledFeatures: true, retainedAntelopeHistory: true});
+            guardedRoutes: 9, poisonedCache: true, disabledFeatures: true, retainedAntelopeHistory: true});
     }, 20000);
 }

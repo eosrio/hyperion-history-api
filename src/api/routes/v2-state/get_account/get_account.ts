@@ -3,6 +3,8 @@ import {timedQuery} from "../../../helpers/functions.js";
 
 import {Dispatcher, request as undiciRequest} from 'undici';
 import {getSkipLimit} from "../../v2-history/get_actions/functions.js";
+import {getActions} from "../../v2-history/get_actions/get_actions.js";
+import {hLog} from "../../../../indexer/helpers/common_functions.js";
 
 const DEFAULT_ACTIONS_LIMIT = 20;
 
@@ -53,6 +55,51 @@ async function getEnhancedAccountData(
 }
 
 
+interface NodeToken {
+    symbol: string;
+    precision: number;
+    amount: number;
+    contract: string;
+}
+
+/** Every balance the node reports in the system token contract; complete for that contract only. */
+async function getNodeTokens(fastify: FastifyInstance, contract: string, account: string): Promise<NodeToken[]> {
+    const balances = await fastify.antelope.chain.get_currency_balance(contract, account);
+    return balances.map(balance => {
+        const [quantity, symbol] = String(balance).split(' ');
+        const decimals = quantity.split('.')[1];
+        return {symbol, precision: decimals ? decimals.length : 0, amount: parseFloat(quantity), contract};
+    });
+}
+
+/**
+ * Extension providers have no qualified token or permission-link projection yet, so this reads only what the
+ * node answers authoritatively plus the metadata action search, in this request's own proof scope. Parts that
+ * cannot be served are listed in `unavailable` instead of being returned empty.
+ */
+async function getNodeAccountData(fastify: FastifyInstance, request: FastifyRequest, account: string,
+                                  skip: number, limit: number) {
+    const contract = `${fastify.manager.config.settings.eosio_alias ?? 'eosio'}.token`;
+    const unavailable = ['links'];
+    const maxActions = fastify.manager.config.api.limits.get_actions ?? 0;
+    if (maxActions > 0 && limit > maxActions) limit = maxActions;
+    const [actionsResult, tokens] = await Promise.all([
+        getActions(fastify, request, {account, skip, limit, noBinary: true, track: 'true'}),
+        getNodeTokens(fastify, contract, account).catch((e: any) => {
+            hLog(`Error fetching ${contract} balances for ${account}: ${e.message}`);
+            unavailable.push('tokens');
+            return [];
+        })
+    ]);
+    return {
+        actions: actionsResult.actions,
+        total_actions: actionsResult.total.value,
+        tokens,
+        token_contracts: [contract],
+        unavailable
+    };
+}
+
 async function getAccount(fastify: FastifyInstance, request: FastifyRequest) {
     const query: any = request.query;
     let {skip, limit} = getSkipLimit(query, 200);
@@ -72,6 +119,10 @@ async function getAccount(fastify: FastifyInstance, request: FastifyRequest) {
     } catch (e: any) {
         console.error(`Error fetching account ${account}: ${e.message}`);
         throw new Error(`Account ${account} not found or error fetching account details.`);
+    }
+
+    if (fastify.manager.config.settings?.protocol?.provider === 'extension') {
+        return {account: accountInfo, ...await getNodeAccountData(fastify, request, account, skip, limit)};
     }
 
     // Fetch actions, tokens, and links
