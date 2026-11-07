@@ -86,12 +86,12 @@ export const STATEFUL_HISTORY_API_CALLER_SOURCE = Object.freeze({
         ['src/api/routes/v1-trace/get_block/index.ts', 'a734453875d777fe608be11405bc4f7a8f5fb359198cbca457ce02391add6c9c']]),
 });
 export const STATEFUL_GENESIS_PREVIEW_CALLER_SOURCE = Object.freeze({
-    commit:'12e3c0b5f4ef1c2daf81680171af39c1bc038f18',files:556,
+    commit:'9c2cfe251befedcd93a3215159577114945d87b5',files:556,
     packageSha256:'31b02c51777bab0b6c12fc3ee7a64b44629e009abf77ad4a32aecb00891c48ca',
-    sha256:'23a3431c20f1a8fcb522ed8eef62bc3b4c45b1bd7163d736b212f27c59775e48',
+    sha256:'1565d921896697dceb87d2c87b109bbb692a273c74722168e3122e3e3f3d8fb2',
     sources:Object.freeze([...STATEFUL_HISTORY_API_CALLER_SOURCE.sources.filter(([path])=>
         !['src/indexer/workers/projection.ts','src/api/helpers/protocol-abi.ts','src/api/helpers/stateful-owner.ts'].includes(path)),
-        ['src/indexer/protocol/source-namespace.ts','f2692ad085c4c051ca71eb144ce7e137993cd1cf93f55bb9be432e9b1e5f10dc'],
+        ['src/indexer/protocol/source-namespace.ts','cabcf3edbefe9a70a84166081385a4956d18e929c12392fb7cbe5dc667659731'],
         ['src/indexer/protocol/abi-coordinator.ts','33515bbabc5be6abf88b8d0024f4cd3019e4d8ffabad40036e1735abc87d956d'],
         ['src/indexer/modules/master.ts','9d9ac9a3d4b066a7b44a9b3c87f1ac0baff323019757936ca4b27d7acd583641'],
         ['src/indexer/workers/state-reader.ts','1541a894aac156b95770e31cb46ee8b88bb6bdd7461188003222cfb294435c63'],
