@@ -35,8 +35,12 @@ call an ownership predicate as an extra authorization decision. Capture failure
 or a full budget marks the evidence incomplete while the original call still
 executes. Original synchronous exceptions propagate unchanged.
 
-Each process retains at most16,384 rows/32MiB, with1MiB per body and128KiB bounded
-typed values. All limits describe this private diagnostic capture, not runtime
+Each process retains at most16,384 rows/32MiB, with1MiB per body and128KiB of
+logical UTF-8 string/key and binary bytes per typed value, plus structural bounds.
+The encoded ceiling allows six bytes per logical byte for JSON escaping and
+64 bytes per node for typed tags/container and finite-number spellings. Writer
+and validator enforce the same logical, structural and encoded bounds, including
+reduced bounds declared in a capture. All limits describe this private diagnostic capture, not runtime
 admission. At terminal exit it writes one fresh `backlog-PID.json` and fsyncs it;
 the existing native log records its exact byte hash and elapsed write time.
 Overflow/errors make the diagnostic exit unsuccessful. The extra copies and
@@ -79,7 +83,14 @@ foreign/changed inputs and refusal of forged restore authority. These controls
 do not demonstrate actual Wire capture, complete-genesis restoration, MongoDB/
 Elasticsearch snapshot consistency or the original timed failure.
 
-Whole-project checks/build, existing driver option tests and an actual guarded
-capture are pending root review. Full1244/1480, Wire #191 and capacity #277 remain
+Option/environment controls call the actual qualification parser and environment
+functions. A separate socket-free child uses the emitted HyperionWorker and
+StateReader prototypes, original proof context and controlled local attempt
+lifecycle. It verifies real receipt field names, original confirm AND drain,
+credit generation fences and original socket errors. It grants no parent,
+physical, protocol or store authority. The normal validation commands are
+`bun check -p tsconfig.json`, `npm run build`, `bun test ./tests/unit`, native
+Node24/26 helper/option controls and `node tests/unit/wire-backlog-prototype.mjs`.
+An actual guarded capture remains pending root review. Full1244/1480, Wire #191 and capacity #277 remain
 open. No optimization, capacity activation, deadline extension or fresh server
 execution is selected by this patch.

@@ -165,3 +165,22 @@ test('terminal file is one fresh bounded evidence artifact, not a restartable sa
         assert.equal(validateWireBacklogCapture(b, receipt).restorable, false); assert.throws(() => writeWireBacklogCapture(f.capture, path), /EEXIST/);
     } finally {assert.equal(dirname(resolve(directory)), resolve(tmpdir())); rmSync(directory, {recursive: true});}
 });
+test('escaping-heavy raw-boundary typed value round-trips through producer and pinned file validator', () => {
+    const value = '\0'.repeat(wireBacklogCaptureLimits.maximumValueBytes - Buffer.byteLength('headers') - Buffer.byteLength('x'));
+    const capture = createWireBacklogCapture({enabled: true, identity});
+    capture.observe('escaping-heavy-headers', () => ({headers: {x: value}}));
+    const snapshot = capture.snapshot(); assert.equal(snapshot.failures, 0); assert.equal(snapshot.omitted, 0); assert.equal(snapshot.rows.length, 1);
+    const b = bytes(snapshot); assert.equal(validateWireBacklogCapture(b, pin(b)).capturedBytesIntact, true);
+    assert.equal(fields(snapshot.rows[0]).headers.x, value);
+    for (const text of ['\0'.repeat(wireBacklogCaptureLimits.maximumValueBytes), '\ud800'.repeat(Math.floor(wireBacklogCaptureLimits.maximumValueBytes / 3))])
+        assert.equal(decodeWireBacklogValue(encodeWireBacklogValue(text)), text);
+});
+test('pinned capture validation enforces each declared reduced logical-value and body limit', () => {
+    const f = fixture(), good = f.capture.snapshot();
+    const incorrectlyAccepted = [];
+    for (const [limit, value] of [['maximumBodyBytes', 2], ['maximumValueBytes', 1], ['maximumNodes', 1], ['maximumDepth', 1]]) {
+        const modified = structuredClone(good); modified.limits[limit] = value; const b = bytes(modified);
+        try {validateWireBacklogCapture(b, pin(b)); incorrectlyAccepted.push(limit);} catch {}
+    }
+    assert.deepEqual(incorrectlyAccepted, []);
+});
