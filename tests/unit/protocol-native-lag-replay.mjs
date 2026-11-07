@@ -96,8 +96,8 @@ function ids(memory, prefix) {
 }
 function retained(memory, index, id) {
     const manifest = memory.documents.get(memory.key(index, id)).document;
-    return JSON.parse(Buffer.concat(manifest.chunk_ids.map(chunk =>
-        Buffer.from(memory.documents.get(memory.key(index, chunk)).document.payload, 'base64'))).toString());
+    return JSON.parse((manifest.payload !== undefined ? Buffer.from(manifest.payload, 'base64') : Buffer.concat(manifest.chunk_ids.map(chunk =>
+        Buffer.from(memory.documents.get(memory.key(index, chunk)).document.payload, 'base64')))).toString());
 }
 try {
     const repo = fileURLToPath(new URL('../../', import.meta.url));
@@ -421,12 +421,12 @@ try {
                 lastMeasuredNativeView = view; lastMeasuredNativeGrant = decision.grant;
                 const [abi, native] = measurements.slice(count, count + 2);
                 for (const metric of [abi, native]) {
-                    assert.equal(metric.commitGetCount, 2 * (distance + 1));
+                    assert.equal(metric.commitGetCount, distance + 1);
                     assert.equal(metric.uniqueCommitBundleCount, distance + 1);
                 }
                 const first = new Set(abi.reads.filter(value => value.bundleId?.startsWith('h45abicmt1:')).map(value => value.index + '\0' + value.id));
                 const duplicate = native.reads.filter(value => first.has(value.index + '\0' + value.id));
-                assert.equal(duplicate.length, 2 * (distance + 1));
+                assert.equal(duplicate.length, distance + 1);
                 duplicateCommitReads.push({sourceHead: number, distance, repetition, repeatedExactCommitDocuments: duplicate.length,
                     totalCommitGets: abi.commitGetCount + native.commitGetCount});
             }

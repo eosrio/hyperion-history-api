@@ -3,6 +3,7 @@ import type {Client} from '@elastic/elasticsearch';
 import {ownedBoundedProtocolMget} from './bounded-document-read.js';
 import {boundedCanonicalJson} from '../helpers/bounded-json.js';
 import {currentProofConsumerScope, proofConsumerSignal, trackProofConsumerOperation, type ProofConsumerScope} from './proof-consumer-scope.js';
+/** A manifest names its chunks, or carries the whole record as `payload` when written inline. */
 interface StoredDocument {
     kind: 'chunk' | 'manifest';
     bundle_id: string;
@@ -119,7 +120,9 @@ export class ImmutableProtocolBundleStore {
     constructor(private readonly client:Client,chain:string,private readonly replicas:number,
                 private readonly kind:string,suffix:string,
                 bounds:ImmutableProtocolBundleBounds={chunkBytes:512*1024,maximumBytes:128*1024*1024,maximumChunks:256},
-                private readonly options:{readOnly?:boolean;rejectLifecycle?:boolean;metadataReadBoundMs?:number}={}) {
+                private readonly options:{readOnly?:boolean;rejectLifecycle?:boolean;metadataReadBoundMs?:number;
+                    /** Write a record that fits one chunk as a single manifest carrying its payload. Every store reads both forms. */
+                    inlineSingleChunk?:boolean}={}) {
         if(!/^[a-z0-9][a-z0-9_.-]{0,120}$/.test(chain)||!/^[a-z0-9-]{1,80}$/.test(suffix)||!/^[a-z0-9-]{1,80}$/.test(kind)
             ||!Number.isSafeInteger(replicas)||replicas<0
             ||!Number.isSafeInteger(bounds.chunkBytes)||bounds.chunkBytes<1||bounds.chunkBytes>1024*1024
@@ -295,9 +298,15 @@ export class ImmutableProtocolBundleStore {
             const payload = bytes.subarray(index * this.bounds.chunkBytes, (index + 1) * this.bounds.chunkBytes);
             return {kind: 'chunk', bundle_id: id, digest: sha256(payload), byte_length: payload.length, chunk_index: index, payload: payload.toString('base64')};
         };
+        if (this.options.inlineSingleChunk === true && count === 1) {
+            await this.prepareInline(id, {kind: 'manifest', bundle_id: id, digest, byte_length: bytes.length, payload: bytes.toString('base64')},
+                manifest, chunks[0]!, chunk(0), signal, expected);
+            const result=Object.freeze({id,digest}) as FreshBundlePrepare;
+            scope?.assertActive();freshPrepares.set(result,{store:this,id,digest,scope});return result;
+        }
         const single = expected === 'present' && count === 1;
         if (!single || !await this.reassertStored(id, manifest, chunks[0]!, chunk(0), signal)) {
-            if (!single && expected !== 'absent') await this.assertManifestUnchanged(id, manifest, signal);
+            if (!single && expected !== 'absent') await this.assertManifestUnchanged(id, [manifest], signal);
             for (let index = 0; index < count; index++) await this.createImmutable(chunks[index]!, chunk(index), signal);
             // The immutable manifest is the sole PREPARE completion marker; partial chunks grant nothing.
             await this.createImmutable(id, manifest, signal);
@@ -306,10 +315,48 @@ export class ImmutableProtocolBundleStore {
         scope?.assertActive();freshPrepares.set(result,{store:this,id,digest,scope});return result;
     }
 
-    private async assertManifestUnchanged(id: string, manifest: StoredDocument, signal?: AbortSignal) {
+    /** One write and one complete receipt. A record already stored as two documents keeps that form. */
+    private async prepareInline(id: string, inline: StoredDocument, twoDocuments: StoredDocument, chunkId: string, chunk: StoredDocument,
+                                signal?: AbortSignal, expected?: ImmutableProtocolBundleExpectation) {
+        if (expected === 'present') {
+            const [stored, storedChunk] = await this.readDocuments([id, chunkId], this.documentPackBytes(), signal);
+            if (stored!.found && await this.reassertExisting(id, stored, inline, twoDocuments, chunkId, chunk, signal, storedChunk)) return;
+        } else if (expected !== 'absent') await this.assertManifestUnchanged(id, [inline, twoDocuments], signal);
+        for (let attempt = 0; attempt < 4; attempt++) {
+            try {
+                const response = await checkedIo(signal, () => this.client.create({index: this.index, id, document: inline, refresh: false,
+                    wait_for_active_shards: 'all', pipeline: '_none'}, {signal}));
+                this.assertWrite(response, id, 'created');
+                return;
+            } catch (error: any) {
+                signal?.throwIfAborted();
+                if (error?.meta?.statusCode !== 409 || error?.meta?.body?.error?.type !== 'version_conflict_engine_exception') throw error;
+            }
+            if (await this.reassertExisting(id, await this.get(id, signal), inline, twoDocuments, chunkId, chunk, signal)) return;
+        }
+        throw new Error('ABI observation CAS retry budget exhausted');
+    }
+
+    /**
+     * Fresh writes for bytes already stored under this ID, in the form they are stored. A two-document record
+     * reasserts its chunk and then its manifest. False means another write won; anything else is a conflict.
+     */
+    private async reassertExisting(id: string, existing: any, inline: StoredDocument, twoDocuments: StoredDocument, chunkId: string,
+                                   chunk: StoredDocument, signal?: AbortSignal, storedChunk?: any): Promise<boolean> {
+        const found = canonical(existing._source);
+        if (found === canonical(inline)) return this.writeIdentical(id, inline, existing, signal);
+        if (found !== canonical(twoDocuments)) throw new Error(`Immutable ABI observation conflict: ${id}`);
+        if (storedChunk?.found) {
+            if (canonical(storedChunk._source) !== canonical(chunk)) throw new Error(`Immutable ABI observation conflict: ${chunkId}`);
+            if (!await this.writeIdentical(chunkId, chunk, storedChunk, signal)) await this.createImmutable(chunkId, chunk, signal);
+        } else await this.createImmutable(chunkId, chunk, signal);
+        return this.writeIdentical(id, twoDocuments, existing, signal);
+    }
+
+    private async assertManifestUnchanged(id: string, allowed: readonly StoredDocument[], signal?: AbortSignal) {
         try {
-            const existing = await this.get(id, signal);
-            if (canonical(existing._source) !== canonical(manifest)) throw new Error(`Immutable ABI observation conflict: ${id}`);
+            const existing = await this.get(id, signal), found = canonical(existing._source);
+            if (!allowed.some(manifest => canonical(manifest) === found)) throw new Error(`Immutable ABI observation conflict: ${id}`);
         } catch (error: any) {
             signal?.throwIfAborted();
             const missing = error?.meta?.body;
@@ -350,12 +397,25 @@ export class ImmutableProtocolBundleStore {
         return missing;
     }
 
+    /** Exactly one form: chunk IDs without a payload, or an inline payload within one chunk and nothing else. */
     private validateManifest(id: string, manifest: any): StoredDocument {
+        const inline = Object.hasOwn(manifest, 'payload');
         if (manifest.kind !== 'manifest' || manifest.bundle_id !== id || !hex64.test(manifest.digest)
             || !Number.isSafeInteger(manifest.byte_length) || manifest.byte_length < 1 || manifest.byte_length > this.bounds.maximumBytes
-            || !Array.isArray(manifest.chunk_ids) || !manifest.chunk_ids.length || manifest.chunk_ids.length > this.bounds.maximumChunks
-            || new Set(manifest.chunk_ids).size !== manifest.chunk_ids.length) throw new ImmutableProtocolBundleReadError('invalid',id,'Invalid ABI observation manifest');
+            || (inline ? Object.hasOwn(manifest, 'chunk_ids') || Object.hasOwn(manifest, 'chunk_index') || typeof manifest.payload !== 'string'
+                    || manifest.byte_length > this.bounds.chunkBytes || manifest.payload.length > Math.ceil(this.bounds.chunkBytes / 3) * 4
+                : !Array.isArray(manifest.chunk_ids) || !manifest.chunk_ids.length || manifest.chunk_ids.length > this.bounds.maximumChunks
+                    || new Set(manifest.chunk_ids).size !== manifest.chunk_ids.length))
+            throw new ImmutableProtocolBundleReadError('invalid',id,'Invalid ABI observation manifest');
         return manifest;
+    }
+
+    /** The same byte checks as a chunk; the record digest is checked when the record is assembled. */
+    private decodeInline(id: string, manifest: StoredDocument): Buffer {
+        const payload = Buffer.from(manifest.payload!, 'base64');
+        if (payload.toString('base64') !== manifest.payload || payload.length !== manifest.byte_length)
+            throw new ImmutableProtocolBundleReadError('invalid',id,'ABI observation inline payload integrity mismatch');
+        return payload;
     }
 
     private decodeChunk(id: string, chunk: any, index: number): Buffer {
@@ -394,7 +454,10 @@ export class ImmutableProtocolBundleStore {
         for (const id of ids) {await this.initialize(signal); scope?.assertActive();}
         const responseBytes = this.documentPackBytes();
         const manifests = new Map<string, StoredDocument>();
-        const manifestItems = ids.map(id => ({id, maximumBytes: 4096 + this.bounds.maximumChunks * (id.length + 82)}));
+        // A store that writes inline must reserve room for a whole one-chunk record in each manifest.
+        const manifestBytes = 4096 + Math.max(this.bounds.maximumChunks * 82,
+            this.options.inlineSingleChunk === true ? Math.ceil(this.bounds.chunkBytes / 3) * 4 : 0);
+        const manifestItems = ids.map(id => ({id, maximumBytes: manifestBytes + this.bounds.maximumChunks * id.length}));
         for (const batch of this.readPacks(manifestItems, responseBytes)) {
             const docs = await this.readDocuments(batch.map(x => x.id), responseBytes, signal);
             for (const [offset, doc] of docs.entries()) {
@@ -410,6 +473,11 @@ export class ImmutableProtocolBundleStore {
         const totals = new Map(ids.map(id => [id, 0]));
         const chunks = ids.flatMap(id => {
             const manifest = manifests.get(id)!;
+            if (manifest.payload !== undefined) {
+                const payload = this.decodeInline(id, manifest);
+                totals.set(id, payload.length); payloads.get(id)!.push(payload);
+                return [];
+            }
             return manifest.chunk_ids!.map((chunkId, index) => {
                 if (chunkId !== `${id}:${manifest.digest}:${index}`)
                     throw new ImmutableProtocolBundleReadError('invalid', id, 'Invalid ABI observation chunk identity');
@@ -498,9 +566,11 @@ export class ImmutableProtocolBundleStore {
     private async readPrepared(id:string,digest:string,signal?:AbortSignal):Promise<{manifest:StoredDocument;payloads:Buffer[];bytes:number}|undefined> {
         const chunkId=`${id}:${digest}:0`;
         const [stored,storedChunk]=await this.readDocuments([id,chunkId],this.documentPackBytes(),signal);
-        if(!stored!.found||!storedChunk!.found)return undefined;
+        if(!stored!.found)return undefined;
         const manifest=this.validateManifest(id,stored!._source);
-        if(manifest.digest!==digest||manifest.chunk_ids!.length!==1||manifest.chunk_ids![0]!==chunkId)return undefined;
+        if(manifest.digest!==digest)return undefined;
+        if(manifest.payload!==undefined){const payload=this.decodeInline(id,manifest);return {manifest,payloads:[payload],bytes:payload.length};}
+        if(!storedChunk!.found||manifest.chunk_ids!.length!==1||manifest.chunk_ids![0]!==chunkId)return undefined;
         const payload=this.decodeChunk(id,storedChunk!._source,0);
         return {manifest,payloads:[payload],bytes:payload.length};
     }
@@ -515,6 +585,7 @@ export class ImmutableProtocolBundleStore {
             throw error;
         }
         manifest = this.validateManifest(id, manifest);
+        if (manifest.payload !== undefined) {const payload = this.decodeInline(id, manifest); return {manifest, payloads: [payload], bytes: payload.length};}
         const payloads: Buffer[] = [];
         let bytes = 0;
         for (const [index, chunkId] of manifest.chunk_ids.entries()) {

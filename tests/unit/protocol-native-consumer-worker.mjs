@@ -68,8 +68,8 @@ function ids(memory, prefix) {
 }
 function retained(memory, index, id) {
     const manifest = memory.documents.get(memory.key(index, id)).document;
-    return JSON.parse(Buffer.concat(manifest.chunk_ids.map(chunk =>
-        Buffer.from(memory.documents.get(memory.key(index, chunk)).document.payload, 'base64'))).toString());
+    return JSON.parse((manifest.payload !== undefined ? Buffer.from(manifest.payload, 'base64') : Buffer.concat(manifest.chunk_ids.map(chunk =>
+        Buffer.from(memory.documents.get(memory.key(index, chunk)).document.payload, 'base64')))).toString());
 }
 try {
     const repo = fileURLToPath(new URL('../../', import.meta.url));
@@ -253,10 +253,11 @@ try {
         const document = memory.documents.get(memory.key(request.index, request.id))?.document;
         if (!document || !['manifest', 'chunk'].includes(document.kind)) return false;
         const id = document.bundle_id, manifest = memory.documents.get(memory.key(request.index, id))?.document;
+        const inline = manifest?.payload !== undefined;
         if (!manifest || manifest.kind !== 'manifest' || !id?.startsWith('h45abist1:')
-            || (request.id !== id && !manifest.chunk_ids.includes(request.id))) return false;
-        const chunks = manifest.chunk_ids.map(chunk => memory.documents.get(memory.key(request.index, chunk))?.document);
-        if (chunks.some(chunk => !chunk || chunk.kind !== 'chunk' || chunk.bundle_id !== id)) return false;
+            || (request.id !== id && (inline || !manifest.chunk_ids.includes(request.id)))) return false;
+        const chunks = inline ? [manifest] : manifest.chunk_ids.map(chunk => memory.documents.get(memory.key(request.index, chunk))?.document);
+        if (!inline && chunks.some(chunk => !chunk || chunk.kind !== 'chunk' || chunk.bundle_id !== id)) return false;
         const bytes = Buffer.concat(chunks.map(chunk => Buffer.from(chunk.payload, 'base64')));
         if (bytes.length !== manifest.byte_length || hash(bytes) !== manifest.digest) return false;
         const envelope = JSON.parse(bytes.toString()), state = envelope.value;

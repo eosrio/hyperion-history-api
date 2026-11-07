@@ -280,8 +280,7 @@ describe('source-bound canonical ABI consumers',()=>{
             expect(stateId).not.toBeNull();
             if(kind==='missing-record')f.memory.documents.delete(f.memory.key(f.store.recordsIndex,stateId));
             if(kind==='corrupt-record'){
-                const manifest=f.memory.documents.get(f.memory.key(f.store.recordsIndex,stateId))!;
-                f.memory.documents.get(f.memory.key(f.store.recordsIndex,manifest.document.chunk_ids[0]))!.document.payload='AA==';
+                f.memory.documents.get(f.memory.key(f.store.recordsIndex,stateId))!.document.payload='AA==';
             }
             const before=f.memory.calls.length,result=await reader.occurrence(view,observed.actionInputs[0]);
             expect(result).toEqual({binding:view.bindings[0]});expect(Object.keys(result)).toEqual(['binding']);
@@ -720,8 +719,9 @@ describe('source-bound canonical ABI consumers',()=>{
         const certificateKey=f.memory.key(f.store.recordsIndex,view.certificateId),certificate=f.memory.documents.get(certificateKey)!;
         expect(certificate).toBeDefined();f.memory.documents.delete(certificateKey);await unavailable(reader.open(f.source(1)));
         f.memory.documents.set(certificateKey,certificate);
-        const chunkKey=f.memory.key(f.store.recordsIndex,certificate.document.chunk_ids[0]),chunk=f.memory.documents.get(chunkKey)!;
-        const payload=chunk.document.payload;chunk.document.payload='AA==';await unavailable(reader.open(f.source(1)));chunk.document.payload=payload;
+        const payload=certificate.document.payload;certificate.document.payload='AA==';await unavailable(reader.open(f.source(1)));certificate.document.payload=payload;
+        const chunkKey=f.memory.key(f.store.recordsIndex,f.memory.asTwoDocuments(f.store.recordsIndex,view.certificateId)),chunk=f.memory.documents.get(chunkKey)!;
+        chunk.document.payload='AA==';await unavailable(reader.open(f.source(1)));chunk.document.payload=payload;
         const ancestorKey=f.memory.key(f.store.recordsIndex,second.head.commitId),ancestor=f.memory.documents.get(ancestorKey)!;
         f.memory.documents.delete(ancestorKey);await unavailable(reader.open(f.source(1)));f.memory.documents.set(ancestorKey,ancestor);
         expect((await reader.open(f.source(1))).commitId).toBe(first.head.commitId);

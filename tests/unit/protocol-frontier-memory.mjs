@@ -1,4 +1,5 @@
 import {Readable} from 'node:stream';
+import {createHash} from 'node:crypto';
 import {Client, BaseConnection, Transport} from '@elastic/elasticsearch';
 
 /** Exercise the public SDK child/stream boundary over a controlled ES method transport. */
@@ -107,5 +108,15 @@ export function frontierMemoryClient(replicas=0) {
         },
     };
     withControlledHintChild(client);
-    return {client,documents,mappings,settings,sequences,calls,faults,key};
+    /** Stores an inline record the way older builds wrote it, chunk plus manifest, and returns the chunk ID. */
+    const asTwoDocuments=(index,id)=>{
+        const stored=documents.get(key(index,id)),manifest=stored.document;
+        if(manifest.payload===undefined)return manifest.chunk_ids[0];
+        const chunkId=id+':'+manifest.digest+':0',bytes=Buffer.from(manifest.payload,'base64');
+        documents.set(key(index,chunkId),{document:{kind:'chunk',bundle_id:id,digest:createHash('sha256').update(bytes).digest('hex'),
+            byte_length:bytes.length,chunk_index:0,payload:manifest.payload},seq:sequence(index),primaryTerm:1});
+        stored.document={kind:'manifest',bundle_id:id,digest:manifest.digest,byte_length:manifest.byte_length,chunk_ids:[chunkId]};
+        return chunkId;
+    };
+    return {client,documents,mappings,settings,sequences,calls,faults,key,asTwoDocuments};
 }

@@ -108,21 +108,104 @@ test('every frontier ID hashes its record, so its prepares skip the opening read
     assert.equal(requests(memory,mark).filter(method=>method==='get').length,0);
 });
 
-test('a readback finds a one-chunk record in one read and keeps every read check',async()=>{
+for(const form of ['inline','two-documents'])test('a readback finds a one-chunk record in one read and keeps every read check: '+form,async()=>{
     const memory=frontierMemoryClient(),store=new ProtocolAbiFrontierStore(memory.client,'rules');
     const {id,digest}=await store.prepareCommit({height:1});
-    const key=name=>memory.key(store.recordsIndex,name),chunk=`${id}:${digest}:0`;
+    const key=name=>memory.key(store.recordsIndex,name),part=form==='inline'?id:memory.asTwoDocuments(store.recordsIndex,id);
     const mark=memory.calls.length;
     assert.deepEqual(await store.readCommit(id,undefined,digest),{height:1});
     assert.deepEqual(requests(memory,mark).filter(method=>method!=='getIndex'),['mget']);
-    const payload=memory.documents.get(key(chunk)).document.payload;
-    memory.documents.get(key(chunk)).document.payload=Buffer.from('{"height":2}').toString('base64');
+    const payload=memory.documents.get(key(part)).document.payload;
+    memory.documents.get(key(part)).document.payload=Buffer.from('{"height":2}').toString('base64');
     await assert.rejects(store.readCommit(id,undefined,digest),error=>error.code==='invalid');
-    memory.documents.get(key(chunk)).document.payload=payload;
-    const saved=memory.documents.get(key(chunk));memory.documents.delete(key(chunk));
-    await assert.rejects(store.readCommit(id,undefined,digest),error=>error.code==='incomplete');
-    memory.documents.set(key(chunk),saved);memory.documents.delete(key(id));
+    memory.documents.get(key(part)).document.payload=payload;
+    if(form==='two-documents') {
+        const saved=memory.documents.get(key(part));memory.documents.delete(key(part));
+        await assert.rejects(store.readCommit(id,undefined,digest),error=>error.code==='incomplete');
+        memory.documents.set(key(part),saved);
+    }
+    memory.documents.delete(key(id));
     await assert.rejects(store.readCommit(id,undefined,digest),error=>error.code==='missing');
+});
+
+// Inline records: one document per one-chunk record, and earlier two-document records kept as they are.
+function inlineBundles(bounds) {
+    const f=bundles(bounds);
+    const store=new ImmutableProtocolBundleStore(f.memory.client,'rules',0,'rules','rules-v1',bounds,{inlineSingleChunk:true});
+    return {...f,plain:f.store,store};
+}
+
+test('an inline record is one write with one complete receipt and one read',async()=>{
+    const {memory,store,stored}=inlineBundles();await store.prepare('seed',{value:0});
+    let mark=memory.calls.length;const {digest}=await store.prepare('record',{value:1},undefined,'absent');
+    assert.deepEqual(requests(memory,mark),['getIndex','create']);
+    assert.deepEqual(Object.keys(stored('record').document).sort(),['bundle_id','byte_length','digest','kind','payload']);
+    assert.equal(stored('record').document.kind,'manifest');assert.equal(stored(`record:${digest}:0`),undefined);
+    mark=memory.calls.length;assert.deepEqual(await store.read('record'),{value:1});
+    assert.deepEqual(requests(memory,mark),['getIndex','get']);
+    mark=memory.calls.length;await store.prepare('record',{value:1},undefined,'present');
+    assert.deepEqual(requests(memory,mark),['getIndex','mget','index']);
+    mark=memory.calls.length;await store.prepare('other',{value:2});
+    assert.deepEqual(requests(memory,mark),['getIndex','get','create'],'Without an expectation it still checks first');
+});
+
+test('a partial inline receipt refuses the record and the retry takes a fresh one',async()=>{
+    const {memory,store}=inlineBundles();await store.prepare('seed',{value:0});
+    memory.faults.receipt=(result,request)=>request.id==='record'?partial(result):result;
+    await assert.rejects(store.prepare('record',{value:1},undefined,'absent'),/durable write receipt/);
+    delete memory.faults.receipt;const mark=memory.calls.length;
+    await store.prepare('record',{value:1},undefined,'absent');
+    assert.deepEqual(writes(memory,mark),[['create','record'],['index','record']]);
+});
+
+for(const expected of [undefined,'absent','present'])test('a record stored as two documents keeps that form and takes fresh writes, chunk first: '+(expected??'default'),async()=>{
+    const {memory,store,plain,stored}=inlineBundles(),{digest}=await plain.prepare('record',{value:1}),chunk=`record:${digest}:0`;
+    const form=structuredClone(stored('record').document),mark=memory.calls.length;
+    assert.equal((await store.prepare('record',{value:1},undefined,expected)).digest,digest);
+    assert.deepEqual(writes(memory,mark).filter(([method])=>method==='index'),[['index',chunk],['index','record']]);
+    assert.deepEqual(stored('record').document,form,'Stored records are never rewritten into the new form');
+    assert.deepEqual(await store.read('record'),{value:1});
+});
+
+test('a two-document record that lost its chunk gets it back before the manifest',async()=>{
+    const {memory,store,plain,drop}=inlineBundles(),{digest}=await plain.prepare('record',{value:1}),chunk=`record:${digest}:0`;
+    drop(chunk);const mark=memory.calls.length;
+    await store.prepare('record',{value:1},undefined,'present');
+    assert.deepEqual(writes(memory,mark),[['create',chunk],['index','record']]);
+});
+
+test('different bytes under an inline or two-document ID are refused without writing',async()=>{
+    const {memory,store,plain}=inlineBundles();
+    await store.prepare('inline',{value:1});await plain.prepare('pair',{value:1});
+    for(const id of ['inline','pair'])for(const expected of [undefined,'absent','present']) {
+        const mark=memory.calls.length;
+        await assert.rejects(store.prepare(id,{value:2},undefined,expected),/conflict/);
+        assert.deepEqual(writes(memory,mark).filter(([method])=>method==='index'),[],'No accepted write for '+id);
+        assert.deepEqual(await store.read(id),{value:1});
+    }
+});
+
+test('a manifest has exactly one form, and an inline one fits one chunk',async()=>{
+    const {memory,store,stored}=inlineBundles({chunkBytes:64,maximumBytes:4096,maximumChunks:128});
+    await store.prepare('record',{value:1});const original=structuredClone(stored('record').document);
+    stored('record').document={...original,chunk_ids:['record:'+original.digest+':0']};
+    await assert.rejects(store.read('record'),error=>error.code==='invalid');
+    const large=Buffer.from('x'.repeat(65));
+    stored('record').document={...original,byte_length:large.length,payload:large.toString('base64')};
+    await assert.rejects(store.read('record'),error=>error.code==='invalid');
+    stored('record').document=original;assert.deepEqual(await store.read('record'),{value:1});
+    const mark=memory.calls.length,big={value:'y'.repeat(200)};await store.prepare('big',big);
+    assert.ok(writes(memory,mark).filter(([,id])=>id!=='big').length>1,'A record over one chunk keeps its chunks');
+    assert.deepEqual(await store.read('big'),big);
+});
+
+test('staged reads reserve room for inline payloads and read both forms',async()=>{
+    const {memory,store,plain}=inlineBundles(),values=Array.from({length:3},(_,index)=>({value:String(index).repeat(400000)}));
+    for(const [index,value] of values.entries())await store.prepare('large'+index,value);
+    await plain.prepare('pair',{value:'pair'});
+    const mark=memory.calls.length;
+    assert.deepEqual(await store.readMany(['large0','large1','large2','pair'],8*1024*1024),[...values,{value:'pair'}]);
+    assert.ok(requests(memory,mark).filter(method=>method==='mget').length>=4,'Large inline manifests are read in separate packs');
 });
 
 test('a readback with the wrong digest or several chunks falls back to the ordered read',async()=>{

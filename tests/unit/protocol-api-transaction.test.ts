@@ -316,8 +316,8 @@ test('missing certificate manifest is bounded and cancellable while a missing ch
         await source.append(3);await source.append(4);for(let i=0;i<4;i++)await source.coordinator.drain();
         const native=source.reader(),view=await native.open(source.selected.source,source.selected.selectionId);
         const control=await source.coordinator.inspect(),id=control.historical!.activationCertificateId;
-        const manifest=source.memory.documents.get(source.memory.key(source.frontier.recordsIndex,id))!;
-        const target=mode==='incomplete'?manifest.document.chunk_ids[0]:id;
+        // Only a record in the earlier two-document form can lose part of itself.
+        const target=mode==='incomplete'?source.memory.asTwoDocuments(source.frontier.recordsIndex,id):id;
         const key=source.memory.key(source.frontier.recordsIndex,target),saved=source.memory.documents.get(key)!;
         source.memory.documents.delete(key);let attempts=0,missingReads=0;
         const read=source.client.get.bind(source.client);source.client.get=async(request:any,...args:any[])=>{

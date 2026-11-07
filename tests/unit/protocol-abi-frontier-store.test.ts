@@ -9,6 +9,7 @@ const control=(revision=0,ownerId='owner-a')=>({schemaVersion:1,ownerId,generati
 const state=(account:string,abiHex='00',present=true)=>({account,present,abiHex,source:{blockNum:42,blockId:'a'.repeat(64)}});
 function stored(memory:ReturnType<typeof frontierMemoryClient>,index:string,id:string):any {
     const manifest=memory.documents.get(memory.key(index,id))!.document;
+    if(manifest.payload!==undefined)return JSON.parse(Buffer.from(manifest.payload,'base64').toString('utf8'));
     return JSON.parse(Buffer.concat(manifest.chunk_ids.map((chunk:string)=>Buffer.from(memory.documents.get(memory.key(index,chunk))!.document.payload,'base64'))).toString('utf8'));
 }
 function manifestIds(memory:ReturnType<typeof frontierMemoryClient>,index:string):string[] {
@@ -130,8 +131,12 @@ describe('ABI frontier durable storage',()=>{
         const {store,memory}=fixture();const result=await store.prepareAccountState(state('alice'));
         await dataError(store.readCommit('h45abicmt1:'+'f'.repeat(64)),'missing','commit');
         await dataError(store.readCommit(result.id),'invalid','commit');
-        const manifest=memory.documents.get(memory.key(store.recordsIndex,result.id))!.document;
-        const chunkKey=memory.key(store.recordsIndex,manifest.chunk_ids[0]),chunk=memory.documents.get(chunkKey)!;
+        const inline=memory.documents.get(memory.key(store.recordsIndex,result.id))!;
+        const original=inline.document.payload;
+        inline.document.payload='AA==';await dataError(store.readAccountState(result.id),'invalid','account-state');
+        inline.document.payload=original;expect(await store.readAccountState(result.id)).toEqual(state('alice'));
+        // Records written by earlier builds keep two documents, and can lose one of them.
+        const chunkKey=memory.key(store.recordsIndex,memory.asTwoDocuments(store.recordsIndex,result.id)),chunk=memory.documents.get(chunkKey)!;
         memory.documents.delete(chunkKey);await dataError(store.readAccountState(result.id),'incomplete','account-state');
         memory.documents.set(chunkKey,chunk);chunk.document.payload='AA==';await dataError(store.readAccountState(result.id),'invalid','account-state');
         memory.faults.read=(response:any)=>({...response,_index:'foreign'});
@@ -156,18 +161,22 @@ describe('ABI frontier durable storage',()=>{
         await dataError(store.readAccount(badRoot,'bob'),'invalid','bucket');
     });
 
-    it('rejects digest-correct malformed UTF8 under an otherwise valid semantic content ID',async()=>{
+    for(const form of ['inline','two-documents'])it('rejects digest-correct malformed UTF8 under an otherwise valid semantic content ID: '+form,async()=>{
         const {store,memory}=fixture(),value={text:'\ufffd'},commit=await store.prepareCommit(value);
         expect(await store.readCommit(commit.id)).toEqual(value);
+        if(form==='two-documents')memory.asTwoDocuments(store.recordsIndex,commit.id);
         const saved=memory.documents.get(memory.key(store.recordsIndex,commit.id))!,originalManifest=structuredClone(saved.document);
-        const bytes=Buffer.concat(originalManifest.chunk_ids.map((id:string)=>Buffer.from(memory.documents.get(memory.key(store.recordsIndex,id))!.document.payload,'base64')));
+        const bytes=Buffer.from(protocolImmutableJson(stored(memory,store.recordsIndex,commit.id)));
         const marker=Buffer.from('\ufffd'),offset=bytes.indexOf(marker);expect(offset).toBeGreaterThan(-1);
         const malformed=Buffer.concat([bytes.subarray(0,offset),Buffer.from([0xff]),bytes.subarray(offset+marker.length)]);
         // All physical hashes/lengths are consistent; UTF8 replacement would recover the original semantic object and ID.
         const digest=hash(malformed),chunkId=commit.id+':'+digest+':0';
-        memory.documents.set(memory.key(store.recordsIndex,chunkId),{seq:0,primaryTerm:1,document:{kind:'chunk',bundle_id:commit.id,
-            digest,byte_length:malformed.length,chunk_index:0,payload:malformed.toString('base64')}});
-        saved.document={kind:'manifest',bundle_id:commit.id,digest,byte_length:malformed.length,chunk_ids:[chunkId]};
+        if(form==='inline')saved.document={kind:'manifest',bundle_id:commit.id,digest,byte_length:malformed.length,payload:malformed.toString('base64')};
+        else {
+            memory.documents.set(memory.key(store.recordsIndex,chunkId),{seq:0,primaryTerm:1,document:{kind:'chunk',bundle_id:commit.id,
+                digest,byte_length:malformed.length,chunk_index:0,payload:malformed.toString('base64')}});
+            saved.document={kind:'manifest',bundle_id:commit.id,digest,byte_length:malformed.length,chunk_ids:[chunkId]};
+        }
         await dataError(store.readCommit(commit.id),'invalid','commit');
         saved.document=originalManifest;expect(await store.readCommit(commit.id)).toEqual(value);
     });

@@ -64,8 +64,7 @@ test('worker does not retry corrupt chunks, missing root, invalid control or rep
             if(mode==='owner')await f.replaceOwner();
             else if(mode==='chunk'){
                 const c=await f.coordinator.inspect(),id=c.historical.activationCertificateId;
-                const manifest=f.memory.documents.get(f.memory.key(f.frontier.recordsIndex,id));
-                f.memory.documents.delete(f.memory.key(f.frontier.recordsIndex,manifest.document.chunk_ids[0]));
+                f.memory.documents.delete(f.memory.key(f.frontier.recordsIndex,f.memory.asTwoDocuments(f.frontier.recordsIndex,id)));
             }else{
                 const c=await f.frontier.readControl(),value=structuredClone(c.value);
                 if(mode==='root')value.historical=null;else value.schemaVersion=999;

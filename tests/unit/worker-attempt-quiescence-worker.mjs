@@ -514,8 +514,8 @@ function ids(memory, prefix) {
 }
 function retained(memory, index, id) {
     const manifest = memory.documents.get(memory.key(index, id)).document;
-    return JSON.parse(Buffer.concat(manifest.chunk_ids.map(chunk =>
-        Buffer.from(memory.documents.get(memory.key(index, chunk)).document.payload, 'base64'))).toString());
+    return JSON.parse((manifest.payload !== undefined ? Buffer.from(manifest.payload, 'base64') : Buffer.concat(manifest.chunk_ids.map(chunk =>
+        Buffer.from(memory.documents.get(memory.key(index, chunk)).document.payload, 'base64')))).toString());
 }
 try {
     const repo = fileURLToPath(new URL('../../', import.meta.url));

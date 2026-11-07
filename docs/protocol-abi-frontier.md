@@ -186,6 +186,18 @@ writes. None of this removes a write: chunks still precede the manifest, and eac
 complete receipt.
 Existing observation IDs and valid retained bytes stay compatible.
 
+Frontier records that fit one 512 KiB chunk are stored inline: a single manifest document carries the whole
+record as its payload, so it takes one write and one complete receipt instead of two, and one read instead of
+two. Larger records keep separate chunks before their manifest. Record bytes, digests, IDs and the mapping are
+unchanged. Every bundle store reads both forms, and only the frontier store writes inline. A record already
+stored as two documents keeps that form when it is prepared again: its chunk and then its manifest take fresh
+writes, and it is never rewritten. Different bytes under either form are still refused.
+
+**No rollback below this release once it has run.** Earlier builds treat an inline manifest as invalid, so their
+coordinator would restart ABI knowledge as UNKNOWN and their proof reads of such records would fail. Every
+indexer and API process that reads these indices must run a build with inline reads before the first inline
+write.
+
 Account state uses copy-on-write roots over 256 hash buckets. Updated account values are immutable records;
 only changed bucket references and the root are rewritten. A bucket has at most 20,000 entries and 4 MiB;
 control is bounded at 1 MiB; state batches have at most 10,000 updates and 64 MiB; individual immutable

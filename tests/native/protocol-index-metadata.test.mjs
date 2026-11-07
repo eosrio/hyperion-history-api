@@ -54,7 +54,7 @@ test('frontier read uses one fresh response for the complete records-index valid
     try {
         const reader = new ProtocolAbiFrontierStore(fixture.client, chain, 0, {readOnly: true});
         assert.deepEqual(await reader.readCommit(prepared.id), {height: 42});
-        assert.equal(fixture.calls.length, 3, 'one fresh metadata response plus original manifest and chunk');
+        assert.equal(fixture.calls.length, 2, 'one fresh metadata response plus the original inline manifest');
         const metadata = fixture.calls.filter(call => call.params.path === '/' + reader.recordsIndex);
         assert.equal(metadata.length, 1, 'frontier and bundle predicates validate the same fresh response');
         for (const call of metadata) {
@@ -198,18 +198,21 @@ for (const kind of ['frontier', 'bundle']) {
         for (const target of ['manifest', 'chunk']) await t.test(target, async () => {
             const f = await retained(kind);
             try {
+                // Only a record in the earlier two-document form has a separate chunk to lose.
+                const chunkId = target === 'chunk' ? f.memory.asTwoDocuments(f.index, f.prepared.id) : undefined;
                 await f.read();
-                const manifest = f.memory.documents.get(f.memory.key(f.index, f.prepared.id)).document;
-                f.memory.documents.delete(f.memory.key(f.index, target === 'manifest' ? f.prepared.id : manifest.chunk_ids[0]));
+                f.memory.documents.delete(f.memory.key(f.index, target === 'manifest' ? f.prepared.id : chunkId));
                 await assert.rejects(f.read(), error => error.code === (target === 'manifest' ? 'missing' : 'incomplete'));
             } finally {await f.client.close();}
         });
     });
 
     test(`${kind} cancels after each remaining metadata/document await and does not affect another consumer`, async t => {
-        const maximum = 3;
-        for (let target = 1; target <= maximum; target++) await t.test(`await ${target}`, async () => {
+        // Metadata and the inline manifest, or metadata, manifest and chunk for the earlier form.
+        for (const [form, maximum] of [['inline', 2], ['two-documents', 3]])
+        for (let target = 1; target <= maximum; target++) await t.test(`${form} await ${target}`, async () => {
             const f = await retained(kind), entered = gate(), release = gate(), controller = new AbortController(), reason = new Error('one caller stopped');
+            if (form === 'two-documents') f.memory.asTwoDocuments(f.index, f.prepared.id);
             try {
                 let held = false;
                 f.control.beforeRequest = async row => {
@@ -235,9 +238,9 @@ test('each logical frontier read fetches fresh metadata after an earlier success
     try {
         f.control.metadata = body => {if (++metadata === 2) body[f.index].settings['index.translog.durability'] = 'async'; return body;};
         assert.deepEqual(await f.read(), {height: 42});
-        assert.equal(metadata, 1); assert.equal(f.calls.length, 3);
+        assert.equal(metadata, 1); assert.equal(f.calls.length, 2);
         await assert.rejects(f.read(), /^Error: ABI observation index durability or retention is incompatible:/);
-        assert.equal(metadata, 2); assert.equal(f.calls.length, 4, 'changed next response refuses before a document read');
+        assert.equal(metadata, 2); assert.equal(f.calls.length, 3, 'changed next response refuses before a document read');
     } finally {await f.client.close();}
 });
 
@@ -246,7 +249,7 @@ test('frontier retention predicates stay scoped to frontier reads and do not cha
     try {
         f.memory.settings.get(f.index)['index.lifecycle.name'] = 'generic-existing-policy';
         assert.equal((await f.read()).value.height, 42);
-        assert.equal(f.calls.length, 3);
+        assert.equal(f.calls.length, 2);
     } finally {await f.client.close();}
 });
 
@@ -279,7 +282,7 @@ test('combined metadata leaves certificate issuance, exact membership and fresh 
     const f = await proofFixture();
     try {
         const view = await f.reader.open(f.source, f.selectionId);
-        assert.equal(f.calls.length, 10, 'fresh authority twice plus one metadata response per certificate and commit bundle');
+        assert.equal(f.calls.length, 8, 'fresh authority twice plus one metadata response per certificate and commit bundle');
         let before = f.calls.length;
         await assert.rejects(f.reader.revalidate({...view}), {code: 'invalid_proof'}); assert.equal(f.calls.length, before);
         const stored = await f.writer.readControl();
@@ -290,7 +293,7 @@ test('combined metadata leaves certificate issuance, exact membership and fresh 
     } finally {await f.client.close();}
 });
 
-test('fresh union reads measure 3D+10 requests while each repeated open retains fresh authority and metadata', async t => {
+test('fresh union reads measure 2D+8 requests while each repeated open retains fresh authority and metadata', async t => {
     for (const distance of [0, 1, 8, 19, 32, 66]) await t.test(`distance ${distance}`, async () => {
         const f = await proofFixture(false, distance);
         try {
@@ -301,7 +304,7 @@ test('fresh union reads measure 3D+10 requests while each repeated open retains 
                     assert.deepEqual(view.source, f.source);
                 }
                 const calls = f.calls.slice(before);
-                assert.equal(calls.length, repetitions * (3 * distance + 10));
+                assert.equal(calls.length, repetitions * (2 * distance + 8));
                 assert.equal(calls.filter(row => row.params.path === '/' + chain + '-protocol-abi-frontier-records-v1').length,
                     repetitions * (distance + 2), 'one fresh response per certificate/commit logical read');
                 assert.equal(calls.filter(row => row.params.path === '/' + chain + '-protocol-abi-frontier-v1').length,
