@@ -5,6 +5,11 @@ import {captureIndexedRequestV1} from '@eosrio/hyperion-sdk/projection-stateful-
 import {createMongoDbStatefulOwnerAdapterV2} from '../dist/stateful-owner-v2.js';
 import {createMongoDbStatefulIndexedAdapterV1} from '../dist/stateful-indexed-v1.js';
 import {selectMongoDbIndexedEngineeringAssemblyV1,MONGODB_INDEXED_ENGINEERING_PROFILE_V1} from '../dist/stateful-indexed-engineering-v1.js';
+import {selectMongoDbRoyaltyEngineeringAssemblyV1,MONGODB_ROYALTY_ENGINEERING_PROFILE_V1} from '../dist/stateful-indexed-royalty-engineering-v1.js';
+const testProfile=process.env.HYPERION_INDEXED_TEST_PROFILE;
+if(testProfile!==undefined&&testProfile!=='cbfb')throw Error('Unknown indexed test profile');
+const selectEngineering=testProfile==='cbfb'?selectMongoDbRoyaltyEngineeringAssemblyV1:selectMongoDbIndexedEngineeringAssemblyV1;
+const engineeringProfile=testProfile==='cbfb'?MONGODB_ROYALTY_ENGINEERING_PROFILE_V1:MONGODB_INDEXED_ENGINEERING_PROFILE_V1;
 import {prepared,totals,schema,collection,hex,page,count,model} from './indexed-schema-fixture.mjs';
 import {ownerPort} from './indexed-schema-owner-port.mjs';
 async function setup(indexed=true,port=ownerPort(),logicalModel){
@@ -21,7 +26,7 @@ async function setup(indexed=true,port=ownerPort(),logicalModel){
  return {...s,options,requirements,port,adapter,identity,lease,execute};
 }
 const coverage=s=>[...s.port.storage].find(([name])=>name.endsWith('_ix1_'+s.declaration.digest+'_c'))?.[1].get(s.declaration.digest);
-const selected=s=>selectMongoDbIndexedEngineeringAssemblyV1(s.adapter,MONGODB_INDEXED_ENGINEERING_PROFILE_V1);
+const selected=s=>selectEngineering(s.adapter,engineeringProfile);
 test('actual native owner bootstrap initializes empty model coverage and closes every session',async()=>{
  const s=await setup();assert.equal(coverage(s).ready,true);assert.equal(coverage(s).checkpoint.blockNum,0);assert(s.port.sessions.length>=2);assert(s.port.sessions.every(session=>session.hasEnded));
  const actual=await selected(s).indexedForModel((await s.adapter.recovery()).view,s.declaration.digest,()=>{});assert.deepEqual(actual.indexedCapabilities.queryDeclarationDigests,[s.declaration.digest]);
@@ -41,7 +46,7 @@ test('old populated generation keeps actual keyed reads and refuses model covera
  await adapter.acquireOwner({expected:{version:previous.version,view:previous.view,owner:previous.owner},nextOwner:identity},()=>{});
  const recovery=await adapter.recovery();assert.equal(coverage(s).ready,false);assert.equal(coverage(s).reason,'state-only-rebuild-required');
  const read=await adapter.completedRead(identity,recovery.view,()=>{});assert.equal((await adapter.readCompleted(read,recovery.view,[{kind:'schema',key:'one'}])).results[0].status,'present');adapter.closeRead(read);
- const engineering=selectMongoDbIndexedEngineeringAssemblyV1(adapter,MONGODB_INDEXED_ENGINEERING_PROFILE_V1);
+ const engineering=selectEngineering(adapter,engineeringProfile);
  await assert.rejects(engineering.indexedForModel(recovery.view,s.declaration.digest,()=>{}),/not covered/);
  assert.equal(s.port.calls.slice(start).some(call=>call.name.includes('_stateful_v2_r_')&&call.command==='findOne'&&Object.keys(call.filter).length===0),false);
  assert(s.port.sessions.every(session=>session.hasEnded));

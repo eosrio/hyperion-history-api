@@ -12,7 +12,8 @@
     "fix-permissions": "node scripts/fix-permissions.cjs",
     "test": "bun test ./tests/unit",
     "test:indexed:finite": "node --test packages/backend-mongodb/tests/indexed-schema-model.test.mjs packages/backend-mongodb/tests/indexed-schema-effects.test.mjs packages/backend-mongodb/tests/indexed-schema-cursor.test.mjs packages/backend-mongodb/tests/indexed-schema-attachment.test.mjs packages/backend-mongodb/tests/indexed-schema-owner.test.mjs tests/unit/stateful-indexed-host-finite.mjs",
-    "test:indexed:package": "node scripts/check-indexed-package.mjs"
+    "test:indexed:package": "node scripts/check-indexed-package.mjs",
+    "test:indexed:cbfb:package": "node scripts/check-indexed-cbfb-package.mjs"
   },
   "engines": {
     "node": ">=24"
