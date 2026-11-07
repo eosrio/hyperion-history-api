@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import type {Client} from '@elastic/elasticsearch';
 import type {ProtocolComponent} from '@eosrio/hyperion-sdk/protocol';
-import {ImmutableProtocolBundleStore, ImmutableProtocolBundleReadError, protocolImmutableJson} from './immutable-bundle-store.js';
+import {ImmutableProtocolBundleStore, ImmutableProtocolBundleReadError, ProtocolImmutableRecordMemo, protocolImmutableJson} from './immutable-bundle-store.js';
 import {isProtocolHex} from './hex.js';
 
 export const protocolSourceSelectionHeader = 'hyperion-source-selection-v1';
@@ -154,9 +154,13 @@ export function protocolPublishedSourceId(chainId:string,blockId:string):string 
 /** Durable source association only. Neither a stored selection nor a capsule grants progress or ABI authority. */
 export class ProtocolSourceBindingStore {
     private readonly bundles:ImmutableProtocolBundleStore;
+    /** Contexts and selections only: their IDs hash their content. An observation link's ID does not, so it is always read. */
+    private readonly remembered?:ProtocolImmutableRecordMemo;
     get index():string{return this.bundles.index;}
-    constructor(client:Client,chain:string,replicas=0,options:{readOnly?:boolean}={}) {
-        this.bundles=new ImmutableProtocolBundleStore(client,chain,replicas,'protocol-source-bindings','protocol-source-bindings-v1',undefined,options);
+    constructor(client:Client,chain:string,replicas=0,options:{readOnly?:boolean;metadataReadBoundMs?:number;rememberRecords?:boolean}={}) {
+        const {rememberRecords,...bundleOptions}=options;
+        this.bundles=new ImmutableProtocolBundleStore(client,chain,replicas,'protocol-source-bindings','protocol-source-bindings-v1',undefined,bundleOptions);
+        if(rememberRecords===true)this.remembered=new ProtocolImmutableRecordMemo(16*1024*1024);
     }
     async prepareContext(input:ProtocolSourceContext):Promise<{id:string}> {
         const value=context(input),recordId=protocolSourceContextId(value);await this.bundles.prepare(recordId,value);return {id:recordId};
@@ -234,6 +238,8 @@ export class ProtocolSourceBindingStore {
         signal?.throwIfAborted();
         const syntax={context:contextId,selection:selectionId,quarantine:quarantineId,'observation-link':observationLinkId,'published-source':publicationId}[kind];
         if(typeof recordId!=='string'||!syntax.test(recordId))throw new ProtocolSourceBindingReadError('invalid',kind,recordId,'Invalid source binding ID');
+        const memo=kind==='context'||kind==='selection'?this.remembered:undefined,known=memo?.get(recordId);
+        if(known!==undefined)return known as SourceRecords[K];
         let value:unknown;
         try {value=await this.bundles.read(recordId,signal);} catch(error) {
             signal?.throwIfAborted();
@@ -249,6 +255,7 @@ export class ProtocolSourceBindingStore {
                 :kind==='published-source'?protocolPublishedSourceId((normalized as ProtocolPublishedSource).source.chainId,(normalized as ProtocolPublishedSource).source.blockId)
                 :protocolSourceObservationLinkId((normalized as ProtocolSourceObservationLink).selectionId);
             if(expected!==recordId)fail();const result=freeze(normalized) as SourceRecords[K];
+            memo?.set(recordId,result,protocolImmutableJson(result).length);
             signal?.throwIfAborted();return result;
         } catch {
             signal?.throwIfAborted();

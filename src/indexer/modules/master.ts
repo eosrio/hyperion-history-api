@@ -49,6 +49,7 @@ import {ProtocolAbiCoordinator} from '../protocol/abi-coordinator.js';
 import {DiskAbiHistoryCatalog} from '../protocol/disk-abi-history.js';
 import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
 import {ProtocolSourceBindingStore, type ProtocolSourcePosition} from '../protocol/source-bindings.js';
+import {protocolMetadataReadBoundMs} from '../protocol/immutable-bundle-store.js';
 import {ProtocolAbiObservationStore} from '../protocol/abi-observation-store.js';
 import {isProtocolAbiCoordinatorRequest, type ProtocolAbiCoordinatorReply} from '../protocol/abi-coordinator-rpc.js';
 import {ensureProtocolActionMapping} from '../protocol/action-proof-mapping.js';
@@ -828,10 +829,12 @@ export class HyperionMaster {
             const profile={id:selected.id,profileId:selected.provider.profileId,components:selected.components??[]};
             const diskAbiHistory=this.conf.settings.protocol_abi_history
                 ?DiskAbiHistoryCatalog.fromConfiguration(this.conf.settings.protocol_abi_history,chainId,profile):undefined;
+            const metadata={metadataReadBoundMs:protocolMetadataReadBoundMs};
+            const store = new ProtocolAbiFrontierStore(this.esClient, this.chain, replicas, metadata);
             const coordinator = new ProtocolAbiCoordinator({chainId,profile,diskAbiHistory,
-                ownerId: randomUUID(), bindings: new ProtocolSourceBindingStore(this.esClient, this.chain, replicas),
-                observations: new ProtocolAbiObservationStore(this.esClient, this.chain, replicas),
-                store: new ProtocolAbiFrontierStore(this.esClient, this.chain, replicas),
+                ownerId: randomUUID(), bindings: new ProtocolSourceBindingStore(this.esClient, this.chain, replicas, {...metadata, rememberRecords: true}),
+                observations: new ProtocolAbiObservationStore(this.esClient, this.chain, replicas, undefined, metadata),
+                store, accountReader: store.asAccountReader(),
                 verifyNativeGenesis: selected.provider.verifyNativeGenesis?.bind(selected.provider),
                 nativeActionInterfaceVersion: selected.provider.nativeActions?.interfaceVersion,
                 maxPendingBlocks: options?.max_pending_blocks, recoveryWindowBlocks: options?.recovery_window_blocks,
