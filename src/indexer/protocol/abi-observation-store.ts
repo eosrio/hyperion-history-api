@@ -57,7 +57,7 @@ export class ProtocolAbiObservationStore {
     get index():string {return this.bundles.index;}
 
     constructor(client:Client,chain:string,replicas=0,
-                bounds={chunkBytes:512*1024,maximumBytes:128*1024*1024,maximumChunks:256},options:{readOnly?:boolean}={}) {
+                bounds={chunkBytes:512*1024,maximumBytes:128*1024*1024,maximumChunks:256},options:{readOnly?:boolean;metadataReadBoundMs?:number}={}) {
         this.bundles=new ImmutableProtocolBundleStore(client,chain,replicas,
             'protocol-abi-observations','protocol-abi-observations-v1',bounds,options);
     }

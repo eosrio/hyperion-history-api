@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import type {Client} from '@elastic/elasticsearch';
-import {ImmutableProtocolBundleStore,ImmutableProtocolBundleReadError,protocolImmutableJson} from './immutable-bundle-store.js';
+import {ImmutableProtocolBundleStore,ImmutableProtocolBundleReadError,ProtocolMetadataFreshness,protocolImmutableJson} from './immutable-bundle-store.js';
 import {historicalAddressId, historicalAddressIdentity, ProtocolAbiHistoricalAddressReadError,
     type ProtocolAbiHistoricalAddress, type ProtocolAbiHistoricalAddressIdentity} from './abi-history.js';
 import type {ProtocolAbiHeadCertificate} from './abi-proof.js';
@@ -62,8 +62,6 @@ function bounded(value:unknown,maximum:{bytes:number;nodes:number}):{value:any;j
 
 interface FrontierRecord {schemaVersion:1;chain:string;kind:ProtocolAbiFrontierRecordKind;value:any}
 interface ControlDocument {schemaVersion:1;kind:'control';digest:string;payload:string}
-const immutableFields={kind:{type:'keyword'},bundle_id:{type:'keyword'},digest:{type:'keyword'},byte_length:{type:'long'},
-    chunk_index:{type:'integer'},chunk_ids:{type:'keyword'},payload:{type:'binary'}} as const;
 const controlFields={schemaVersion:{type:'integer'},kind:{type:'keyword'},digest:{type:'keyword'},payload:{type:'binary'}} as const;
 
 function deepFreeze<T>(value:T):T {
@@ -110,35 +108,40 @@ export class ProtocolAbiFrontierStore {
     readonly controlIndex:string;
     readonly recordsIndex:string;
     private readonly bundles:ImmutableProtocolBundleStore;
-    private readonly provisioning=new Map<string,Promise<void>>(); // Exactly the two owned indices, never session/account state.
+    private provisioned?:Promise<void>;
+    private readonly metadata:ProtocolMetadataFreshness;
     private readonly verifiedBuckets=new WeakMap<object,Readonly<Record<string,string>>>();
     private readonly historicalPreparations=new WeakMap<ProtocolAbiHistoricalRootPreparation,{
         input:string;steps:AsyncGenerator<void,string>;result?:string;
     }>();
 
     constructor(private readonly client:Client,private readonly chain:string,private readonly replicas=0,
-                private readonly options:{readOnly?:boolean;recordMemo?:ProtocolAbiFrontierRecordMemo}={}) {
+                private readonly options:{readOnly?:boolean;recordMemo?:ProtocolAbiFrontierRecordMemo;metadataReadBoundMs?:number}={}) {
         if(!/^[a-z0-9][a-z0-9_.-]{0,120}$/.test(chain)||!Number.isSafeInteger(replicas)||replicas<0)throw new Error('Invalid ABI frontier store configuration');
         this.controlIndex=chain+'-protocol-abi-frontier-v1';this.recordsIndex=chain+'-protocol-abi-frontier-records-v1';
         this.bundles=new ImmutableProtocolBundleStore(client,chain,replicas,'protocol-abi-frontier-records','protocol-abi-frontier-records-v1',undefined,
-            {readOnly:options.readOnly,rejectLifecycleOnRead:true});
+            {readOnly:options.readOnly,rejectLifecycle:true,metadataReadBoundMs:options.metadataReadBoundMs});
+        this.metadata=new ProtocolMetadataFreshness(options.metadataReadBoundMs);
     }
 
     /** Preserve the physical namespace while refusing provisioning and writes. */
     asReadOnly():ProtocolAbiFrontierStore {
-        return new ProtocolAbiFrontierStore(this.client,this.chain,this.replicas,{readOnly:true,recordMemo:this.options.recordMemo});
+        return new ProtocolAbiFrontierStore(this.client,this.chain,this.replicas,{readOnly:true,recordMemo:this.options.recordMemo,
+            metadataReadBoundMs:this.options.metadataReadBoundMs});
     }
 
-    private async initialize(control:boolean,signal?:AbortSignal) {
+    /** Control index only: immutable records are checked by their bundle store. */
+    private async initialize(write:boolean,signal?:AbortSignal) {
         signal?.throwIfAborted();
-        const index=control?this.controlIndex:this.recordsIndex,kind=control?'protocol-abi-frontier':'protocol-abi-frontier-records';
-        const fields=control?controlFields:immutableFields;
-        if(!this.provisioning.has(index)){
-            const provision=(this.options.readOnly?Promise.resolve():this.provision(index,kind,fields))
-                .catch(error=>{this.provisioning.delete(index);throw error;});
-            this.provisioning.set(index,provision);
-        }
-        await this.provisioning.get(index);
+        await this.metadata.run(write,()=>this.validate(signal));
+        signal?.throwIfAborted();
+    }
+    private async validate(signal?:AbortSignal) {
+        signal?.throwIfAborted();
+        const index=this.controlIndex,kind='protocol-abi-frontier',fields=controlFields;
+        this.provisioned??=(this.options.readOnly?Promise.resolve():this.provision(index,kind,fields))
+            .catch(error=>{this.provisioned=undefined;throw error;});
+        await this.provisioned;
         signal?.throwIfAborted();
         const metadata=await this.client.indices.get({index,features:['mappings','settings'],flat_settings:true,include_defaults:true},{signal});
         const mapping=metadata[index]?.mappings;
@@ -165,7 +168,7 @@ export class ProtocolAbiFrontierStore {
             }))throw new Error('ABI frontier index durability or retention is incompatible');
     }
 
-    private async provision(index:string,kind:string,fields:typeof immutableFields|typeof controlFields) {
+    private async provision(index:string,kind:string,fields:typeof controlFields) {
         try {
             const created=await this.client.indices.create({index,settings:{number_of_shards:1,number_of_replicas:this.replicas,
                 'translog.durability':'request',auto_expand_replicas:'false',default_pipeline:'_none',final_pipeline:'_none'},
@@ -183,7 +186,7 @@ export class ProtocolAbiFrontierStore {
 
     /** Read tokens describe observed bytes only; only compareAndSet returns a fresh complete-copy receipt. */
     async readControl(signal?:AbortSignal):Promise<ProtocolAbiFrontierControl|null> {
-        await this.initialize(true,signal);
+        await this.initialize(false,signal);
         let response:any;
         try {response=await this.client.get({index:this.controlIndex,id:'control',realtime:true,_source:true},{signal});signal?.throwIfAborted();} catch(error:any) {
             if(error?.meta?.statusCode===404&&error?.meta?.body?.found===false&&error?.meta?.body?._index===this.controlIndex
@@ -247,7 +250,7 @@ export class ProtocolAbiFrontierStore {
     }
     private async prepare(kind:ProtocolAbiFrontierRecordKind,value:unknown):Promise<{id:string;digest:string}> {
         if(this.options.readOnly)throw new Error('Read-only ABI frontier cannot prepare records');
-        const record=this.envelope(kind,value),id=this.id(record);await this.initialize(false);
+        const record=this.envelope(kind,value),id=this.id(record);
         return this.bundles.prepare(id,record);
     }
     private async read(kind:ProtocolAbiFrontierRecordKind,id:string,signal?:AbortSignal):Promise<any> {
@@ -288,7 +291,6 @@ export class ProtocolAbiFrontierStore {
         if(protocolImmutableJson(await this.readCertificate(certificateId))!==protocolImmutableJson(copied))
             throw new Error('Historical address requires an exact settled certificate');
         const address:ProtocolAbiHistoricalAddress={schemaVersion:1,kind:'historical-abi-certificate-address',identity,certificateId};
-        await this.initialize(false);
         const prepared=await this.bundles.prepare(id,{schemaVersion:1,chain:this.chain,kind:'historical-certificate-address',value:address});
         if(protocolImmutableJson(await this.readHistoricalCertificateAddress(identity))!==protocolImmutableJson(address))
             throw new Error('Historical certificate address readback differs');
