@@ -1,0 +1,51 @@
+diff --git a/scripts/qualification/indexed-schema-mongodb/current-cbfb-contract.mjs b/scripts/qualification/indexed-schema-mongodb/current-cbfb-contract.mjs
+new file mode 100644
+index 00000000..e03aa966
+--- /dev/null
++++ b/scripts/qualification/indexed-schema-mongodb/current-cbfb-contract.mjs
+@@ -0,0 +1,17 @@
++// Pure identity contract. This validates supplied observations only; it grants no admission.
++import assert from 'node:assert/strict';
++import {DESCRIPTOR} from './cbfb-assembly.mjs';
++import {NATIVE_PROFILE} from './cbfb-native-assembly.mjs';
++
++export const CURRENT_PROFILE = 'stateful-root-sdk49-native-cbfb-full-ci-engineering-v1';
++const rootSDK = 'git+https://github.com/eosrio/hyperion-sdk.git#dc20a03f2b60ba05a3369d677222a9cf0d65d299';
++const nativeSDK = 'git+https://github.com/eosrio/hyperion-sdk.git#cbfb26694b90b52266d1e0b9b5dbf6f8389e736b';
++
++export function assertCurrentSplitObservation(profile, assembly, dependencies) {
++  assert.equal(profile, CURRENT_PROFILE, 'Exact current split profile required');
++  assert.equal(assembly.pins.rootSDK, rootSDK, 'Root SDK pin');
++  assert.equal(assembly.pins.nativeSDK, nativeSDK, 'Native SDK pin');
++  assert.deepEqual(assembly, DESCRIPTOR.observation, 'Complete CBFB assembly observation');
++  assert.deepEqual(dependencies, NATIVE_PROFILE.dependencies, 'Complete scoped MongoDB/BSON inventories');
++  return {profile: CURRENT_PROFILE, scope: 'pure-observation-only', admitted: false};
++}
+diff --git a/scripts/qualification/indexed-schema-mongodb/current-cbfb-contract.test.mjs b/scripts/qualification/indexed-schema-mongodb/current-cbfb-contract.test.mjs
+new file mode 100644
+index 00000000..43797895
+--- /dev/null
++++ b/scripts/qualification/indexed-schema-mongodb/current-cbfb-contract.test.mjs
+@@ -0,0 +1,22 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import {DESCRIPTOR} from './cbfb-assembly.mjs';
++import {NATIVE_PROFILE} from './cbfb-native-assembly.mjs';
++import {CURRENT_PROFILE, assertCurrentSplitObservation} from './current-cbfb-contract.mjs';
++
++test('current split is explicit and rejects mislabeled or mutated observations', () => {
++  const assembly = structuredClone(DESCRIPTOR.observation);
++  const deps = structuredClone(NATIVE_PROFILE.dependencies);
++  assert.equal(assertCurrentSplitObservation(CURRENT_PROFILE, assembly, deps).admitted, false);
++  for (const profile of [undefined, 'stateful-sdk49-indexed-2da-linux-engineering-v1', 'unknown']) {
++    assert.throws(() => assertCurrentSplitObservation(profile, assembly, deps));
++  }
++  for (const key of ['rootSDK', 'nativeSDK']) {
++    const bad = structuredClone(assembly);
++    bad.pins[key] = bad.pins[key === 'rootSDK' ? 'nativeSDK' : 'rootSDK'];
++    assert.throws(() => assertCurrentSplitObservation(CURRENT_PROFILE, bad, deps));
++  }
++  const bad = structuredClone(deps);
++  delete bad['native:bson'];
++  assert.throws(() => assertCurrentSplitObservation(CURRENT_PROFILE, assembly, bad));
++});
