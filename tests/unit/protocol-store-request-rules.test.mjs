@@ -4,6 +4,7 @@ import {ImmutableProtocolBundleStore} from '../../build/indexer/protocol/immutab
 import {ProtocolAbiFrontierStore,ProtocolAbiFrontierRecordMemo} from '../../build/indexer/protocol/abi-frontier-store.js';
 import {ProtocolSourceBindingStore,protocolSourceObservationLinkId} from '../../build/indexer/protocol/source-bindings.js';
 import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
+import {createHash} from 'node:crypto';
 
 // Fewer requests must never mean fewer receipts: each case pins a rule the cheaper request order has to keep.
 const chainId='1'.repeat(64),hex=value=>value.repeat(64);
@@ -176,6 +177,18 @@ test('an inline record that lost a write race still ends with its own complete r
     assert.deepEqual(writes(memory,mark),[['create','record'],['index','record'],['create','record'],['index','record']]);
 });
 
+test('a two-document record whose chunk holds different bytes is refused, not overwritten',async()=>{
+    const {memory,store,plain,stored}=inlineBundles(),{digest}=await plain.prepare('record',{value:1}),chunk=`record:${digest}:0`;
+    stored(chunk).document={...stored(chunk).document,payload:Buffer.from('{"value":2}').toString('base64')};
+    const changed=structuredClone(stored(chunk).document);
+    for(const expected of [undefined,'absent','present']) {
+        const mark=memory.calls.length;
+        await assert.rejects(store.prepare('record',{value:1},undefined,expected),/conflict/);
+        assert.deepEqual(writes(memory,mark).filter(([method])=>method==='index'),[]);
+        assert.deepEqual(stored(chunk).document,changed);
+    }
+});
+
 test('a two-document record that lost its chunk gets it back before the manifest',async()=>{
     const {memory,store,plain,drop}=inlineBundles(),{digest}=await plain.prepare('record',{value:1}),chunk=`record:${digest}:0`;
     drop(chunk);const mark=memory.calls.length;
@@ -199,8 +212,13 @@ test('a manifest has exactly one form, and an inline one fits one chunk',async()
     await store.prepare('record',{value:1});const original=structuredClone(stored('record').document);
     stored('record').document={...original,chunk_ids:['record:'+original.digest+':0']};
     await assert.rejects(store.read('record'),error=>error.code==='invalid');
-    const large=Buffer.from('x'.repeat(65));
-    stored('record').document={...original,byte_length:large.length,payload:large.toString('base64')};
+    // A consistent record one byte over the chunk: only the size bound can refuse it.
+    const large=Buffer.from(JSON.stringify({value:'x'.repeat(65-12)}));assert.equal(large.length,65);
+    stored('record').document={...original,byte_length:large.length,digest:createHash('sha256').update(large).digest('hex'),payload:large.toString('base64')};
+    await assert.rejects(store.read('record'),error=>error.code==='invalid');
+    // Bytes must be stored exactly: a payload that only decodes to the right bytes is refused.
+    stored('record').document={...original,payload:original.payload+'
+'};
     await assert.rejects(store.read('record'),error=>error.code==='invalid');
     stored('record').document=original;assert.deepEqual(await store.read('record'),{value:1});
     const mark=memory.calls.length,big={value:'y'.repeat(200)};await store.prepare('big',big);
