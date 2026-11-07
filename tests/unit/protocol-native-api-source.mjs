@@ -17,7 +17,7 @@ const originals = join(wireRoot, 'fixtures/codec/native-onblock-6508-20261022');
 /** Original Wire source plus actual coordinator/proof/journals. Only ES transport is in memory.
  * The native capability is an explicitly engineered selection after the unchanged installed loader.
  */
-export async function nativeApiWireSource(options = {}) {
+export async function nativeApiWireSource(options = {}, historyOptions = undefined) {
     // Inert exact-source admission precedes provider import and temporary capture extraction.
     const admission = admitNativeApiSourceOptions(options), {nativeMarker} = admission;
     const {validateProtocolNativeActions} = await import('@eosrio/hyperion-sdk/protocol');
@@ -64,7 +64,7 @@ export async function nativeApiWireSource(options = {}) {
     const proofReader = new ProtocolAbiProofReader({chainId, profile, store: frontier});
     const nativeReader = new ProtocolNativeActionReader({chainId, profile, provider, store: nativeStore, proofReader});
     const contextId = (await bindings.prepareContext({schemaVersion: 1, chainId, protocol: profile, schemaJson})).id;
-    const coordinator = new ProtocolAbiCoordinator({chainId, profile, ownerId: 'native-api-original-owner', bindings, observations, store: frontier,
+    const coordinator = new ProtocolAbiCoordinator({chainId, profile, ownerId: 'native-api-original-owner', bindings, observations, store: frontier, historicalCertificates: historyOptions,
         verifyNativeGenesis: provider.verifyNativeGenesis.bind(provider), ...(nativeMarker ? {nativeActionInterfaceVersion: 1} : {})});
     await coordinator.start(); let {generation} = await coordinator.openSource(contextId, 'native-api-original-reader');
     const session = provider.createShipSession(JSON.parse(schemaJson)), retained = new Map(); let height = 0, parent = null;
