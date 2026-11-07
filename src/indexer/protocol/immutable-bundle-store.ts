@@ -33,13 +33,13 @@ async function checkedIo<T>(signal: AbortSignal | undefined, operation: () => Pr
     try {return await operation();} finally {signal?.throwIfAborted();}
 }
 
-/** How long a read may rely on an earlier metadata check. A write never relies on one. */
+/** The most a read may rely on an earlier metadata check. A write never relies on one. */
 export const protocolMetadataReadBoundMs=1000;
-/** Process-local and never authority. Reads keep their own content checks; durability only matters to writes. */
+/** Process-local and never authority. Zero, the default, checks every read; only measured hot stores opt in. */
 export class ProtocolMetadataFreshness {
     private validatedAt?:number;
     private failures=0;
-    constructor(private readonly boundMs=protocolMetadataReadBoundMs) {
+    constructor(private readonly boundMs=0) {
         if(!Number.isSafeInteger(boundMs)||boundMs<0||boundMs>protocolMetadataReadBoundMs)throw new Error('Invalid metadata read bound');
     }
     async run(write:boolean,validate:()=>Promise<void>):Promise<void> {
@@ -113,7 +113,7 @@ export class ImmutableProtocolBundleStore {
             features: ['mappings', 'settings'], flat_settings: true, include_defaults: true}, {signal}));
         this.validateMapping(metadata);
         // Do not retain a stale startup assumption if an operator changes this projection's durability:
-        // every write repeats this check, and a read repeats it within protocolMetadataReadBoundMs.
+        // every write repeats this check, and so does every read unless this store opted into the read bound.
         signal?.throwIfAborted();
         const entry = metadata[this.index];
         const sourceMode = settingsValue(entry, 'mapping.source.mode');
@@ -331,7 +331,8 @@ export class ImmutableProtocolBundleStore {
             || !Number.isSafeInteger(maximumRetainedBytes) || maximumRetainedBytes < 1 || maximumRetainedBytes > 128 * 1024 * 1024)
             throw new Error('Invalid immutable bundle staged read budget');
         const ids = [...input];
-        await this.initialize(signal); scope?.assertActive();
+        // One fresh validation per original logical read, unless this store opted into the read bound.
+        for (const id of ids) {await this.initialize(signal); scope?.assertActive();}
         const responseBytes = Math.max(1024 * 1024, Math.ceil(this.bounds.chunkBytes / 3) * 4 + 8192);
         const manifests = new Map<string, StoredDocument>();
         const manifestItems = ids.map(id => ({id, maximumBytes: 4096 + this.bounds.maximumChunks * (id.length + 82)}));

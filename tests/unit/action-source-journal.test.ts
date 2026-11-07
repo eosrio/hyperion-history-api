@@ -3,7 +3,7 @@ import {createHash} from 'node:crypto';
 import {ActionHistorySourceJournal, ActionHistorySourceJournalReadError} from '../../src/indexer/history/action-source-journal.js';
 import {actionHistoryImmutableJson, actionHistoryManifestBounds, actionHistoryPlanId,
     fingerprintActionHistoryEffect, type ActionHistoryBlockPlan} from '../../src/indexer/history/action-history-manifest.js';
-import {protocolImmutableJson, protocolMetadataReadBoundMs} from '../../src/indexer/protocol/immutable-bundle-store.js';
+import {protocolImmutableJson} from '../../src/indexer/protocol/immutable-bundle-store.js';
 import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
 
 const hex = (character: string) => character.repeat(64), txA = hex('a'), txB = hex('b'), txC = hex('c');
@@ -236,7 +236,7 @@ describe('durable action source membership journal', () => {
         }
     });
 
-    it('rechecks index ownership, source retention, pipelines and durability at the next write and at the read bound', async () => {
+    it('rechecks index ownership, source retention, pipelines and durability after a successful operation', async () => {
         for (const mutate of [
             (memory: any, index: string) => {memory.mappings.get(index)._meta.hyperion_kind = 'foreign';},
             (memory: any, index: string) => {memory.mappings.get(index)._source = {excludes: ['payload']};},
@@ -245,13 +245,8 @@ describe('durable action source membership journal', () => {
             (memory: any, index: string) => {memory.settings.get(index)['index.number_of_replicas'] = '1';}
         ]) {
             const {memory, journal, id} = await prepared(); await journal.readPlan(id); mutate(memory, journal.index);
-            // A write never relies on an earlier check, so this refuses with no time passing.
+            expect(await failure(journal.readPlan(id))).not.toBeInstanceOf(ActionHistorySourceJournalReadError);
             await expect(journal.seal(id)).rejects.toThrow();
-            const late = await prepared(); await late.journal.readPlan(late.id); mutate(late.memory, late.journal.index);
-            const clock = Object.getOwnPropertyDescriptor(performance, 'now')!, started = performance.now();
-            Object.defineProperty(performance, 'now', {configurable: true, value: () => started + protocolMetadataReadBoundMs + 1});
-            try {expect(await failure(late.journal.readPlan(late.id))).not.toBeInstanceOf(ActionHistorySourceJournalReadError);}
-            finally {Object.defineProperty(performance, 'now', clock);}
         }
     });
 

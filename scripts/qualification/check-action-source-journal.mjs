@@ -676,7 +676,7 @@ try {
 
     await check('a real durability change refuses the next write at once and reads within the fixed bound', async () => {
         const {ImmutableProtocolBundleStore, protocolMetadataReadBoundMs: bound} = await import('../../build/indexer/protocol/immutable-bundle-store.js');
-        const store = new ImmutableProtocolBundleStore(client, chain, 1, 'metadata-bound', 'metadata-bound-v1');
+        const store = new ImmutableProtocolBundleStore(client, chain, 1, 'metadata-bound', 'metadata-bound-v1', undefined, {metadataReadBoundMs: bound});
         const durability = value => client.indices.putSettings({index: store.index, settings: {'translog.durability': value}});
         await store.prepare('first', {value: 1}); assert.deepEqual(await store.read('first'), {value: 1});
         await durability('async');
@@ -703,7 +703,7 @@ try {
         };
         const open = metadataReadBoundMs => new ImmutableProtocolBundleStore(client, chain, 1, 'metadata-bound', 'metadata-bound-v1', undefined,
             {readOnly: true, metadataReadBoundMs});
-        const everyReadP50Ms = await median(open(0)), boundedReadP50Ms = await median(open(undefined));
+        const everyReadP50Ms = await median(open(0)), boundedReadP50Ms = await median(open(bound));
         report.observations.metadataReadBound = {boundMs: bound, refusedAfterMs, readsBeforeRefusal: reads, everyReadP50Ms, boundedReadP50Ms};
         return report.observations.metadataReadBound;
     });

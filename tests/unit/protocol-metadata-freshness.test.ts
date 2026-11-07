@@ -1,4 +1,5 @@
 import {afterEach, describe, expect, it} from 'bun:test';
+import {ProtocolActionConsumer} from '../../src/api/helpers/protocol-abi.js';
 import {ProtocolAbiFrontierStore} from '../../src/indexer/protocol/abi-frontier-store.js';
 import {ImmutableProtocolBundleStore, ProtocolMetadataFreshness, protocolMetadataReadBoundMs as bound} from '../../src/indexer/protocol/immutable-bundle-store.js';
 import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
@@ -11,11 +12,12 @@ afterEach(() => {Object.defineProperty(performance, 'now', original);});
 const checks = (memory: any) => memory.calls.filter((call: any) => call.method === 'getIndex').length;
 function bundle(options: any = {}) {
     const memory = frontierMemoryClient();
-    return {memory, store: new ImmutableProtocolBundleStore(memory.client as any, 'fixture', 0, 'freshness', 'freshness-v1', undefined, options)};
+    return {memory, store: new ImmutableProtocolBundleStore(memory.client as any, 'fixture', 0, 'freshness', 'freshness-v1', undefined,
+        {metadataReadBoundMs: bound, ...options})};
 }
 function frontier(options: any = {}) {
     const memory = frontierMemoryClient();
-    return {memory, store: new ProtocolAbiFrontierStore(memory.client as any, 'fixture', 0, options)};
+    return {memory, store: new ProtocolAbiFrontierStore(memory.client as any, 'fixture', 0, {metadataReadBoundMs: bound, ...options})};
 }
 const unsafe: [string, (memory: any, index: string) => void][] = [
     ['foreign ownership', (memory, index) => {memory.mappings.get(index)._meta.hyperion_kind = 'foreign';}],
@@ -108,7 +110,7 @@ describe('protocol index metadata freshness', () => {
 
     it('measures the bound from before the check started', async () => {
         freeze();
-        const freshness = new ProtocolMetadataFreshness();let ran = 0;
+        const freshness = new ProtocolMetadataFreshness(bound);let ran = 0;
         await freshness.run(false, async () => {ran++; now += bound - 1;});
         await freshness.run(false, async () => {ran++;});
         expect(ran).toBe(1);
@@ -119,7 +121,7 @@ describe('protocol index metadata freshness', () => {
 
     it('lets an overlapping failure outrank an older success', async () => {
         freeze();
-        const freshness = new ProtocolMetadataFreshness();let release!: () => void, ran = 0;
+        const freshness = new ProtocolMetadataFreshness(bound);let release!: () => void, ran = 0;
         const held = freshness.run(false, () => new Promise<void>(resolve => {release = resolve;}));
         await expect(freshness.run(false, async () => {throw new Error('unsafe');})).rejects.toThrow('unsafe');
         release(); await held;
@@ -129,7 +131,7 @@ describe('protocol index metadata freshness', () => {
 
     it('does not let an older success move the window backwards', async () => {
         freeze();
-        const freshness = new ProtocolMetadataFreshness();let release!: () => void, ran = 0;
+        const freshness = new ProtocolMetadataFreshness(bound);let release!: () => void, ran = 0;
         const held = freshness.run(false, () => new Promise<void>(resolve => {release = resolve;}));
         now += 500;
         await freshness.run(true, async () => {});
@@ -164,6 +166,32 @@ describe('protocol index metadata freshness', () => {
         const before = checks(memory);
         await store.read('first'); await store.read('first');
         expect(checks(memory)).toBe(before + 2);
+    });
+
+    it('checks every read unless a store opts in', async () => {
+        freeze();
+        const memory = frontierMemoryClient(), plain = new ImmutableProtocolBundleStore(memory.client as any, 'fixture', 0, 'freshness', 'freshness-v1');
+        await plain.prepare('first', {value: 1});
+        let before = checks(memory);
+        await plain.read('first'); await plain.read('first');
+        expect(checks(memory)).toBe(before + 2);
+        const control = new ProtocolAbiFrontierStore(memory.client as any, 'fixture');
+        await control.compareAndSet(null, {revision: 1});
+        before = checks(memory);
+        await control.readControl(); await control.readControl();
+        expect(checks(memory)).toBe(before + 2);
+    });
+
+    it('gives the API reader the bounded window', async () => {
+        freeze();
+        const memory = frontierMemoryClient();
+        await new ProtocolAbiFrontierStore(memory.client as any, 'fixture').compareAndSet(null, {revision: 1});
+        const host: any = {manager: {chain: 'fixture', conn: {chains: {fixture: {chain_id: '1'.repeat(64)}}}, config: {settings: {}}}, elastic: memory.client};
+        const consumer = new ProtocolActionConsumer(host, {id: '@eosrio/hyperion-wire-plugin', provider: {profileId: 'freshness-fixture'},
+            components: [{id: 'wire-node', runtime: 'node', version: '0.0.0-dev.1', sourceRevision: 'a'.repeat(40), sha256: 'b'.repeat(64)}]} as any);
+        const store = (consumer.reader as any).options.store, before = checks(memory);
+        await store.readControl(); await store.readControl();
+        expect(checks(memory)).toBe(before + 1);
     });
 
     it('carries the bound into read-only frontier views', async () => {

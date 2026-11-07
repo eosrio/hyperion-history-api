@@ -224,8 +224,7 @@ describe('ABI frontier durable storage',()=>{
         await expect(store.prepareState(null,[{account:'alice',state:state('alice')},{account:'alice',state:state('alice')}])).rejects.toThrow('duplicate');
         expect(memory.calls.length).toBe(0);
         const corrupt=await failure(store.prepareAccountState({account:''}));expect(corrupt).not.toBeInstanceOf(ProtocolAbiFrontierLimitError);
-        const memoryForUnsafe=frontierMemoryClient(),unsafe={memory:memoryForUnsafe,store:new ProtocolAbiFrontierStore(memoryForUnsafe.client as any,'fixture',0,{metadataReadBoundMs:0})};
-        await unsafe.store.compareAndSet(null,control());
+        const unsafe=fixture();await unsafe.store.compareAndSet(null,control());
         unsafe.memory.settings.get(unsafe.store.controlIndex)['index.translog.durability']='async';
         expect(await failure(unsafe.store.readControl())).not.toBeInstanceOf(ProtocolAbiFrontierLimitError);
         const unavailable=fixture(),transport=new Error('ABI observation exceeds bounded JSON byte budget');

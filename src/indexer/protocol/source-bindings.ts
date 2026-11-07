@@ -155,7 +155,7 @@ export function protocolPublishedSourceId(chainId:string,blockId:string):string 
 export class ProtocolSourceBindingStore {
     private readonly bundles:ImmutableProtocolBundleStore;
     get index():string{return this.bundles.index;}
-    constructor(client:Client,chain:string,replicas=0,options:{readOnly?:boolean}={}) {
+    constructor(client:Client,chain:string,replicas=0,options:{readOnly?:boolean;metadataReadBoundMs?:number}={}) {
         this.bundles=new ImmutableProtocolBundleStore(client,chain,replicas,'protocol-source-bindings','protocol-source-bindings-v1',undefined,options);
     }
     async prepareContext(input:ProtocolSourceContext):Promise<{id:string}> {
