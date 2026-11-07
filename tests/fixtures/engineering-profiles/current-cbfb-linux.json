@@ -41,8 +41,8 @@
   "routeSources": [
     {
       "path": ".github/workflows/build.yml",
-      "bytes": 25120,
-      "sha256": "82eb09806a3152c0a78982ee533c9c4ba80c085a2651c34beefceb959c44ef7b"
+      "bytes": 25206,
+      "sha256": "7c36fac184c68546e03ad61cb0f7859cae3575b90bc923bd6994b5f6496b2bf3"
     },
     {
       "path": ".github/workflows/indexed-schema-finite.yml",
@@ -81,8 +81,8 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-ci.md",
-      "bytes": 2974,
-      "sha256": "06ee5c8a028d5ae47b0716cb5194212e0bd1dd99795a4bdd7025aa4e57d5d7ab"
+      "bytes": 4788,
+      "sha256": "529fe01d489f6c40c8f82e22817fab276ffddf70fda9a8aac552b9018bd59eba"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-contract.mjs",
@@ -91,13 +91,13 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-contract.test.mjs",
-      "bytes": 10078,
-      "sha256": "e6f9ca2f34fe2f59e9ede42d51d0e56d209a9bc40b9c6e6a6e667a02d34644d2"
+      "bytes": 14521,
+      "sha256": "51aacd72806c88f9734c874d2c025abe6c4d4f039bb9508793d1243037508665"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-routing.json",
-      "bytes": 217148,
-      "sha256": "48116b5e73ef7bb64091b78e70b9ed61bcfbf22ba616f739d98121db09042cc6"
+      "bytes": 371220,
+      "sha256": "ef1c13abfd140e96cde31ecaae2b9908d01ed109b11ea6b7da67b29442e9e54f"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/retained-wire-diagnostics.md",
@@ -151,8 +151,8 @@
     },
     {
       "path": "scripts/qualification/wire-source-snapshot.mjs",
-      "bytes": 6563,
-      "sha256": "abf5946dcdb273f6517ce3b9211b08ef55550c4afd0a1a575405d5ddda26d798"
+      "bytes": 6826,
+      "sha256": "fa68a1cb621a09065e989b2850b1d35536449f4e9e789c9f447ae4284ccccc54"
     },
     {
       "path": "scripts/qualification/wire-source-snapshot.test.mjs",
@@ -180,6 +180,11 @@
       "sha256": "a5c324a32d025ed0ceddeaf772cb06d3dfa673227f93bc41d04e44638457f6ba"
     },
     {
+      "path": "tests/native/projection-manager-lifecycle.test.mjs",
+      "bytes": 3644,
+      "sha256": "1f191aa7485593ee88a34cabc125ecfea674f8bf5a297e199ee26c82d53e8ce1"
+    },
+    {
       "path": "tests/native/retained-workload-progress.mjs",
       "bytes": 12325,
       "sha256": "445beb3218d488772203bb8a6748edc3e0ef3fb8e524f8499d02cac228bd90a5"
@@ -201,13 +206,28 @@
     },
     {
       "path": "tests/unit/current-cbfb-source-admission-native.mjs",
-      "bytes": 17407,
-      "sha256": "4e32141467b3b061b738d59748f7a002e664734ac27c78c976c121ca956f1ad8"
+      "bytes": 17438,
+      "sha256": "422f23423ec14e29a806f086efe5a1f579d2fde6ca29e06c48ef6ff67b7d7719"
     },
     {
       "path": "tests/unit/portable-state-source-fixture.mjs",
       "bytes": 12760,
       "sha256": "aa41f953c45fc1c37c9e4516f4a52c8200b3e7488d1aa8316947764ac31c0f7d"
+    },
+    {
+      "path": "tests/unit/projection-controller-startup.mjs",
+      "bytes": 38063,
+      "sha256": "293d5e7388e1032788a044a38cd50651ab884f046f3af1d97a7752a43efb8f82"
+    },
+    {
+      "path": "tests/unit/projection-manager-fixture.mjs",
+      "bytes": 753,
+      "sha256": "23014296401a768164af6acc522f2ec343ce3001af842ccd188f38feeaeb6bf0"
+    },
+    {
+      "path": "tests/unit/projection-startup-fencing.mjs",
+      "bytes": 15245,
+      "sha256": "7b3702450b2b24f2297dcf1332503262a6233ef7e593eee21037a59916f6102c"
     },
     {
       "path": "tests/unit/protocol-abi-history-native.mjs",
@@ -232,7 +252,7 @@
     {
       "path": "tests/unit/stateful-engineering-source-admission.test.ts",
       "bytes": 1172,
-      "sha256": "3dc529ddcd4e0b339ca5aad4f264c5d3f5f3526d714f939f1aff935b9e133d04"
+      "sha256": "a7e0bf22aca3acace1d5a3072c31a13e4b6a63a84505300361349ad0ec46cd45"
     },
     {
       "path": "tests/unit/stateful-host-fixture.mjs",
@@ -243,6 +263,11 @@
       "path": "tests/unit/wire-managed-state-v2-native.mjs",
       "bytes": 8370,
       "sha256": "f5d21829fcb015ad5ce6f76d5d24fb295a1841503a804d5aa6a30e1e1bc9b9e0"
+    },
+    {
+      "path": "tests/unit/worker-attempt-quiescence-worker.mjs",
+      "bytes": 95410,
+      "sha256": "6f7ab515a361b4f2fcd5f44f16293ba847853e9e7f7e29bd40af4b971194682e"
     }
   ],
   "acceptance": {

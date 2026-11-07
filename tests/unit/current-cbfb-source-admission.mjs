@@ -11,7 +11,7 @@ import {CURRENT_CBFB_PROFILE,freeze,sha} from '../../scripts/qualification/index
 export const STATEFUL_CURRENT_CBFB_SOURCE_PROFILE=CURRENT_CBFB_PROFILE;
 const root=fileURLToPath(new URL('../../',import.meta.url));
 const expectedRaw=readFileSync(new URL('../fixtures/engineering-profiles/current-cbfb-linux.json',import.meta.url));
-assert.equal(sha(expectedRaw),'b991a4839ec355f56a08fe5dacb463e20a12d925d2e71f51a0205a99678db56f','Exact current CBFB manifest required');
+assert.equal(sha(expectedRaw),'4a22e7cb887ff8ccf2c048905c3cb6b37d4b1202f42248dc10ede528d5116fe3','Exact current CBFB manifest required');
 export const CURRENT_CBFB_MANIFEST=freeze(JSON.parse(expectedRaw));
 const expected=CURRENT_CBFB_MANIFEST,exact=(value,pin,label)=>assert.deepEqual(value,pin,'Unqualified current CBFB '+label);
 const read=path=>{const stat=lstatSync(path);assert(stat.isFile()&&!stat.isSymbolicLink()&&stat.size<=4*1024*1024);const bytes=readFileSync(path);assert.equal(bytes.length,stat.size);return bytes;};

@@ -48,8 +48,8 @@
   "sourceFiles": [
     {
       "path": ".github/workflows/build.yml",
-      "bytes": 25120,
-      "sha256": "82eb09806a3152c0a78982ee533c9c4ba80c085a2651c34beefceb959c44ef7b"
+      "bytes": 25206,
+      "sha256": "7c36fac184c68546e03ad61cb0f7859cae3575b90bc923bd6994b5f6496b2bf3"
     },
     {
       "path": ".github/workflows/indexed-schema-finite.yml",
@@ -253,8 +253,8 @@
     },
     {
       "path": "scripts/check-indexed-cbfb-package.mjs",
-      "bytes": 5492,
-      "sha256": "56e51fea7c5c61c84b018b66016353ceee9c57cbde4c7829cbab8a4bf0447e7d"
+      "bytes": 5529,
+      "sha256": "5763c14d1969af236f2438c7c6fd004bb76fbb3b89df44a991ca3722117ffa28"
     },
     {
       "path": "scripts/qualification/action-source-admission-fault.mjs",
@@ -338,13 +338,13 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/cbfb-native-offline.test.mjs",
-      "bytes": 5032,
-      "sha256": "d7635ee576c3a778420aa9842e51bf40f96523868e1047a67b21f94d545a7157"
+      "bytes": 7139,
+      "sha256": "2ee52f412570684ac821b25ff606aa10e1f5bd71490d98662f7601ec36babf04"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/cbfb-native-runner.mjs",
-      "bytes": 42273,
-      "sha256": "0ccc910b40443d44756acfb44f2f120db02f28ea928743237d3962ab4e844051"
+      "bytes": 42383,
+      "sha256": "29181a184f240453a5acfb6df46f81f55f283a14daebd0be887c3565fed9d3c0"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/cbfb-native-trace.mjs",
@@ -358,8 +358,8 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-ci.md",
-      "bytes": 2974,
-      "sha256": "06ee5c8a028d5ae47b0716cb5194212e0bd1dd99795a4bdd7025aa4e57d5d7ab"
+      "bytes": 4788,
+      "sha256": "529fe01d489f6c40c8f82e22817fab276ffddf70fda9a8aac552b9018bd59eba"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-contract.mjs",
@@ -368,13 +368,13 @@
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-contract.test.mjs",
-      "bytes": 10078,
-      "sha256": "e6f9ca2f34fe2f59e9ede42d51d0e56d209a9bc40b9c6e6a6e667a02d34644d2"
+      "bytes": 14521,
+      "sha256": "51aacd72806c88f9734c874d2c025abe6c4d4f039bb9508793d1243037508665"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/current-cbfb-routing.json",
-      "bytes": 217148,
-      "sha256": "48116b5e73ef7bb64091b78e70b9ed61bcfbf22ba616f739d98121db09042cc6"
+      "bytes": 371220,
+      "sha256": "ef1c13abfd140e96cde31ecaae2b9908d01ed109b11ea6b7da67b29442e9e54f"
     },
     {
       "path": "scripts/qualification/indexed-schema-mongodb/fixtures/9d8-explain/PROVENANCE.json",
@@ -567,6 +567,11 @@
       "sha256": "2fa4a512f7a7d1f2539b966fead5063f6e34ec014feb4a8ef805b09bc13bc367"
     },
     {
+      "path": "scripts/qualification/portable-state-projection-diagnostics.mjs",
+      "bytes": 8275,
+      "sha256": "0ed299b950bb07a568c37421549ea6b82d87900d6cbf33690e77f5bc5db1962a"
+    },
+    {
       "path": "scripts/qualification/projection-fixture.mjs",
       "bytes": 13136,
       "sha256": "54304500d482f566e71c3da6e0ec9336222b9774721aa1588074b26c1b798947"
@@ -613,8 +618,8 @@
     },
     {
       "path": "scripts/qualification/wire-source-snapshot.mjs",
-      "bytes": 6563,
-      "sha256": "abf5946dcdb273f6517ce3b9211b08ef55550c4afd0a1a575405d5ddda26d798"
+      "bytes": 6826,
+      "sha256": "fa68a1cb621a09065e989b2850b1d35536449f4e9e789c9f447ae4284ccccc54"
     },
     {
       "path": "scripts/qualification/wire-source-snapshot.test.mjs",
@@ -633,13 +638,18 @@
     },
     {
       "path": "tests/fixtures/engineering-profiles/current-cbfb-linux.json",
-      "bytes": 9915,
-      "sha256": "b991a4839ec355f56a08fe5dacb463e20a12d925d2e71f51a0205a99678db56f"
+      "bytes": 10815,
+      "sha256": "4a22e7cb887ff8ccf2c048905c3cb6b37d4b1202f42248dc10ede528d5116fe3"
     },
     {
       "path": "tests/fixtures/engineering-profiles/current-native45-linux.json",
       "bytes": 6575,
       "sha256": "672f0d35b9cdf68629155cd8002a832361c579a5c11d80d3fe81b51e6e6ca9ad"
+    },
+    {
+      "path": "tests/fixtures/engineering-profiles/failed-native-membership-41884653731.json",
+      "bytes": 65480,
+      "sha256": "fd63b5c787fde07bd99ae4ad121887044f1735d2689ecc5f51d85c88749358ba"
     },
     {
       "path": "tests/fixtures/engineering-profiles/native-cleanup-linux.json",
@@ -682,6 +692,11 @@
       "sha256": "a5c324a32d025ed0ceddeaf772cb06d3dfa673227f93bc41d04e44638457f6ba"
     },
     {
+      "path": "tests/native/projection-manager-lifecycle.test.mjs",
+      "bytes": 3644,
+      "sha256": "1f191aa7485593ee88a34cabc125ecfea674f8bf5a297e199ee26c82d53e8ce1"
+    },
+    {
       "path": "tests/native/retained-workload-progress.mjs",
       "bytes": 12325,
       "sha256": "445beb3218d488772203bb8a6748edc3e0ef3fb8e524f8499d02cac228bd90a5"
@@ -703,13 +718,13 @@
     },
     {
       "path": "tests/unit/current-cbfb-source-admission-native.mjs",
-      "bytes": 17407,
-      "sha256": "4e32141467b3b061b738d59748f7a002e664734ac27c78c976c121ca956f1ad8"
+      "bytes": 17438,
+      "sha256": "422f23423ec14e29a806f086efe5a1f579d2fde6ca29e06c48ef6ff67b7d7719"
     },
     {
       "path": "tests/unit/current-cbfb-source-admission.mjs",
       "bytes": 7971,
-      "sha256": "f97350e2a4223b36ed85068bb1dcf79cef668d7c251e1be43ddbd79c7491ba0e"
+      "sha256": "920397e2905d8ba1a1b4d974d0c25b243e7a82526f3ea84f177b84a3efa46823"
     },
     {
       "path": "tests/unit/current-stateful-engineering-source-admission.mjs",
@@ -735,6 +750,21 @@
       "path": "tests/unit/portable-state-source-fixture.mjs",
       "bytes": 12760,
       "sha256": "aa41f953c45fc1c37c9e4516f4a52c8200b3e7488d1aa8316947764ac31c0f7d"
+    },
+    {
+      "path": "tests/unit/projection-controller-startup.mjs",
+      "bytes": 38063,
+      "sha256": "293d5e7388e1032788a044a38cd50651ab884f046f3af1d97a7752a43efb8f82"
+    },
+    {
+      "path": "tests/unit/projection-manager-fixture.mjs",
+      "bytes": 753,
+      "sha256": "23014296401a768164af6acc522f2ec343ce3001af842ccd188f38feeaeb6bf0"
+    },
+    {
+      "path": "tests/unit/projection-startup-fencing.mjs",
+      "bytes": 15245,
+      "sha256": "7b3702450b2b24f2297dcf1332503262a6233ef7e593eee21037a59916f6102c"
     },
     {
       "path": "tests/unit/protocol-abi-history-native.mjs",
@@ -769,7 +799,7 @@
     {
       "path": "tests/unit/stateful-engineering-source-admission.test.ts",
       "bytes": 1172,
-      "sha256": "3dc529ddcd4e0b339ca5aad4f264c5d3f5f3526d714f939f1aff935b9e133d04"
+      "sha256": "a7e0bf22aca3acace1d5a3072c31a13e4b6a63a84505300361349ad0ec46cd45"
     },
     {
       "path": "tests/unit/stateful-host-fixture.mjs",
@@ -780,6 +810,11 @@
       "path": "tests/unit/wire-managed-state-v2-native.mjs",
       "bytes": 8370,
       "sha256": "f5d21829fcb015ad5ce6f76d5d24fb295a1841503a804d5aa6a30e1e1bc9b9e0"
+    },
+    {
+      "path": "tests/unit/worker-attempt-quiescence-worker.mjs",
+      "bytes": 95410,
+      "sha256": "6f7ab515a361b4f2fcd5f44f16293ba847853e9e7f7e29bd40af4b971194682e"
     }
   ],
   "dependencies": {
@@ -5339,12 +5374,12 @@
         "scripts/qualification/indexed-schema-mongodb/native-profile-v2.json",
         "scripts/qualification/indexed-schema-mongodb/cbfb-native-profile.json"
       ],
-      "manifestRouteCount": 41
+      "manifestRouteCount": 46
     },
     "observation": {
-      "files": 106,
-      "edges": 338,
-      "sha256": "d39f7cca247d99c8ad1d62cdbb62389eb1915fd5f0c8c22773e8bd220c4f6352"
+      "files": 113,
+      "edges": 374,
+      "sha256": "486ff5980efeba93063ccd1c0383fdfc1e93111eb9c7c172b77b57c4ce822d80"
     }
   },
   "provenance": {

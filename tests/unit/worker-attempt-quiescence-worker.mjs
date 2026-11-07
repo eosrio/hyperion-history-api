@@ -1,6 +1,7 @@
 /** Private attempt lifecycle qualification through emitted classes and controlled I/O.
  * These cases grant no source credit and do not qualify the complete Wire/Mongo path. */
 import assert from 'node:assert/strict';
+import {createProjectionManagerFixture} from './projection-manager-fixture.mjs';
 import {setImmediate as turn} from 'node:timers/promises';
 import {createHash} from 'node:crypto';
 import {EventEmitter} from 'node:events';
@@ -938,7 +939,7 @@ async function projectionInitializationFence() {
     const controlledExit = new Error('controlled worker process.exit observation');
     Object.assign(worker, {chainId, conf, protocolId: 'constructed-initialization-only', protocolReady: readiness.promise,
         protocol: {profileId: 'constructed-initialization-only', verifyNativeGenesis() {}},
-        manager: {conn: {mongodb: {}}, mongodbClient: {async connect() {connects++; throw new Error('unexpected post-fence connect dispatch');}}},
+        manager: createProjectionManagerFixture({async connect() {connects++; throw new Error('unexpected post-fence connect dispatch');}}),
         profiler: {stopReporting() {reportsStopped++;}},
         runProjectionAttempt(kind, metadata, operation) {
             return HyperionWorker.prototype.runProjectionAttempt.call(this, kind, metadata, async () => {

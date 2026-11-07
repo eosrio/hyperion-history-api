@@ -142,9 +142,9 @@ export async function run(options){
    },
    'bounded-int64-membership':async()=>{
     const where=[{field:'contract',op:'eq',value:'atomicassets'},{field:'created',op:'in',values:['9007199254740995','9007199254740993','9007199254740993']}];
-    const result=await direct(page({where,limit:8}));assert.deepEqual(result.result.rows.map(row=>row.key),['s:d','s:a']);verify(result);
-    const exact=await direct(count({where}));assert.equal(exact.result.value,'2');verify(exact);
-    const empty=await direct(count({where:[{field:'contract',op:'eq',value:'atomicassets'},{field:'created',op:'in',values:[]}]}));assert.equal(empty.result.value,'0');verify(empty);
+    await phaseWork('page',async()=>{const result=await direct(page({where,limit:8}));assert.deepEqual(result.result.rows.map(row=>row.key),['s:d','s:a']);verify(result);});
+    await phaseWork('count',async()=>{const exact=await direct(count({where}));assert.equal(exact.result.value,'2');verify(exact);});
+    await phaseWork('empty',async()=>{const empty=await direct(count({where:[{field:'contract',op:'eq',value:'atomicassets'},{field:'created',op:'in',values:[]}]}));assert.equal(empty.result.value,'0');verify(empty);});
     return {bsonLongMembership:true,duplicateSet:true,emptySet:true,rootSdk:'dc20',indexedCaptureSdk:'cbfb',productionOffers:'empty'};
    },
    'sealed-explain':async()=>{

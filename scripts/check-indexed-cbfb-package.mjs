@@ -8,7 +8,7 @@ import {fileURLToPath} from 'node:url';
 const root=fileURLToPath(new URL('../',import.meta.url)),native=join(root,'packages/backend-mongodb'),name='@eosrio/hyperion-backend-mongodb';
 const npmCli=process.env.npm_execpath;assert(npmCli,'Run this package check through npm');
 await mkdir(join(root,'out'),{recursive:true});const evidence=await mkdtemp(join(root,'out','indexed-packed-')),consumer=join(evidence,'consumer');await mkdir(consumer);
-const commands=[],sha=bytes=>createHash('sha256').update(bytes).digest('hex'),env={...process.env,PATH:dirname(process.execPath)+delimiter+process.env.PATH};delete env.NODE_OPTIONS;delete env.NODE_PATH;
+const commands=[],sha=bytes=>createHash('sha256').update(bytes).digest('hex'),env={...process.env,HYPERION_INDEXED_TEST_PROFILE:'cbfb',PATH:dirname(process.execPath)+delimiter+process.env.PATH};delete env.NODE_OPTIONS;delete env.NODE_PATH;
 async function run(label,args,cwd){
  const startedAt=new Date().toISOString(),answer=await new Promise((resolve,reject)=>{const child=spawn(process.execPath,args,{cwd,env,windowsHide:true,stdio:['ignore','pipe','pipe']});
  let stdout='',stderr='';child.stdout.setEncoding('utf8');child.stderr.setEncoding('utf8');child.stdout.on('data',x=>stdout+=x);child.stderr.on('data',x=>stderr+=x);

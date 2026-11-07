@@ -2,8 +2,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {posix} from 'node:path';
+import {posix,matchesGlob} from 'node:path';
 import {runInNewContext} from 'node:vm';
+import {fileURLToPath} from 'node:url';
 import {assertRetainedProvenance} from '../../../tests/native/retained-workload-progress.mjs';
 import {CURRENT_CBFB_PROFILE,HISTORICAL_SDK49_SOURCE,ROUTING,restoreSdk49Routing,sha} from './current-cbfb-contract.mjs';
 import {DESCRIPTOR,assertCbfbAssembly} from './cbfb-assembly.mjs';
@@ -11,6 +12,57 @@ import {CURRENT_CBFB_MANIFEST,observeCurrentCbfbSourceOptions,assertCurrentCbfbO
 import {STATEFUL_SDK49_SOURCE_PROFILE,observeSdk49SourceOptions} from '../../../tests/unit/sdk49-indexed-source-admission.mjs';
 import {admitNativeApiSourceOptions} from '../../../tests/unit/stateful-engineering-source-admission.mjs';
 const root=new URL('../../../',import.meta.url),raw=path=>readFileSync(new URL(path,root),'utf8');
+
+test('actual Bun wrapper accepts the successor complete 54-check result without changing child or test budgets',async()=>{
+ const path='tests/unit/stateful-engineering-source-admission.test.ts',source=raw(path).replace(/^import [^\n]+\n/gm,'')
+  .replaceAll('import.meta.url',JSON.stringify(new URL(path,root).href));let completion;
+ const report={cases:54,sealedEngineeringOption:true,default716Preserved:true,artifactAndSourceSetChecked:true,
+  unknownRevisionPackageTreeArtifactRefused:true,defaultOverrideRefusedBeforeEffects:true,services:false,defaultDistributionQualified:false,launchQualified:false};
+ runInNewContext(source,{URL,fileURLToPath,Response,process:{env:{}},
+  test:(_name,run,timeout)=>{assert.equal(timeout,65000);completion=run();},
+  Bun:{spawn:(argv,options)=>{assert(argv[1].endsWith('current-cbfb-source-admission-native.mjs'));assert.equal(options.timeout,60000);
+   return{exited:Promise.resolve(0),stdout:Buffer.from(JSON.stringify(report)),stderr:Buffer.alloc(0)};}},
+  expect:value=>({toEqual:expected=>assert.deepEqual(value,expected),toBe:expected=>assert.equal(value,expected)})
+ });
+ assert(completion);await completion;
+});
+
+test('standalone CBFB packed consumer explicitly selects its profile for every child without external environment help',()=>{
+ const source=raw('scripts/check-indexed-cbfb-package.mjs'),start=source.indexOf('env={'),end=source.indexOf('\nasync function run(',start);
+ assert(start>0&&end>start);
+ for(const profile of [undefined,'sdk49']){
+  const environment={PATH:'/modeled/bin',NODE_OPTIONS:'modeled-old-options',NODE_PATH:'modeled-old-path',...(profile?{HYPERION_INDEXED_TEST_PROFILE:profile}:{})};
+  const result=runInNewContext('const '+source.slice(start,end)+'\nenv;',{process:{env:environment,execPath:'/modeled/node'},dirname:posix.dirname,delimiter:':'});
+  assert.equal(result.HYPERION_INDEXED_TEST_PROFILE,'cbfb');assert.equal(result.NODE_OPTIONS,undefined);assert.equal(result.NODE_PATH,undefined);
+  assert.equal(environment.HYPERION_INDEXED_TEST_PROFILE,profile,'The parent environment is unchanged');
+ }
+});
+
+test('PR430 actual target and changed paths reach all required current workflow jobs',()=>{
+ // Confirmed against PR430 metadata/file list at head fb891e04, base e19fc9af.
+ // GitHub evaluates the complete PR diff; these are actual changed-file witnesses.
+ const target='test/indexed-native-mongodb-415',changed=['.github/workflows/build.yml',
+  '.github/workflows/indexed-schema-finite.yml','.github/workflows/indexed-schema-native.yml',
+  'packages/backend-mongodb/src/stateful-indexed-model-v1.ts'];
+ for(const [path,jobs] of [
+  ['.github/workflows/build.yml',['build','projection-mongodb','operator-lists-mongodb','action-sequences-design','action-source-journal','historical-sdk49-admission','es955-fixture']],
+  ['.github/workflows/indexed-schema-finite.yml',['finite-cbfb']],
+  ['.github/workflows/indexed-schema-native.yml',['indexed-native']]]){
+  const workflow=raw(path),start=workflow.indexOf('  pull_request:\n');assert(start>0,path+' must handle pull_request');
+  const filter=workflow.slice(start+'  pull_request:\n'.length).split(/\n(?=  [A-Za-z_-]+:|[A-Za-z_-]+:)/)[0],
+   branchMatch=/^    branches: (\[[^\n]+\])/m.exec(filter),branches=branchMatch?JSON.parse(branchMatch[1]):undefined,
+   patterns=[...filter.matchAll(/^      - '([^']+)'$/gm)].map(match=>match[1]);
+  assert(!/^    (?:branches-ignore|paths-ignore):/m.test(filter),'Review explicit exclusions before extending trigger controls');
+  if(/^    branches:/m.test(filter))assert(branchMatch,'Unsupported branch filter layout');
+  if(/^    paths:/m.test(filter))assert(patterns.length>0,'Unsupported path filter layout');
+  assert(patterns.every(pattern=>!pattern.startsWith('!')),'Review path exclusions explicitly');
+  assert(!branches||branches.includes(target),path+' must admit the actual PR430 base');
+  assert(patterns.length===0||changed.some(file=>patterns.some(pattern=>matchesGlob(file,pattern))),path+' must admit actual changed paths');
+  for(const job of jobs)assert(workflow.includes('\n  '+job+':\n'),path+' missing required job '+job);
+  if(path.endsWith('/build.yml')){assert.equal(branches.filter(branch=>branch===target).length,1);assert(branches.includes('feat/stateful-indexed-schema-415'));}
+  else assert.equal(branches,undefined,'Preserve the existing unrestricted base routing for '+path);
+ }
+});
 
 for(const version of ['24.22.1','26.4.0'])test('actual CI receipt producers satisfy the unchanged retained consumer on Node '+version,()=>{
  // Model receipt inputs only. Never generate a source-admission receipt, invoke
@@ -56,7 +108,7 @@ for(const version of ['24.22.1','26.4.0'])test('actual CI receipt producers sati
 
 test('all current routing changes reverse to exact baseline workloads and deadlines',()=>{
  assert.equal(ROUTING.base,'2f636372bd8fe82c86ebd46179cc96fbe9d81241');assert.equal(ROUTING.historicalSdk49,HISTORICAL_SDK49_SOURCE);
- assert.equal(ROUTING.files.length,15);
+ assert.equal(ROUTING.files.length,18);
  for(const row of ROUTING.files){const original=restoreSdk49Routing(row.path,raw(row.path));assert.equal(sha(original),row.historicalSha256);assert.throws(()=>restoreSdk49Routing(row.path,raw(row.path)+'\n'),/routing source differs/);}
  for(const path of ['tests/unit/wire-managed-state-v2-native.mjs','tests/unit/protocol-abi-history-native.mjs']){
   const source=raw(path);assert(source.includes('STATEFUL_CURRENT_CBFB_SOURCE_PROFILE'));assert(!source.includes('STATEFUL_SDK49_SOURCE_PROFILE'));
@@ -101,5 +153,5 @@ test('unknown/default/accessor options cannot become an admission or select expe
   {engineeringSourceProfile:CURRENT_CBFB_PROFILE,nativeMarker:'true'},{get engineeringSourceProfile(){calls++;return CURRENT_CBFB_PROFILE;}},
   {engineeringSourceProfile:CURRENT_CBFB_PROFILE,expectedSha256:'0'.repeat(64)}])assert.throws(()=>assertCurrentCbfbOptions(input));
  assert.equal(calls,0);assert.deepEqual(assertCurrentCbfbOptions({engineeringSourceProfile:CURRENT_CBFB_PROFILE,nativeMarker:false}),{nativeMarker:false});
- assert.equal(CURRENT_CBFB_MANIFEST.routeSources.length,41);
+ assert.equal(CURRENT_CBFB_MANIFEST.routeSources.length,46);
 });
