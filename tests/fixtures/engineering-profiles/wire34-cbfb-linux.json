@@ -4132,8 +4132,8 @@
       },
       {
         "path": "tests/native/live-reader-startup-checkpoint.test.mjs",
-        "bytes": 18168,
-        "sha256": "a70c51d43cfa0712d8351a45ec039aff6fe9bca0a35f1b998c1d3832b6d8894c"
+        "bytes": 18185,
+        "sha256": "f29ff0f4f9ba0e8eb992331523e48d8313e55ec8645412435b8864404efef49f"
       },
       {
         "path": "tests/native/native-stream-credits.test.mjs",
@@ -5966,7 +5966,7 @@
         "sha256": "1945027163c553cd08421dd1f8caa08fab025c44279883ed9e6c3dec0e8c6408"
       }
     ],
-    "totalBytes": 16486763,
+    "totalBytes": 16486780,
     "trackedPaths": [
       ".bun-version",
       ".gitattributes",
