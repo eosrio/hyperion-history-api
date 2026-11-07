@@ -80,6 +80,9 @@ const gap=(code:string,message:string,fromBlock:number|null):Gap=>({code,message
 const dataUnavailable=(error:unknown)=>error instanceof ProtocolAbiFrontierReadError
     ||error instanceof ImmutableProtocolBundleReadError||error instanceof InvalidPreparedObservation;
 
+type HistoricalWalk={ownerId:string;generation:string;anchor:Head;nextCommitId:string|null;child:Commit|null;floor?:Head;
+    work?:{commitId:string;commit?:Commit;certificate?:HistoricalCertificate;preparedId?:string;verified?:boolean}};
+
 /** One runtime owner, immutable prepared inputs, and a CAS-published canonical ABI cursor.
  * Source topology and per-account/input knowledge are separate: incomplete input advances no ABI coverage. */
 export class ProtocolAbiCoordinator {
@@ -95,8 +98,12 @@ export class ProtocolAbiCoordinator {
     private openingSession?:string;
     private certifiedId?:string;
     private readonly historicalCertificates?:ProtocolAbiHistoryOptions;
-    private historicalWalk?:{ownerId:string;generation:string;anchor:Head;nextCommitId:string|null;child:Commit|null;floor?:Head;
-        work?:{commitId:string;commit?:Commit;certificate?:HistoricalCertificate;preparedId?:string;verified?:boolean}};
+    private historicalWalk?:HistoricalWalk;
+    /** Pending-work mode only: the segment above the walk's anchor, so fresh heads do not wait for old ancestry. */
+    private historicalFresh?:HistoricalWalk;
+    /** Highest head whose fresh segments are contiguous with the walk's anchor. Scheduling only, never authority. */
+    private historicalFreshCovered?:Head;
+    private historicalFreshTurn=false;
     /** Scheduling progress only. Membership is always read from the current activated immutable root. */
     private historicalCompleted?:{ownerId:string;generation:string;head:Head};
     private historicalActivation?:HistoricalActivation;
@@ -501,24 +508,27 @@ export class ProtocolAbiCoordinator {
             this.assertEpoch(epoch);this.certifiedId=certificateId;
         }
         // Queue only after the ordinary settled certificate. All locator/map I/O is lower priority.
-        // During catch-up reserve the bounded queue for the in-progress verified walk.
-        // Newer heads are recovered by the next walk; dropping a locator grants no membership.
-        const walking=this.historicalCertificates?.allowPendingWork&&this.historicalWalk?.nextCommitId
-            &&this.historicalWalk.ownerId===control.ownerId&&this.historicalWalk.generation===control.generation;
+        // In pending-work mode the queue belongs to the verified walks, which reach every head through
+        // its commit chain, so a head never competes for a slot and nothing needs retaining here.
+        const walked=this.historicalCertificates?.allowPendingWork;
+        if(walked)this.resetHistoricalQueue(certificate);
         const disk=this.options.diskAbiHistory&&await this.preparedDiskBaseline();this.assertEpoch(epoch);
         const covered=disk&&control.head&&control.head.blockNum<=disk.value.source.blockNum;
-        if(this.historicalCertificates&&!covered&&!walking&&this.historicalPublishedHead!==certificateId
+        if(this.historicalCertificates&&!covered&&!walked&&this.historicalPublishedHead!==certificateId
             &&control.phase==='following'&&control.gap===null&&control.head?.coverageStart===1)
             if(!this.queueHistorical(certificate)&&!this.historicalCertificates.allowPendingWork)this.historicalWalk=undefined;
         if(this.historicalCertificates&&control.historical&&!this.historicalActivation?.published)try {await this.certifyHistoricalRoot(control,epoch);}
         catch(error) {if(error instanceof ProtocolAbiCoordinatorStaleError)throw error;if(!(error instanceof HistoricalWorkYield))this.noteHistoricalError(error);}
     }
-    private queueHistorical(certificate:ReturnType<typeof protocolAbiCertificateForControl>):boolean {
+    private resetHistoricalQueue(certificate:Pick<ReturnType<typeof protocolAbiCertificateForControl>,'ownerId'|'generation'>):void {
         const generation=json([certificate.ownerId,certificate.generation]);
         if(this.historicalQueueGeneration!==generation) {
             this.historicalQueue.clear();this.historicalQueueGeneration=generation;this.historicalAuthorityId=undefined;this.historicalPublishedHead=undefined;
             this.historicalActivation=undefined;
         }
+    }
+    private queueHistorical(certificate:ReturnType<typeof protocolAbiCertificateForControl>):boolean {
+        this.resetHistoricalQueue(certificate);
         const identity=historicalAddressIdentity(certificate),key=historicalAddressId(identity);
         if(this.historicalQueue.has(key))return true;
         const address:ProtocolAbiHistoricalAddress={schemaVersion:1,kind:'historical-abi-certificate-address',identity,
@@ -676,20 +686,24 @@ export class ProtocolAbiCoordinator {
                 &&control.head.blockNum>walk.anchor.blockNum) {
             walk={ownerId:control.ownerId,generation:control.generation,anchor:copy(control.head),nextCommitId:control.head.commitId,child:null,
                 ...(budget.allowPendingWork&&sameCompleted?{floor:copy(sameCompleted.head)}:{})};
-            this.historicalWalk=walk;
+            this.historicalWalk=walk;this.clearHistoricalFresh();
         }
-        const anchor={...control,head:walk.anchor};
-        const checkpoint=async()=>{
-            if(performance.now()>=deadline)throw new HistoricalWorkYield();
-            const current=await this.assertHistoricalAuthority(anchor,epoch);
-            if(current.pending.length&&!budget.allowPendingWork||performance.now()>=deadline)throw new HistoricalWorkYield();return current;
-        };
-        for(let count=0;count<budget.maxCommitsPerDrain&&walk.nextCommitId;count++) {
+        if(budget.allowPendingWork)this.startHistoricalFresh(walk,control);
+        const oldest=walk;
+        for(let count=0;count<budget.maxCommitsPerDrain;count++) {
+            const selected=this.historicalCursor(oldest);if(!selected)break;
+            walk=selected;
+            const anchor={...control,head:walk.anchor};
+            const checkpoint=async()=>{
+                if(performance.now()>=deadline)throw new HistoricalWorkYield();
+                const current=await this.assertHistoricalAuthority(anchor,epoch);
+                if(current.pending.length&&!budget.allowPendingWork||performance.now()>=deadline)throw new HistoricalWorkYield();return current;
+            };
             // Durable pending blocks permit background progress; a live RPC waiting on
             // this serial lane gets priority after one completed historical work unit.
             // Break so the existing bounded activation can preserve that partial work.
             if(budget.allowPendingWork&&count>0&&this.queuedAdmissions)break;
-            const work=walk.work??={commitId:walk.nextCommitId};
+            const work=walk.work??={commitId:walk.nextCommitId!};
             if(!work.commit) {await checkpoint();work.commit=await this.readCommit(work.commitId);await this.assertHistoricalAuthority(anchor,epoch);}
             const {commitId,commit}=work;
             const size=Buffer.byteLength(json(commit));
@@ -705,12 +719,12 @@ export class ProtocolAbiCoordinator {
             if(commit.status!=='complete'||commit.coverageStart!==1)throw new Error('Historical ABI ancestry lacks complete genesis coverage');
             if(walk.floor&&commit.source.blockNum===walk.floor.blockNum){
                 if(json(this.head(commit,commitId))!==json(walk.floor))throw new Error('Historical completed anchor differs from verified ancestry');
-                walk.child=commit;walk.nextCommitId=null;walk.work=undefined;break;
+                walk.child=commit;walk.nextCommitId=null;walk.work=undefined;continue;
             }
             if(commit.kind==='disk-abi-baseline'){
                 // Covered prefix queries use the immutable catalog; the live address
                 // walk stops at its validated boundary instead of inventing prefix commits.
-                walk.child=commit;walk.nextCommitId=null;walk.work=undefined;break;
+                walk.child=commit;walk.nextCommitId=null;walk.work=undefined;continue;
             }
             if(commit.source.blockNum===1&&(commit.previousCommitId!==null||commit.source.previousBlockId!==null))
                 throw new Error('Historical ABI genesis linkage differs');
@@ -726,17 +740,42 @@ export class ProtocolAbiCoordinator {
                 work.verified=true;await this.assertHistoricalAuthority(anchor,epoch);
             }
             await checkpoint();
-            if(!this.queueHistorical(work.certificate!)) {await this.activateHistorical(anchor,epoch,deadline);return;}
+            if(!this.queueHistorical(work.certificate!)) {await this.activateHistorical({...control,head:oldest.anchor},epoch,deadline);return;}
             this.historicalError=undefined;
-            walk.child=commit;walk.nextCommitId=commit.previousCommitId;walk.work=undefined;
+            walk.child=commit;walk.work=undefined;
+            // Commit IDs are content hashes, so this link proves the floor without spending a slot reading it.
+            walk.nextCommitId=walk.floor&&commit.previousCommitId===walk.floor.commitId?null:commit.previousCommitId;
         }
+        const anchor={...control,head:oldest.anchor};
         await this.activateHistorical(anchor,epoch,deadline);
-        await this.completeHistoricalWalk(walk,anchor,epoch);
+        await this.completeHistoricalWalk(oldest,anchor,epoch);
+    }
+    private clearHistoricalFresh():void {this.historicalFresh=undefined;this.historicalFreshCovered=undefined;}
+    private startHistoricalFresh(walk:HistoricalWalk,control:ProtocolAbiCoordinatorControl):void {
+        if(!walk.nextCommitId)return;
+        if(this.historicalFresh?.nextCommitId===null){this.historicalFreshCovered=this.historicalFresh.anchor;this.historicalFresh=undefined;}
+        const floor=this.historicalFreshCovered??walk.anchor;
+        if(!this.historicalFresh&&control.head!.blockNum>floor.blockNum)
+            this.historicalFresh={ownerId:walk.ownerId,generation:walk.generation,anchor:copy(control.head!),nextCommitId:control.head!.commitId,child:null,floor:copy(floor)};
+    }
+    /** Alternate so neither end can starve the other, including across drains at a one-commit budget. */
+    private historicalCursor(oldest:HistoricalWalk):HistoricalWalk|undefined {
+        const old=oldest.nextCommitId?oldest:undefined,fresh=this.historicalFresh?.nextCommitId?this.historicalFresh:undefined;
+        if(!old||!fresh)return old??fresh;
+        this.historicalFreshTurn=!this.historicalFreshTurn;
+        return this.historicalFreshTurn?fresh:old;
     }
     private async completeHistoricalWalk(walk:NonNullable<ProtocolAbiCoordinator['historicalWalk']>,anchor:ProtocolAbiCoordinatorControl,epoch:number):Promise<void> {
         if(!this.historicalCertificates?.allowPendingWork||walk.nextCommitId!==null||this.historicalQueue.size)return;
         await this.assertHistoricalAuthority(anchor,epoch);
-        this.historicalCompleted={ownerId:walk.ownerId,generation:walk.generation,head:copy(walk.anchor)};
+        // Fresh segments were verified down to their floors, so they extend the finished walk contiguously.
+        const fresh=this.historicalFresh;
+        if(fresh?.nextCommitId===null)this.historicalFreshCovered=fresh.anchor;
+        const head=this.historicalFreshCovered??walk.anchor;
+        this.historicalCompleted={ownerId:walk.ownerId,generation:walk.generation,head:copy(head)};
+        walk.anchor=copy(head);
+        if(fresh?.nextCommitId)this.historicalWalk=fresh;
+        this.clearHistoricalFresh();
     }
 
     async drain():Promise<{committed:number;pending:number}> {
@@ -784,13 +823,13 @@ export class ProtocolAbiCoordinator {
                 &&['following','incomplete'].includes(version.value.phase))await this.certify(version.value,epoch);
             try {await this.extendHistorical(version.value,epoch);}
             catch(error) {
-                if(!(error instanceof HistoricalWorkYield)) {this.historicalActivation=undefined;this.historicalWalk=undefined;}
+                if(!(error instanceof HistoricalWorkYield)) {this.historicalActivation=undefined;this.historicalWalk=undefined;this.clearHistoricalFresh();}
                 if(error instanceof ProtocolAbiCoordinatorStaleError)throw error;
                 if(!(error instanceof HistoricalWorkYield))this.noteHistoricalError(error);
             }
             return {committed,pending:version.value.pending.length};
         });} catch(error){if(error instanceof ProtocolAbiCoordinatorStaleError){
-            this.historicalActivation=undefined;this.historicalWalk=undefined;
+            this.historicalActivation=undefined;this.historicalWalk=undefined;this.clearHistoricalFresh();
             return {committed:0,pending:this.known?.value.pending.length??0};
         }throw error;}
     }

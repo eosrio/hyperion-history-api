@@ -20,20 +20,23 @@ async function fixture(count=1,budget=history,unlinked=Infinity) {
     const schemaJson='{"version":"eosio::abi/1.1"}',contextId=(await bindings.prepareContext({schemaVersion:1,chainId,protocol:profile,schemaJson})).id;
     const make=ownerId=>new ProtocolAbiCoordinator({chainId,profile,ownerId,bindings,observations,store,historicalCertificates:budget,maxPendingBlocks:512});
     const coordinator=make('progress-owner');await coordinator.start();
-    const {generation}=await coordinator.openSource(contextId,'progress-session');
+    let session='progress-session',{generation}=await coordinator.openSource(contextId,session);
     const selections=[];
-    for(let n=1;n<=count;n++) {
-        const source={chainId,blockNum:n,blockId:block(n),previousBlockId:n===1?null:block(n-1)};
+    const reopen=async name=>{session=name;({generation}=await coordinator.openSource(contextId,name));};
+    const append=async(n,blockId=block(n),previousBlockId=n===1?null:block(n-1))=>{
+        const source={chainId,blockNum:n,blockId,previousBlockId};
         const capture={kind:'unattested-ship-result-sections-v1',schemaJson,blockHex:'00',tracesHex:'00',deltasHex:'00'};
         const captureSha256=protocolAbiCaptureDigest(source,capture);
-        const selection=(await bindings.prepareSelection({schemaVersion:1,contextId,readerSessionId:'progress-session',readerRole:'live',assignmentId:null,
-            source,captureSha256,frameSha256:createHash('sha256').update('frame-'+n).digest('hex'),head:{blockNum:n,blockId:block(n)},irreversible:{blockNum:0,blockId:block(0)}})).id;
+        const selection=(await bindings.prepareSelection({schemaVersion:1,contextId,readerSessionId:session,readerRole:'live',assignmentId:null,
+            source,captureSha256,frameSha256:createHash('sha256').update('frame-'+blockId).digest('hex'),head:{blockNum:n,blockId},irreversible:{blockNum:0,blockId:block(0)}})).id;
         const observation=await observations.prepare({schemaVersion:1,protocol:profile,source:{...source,inputSha256:captureSha256},capture,
             observation:{status:'observed',facts:{schemaVersion:1,actionInputs:[],deployments:[],finalStates:[]}}});
         if(n<unlinked)await bindings.prepareObservationLink({schemaVersion:1,selectionId:selection,observationId:observation.id,observationDigest:observation.digest});
-        assert.equal((await coordinator.admit(selection,generation)).status,'accepted');selections.push(selection);
-    }
-    return {memory,bindings,observations,store,coordinator,make,contextId,generation,selections};
+        const admitted=await coordinator.admit(selection,generation);
+        assert.equal(admitted.status,'accepted');generation=admitted.generation;selections.push(selection);
+    };
+    for(let n=1;n<=count;n++)await append(n);
+    return {memory,bindings,observations,store,coordinator,make,contextId,get generation(){return generation;},selections,append,reopen};
 }
 function clocked(store,step=100) {
     let now=0;const original=Object.getOwnPropertyDescriptor(performance,'now');
@@ -146,6 +149,85 @@ test('repeated live preemption preserves completed steps with 150ms authority re
         for(const admission of admissions)assert.equal((await admission).status,'accepted');
         assert.equal((await reader(f).openHistorical(1)).source.blockNum,1);
     } finally {for(const [name,original] of originals)f.store[name]=original;f.store.readControl=read;clock.close();}
+});
+
+const covered=async(f,n)=>{
+    try {return (await reader(f).openHistorical(n)).source.blockNum===n;}
+    catch(error) {if(error?.code==='historical_source_unavailable')return false;throw error;}
+};
+
+test('a fresh head gets its locator while older ancestry is still walking',async()=>{
+    const f=await fixture(200,{...history,maxCommitsPerDrain:4,allowPendingWork:true}),clock=clocked(f.store,0);
+    try {
+        await f.coordinator.drain();
+        assert.equal((await f.coordinator.inspect()).head.blockNum,200);
+        for(let n=201;n<=210;n++) {
+            await f.append(n);await f.coordinator.drain();
+            assert.equal((await f.coordinator.inspect()).pending.length,0,'the head never waits for locator work');
+            assert.ok(f.coordinator.historicalWalk.nextCommitId,'older ancestry is still being recovered');
+            assert.equal(await covered(f,n-1),true,'block '+(n-1)+' has a locator one drain after it landed');
+        }
+    } finally {clock.close();}
+});
+
+test('a one-commit budget still recovers ancestry under a new head every drain',async()=>{
+    const f=await fixture(8,{...history,maxCommitsPerDrain:1,allowPendingWork:true}),clock=clocked(f.store,0);
+    try {
+        await f.coordinator.drain();
+        for(let n=9;n<=40;n++){await f.append(n);await f.coordinator.drain();}
+        assert.equal((await f.coordinator.inspect()).pending.length,0);
+        // Block 1 is queued directly by the first drain; only the walk can reach these.
+        for(let n=2;n<=8;n++)assert.equal(await covered(f,n),true,'block '+n+' was recovered');
+    } finally {clock.close();}
+});
+
+const settle=async(f,height,maximum=2000)=>{
+    for(let n=0;n<maximum&&f.coordinator.historicalCompleted?.head.blockNum!==height;n++)await f.coordinator.drain();
+    assert.equal(f.coordinator.historicalCompleted?.head.blockNum,height);
+};
+
+test('no height is walked twice within a generation',async()=>{
+    const f=await fixture(40,{...history,maxCommitsPerDrain:4,allowPendingWork:true}),clock=clocked(f.store,0);
+    const prepare=f.store.prepareHistoricalCertificateAddress.bind(f.store),seen=new Map();
+    f.store.prepareHistoricalCertificateAddress=async certificate=>{
+        seen.set(certificate.head.blockNum,(seen.get(certificate.head.blockNum)??0)+1);return prepare(certificate);};
+    try {
+        await f.coordinator.drain();
+        for(let n=41;n<=50;n++){await f.append(n);await f.coordinator.drain();}
+        await settle(f,50);
+        // Heads after completion must extend it rather than repeat the covered stretch.
+        for(let n=51;n<=55;n++){await f.append(n);await f.coordinator.drain();}
+        await settle(f,55);
+        for(let n=1;n<=55;n++)assert.equal(seen.get(n),1,'block '+n+' was prepared once');
+    } finally {clock.close();f.store.prepareHistoricalCertificateAddress=prepare;}
+});
+
+test('a fresh cursor does not outlive a fork',async()=>{
+    const f=await fixture(20,{...history,maxCommitsPerDrain:2,allowPendingWork:true}),clock=clocked(f.store,0);
+    const other=n=>'f'+block(n).slice(1);
+    try {
+        await f.coordinator.drain();
+        // Five heads per drain outrun this budget, so a fresh segment is mid-flight at the fork.
+        for(let n=21;n<=40;n+=5){for(let k=n;k<n+5;k++)await f.append(k);await f.coordinator.drain();}
+        assert.ok(f.coordinator.historicalFresh?.nextCommitId,'a fresh segment is in flight');
+        // Fork exactly at the cursor's next commit, so everything it would still read is orphaned.
+        const fork=(await f.store.readCommit(f.coordinator.historicalFresh.nextCommitId)).source.blockNum;
+        await f.append(fork,other(fork),block(fork-1));
+        for(let n=fork+1;n<=44;n++)await f.append(n,other(n),other(n-1));
+        await settle(f,44);
+        for(let n=1;n<=44;n++)assert.equal((await reader(f).openHistorical(n)).source.blockId,n<fork?block(n):other(n));
+        assert.equal(f.coordinator.historicalError,undefined);
+    } finally {clock.close();}
+});
+
+test('a full queue from an older generation does not stop the new one',async()=>{
+    const f=await fixture(6,{...history,maxCommitsPerDrain:2,allowPendingWork:true}),clock=clocked(f.store);
+    try {
+        await until(f,()=>f.coordinator.historicalQueue.size>=2);
+        await f.reopen('second-session');await f.append(7);
+    } finally {clock.close();}
+    await settle(f,7);
+    for(let n=1;n<=7;n++)assert.equal(await covered(f,n),true,'block '+n+' has a locator in the new generation');
 });
 
 // This drives about 70k store calls, past bun's 5s default on a slow runner. Bun ignores the timeout
