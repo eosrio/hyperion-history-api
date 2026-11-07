@@ -659,7 +659,8 @@ export default class MainDSWorker extends HyperionWorker {
         try {
             const reader = this.getProtocolAbiProofReader();
             this.activeProtocolAbiProofView = await (this.activeSourceRole === 'live'
-                ? reader.waitForOpen(position, this.activeSourceSelectionId) : reader.open(position, this.activeSourceSelectionId));
+                ? reader.openLiveSource(position, this.activeSourceSelectionId, {contextId: this.activeSourceBinding!.selection.contextId,
+                    readerSessionId: this.activeSourceBinding!.selection.readerSessionId}) : reader.open(position, this.activeSourceSelectionId));
         } catch (error) {
             if (!(error instanceof ProtocolAbiProofUnavailableError)) throw error;
             this.activeProtocolAbiProofView = undefined;

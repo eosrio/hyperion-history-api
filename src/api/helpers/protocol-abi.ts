@@ -32,6 +32,8 @@ type SelectedProtocol = Awaited<ReturnType<typeof loadChainProtocol>>;
 const contexts = new WeakMap<FastifyInstance, Promise<ProtocolActionConsumer>>();
 const requests = new WeakMap<object, {actions: ActionMetadata[]; views: ProtocolAbiProofView[];
     classifications: ProtocolNativeActionView[]; native: NativeProof[]; nodeResponse?: boolean}>();
+const requestViews = new WeakMap<object, Map<ProtocolActionConsumer, Map<string, {
+    membership?: Promise<ProtocolAbiProofView>; nativeOpen?: Promise<ProtocolNativeActionView>; nativeWait?: Promise<ProtocolNativeActionView>}>>>();
 const cacheProofKey = '_hyperion_protocol_abi_v3';
 const maximumProtocolApiActions = 10000;
 const actionResponseRoutes = new Set(['get_actions', 'get_transaction', 'get_block', 'get_controlled_accounts',
@@ -138,6 +140,17 @@ function successfulMetadata(input: any): input is ActionMetadata {
     return fields.length > 0 && Object.keys(input).length === fields.length && fields.every(key => Object.hasOwn(input, key));
 }
 const metadataJson = (value: unknown) => protocolImmutableJson(value, 64 * 1024 * 1024);
+function scopedViews(scope: object, consumer: ProtocolActionConsumer, source: unknown, selectionId: string) {
+    const key = metadataJson([source, selectionId]);
+    const attempt = protocolProofScope(scope);
+    let consumers = requestViews.get(attempt);
+    if (!consumers) {consumers = new Map(); requestViews.set(attempt, consumers);}
+    let views = consumers.get(consumer);
+    if (!views) {views = new Map(); consumers.set(consumer, views);}
+    let entry = views.get(key);
+    if (!entry) {entry = {}; views.set(key, entry);}
+    return entry;
+}
 const copyMetadata = <T>(value: T): T => JSON.parse(metadataJson(value));
 
 /** Core handlers compact declared members into annotations. Restore absent members from
@@ -179,11 +192,12 @@ async function resolve(fastify: FastifyInstance, scope: object, metadata: Protoc
     if (!successfulMetadata(metadata) || metadata.schemaVersion !== 1) throw unavailable('requires complete contract occurrence metadata');
     return withProtocolProofRequest(scope, async options => {
         const selected = await context(fastify);
-        const view = await selected.reader.waitForOpen(metadata.source, metadata.selectionId, options);
+        const views = scopedViews(scope, selected, metadata.source, metadata.selectionId);
+        const view = await (views.membership ??= selected.reader.waitForOpen(metadata.source, metadata.selectionId, options));
         let classification: ProtocolNativeActionView | undefined;
         if (view.nativeActionInterfaceVersion === 1) {
             if (!selected.nativeReader) throw unavailable('requires its installed native classification provider');
-            classification = await selected.nativeReader.open(metadata.source, metadata.selectionId, options);
+            classification = await (views.nativeOpen ??= selected.nativeReader.open(metadata.source, metadata.selectionId, options));
             const decision = await selected.nativeReader.authorize(classification, metadata.input, options);
             if (decision.kind !== 'contract') throw unavailable('cannot downgrade a native or incomplete origin to contract metadata');
         }
@@ -195,13 +209,14 @@ async function resolve(fastify: FastifyInstance, scope: object, metadata: Protoc
 async function resolveNative(fastify: FastifyInstance, scope: object, metadata: ProtocolNativeActionProofMetadata): Promise<NativeAuthority> {
     if (!successfulMetadata(metadata) || metadata.schemaVersion !== 2) throw unavailable('requires complete native occurrence metadata');
     return withProtocolProofRequest(scope, async options => {
-        const {reader, nativeReader} = await context(fastify);
+        const consumer = await context(fastify); const {reader, nativeReader} = consumer;
         if (!nativeReader) throw unavailable('has no installed native provider');
         // Wait only for canonical membership, without selecting a deployed contract ABI.
-        const membership = await reader.waitForOpen(metadata.source, metadata.selectionId, options);
+        const views = scopedViews(scope, consumer, metadata.source, metadata.selectionId);
+        const membership = await (views.membership ??= reader.waitForOpen(metadata.source, metadata.selectionId, options));
         if (membership.nativeActionInterfaceVersion !== 1)
             throw unavailable('has no canonical native-classification epoch');
-        const view = await nativeReader.waitForOpen(metadata.source, metadata.selectionId, options);
+        const view = await (views.nativeWait ??= nativeReader.waitForOpen(metadata.source, metadata.selectionId, options));
         const decision = await nativeReader.authorize(view, metadata.input, options);
         if (decision.kind !== 'native') throw unavailable('does not select a supported native origin');
         const canonical = await nativeReader.metadata(decision.grant, options);
@@ -396,7 +411,7 @@ export async function revalidateProtocolActionScope(fastify: FastifyInstance, sc
     if (proofs.views.length) {
         await withProtocolProofRequest(scope, async options => {
             const {reader} = await context(fastify);
-            for (const view of proofs.views) await reader.revalidate(view, options);
+            for (const view of new Set(proofs.views)) await reader.revalidate(view, options);
         });
     }
     if (proofs.native.length) {
@@ -406,21 +421,20 @@ export async function revalidateProtocolActionScope(fastify: FastifyInstance, sc
             for (const proof of proofs.native) {
                 await nativeReader.verifyEnvelope(proof.grant, proof.envelope, options);
                 await nativeReader.verifyValue(proof.grant, proof.value, options);
-                await nativeReader.revalidate(proof.view, options);
             }
             for (const obligation of obligations) {
                 const proof = obligation.proof as NativeProof;
                 await nativeReader.verifyEnvelope(proof.grant, obligation.envelope, options);
                 await nativeReader.verifyValue(proof.grant, obligation.value, options);
-                await nativeReader.revalidate(proof.view, options);
             }
+            for (const view of new Set(proofs.native.map(proof => proof.view))) await nativeReader.revalidate(view, options);
         });
     }
     if (proofs.classifications.length) {
         await withProtocolProofRequest(scope, async options => {
             const {nativeReader} = await context(fastify);
             if (!nativeReader) throw unavailable('requires its installed native classification provider');
-            for (const view of proofs.classifications) await nativeReader.revalidate(view, options);
+            for (const view of new Set(proofs.classifications)) await nativeReader.revalidate(view, options);
         });
     }
     assertProtocolProofRequestActive(scope);
