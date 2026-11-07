@@ -209,7 +209,7 @@ try {
             finally {cluster.fork=originalFork;if(inheritedSeal===undefined)delete process.env.reader_source_credit_capacity;else process.env.reader_source_credit_capacity=inheritedSeal;}
             assert.equal(forkEnvironment.reader_source_credit_capacity,sealed);
             class Parent {constructor(){this.conf=JSON.parse(readFileSync(configPath,'utf8'));this.chain=chain;}}
-            const context=vm.createContext({HyperionWorker:Parent,resolveSourceCreditCapacity,Buffer,console,
+            const context=vm.createContext({HyperionWorker:Parent,resolveSourceCreditCapacity,Buffer,console,structuredClone,
                 process:{env:forkEnvironment,send(){}},cargo:()=>{queues++;return{};}});
             vm.runInContext(emitted+'\nglobalThis.Reader=StateReader;',context);
             if(refused) {assert.throws(()=>new context.Reader(),/Source-credit configuration differs from master/);assert.equal(queues,0);}
