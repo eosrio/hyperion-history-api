@@ -34,6 +34,15 @@ export const STATEFUL_COMPLETE_KIND_CODEC_WIRE_SOURCE = Object.freeze({
     rustSha256: 'c8815e5ece1d6f8dbd662ea96ba277d00c077231659bf0d029f6a7120a4db838',
     npmLockSha256: 'a7bbbb10d86a698d23c44b0ec73774a72a3ec915d11ff5d51c0892dfc9553943',
 });
+/** The retained mapping fixture accepts only explicitly named, fully admitted sources. */
+export function assertMappingRetryWireSource(admission,components) {
+    const expected=admission.profile===STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE?STATEFUL_COMPLETE_KIND_CODEC_WIRE_SOURCE.commit:
+        admission.profile===STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE?STATEFUL_GENESIS_PREVIEW_WIRE_SOURCE.commit:undefined;
+    assert(expected,'Mapping retry source profile not admitted');
+    assert.equal(admission.wireRevision,expected,'Mapping retry admission source revision');
+    assert(Array.isArray(components)&&components.length>0&&components.every(value=>value.sourceRevision===expected),
+        'Mapping retry selected component source revision');
+}
 export const STATEFUL_COMPLETE_KIND_METADATA_NATIVE_SOURCE = Object.freeze({
     commit: '056c7c4d03be81bd1f0353a165b9aa3c9c6735ec', tree: 'ee94a480a8aede39ec7fe1b707c87efaa7164868',
     files: 39, sha256: 'be3705434fc5c9ec4a7a0a604247303c57515ee28a23b111b62512920c1894c9',
@@ -86,21 +95,24 @@ export const STATEFUL_HISTORY_API_CALLER_SOURCE = Object.freeze({
         ['src/api/routes/v1-trace/get_block/index.ts', 'a734453875d777fe608be11405bc4f7a8f5fb359198cbca457ce02391add6c9c']]),
 });
 export const STATEFUL_GENESIS_PREVIEW_CALLER_SOURCE = Object.freeze({
-    commit:'0504288d5d6bb1fdb78ed4defada46c7124ab179',files:554,
+    commit:'91f3871db386e91d31b1a0a23f16baf478434018',files:554,
     packageSha256:'31b02c51777bab0b6c12fc3ee7a64b44629e009abf77ad4a32aecb00891c48ca',
-    sha256:'d06ab84240fd72876dd5694a7d744e7ef24e277cd085f0ae1abfdc38bb681c63',
+    sha256:'b58da5c401b33b19ef1aba6d89ebd140e887c0f5eb4d3996eca0ea32a1b85594',
     sources:Object.freeze([...STATEFUL_HISTORY_API_CALLER_SOURCE.sources.filter(([path])=>
-        !['src/indexer/workers/projection.ts','src/api/helpers/protocol-abi.ts','src/api/helpers/stateful-owner.ts'].includes(path)),
+        !['src/indexer/workers/projection.ts','src/api/helpers/protocol-abi.ts','src/api/helpers/stateful-owner.ts','src/api/routes/v1-trace/get_block/index.ts'].includes(path)),
         ['src/indexer/protocol/abi-coordinator.ts','33515bbabc5be6abf88b8d0024f4cd3019e4d8ffabad40036e1735abc87d956d'],
         ['src/indexer/modules/master.ts','54ab78e153c8078c144d286b9bddfd10fd52e8b05ac7806170ffb414113355be'],
         ['src/indexer/workers/state-reader.ts','6c9b5e575fa8d93e52b103ef0b5c2ab1c2df6a22a115d2a8af2cafedce85550d'],
-        ['src/indexer/workers/deserializer.ts','a788c817c47d5462e9ee0f508e9ee405e8bf6632797f592071077bcee4018fa3'],
+        ['src/indexer/workers/deserializer.ts','0856a05e9f23e71fc5e126ceb8e3b74c44c9998cd83f909ebb4a80f9e34484f3'],
         ['src/indexer/workers/ds-pool.ts','7eef2cfaa2816bb0ba130dc60213b844363a7402b6b76c075059560d812f2305'],
         ['src/indexer/workers/projection.ts','596e0969a1e0613f817d5ec65abcadaa2ac896c682bf7b18029e45cb999d4ad1'],
         ['src/api/helpers/protocol-abi.ts','c0c8f43e48910c760421e54cf83329b9153216d28322d5519fb1ebe5ac828517'],
         ['src/api/helpers/portable-state.ts','3e1fa21a99d6f5ccfd390161ca3654a5053bff7a099e76ee305d8f717e1b53b0'],
         ['src/api/helpers/stateful-owner.ts','8bdf6914852f2d9f008adbfd81fe83c0b3f94d6a2928f5567147a9030f72cb82'],
-        ['src/interfaces/hyperionConfig.ts','e500ec37c6e727afd81c8a1723562c1f1b273dabb5ace094c9613f73ca8a24da']]),
+        ['src/interfaces/hyperionConfig.ts','e500ec37c6e727afd81c8a1723562c1f1b273dabb5ace094c9613f73ca8a24da'],
+        ['src/api/routes/v1-trace/get_block/get_block.ts','268ea72f0a18469139c080fa8924c2cbf489f2d3f05a17e51b6e58bd0d6a7e4f'],
+        ['src/api/routes/v1-trace/get_block/index.ts','b53c9721a27c55a02e639ddb195b522924c9a93203fc5c77945dfc013c1aaf42'],
+        ['src/api/routes/v2/explorer_metadata/explorer_metadata.ts','299d5aa5d6a149fdd79acfc7e766c6ccdb2ab6059200f29bc3ee7b55af64214a']]),
 });
 // Production source was committed before these additive qualification profiles.
 export const STATEFUL_METADATA_FIELDS_NATIVE_SOURCE = Object.freeze({

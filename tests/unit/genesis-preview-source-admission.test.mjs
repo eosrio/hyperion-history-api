@@ -1,14 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {admitCoordinatedNativeSourceOptions,STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE,
-    STATEFUL_HISTORY_API_SOURCE_PROFILE} from './stateful-engineering-source-admission.mjs';
+    STATEFUL_HISTORY_API_SOURCE_PROFILE,STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE,
+    assertMappingRetryWireSource} from './stateful-engineering-source-admission.mjs';
 
 test('preview profile binds exact Wire, SDK, native and caller artifacts without accepting the old profile',()=>{
     const admitted=admitCoordinatedNativeSourceOptions({engineeringSourceProfile:STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE});
     assert.equal(admitted.wireRevision,'e691f4471c6e5fdbe001e6709e88d48d33d8bf4c');
     assert.equal(admitted.sdkRevision,'7412889a14c84342551fd864ea3ebfcf28849385');
     assert.equal(admitted.wireSdkRevision,'58d68c5cea81490bbb1c9a7736d633d465bab3ef');
-    assert.equal(admitted.callerSourceCommit,'0504288d5d6bb1fdb78ed4defada46c7124ab179');
+    assert.equal(admitted.callerSourceCommit,'91f3871db386e91d31b1a0a23f16baf478434018');
     assert.equal(admitted.qualificationOnly,true);
     assert.throws(()=>admitCoordinatedNativeSourceOptions({engineeringSourceProfile:STATEFUL_HISTORY_API_SOURCE_PROFILE}));
+});
+
+test('mapping retry accepts only its named admitted source and exact component revisions',()=>{
+    const wire='e691f4471c6e5fdbe001e6709e88d48d33d8bf4c',old='69a66064c077a405341f5aaf15e84b88b8d86ccb';
+    const admission={profile:STATEFUL_GENESIS_PREVIEW_SOURCE_PROFILE,wireRevision:wire};
+    assert.doesNotThrow(()=>assertMappingRetryWireSource(admission,[{sourceRevision:wire},{sourceRevision:wire}]));
+    assert.doesNotThrow(()=>assertMappingRetryWireSource({profile:STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PROFILE,wireRevision:old},[{sourceRevision:old}]));
+    assert.throws(()=>assertMappingRetryWireSource({...admission,profile:'unrecognized'},[{sourceRevision:wire}]));
+    assert.throws(()=>assertMappingRetryWireSource({...admission,wireRevision:old},[{sourceRevision:wire}]));
+    assert.throws(()=>assertMappingRetryWireSource(admission,[]));
+    assert.throws(()=>assertMappingRetryWireSource(admission,[{sourceRevision:wire},{sourceRevision:old}]));
 });
