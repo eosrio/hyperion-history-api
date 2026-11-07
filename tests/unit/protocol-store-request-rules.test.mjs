@@ -167,6 +167,15 @@ for(const expected of [undefined,'absent','present'])test('a record stored as tw
     assert.deepEqual(await store.read('record'),{value:1});
 });
 
+test('an inline record that lost a write race still ends with its own complete receipt',async()=>{
+    const {memory,store,stored}=inlineBundles();await store.prepare('record',{value:1});
+    let raced=false;const mark=memory.calls.length;
+    memory.faults.beforeWrite=(request,method)=>{if(method==='index'&&request.id==='record'&&!raced){raced=true;stored('record').seq+=100;}};
+    await store.prepare('record',{value:1},undefined,'absent');
+    delete memory.faults.beforeWrite;
+    assert.deepEqual(writes(memory,mark),[['create','record'],['index','record'],['create','record'],['index','record']]);
+});
+
 test('a two-document record that lost its chunk gets it back before the manifest',async()=>{
     const {memory,store,plain,drop}=inlineBundles(),{digest}=await plain.prepare('record',{value:1}),chunk=`record:${digest}:0`;
     drop(chunk);const mark=memory.calls.length;
