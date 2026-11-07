@@ -83,14 +83,14 @@ test('live blocks without historical work',async()=>{
     const counts=await warmed(await fixture(),1,4,32);
     report('live',counts);
     assert.deepEqual(operations(counts.admit),{create:0,index:1,get:3,mget:0});
-    assert.deepEqual(operations(counts.drain),{create:4,index:1,get:5,mget:2});
+    assert.deepEqual(operations(counts.drain),{create:2,index:1,get:5,mget:2});
 });
 test('live blocks with historical certificates',async()=>{
     const counts=await warmed(await fixture({historicalCertificates:budget}),1,4,32);
     report('live-historical',counts);
     const {get,...writes}=operations(counts.drain);
-    assert.deepEqual(writes,{create:14,index:2,mget:3});
-    assert.ok(get<=31,'Historical reads per block: '+get);
+    assert.deepEqual(writes,{create:7,index:2,mget:3});
+    assert.ok(get<=26,'Historical reads per block: '+get);
 });
 test('a backlog with historical certificates',async()=>{
     const f=await fixture({historicalCertificates:{...budget,allowPendingWork:true}}),count=32,calls=f.memory.calls;
@@ -143,7 +143,7 @@ const active=n=>({...empty(),actionInputs:contracts.map((account,index)=>input(i
 test('blocks with eight active contracts',async()=>{
     const counts=await warmed(await fixture({diskAbiHistory:catalogOf(contracts)}),4,4,32,active);
     report('active-contracts',counts);
-    assert.deepEqual(operations(counts.drain),{create:4,index:17,get:7,mget:10});
+    assert.deepEqual(operations(counts.drain),{create:2,index:9,get:6,mget:10});
 });
 test('overlapping bound state writes all settle before a failure stops the block',async()=>{
     const f=await fixture({diskAbiHistory:catalogOf(contracts)}),state=request=>request.id.startsWith('h45abist1:');

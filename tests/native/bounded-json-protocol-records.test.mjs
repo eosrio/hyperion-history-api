@@ -17,7 +17,7 @@ test('actual captured Wire records retain canonical bytes, fresh frontier reads 
         const manifest = entry.document;
         if (manifest.kind !== 'manifest') continue;
         const index = key.split('\0')[0];
-        const payload = Buffer.concat(manifest.chunk_ids.map(id => {
+        const payload = manifest.payload !== undefined ? Buffer.from(manifest.payload, 'base64') : Buffer.concat(manifest.chunk_ids.map(id => {
             const chunk = p.memory.documents.get(p.memory.key(index, id)).document;
             return Buffer.from(chunk.payload, 'base64');
         }));

@@ -85,9 +85,18 @@ describe('ABI frontier durable storage',()=>{
         memory.faults.receipt=(receipt:any,request:any)=>request.index===store.recordsIndex&&partial?{...receipt,_shards:{total:2,successful:1,failed:1}}:receipt;
         await expect(store.prepareCommit({blockNum:42})).rejects.toThrow('durable write receipt');
         await expect(store.prepareCommit({blockNum:42})).rejects.toThrow('durable write receipt');
-        expect(manifestIds(memory,store.recordsIndex)).toEqual([]);
+        // An inline record is its own manifest, so a partial receipt can leave it visible, as a manifest's own partial
+        // receipt always could. Visibility grants nothing: the next PREPARE still needs a fresh complete receipt.
+        expect(manifestIds(memory,store.recordsIndex)).toHaveLength(1);
+        const recordWrites=()=>memory.calls.filter(call=>['create','index'].includes(call.method)&&call.request.index===store.recordsIndex).length;
+        const before=recordWrites();
         partial=false;const result=await store.prepareCommit({blockNum:42});expect(await store.readCommit(result.id)).toEqual({blockNum:42});
+        expect(recordWrites()).toBeGreaterThan(before);
         expect(await store.prepareCommit({blockNum:42})).toEqual(result);
+        // A record over one chunk still writes no manifest after a partial chunk.
+        partial=true;
+        await expect(store.prepareCommit({blob:'x'.repeat(600*1024)})).rejects.toThrow('durable write receipt');
+        expect(manifestIds(memory,store.recordsIndex)).toEqual([result.id]);
     });
 
     it('stores account bytes once and copies only changed hash-bucket/root metadata',async()=>{

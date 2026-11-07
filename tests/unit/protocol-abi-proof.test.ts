@@ -637,6 +637,8 @@ describe('source-bound canonical ABI consumers',()=>{
             const f=await fixture();await seed(f);const observed=facts();observed.actionInputs=[action(1,'1')];
             const second=await f.append(2,observed),reader=f.reader(),view=await reader.open(f.source(2));
             const abort=new AbortController(),entered=gate(),release=gate();let held=false;
+            // Only a certificate in the earlier two-document form has a separate chunk to read.
+            if(phase==='chunk')f.memory.asTwoDocuments(f.store.recordsIndex,view.certificateId);
             const signals:Array<AbortSignal|undefined>=[],get=f.memory.client.get;
             f.memory.client.get=async(request:any,options?:{signal?:AbortSignal})=>{signals.push(options?.signal);return get(request);};
             f.memory.faults.beforeRead=async(request:any)=>{
