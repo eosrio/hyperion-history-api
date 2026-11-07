@@ -25,7 +25,7 @@ const directory = mkdtempSync(join(workspaceOut, 'hyperion-attempt-worker-origin
 const chain = 'handoff-worker-original', chainId = '9ccd94e823fda51363bd4265ad618a909c4985c445078c79f8d030fe9697b71d', blockId = number => number.toString(16).padStart(64, '0');
 const hash = value => createHash('sha256').update(value).digest('hex');
 const mode = process.argv[2] ?? 'lifecycle';
-const events = [], sourceFrames = [], blockWrites = [], cache = [];
+const events = [], sourceFrames = [], cache = [];
 let reader, coordinator, restoreObservationReads, draining = Promise.resolve();
 process.send = (event, callback) => {
     events.push(event);
@@ -168,8 +168,8 @@ try {
     }};
     Object.assign(main, {local_block_count: 0, lastSelectedWorker: 0, dsPoolMap: {}, ds_pool_counters: {}, block_emit_idx: 1,
         protocolDeliveryOwners: new WeakMap(), protocolSourceBindingStore: bindings, protocolAbiObservationStore: observations,
-        preIndexingQueue: {push: async payload => blockWrites.push(payload)}});
-    Object.assign(pool, {protocolDeliveryOwners: new WeakMap(), poolAbiCache: new Map(), poolTypeCache: new Map(),
+        preIndexingQueue: main.createDurableWorkerOutputQueue()});
+    Object.assign(pool, {preIndexingQueue: pool.createDurableWorkerOutputQueue(), protocolDeliveryOwners: new WeakMap(), poolAbiCache: new Map(), poolTypeCache: new Map(),
         protocolCacheViews: new Set(), temp_ds_counter: 0, actionDsCounter: 0, act_emit_idx: 1, txCacheExpiration: 3600,
         allowStreaming: true, common: {attachActionExtras: Pool.prototype.attachActionExtras},
         pushToActionsQueue() {assert.fail('Wire admitted output bypassed its confirmed publisher');},
@@ -203,7 +203,7 @@ try {
         const sourceSelectionId=raw.options.headers[protocolSourceSelectionHeader];assert.ok(sourceSelectionId);
         (controlledAttemptLifecycle(main,'deserializer'),main).captureProtocolSourceDelivery(delivery,mainConsumer);
         await parser.parseMessage(main,[delivery]);await draining;assert.equal(mainConsumer.acked.at(-1),delivery);
-        return {sourceSelectionId,messages:mainPublisher.sent.slice(mainBefore).map(message)};
+        return {sourceSelectionId,messages:mainPublisher.sent.slice(mainBefore).filter(row => row.queue.startsWith(chain + ':ds_pool:')).map(message)};
     };
     let prepared;
     for(let number=1;number<=33;number++){
