@@ -42,6 +42,7 @@ import {createWireBrokerRecoveryControl, readWireBrokerRecoveryEvidence, assertW
 import {captureOwnedWireBroker, describeOwnedWireBroker, restartOwnedWireBroker} from './owned-wire-broker.mjs';
 import {captureOwnedWireReplica, describeOwnedWireReplica} from './owned-wire-replica.mjs';
 import {qualifyWireStorageRestart} from './portable-state-storage-recovery.mjs';
+import {portableNativeHistoryRemaining} from './portable-native-history-witness.ts';
 import {portableWorkerSourceFrame} from './portable-state-worker-source.ts';
 
 const repo = fileURLToPath(new URL('../../', import.meta.url));
@@ -473,15 +474,19 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
     };
     const es = new Client({node: state.core.nodes[0].url, requestTimeout: 10000, maxRetries: 0});
     let lastQueues: {observed: ReturnType<typeof portableHistoryClock>; rows: any[]} | undefined;
-    const refreshActions = async (through: number, phase: string) => {
-        const request = {index: chain + '-action-*'}, refresh = () => es.indices.refresh(request);
+    const refreshActions = async (through: number, phase: string, budget?: PortableNativePhaseBudget) => {
+        const request = {index: chain + '-action-*'}, refresh = () => es.indices.refresh(request,
+            budget ? {requestTimeout: Math.min(10000, portableNativeHistoryRemaining(budget))} : {});
         return historyDiagnostics ? historyDiagnostics.observe('action-refresh', {request, through, phase,
+            phaseBudget: budget && {clock: 'performance.now', deadline: budget.deadline},
             source: source.records[through - 1], replay: replay?.metrics(), queues: lastQueues, recovery: report.lastRecovery}, refresh) : refresh();
     };
     const wait = async (name: string, condition: () => Promise<void>, milliseconds = 60000, inherited?: PortableNativePhaseBudget) => {
         const end = Math.min(deadline, performance.now() + milliseconds, inherited?.deadline ?? Infinity); let last: unknown;
         while (performance.now() < end) {for (const child of [master, api]) if (child) assert.ok(child.exitCode === null && child.signalCode === null, `${name}: actual child exited`);
-            assert.deepEqual(report.errors, []); try {await condition(); return Object.freeze({deadline: end});} catch (error) {last = error;} await pause(100);}
+            assert.deepEqual(report.errors, []); try {await condition();
+                assert.ok(performance.now() < end, `${name}: original phase deadline exceeded`);
+                return Object.freeze({deadline: end});} catch (error) {last = error;} await pause(100);}
         throw new Error(`${name} did not complete: ${describeError(last)}`);
     };
     const queues = async () => {
@@ -664,6 +669,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
         const native = nativeOracle ? await createPortableNativeQualification({source, oracle: nativeOracle, client: es, chain, apiPort,
             events: () => observedRows(), http, unrelated, rawHistory: history,
             wait: (name, work, budget) => wait(name, work, 60000, budget), historyDiagnostics,
+            refreshActions: (through, budget) => refreshActions(through, 'native-hold', budget),
             bulk: {directory: join(output, 'bulk'), receipts: ledger.receipts},
             ...(options.workerRecovery ? {attemptRecovery: () => report.attemptRecovery?.status === 'observed'
                 ? report.attemptRecovery.evidence : undefined} : {}),
@@ -809,7 +815,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                             previousBlockId: source.records[faultThrough - 2].blockId}}]});
                 replay.assertThrough(through); mongoFixture.ownedContainer('replica');
             }
-            if (native) {await refreshActions(through, 'scheduled-prefix'); const observed = await native.hold(through);
+            if (native) {const observed = await native.hold(through);
                 const file = `prefixes/native-${through}.json`, bytes = Buffer.from(JSON.stringify(observed, null, 2) + '\n');
                 await writeFile(join(output, file), bytes, {flag: 'wx'}); report.native.holds.push({through, file, sha256: portableSourceHash(bytes)});}
             const observed = {through, blockId: block.blockId, responses, history: await history(through),
@@ -894,7 +900,7 @@ export async function runPortableStateWorker(stateFile: string, planFile: string
                 });
                 report.brokerRecovery.attemptAudit = brokerAttemptAudit;
                 assert.ok(counterWindows);
-                assert.ok(native); await refreshActions(through, 'broker-continuation');
+                assert.ok(native);
                 const nativePrefix = await native.hold(through);
                 const nativeFile = `prefixes/native-${through}.json`, nativeBytes = Buffer.from(JSON.stringify(nativePrefix, null, 2) + '\n');
                 await writeFile(join(output, nativeFile), nativeBytes, {flag: 'wx'});
