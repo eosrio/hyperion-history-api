@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import type {Client} from '@elastic/elasticsearch';
-import {ImmutableProtocolBundleStore,ImmutableProtocolBundleReadError,ProtocolMetadataFreshness,protocolImmutableJson} from './immutable-bundle-store.js';
+import {ImmutableProtocolBundleStore,ImmutableProtocolBundleReadError,ProtocolImmutableRecordMemo,ProtocolMetadataFreshness,protocolImmutableJson,
+    type ImmutableProtocolBundleExpectation} from './immutable-bundle-store.js';
 import {historicalAddressId, historicalAddressIdentity, ProtocolAbiHistoricalAddressReadError,
     type ProtocolAbiHistoricalAddress, type ProtocolAbiHistoricalAddressIdentity} from './abi-history.js';
 import type {ProtocolAbiHeadCertificate} from './abi-proof.js';
@@ -75,33 +76,7 @@ function deepFreeze<T>(value:T):T {
     return value;
 }
 
-/**
- * Process-local memo of fully verified frontier records. Every entry is addressed by the hash of
- * its own content, so a remembered value can only be the value its ID names. It remembers bytes,
- * never authority: control, ownership, generation, root membership and historical locators are
- * read fresh by their callers, and missing or invalid results are never remembered.
- */
-export class ProtocolAbiFrontierRecordMemo {
-    private readonly entries=new Map<string,{value:unknown;bytes:number}>();
-    private retainedBytes=0;
-    constructor(private readonly maximumBytes=64*1024*1024) {
-        if(!Number.isSafeInteger(maximumBytes)||maximumBytes<1)throw new Error('Invalid ABI frontier record memo budget');
-    }
-    get(id:string):unknown {
-        const entry=this.entries.get(id);
-        if(!entry)return undefined;
-        this.entries.delete(id);this.entries.set(id,entry);
-        return entry.value;
-    }
-    set(id:string,value:unknown,bytes:number):void {
-        if(bytes>this.maximumBytes/8||this.entries.has(id))return;
-        this.entries.set(id,{value,bytes});this.retainedBytes+=bytes;
-        for(const [oldest,entry] of this.entries){
-            if(this.retainedBytes<=this.maximumBytes)break;
-            this.entries.delete(oldest);this.retainedBytes-=entry.bytes;
-        }
-    }
-}
+export {ProtocolImmutableRecordMemo as ProtocolAbiFrontierRecordMemo};
 
 /** Physical storage only. The coordinator owns source/profile validation, ownership, generations and readiness. */
 export class ProtocolAbiFrontierStore {
@@ -116,7 +91,7 @@ export class ProtocolAbiFrontierStore {
     }>();
 
     constructor(private readonly client:Client,private readonly chain:string,private readonly replicas=0,
-                private readonly options:{readOnly?:boolean;recordMemo?:ProtocolAbiFrontierRecordMemo;metadataReadBoundMs?:number}={}) {
+                private readonly options:{readOnly?:boolean;recordMemo?:ProtocolImmutableRecordMemo;metadataReadBoundMs?:number}={}) {
         if(!/^[a-z0-9][a-z0-9_.-]{0,120}$/.test(chain)||!Number.isSafeInteger(replicas)||replicas<0)throw new Error('Invalid ABI frontier store configuration');
         this.controlIndex=chain+'-protocol-abi-frontier-v1';this.recordsIndex=chain+'-protocol-abi-frontier-records-v1';
         this.bundles=new ImmutableProtocolBundleStore(client,chain,replicas,'protocol-abi-frontier-records','protocol-abi-frontier-records-v1',undefined,
@@ -127,6 +102,12 @@ export class ProtocolAbiFrontierStore {
     /** Preserve the physical namespace while refusing provisioning and writes. */
     asReadOnly():ProtocolAbiFrontierStore {
         return new ProtocolAbiFrontierStore(this.client,this.chain,this.replicas,{readOnly:true,recordMemo:this.options.recordMemo,
+            metadataReadBoundMs:this.options.metadataReadBoundMs});
+    }
+
+    /** A separate handle for reducing blocks, so only account reads ever skip a store read. Writes, readback and activation keep this store. */
+    asAccountReader():ProtocolAbiFrontierStore {
+        return new ProtocolAbiFrontierStore(this.client,this.chain,this.replicas,{readOnly:true,recordMemo:new ProtocolImmutableRecordMemo(),
             metadataReadBoundMs:this.options.metadataReadBoundMs});
     }
 
@@ -248,20 +229,22 @@ export class ProtocolAbiFrontierStore {
     private id(record:FrontierRecord):string {
         return prefix[record.kind]+hash(bounded(['hyperion-abi-frontier-'+record.kind+'-v1',record],immutableLimit).json);
     }
-    private async prepare(kind:ProtocolAbiFrontierRecordKind,value:unknown):Promise<{id:string;digest:string}> {
+    /** Every frontier ID hashes its whole record, so a differing manifest cannot be waiting under it. */
+    private async prepare(kind:ProtocolAbiFrontierRecordKind,value:unknown,expected:ImmutableProtocolBundleExpectation='absent'):Promise<{id:string;digest:string}> {
         if(this.options.readOnly)throw new Error('Read-only ABI frontier cannot prepare records');
         const record=this.envelope(kind,value),id=this.id(record);
-        return this.bundles.prepare(id,record);
+        return this.bundles.prepare(id,record,undefined,expected);
     }
-    private async read(kind:ProtocolAbiFrontierRecordKind,id:string,signal?:AbortSignal):Promise<any> {
+    /** A digest marks a readback of a fresh PREPARE, which always reaches the store. */
+    private async read(kind:ProtocolAbiFrontierRecordKind,id:string,signal?:AbortSignal,digest?:string):Promise<any> {
         signal?.throwIfAborted();
         if(!validId(kind,id))throw new ProtocolAbiFrontierReadError('invalid',kind,id,'Invalid ABI frontier record ID');
-        const remembered=this.options.recordMemo?.get(id);
+        const remembered=digest===undefined?this.options.recordMemo?.get(id):undefined;
         if(remembered!==undefined)return remembered;
         // The bundle read freshly validates the same records index, including frontier retention rules.
         // Keep the response owned inside that operation; only a record verified below may be remembered.
         let raw:unknown;
-        try {raw=await this.bundles.read(id,signal);}catch(error) {
+        try {raw=await this.bundles.read(id,signal,digest);}catch(error) {
             if(error instanceof ImmutableProtocolBundleReadError)throw new ProtocolAbiFrontierReadError(error.code,kind,id,error.message);
             throw error;
         }
@@ -278,11 +261,11 @@ export class ProtocolAbiFrontierStore {
     }
 
     async prepareCommit(value:unknown):Promise<{id:string;digest:string}> {return this.prepare('commit',value);}
-    async readCommit(id:string,signal?:AbortSignal):Promise<unknown> {return this.read('commit',id,signal);}
+    async readCommit(id:string,signal?:AbortSignal,digest?:string):Promise<unknown> {return this.read('commit',id,signal,digest);}
     /** Deterministic lookup only; computing this ID conveys no publication authority. */
     certificateId(value:unknown):string {return this.id(this.envelope('certificate',value));}
     async prepareCertificate(value:unknown):Promise<{id:string;digest:string}> {return this.prepare('certificate',value);}
-    async readCertificate(id:string,signal?:AbortSignal):Promise<unknown> {return this.read('certificate',id,signal);}
+    async readCertificate(id:string,signal?:AbortSignal,digest?:string):Promise<unknown> {return this.read('certificate',id,signal,digest);}
     /** Additive address index in the existing immutable store; the referenced certificate remains authority. */
     async prepareHistoricalCertificateAddress(certificate:ProtocolAbiHeadCertificate):Promise<{id:string;digest:string}> {
         if(this.options.readOnly)throw new Error('Read-only ABI frontier cannot prepare historical addresses');
@@ -292,14 +275,14 @@ export class ProtocolAbiFrontierStore {
             throw new Error('Historical address requires an exact settled certificate');
         const address:ProtocolAbiHistoricalAddress={schemaVersion:1,kind:'historical-abi-certificate-address',identity,certificateId};
         const prepared=await this.bundles.prepare(id,{schemaVersion:1,chain:this.chain,kind:'historical-certificate-address',value:address});
-        if(protocolImmutableJson(await this.readHistoricalCertificateAddress(identity))!==protocolImmutableJson(address))
+        if(protocolImmutableJson(await this.readHistoricalCertificateAddress(identity,undefined,prepared.digest))!==protocolImmutableJson(address))
             throw new Error('Historical certificate address readback differs');
         return prepared;
     }
-    async readHistoricalCertificateAddress(identity:ProtocolAbiHistoricalAddressIdentity,signal?:AbortSignal):Promise<ProtocolAbiHistoricalAddress> {
+    async readHistoricalCertificateAddress(identity:ProtocolAbiHistoricalAddressIdentity,signal?:AbortSignal,digest?:string):Promise<ProtocolAbiHistoricalAddress> {
         const expected=JSON.parse(protocolImmutableJson(identity,64*1024)),id=historicalAddressId(expected);
         let raw:unknown;
-        try {raw=await this.bundles.read(id,signal);} catch(error) {
+        try {raw=await this.bundles.read(id,signal,digest);} catch(error) {
             if(error instanceof ImmutableProtocolBundleReadError)throw new ProtocolAbiHistoricalAddressReadError(error.code,id,error.message);
             throw error;
         }
@@ -363,8 +346,9 @@ export class ProtocolAbiFrontierStore {
                                        preparation?:ProtocolAbiHistoricalRootPreparation):Promise<string> {
         const handle=preparation??this.beginHistoricalAddressRoot(previousRootId,addresses),work=this.historicalPreparations.get(handle);
         if(!work||work.input!==protocolImmutableJson([previousRootId,addresses]))throw new Error('Historical preparation belongs to another store or scope');
+        // One check between steps: nothing happens between one step's end and the next step's start.
+        if(checkpoint&&work.result===undefined)await checkpoint();
         while(work.result===undefined) {
-            if(checkpoint)await checkpoint();
             try {
                 const step=await work.steps.next();if(step.done)work.result=step.value;
             } catch(error) {this.historicalPreparations.delete(handle);throw error;}
@@ -383,10 +367,10 @@ export class ProtocolAbiFrontierStore {
             throw new ProtocolAbiHistoricalAddressReadError('invalid',key,'Historical locator differs from activated root membership');
         return address;
     }
-    async prepareAccountState(state:unknown):Promise<{id:string;digest:string}> {
+    async prepareAccountState(state:unknown,expected?:ImmutableProtocolBundleExpectation):Promise<{id:string;digest:string}> {
         const copy=bounded(state,limits['account-state']).value;
         if(!copy||typeof copy!=='object'||Array.isArray(copy)||!Object.hasOwn(copy,'account')||!validAccount(copy.account))throw new Error('Invalid ABI account state identity');
-        return this.prepare('account-state',copy);
+        return this.prepare('account-state',copy,expected);
     }
     async readAccountState(id:string,signal?:AbortSignal):Promise<unknown> {
         const state=await this.read('account-state',id,signal);

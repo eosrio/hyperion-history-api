@@ -830,10 +830,11 @@ export class HyperionMaster {
             const diskAbiHistory=this.conf.settings.protocol_abi_history
                 ?DiskAbiHistoryCatalog.fromConfiguration(this.conf.settings.protocol_abi_history,chainId,profile):undefined;
             const metadata={metadataReadBoundMs:protocolMetadataReadBoundMs};
+            const store = new ProtocolAbiFrontierStore(this.esClient, this.chain, replicas, metadata);
             const coordinator = new ProtocolAbiCoordinator({chainId,profile,diskAbiHistory,
-                ownerId: randomUUID(), bindings: new ProtocolSourceBindingStore(this.esClient, this.chain, replicas, metadata),
+                ownerId: randomUUID(), bindings: new ProtocolSourceBindingStore(this.esClient, this.chain, replicas, {...metadata, rememberRecords: true}),
                 observations: new ProtocolAbiObservationStore(this.esClient, this.chain, replicas, undefined, metadata),
-                store: new ProtocolAbiFrontierStore(this.esClient, this.chain, replicas, metadata),
+                store, accountReader: store.asAccountReader(),
                 verifyNativeGenesis: selected.provider.verifyNativeGenesis?.bind(selected.provider),
                 nativeActionInterfaceVersion: selected.provider.nativeActions?.interfaceVersion,
                 maxPendingBlocks: options?.max_pending_blocks, recoveryWindowBlocks: options?.recovery_window_blocks,

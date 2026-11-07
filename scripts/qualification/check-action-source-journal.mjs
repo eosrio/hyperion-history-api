@@ -708,6 +708,23 @@ try {
         return report.observations.metadataReadBound;
     });
 
+    await check('a stored record is reasserted and read back with one realtime read on a real engine', async () => {
+        const {ImmutableProtocolBundleStore} = await import('../../build/indexer/protocol/immutable-bundle-store.js');
+        const store = new ImmutableProtocolBundleStore(client, chain, 1, 'request-order', 'request-order-v1');
+        const prepared = await store.prepare('absent-first', {value: 1}, undefined, 'absent');
+        const chunk = `absent-first:${prepared.digest}:0`;
+        const versions = async () => Promise.all([chunk, 'absent-first'].map(async id => (await client.get({index: store.index, id, realtime: true}))._seq_no));
+        assert.deepEqual(await store.read('absent-first', undefined, prepared.digest), {value: 1});
+        const before = await versions();
+        assert.equal((await store.prepare('absent-first', {value: 1}, undefined, 'present')).digest, prepared.digest);
+        const after = await versions();
+        assert.ok(after[0] > before[0] && after[1] > after[0], 'Both documents take a fresh write, chunk first');
+        await assert.rejects(store.prepare('absent-first', {value: 2}, undefined, 'present'), /conflict/);
+        assert.deepEqual(await versions(), after);
+        report.observations.requestOrder = {seqNoBefore: before, seqNoAfter: after};
+        return report.observations.requestOrder;
+    });
+
     await check('read-only readers observe retained membership without provisioning or mutating storage', async () => {
         const absent = new ActionHistorySourceJournal(client, `${chain}-readonly-absent`, 1, {readOnly: true});
         await assert.rejects(absent.readPlan(firstId));
