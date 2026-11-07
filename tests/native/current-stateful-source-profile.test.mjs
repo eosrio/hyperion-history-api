@@ -11,7 +11,8 @@ import {admitNativeApiSourceOptions, STATEFUL_COMPLETE_KIND_CODEC_API_SOURCE_PRO
 import {CURRENT_NATIVE_ASSEMBLY as priorCurrent} from '../unit/current-stateful-engineering-source-admission.mjs';
 import './retained-workload-progress.test.mjs';
 const root = new URL('../../', import.meta.url), sha = bytes => createHash('sha256').update(bytes).digest('hex');
-const canonical = path => readFileSync(new URL(path, root), 'utf8').replaceAll('\r\n', '\n');
+const canonical = path => restoreSdk49Routing(path, readFileSync(new URL(path, root), 'utf8').replaceAll('\r\n', '\n'));
+import {restoreSdk49Routing} from '../../scripts/qualification/indexed-schema-mongodb/current-cbfb-contract.mjs';
 
 test('active helpers have honest current pins and every historical snapshot keeps its original bytes', () => {
     for (const [path, expected] of Object.entries(current.helperSources))

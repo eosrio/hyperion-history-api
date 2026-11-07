@@ -10,14 +10,17 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  HYPERION_INDEXED_TEST_PROFILE: cbfb
+
 jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      HYPERION_NATIVE_SOURCE_PROFILE: stateful-sdk49-indexed-2da-linux-engineering-v1
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-sdk49-root-cbfb-native-wire69-linux-engineering-v1
     strategy:
       matrix:
-        node-version: [24.x, 26.x]
+        node-version: ["24.22.1", "26.4.0"]
     steps:
       - uses: actions/checkout@v4
       - name: Use Node.js ${{ matrix.node-version }}
@@ -25,9 +28,9 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
-      - run: npm ci --allow-git=all
-      - name: Install the independently pinned native429 assembly
+      - name: Install the independently pinned CBFB native assembly before root postinstall
         run: npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false
+      - run: npm ci --allow-git=all
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -40,10 +43,16 @@ jobs:
       - run: npm run build
       - name: Record the explicit current Linux assembly and actual runtime candidate
         run: |
-          node scripts/qualification/indexed-schema-mongodb/sdk49-ci-source-check.mjs > current-native-git-${{ matrix.node-version }}.json
-          node tests/unit/sdk49-indexed-source-admission.mjs --admit-sdk49 > current-native-source-${{ matrix.node-version }}.json
+          node scripts/qualification/indexed-schema-mongodb/current-cbfb-ci-source-check.mjs > current-native-git-${{ matrix.node-version }}.json
+          node tests/unit/current-cbfb-source-admission.mjs --admit-current-cbfb > current-native-source-${{ matrix.node-version }}.json
+          node --input-type=module <<'NODE'
+          import {copyFileSync} from 'node:fs';
+          const exact=process.versions.node,major=exact.split('.')[0];
+          for(const kind of ['git','source'])
+            copyFileSync(`current-native-${kind}-${exact}.json`,`current-native-${kind}-${major}.x.json`);
+          NODE
       - name: Check explicit current profile, frozen historical predicates and workload boundaries
-        run: node --test tests/native/current-stateful-source-profile.test.mjs scripts/qualification/operator-list-mongodb/cleanup-source-profile.test.mjs scripts/qualification/wire-source-snapshot.test.mjs
+        run: node --test tests/native/current-stateful-source-profile.test.mjs scripts/qualification/indexed-schema-mongodb/current-cbfb-contract.test.mjs tests/native/current-cbfb-codec-profile.test.mjs tests/native/current-cbfb-source-tamper.test.mjs scripts/qualification/operator-list-mongodb/cleanup-source-profile.test.mjs scripts/qualification/wire-source-snapshot.test.mjs
       - name: Check bounded canonical JSON and authentic protocol records on Node ${{ matrix.node-version }}
         run: node --test tests/unit/bounded-json.test.mjs tests/native/bounded-json-protocol-records.test.mjs
       - name: Check mixed stateful source and final publication on Node ${{ matrix.node-version }}
@@ -51,7 +60,7 @@ jobs:
           node --test tests/native/pinned-git-source.test.mjs
           node tests/unit/portable-state-owner-v2.mjs
           node tests/unit/stateful-host-native.mjs
-          node tests/unit/stateful-complete-kind-source-admission-native.mjs
+          node tests/unit/current-cbfb-source-admission-native.mjs
       - name: Check retained Wire managed state and historical source authority on Node ${{ matrix.node-version }}
         run: |
           mkdir "$RUNNER_TEMP/retained-wire-cpu"
@@ -150,6 +159,8 @@ jobs:
           path: |
             current-native-source-${{ matrix.node-version }}.json
             current-native-git-${{ matrix.node-version }}.json
+            current-native-git-*.x.json
+            current-native-source-*.x.json
             out/wire-managed-diagnostic-*/progress.jsonl
           if-no-files-found: error
       - name: Verify action source admission evidence checksums
@@ -193,10 +204,10 @@ jobs:
           node tests/unit/protocol-native-consumer-worker.mjs
           bun test tests/unit/protocol-selection.test.ts --test-name-pattern 'installed legacy Wire profiles'
       - name: Check ABI/native journals, source bindings and canonical frontier against disposable Elasticsearch 9.5.5
-        if: matrix.node-version == '24.x'
+        if: matrix.node-version == '24.22.1'
         run: node scripts/qualification/check-protocol-abi-store.mjs protocol-journals.json
       - name: Retain protocol journal evidence and cleanup result
-        if: always() && matrix.node-version == '24.x'
+        if: always() && matrix.node-version == '24.22.1'
         uses: actions/upload-artifact@v4
         with:
           name: protocol-journals-node24
@@ -209,7 +220,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [24.x, 26.x]
+        node-version: ["24.22.1", "26.4.0"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -222,9 +233,9 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
-      - run: npm ci --allow-git=all
-      - name: Install independently packaged MongoDB adapter
+      - name: Install independently packaged MongoDB adapter before root postinstall
         run: npm ci --prefix packages/backend-mongodb --allow-git=all
+      - run: npm ci --allow-git=all
       - name: Check and build MongoDB adapter
         run: |
           bun check -p packages/backend-mongodb/tsconfig.json
@@ -234,8 +245,8 @@ jobs:
       - name: Check actual root-client/native-driver command execution and source profile
         run: |
           npm run build
-          node scripts/qualification/indexed-schema-mongodb/sdk49-ci-source-check.mjs > projection-native-git-${{ matrix.node-version }}.json
-          node --test tests/native/stateful-complete-kind-public-command.test.mjs tests/native/stateful-complete-kind-codec-profile.test.mjs
+          node scripts/qualification/indexed-schema-mongodb/current-cbfb-ci-source-check.mjs > projection-native-git-${{ matrix.node-version }}.json
+          node --test tests/native/stateful-complete-kind-public-command.test.mjs tests/native/current-cbfb-codec-profile.test.mjs
       - name: Exercise complete-kind accounting and same-snapshot ownership against a separately owned MongoDB 8.0.34
         run: node scripts/qualification/stateful-complete-kind-mongodb/ci.mjs complete-kind-mongodb-${{ matrix.node-version }}
       - name: Retain complete-kind native traces, terminal logs and verified fixture cleanup
@@ -274,10 +285,10 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
-      - name: Install the exact root741 and receiving native429 sources
+      - name: Install the exact root SDK49 and receiving native CBFB sources
         run: |
-          npm ci --allow-git=all --ignore-scripts=false
           npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false
+          npm ci --allow-git=all --ignore-scripts=false
       - name: Check and build the new operator-list assembly
         run: |
           test "$(bun --version)" = "$(cat .bun-version)"
@@ -299,8 +310,8 @@ jobs:
           scripts/qualification/operator-list-mongodb/assembly-diagnostics.test.mjs
       - name: Retain exact new source and compiled assembly admission
         run: |
-          node scripts/qualification/indexed-schema-mongodb/sdk49-ci-source-check.mjs > operator-list-native-git-${{ matrix.node-version }}.json
-          node scripts/qualification/operator-list-mongodb/sdk49-source-profile.mjs --diagnostics operator-list-assembly-${{ matrix.node-version }} > operator-list-source-${{ matrix.node-version }}.json
+          node scripts/qualification/indexed-schema-mongodb/current-cbfb-ci-source-check.mjs > operator-list-native-git-${{ matrix.node-version }}.json
+          node scripts/qualification/operator-list-mongodb/current-cbfb-source-profile.mjs --diagnostics operator-list-assembly-${{ matrix.node-version }} > operator-list-source-${{ matrix.node-version }}.json
       - name: Exercise operator lists against a separately owned MongoDB 8.0.34
         run: node scripts/qualification/operator-list-mongodb/ci.mjs operator-list-mongodb-${{ matrix.node-version }}
       - name: Retain original list results, traces, terminal logs and owned-fixture cleanup
@@ -321,13 +332,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: [24.x, 26.x]
+        node: ["24.22.1", "26.4.0"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
           cache: npm
+      - run: npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false
       - run: npm ci --allow-git=all
       - run: npm run build
       - name: Probe gated exact history modules and mixed-history query design with owned Elasticsearch 9.5.5
@@ -343,27 +355,27 @@ jobs:
   action-source-journal:
     runs-on: ubuntu-24.04
     env:
-      HYPERION_NATIVE_SOURCE_PROFILE: stateful-sdk49-indexed-2da-linux-engineering-v1
+      HYPERION_NATIVE_SOURCE_PROFILE: stateful-sdk49-root-cbfb-native-wire69-linux-engineering-v1
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        node: [24.x, 26.x]
+        node: ["24.22.1", "26.4.0"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      - run: npm ci --allow-git=all
-      - name: Install and build the independently pinned native429 assembly
+      - run: npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false
+      - name: Install root dependencies and build the independently pinned CBFB assembly
         run: |
-          npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false
+          npm ci --allow-git=all
           npm run build
       - name: Record explicit current source and actual Node runtime metadata
         run: |
-          node scripts/qualification/indexed-schema-mongodb/sdk49-ci-source-check.mjs > journal-native-git-${{ matrix.node }}.json
-          node tests/unit/sdk49-indexed-source-admission.mjs --admit-sdk49 > journal-native-source-${{ matrix.node }}.json
+          node scripts/qualification/indexed-schema-mongodb/current-cbfb-ci-source-check.mjs > journal-native-git-${{ matrix.node }}.json
+          node tests/unit/current-cbfb-source-admission.mjs --admit-current-cbfb > journal-native-source-${{ matrix.node }}.json
       - name: Qualify source journal records and two-copy recovery on owned Elasticsearch 9.5.5
         run: node scripts/qualification/check-action-source-journal.mjs action-source-journal-${{ matrix.node }}.json
       - name: Retain source journal evidence and cleanup result
@@ -381,6 +393,40 @@ jobs:
           path: |
             journal-native-source-${{ matrix.node }}.json
             journal-native-git-${{ matrix.node }}.json
+          if-no-files-found: error
+
+  historical-sdk49-admission:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["24.22.1", "26.4.0"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: e19fc9afc391512ec3ad620a387c41d80982e3d3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: npm ci --prefix packages/backend-mongodb --allow-git=all --ignore-scripts=false
+      - run: npm ci --allow-git=all --ignore-scripts=false
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Preserve SDK49 installed-source and all before-effects regression families
+        run: |
+          node tests/unit/sdk49-indexed-source-admission.mjs --admit-sdk49 > historical-sdk49-source.json
+          node --test tests/native/current-stateful-source-profile.test.mjs tests/native/stateful-complete-kind-codec-profile.test.mjs scripts/qualification/wire-source-snapshot.test.mjs
+          node tests/unit/stateful-complete-kind-source-admission-native.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: historical-sdk49-admission-${{ matrix.node }}
+          path: historical-sdk49-source.json
           if-no-files-found: error
 
   es955-fixture:
