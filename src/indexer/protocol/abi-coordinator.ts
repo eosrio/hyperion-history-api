@@ -71,6 +71,10 @@ export class ProtocolAbiCoordinatorStaleError extends Error {
 }
 const boundStateConcurrency=8;
 class InvalidPreparedObservation extends Error {}
+/** Retained progress names a disk ABI catalog other than the configured one. Both keep the
+ * classification their reads had before, so ancestry walks treat them exactly as earlier. */
+class SupersededDiskCatalog extends Error {}
+class SupersededDiskBaseline extends InvalidPreparedObservation {}
 class HistoricalWorkYield extends Error {}
 const hex64=/^[0-9a-f]{64}$/;
 const id=(prefix:string,value:unknown):value is string=>typeof value==='string'&&new RegExp('^'+prefix+':[0-9a-f]{64}$').test(value);
@@ -251,10 +255,18 @@ export class ProtocolAbiCoordinator {
             :this.options.qualificationGenesisStart?1:null;
         let reason=previous?.gap??null;
         if(previous&&!this.sameProfile(previous.profile))reason=gap('protocol_profile_changed','ABI knowledge requires initialization under the installed profile',null);
+        // Progress bound to an earlier catalog is replaced only by a configured catalog that ends strictly
+        // ahead of it and agrees on its block identity (both checked below). The newer catalog then supplies
+        // the complete ABI state at its own boundary, so none of the earlier commits is carried forward.
         if(head){
             try {const commit=await this.readCommit(head.commitId);if(json(this.head(commit,head.commitId))!==json(head))throw new InvalidPreparedObservation('Stored head does not match its immutable commit');retainedCommit=commit;}
-            catch(error){if(!dataUnavailable(error))throw error;head=null;replayFromBlock=previous!.head!.blockNum;
-                reason=gap('retained_frontier_unavailable',String((error as Error).message),previous!.head!.blockNum);}
+            catch(error){
+                if(error instanceof SupersededDiskCatalog||error instanceof SupersededDiskBaseline)head=null;
+                else {
+                    if(!dataUnavailable(error))throw error;head=null;replayFromBlock=previous!.head!.blockNum;
+                    reason=gap('retained_frontier_unavailable',String((error as Error).message),previous!.head!.blockNum);
+                }
+            }
         }
         const generation=randomUUID();
         if(disk){
@@ -425,6 +437,7 @@ export class ProtocolAbiCoordinator {
         if(value?.kind==='disk-abi-baseline'){
             if(!this.options.diskAbiHistory)throw new Error('Retained ABI progress requires its configured disk ABI catalog');
             const disk=await this.preparedDiskBaseline();
+            if(disk&&value.catalogId!==disk.value.catalogId)throw new SupersededDiskBaseline('Invalid immutable disk ABI baseline');
             if(!disk||value.schemaVersion!==1||value.chainId!==this.options.chainId||!this.sameProfile(value.profile)
                 ||!text(value.generation)||value.previousCommitId!==null||value.selectionId!==null||value.observationId!==null
                 ||value.observationDigest!==null||value.catalogId!==disk.value.catalogId||json(value.source)!==json(disk.value.source)
@@ -438,7 +451,8 @@ export class ProtocolAbiCoordinator {
         if(value?.catalogId!==undefined){
             if(!this.options.diskAbiHistory)throw new Error('Retained ABI progress requires its configured disk ABI catalog');
             const disk=await this.preparedDiskBaseline();
-            if(value.catalogId!==disk!.value.catalogId||value.source?.blockNum<=disk!.value.source.blockNum)
+            if(value.catalogId!==disk!.value.catalogId)throw new SupersededDiskCatalog('Retained ABI progress belongs to a different disk ABI catalog');
+            if(value.source?.blockNum<=disk!.value.source.blockNum)
                 throw new Error('Retained ABI progress belongs to a different disk ABI catalog');
             await this.options.diskAbiHistory.revalidate();
         }
