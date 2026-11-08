@@ -11,7 +11,6 @@ const routes = [
     ['v2-state', 'get_proposals', 'getProposalsHandler'],
     ['v2-state', 'get_voter_scopes', 'getVoterScopesHandler'],
     ['v2-state', 'get_links', 'getLinksHandler'],
-    ['v2-state', 'get_account', 'getAccountHandler'],
 ];
 const factories = await Promise.all(routes.map(async ([domain, route, handler]) => {
     const module = await import(`../../build/api/routes/${domain}/${route}/${route}.js`);

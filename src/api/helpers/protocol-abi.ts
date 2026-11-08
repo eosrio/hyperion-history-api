@@ -471,8 +471,9 @@ export async function validateProtocolCachedResponse(fastify: FastifyInstance, r
             proofs.actions.push(metadata);
             if (metadata.schemaVersion === 2) {
                 if (!Object.hasOwn(entry, 'value') || !Object.hasOwn(entry, 'envelope')) throw unavailable('lacks its checked native value or envelope');
-                if (entry.presentation !== undefined && (entry.presentation !== 'noBinary' || route !== 'get_actions'
-                    || (request.query as any)?.noBinary !== true)) throw unavailable('has an unsupported native renderer');
+                // get_account always renders its actions with noBinary.
+                if (entry.presentation !== undefined && (entry.presentation !== 'noBinary' || (route !== 'get_account'
+                    && (route !== 'get_actions' || (request.query as any)?.noBinary !== true)))) throw unavailable('has an unsupported native renderer');
                 if (entry.dataMode !== undefined && (entry.dataMode !== 'raw' || entry.envelope?.act?.data !== metadata.input.rawHex))
                     throw unavailable('has an unsupported native data presentation');
                 const proof = await resolveNative(fastify, request, metadata), {nativeReader} = await context(fastify);

@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import Fastify from 'fastify';
 import {MockAgent, getGlobalDispatcher, setGlobalDispatcher} from 'undici';
-import {PrivateKey} from '@wharfkit/antelope';
+import {Asset, PrivateKey} from '@wharfkit/antelope';
 import {frontierMemoryClient} from './protocol-frontier-memory.mjs';
 
 registerHooks({resolve(specifier, context, next) {
@@ -131,7 +131,7 @@ const action = (index = 0, raw = false) => ({block_num: 2, block_id: blockId(2),
         data: raw ? facts.actionInputs[index].rawHex : structuredClone(value)},
     receipts: [{receiver: facts.actionInputs[index].receiver, global_sequence: facts.actionInputs[index].globalSequence, recv_sequence: '1', auth_sequence: []}],
     protocol: {schemaVersion: 1, source: structuredClone(bound.source), selectionId: bound.selectionId, input: structuredClone(facts.actionInputs[index])}});
-let current = action(), streamRows = null, streamTotal, initialFault, nextFault, emptySearch = false, nodeKeys = false;
+let current = action(), streamRows = null, streamTotal, initialFault, nextFault, emptySearch = false, nodeKeys = false, balancesFail = false;
 let searches = 0, cacheReads = 0, clearCalls = [];
 const cache = new Map(), complete = rows => ({took: 1, timed_out: false, _shards: {total: 1, successful: 1, failed: 0, skipped: 0},
     hits: {total: {value: rows.length, relation: 'eq'}, hits: rows.map(_source => ({_source: structuredClone(_source)}))}});
@@ -160,14 +160,20 @@ app.decorate('elastic', {...memory.client, search: async query => {
     nextFault?.(result); return result;
 }, clearScroll: async query => {clearCalls.push(query.scroll_id); return {succeeded: true};}});
 app.decorate('redis', {get: async key => {cacheReads++; return cache.get(key) ?? null;}, set: async (key, data) => {cache.set(key, data); return 'OK';}});
-app.decorate('antelope', {chain: {get_info: async () => ({last_irreversible_block_num: {toNumber: () => 99, valueOf: () => 99}})},
+app.decorate('antelope', {chain: {get_info: async () => ({last_irreversible_block_num: {toNumber: () => 99, valueOf: () => 99}}),
+    get_currency_balance: async (code, account) => {
+        if (balancesFail) throw new Error('node unavailable');
+        assert.deepEqual([code, account], ['alpha.token', 'bob']);
+        return [Asset.from('1.2500 SYS'), Asset.from('998385225.148576844 WIRE')];
+    }},
+    getAccountUntyped: async name => ({account_name: name, privileged: false}),
     getAbi: async () => {throw new Error('Head ABI fallback');}});
 app.decorate('allowedActionQueryParamSet', new Set());
 const registrations = [
     ['v1-trace/get_block', '/v1/trace'], ['v1-history/get_controlled_accounts', '/v1/history'],
     ['v2-history/get_created_accounts', '/v2/history'], ['v2-history/get_creator', '/v2/history'],
     ['v2-state/get_key_accounts', '/v2/state'], ['v2-stats/get_resource_usage', '/v2/stats'],
-    ['v1-history/get_actions', '/v1/history'], ['v2-history/get_actions', '/v2/history']];
+    ['v1-history/get_actions', '/v1/history'], ['v2-history/get_actions', '/v2/history'], ['v2-state/get_account', '/v2/state']];
 for (const [path, prefix] of registrations) {const {default: register} = await import(`../../build/api/routes/${path}/index.js`); await app.register(register, {prefix});}
 await app.ready();
 const mock = new MockAgent(), previousDispatcher = getGlobalDispatcher(); mock.disableNetConnect();
@@ -237,6 +243,26 @@ try {
     for (const request of [metadataRequest, statistics]) {
         const response = await app.inject(request); assert.equal(response.statusCode, 200, response.body);
     }
+    // get_account reads only node state and proven actions in its own request; links are reported, not faked empty.
+    const accountRequest = {method: 'GET', url: '/v2/state/get_account?account=bob'};
+    const tokens = [{symbol: 'SYS', precision: 4, amount: 1.25, contract: 'alpha.token'},
+        {symbol: 'WIRE', precision: 9, amount: 998385225.148576844, contract: 'alpha.token'}];
+    for (const cached of [false, true]) {
+        if (!cached) cache.clear();
+        const response = await app.inject(accountRequest); assert.equal(response.statusCode, 200, response.body);
+        const body = response.json();
+        assert.equal(body.cached, cached || undefined); assert.equal(body.account.account_name, 'bob');
+        assert.deepEqual(body.tokens, tokens); assert.deepEqual(body.token_contracts, ['alpha.token']);
+        assert.deepEqual(body.unavailable, ['links']); assert.equal(body.links, undefined);
+        assert.equal(body.total_actions, 1); assert.deepEqual(body.actions[0].act.data, value); assert.equal(body.actions[0].protocol, undefined);
+        assert(!JSON.stringify(body).includes('_hyperion_protocol'), 'proof capsule leaked');
+    }
+    balancesFail = true; cache.clear();
+    const noBalances = await app.inject(accountRequest); assert.equal(noBalances.statusCode, 200, noBalances.body);
+    assert.deepEqual(noBalances.json().tokens, []); assert.deepEqual(noBalances.json().unavailable, ['links', 'tokens']);
+    balancesFail = false; cache.clear(); delete current.protocol;
+    const unprovenAccount = await app.inject(accountRequest); assert.equal(unprovenAccount.statusCode, 503, unprovenAccount.body);
+    current = action();
     // These are ordinary ABI root fields, not a legacy action wrapper. Preserve the whole root.
     for (let index = 0; index < rootCases.length; index++) {
         const [, , data] = rootCases[index]; cache.clear(); current = action(66 + index); current.act.data = structuredClone(data);
@@ -445,5 +471,6 @@ try {
     console.log(JSON.stringify({passed: true, profileId, proofRoutes: 2, gatedRoutes: 4, decodedRequests: decodedRequests.length,
         liveActionProof: true, historicalActionProof: true, boundedOrderedLive: true, shardCleanup: true, decodedMembershipUnavailable: true,
         nodeKeyCache: true, rootStruct: true, primitiveRoots: true, timestampAction: true, standardCompaction: true, httpCancellation: true,
-        awaitFence: true, cacheFence: true, rawStreams: true, metadataHidden: true, unqualifiedRowsUnavailable: true, transportQualification: false}));
+        awaitFence: true, cacheFence: true, rawStreams: true, metadataHidden: true, unqualifiedRowsUnavailable: true, nodeAccount: true,
+        transportQualification: false}));
 } finally {setGlobalDispatcher(previousDispatcher); await mock.close(); await app.close();}

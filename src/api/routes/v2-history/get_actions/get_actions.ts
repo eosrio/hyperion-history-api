@@ -15,8 +15,8 @@ import {
     getSortDir
 } from "./functions.js";
 
-async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
-    const query: any = request.query;
+/** `query` defaults to the request's own; get_account passes its own query so proofs stay in its request scope. */
+export async function getActions(fastify: FastifyInstance, request: FastifyRequest, query: any = request.query) {
     assertProtocolActionQueryReady(fastify, query);
     const maxActions = fastify.manager.config.api.limits.get_actions ?? 0;
     const queryStruct = {

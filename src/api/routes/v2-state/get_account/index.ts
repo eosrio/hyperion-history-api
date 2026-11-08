@@ -44,6 +44,16 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                     }
                 }
             },
+            "token_contracts": {
+                description: 'contracts whose balances `tokens` lists completely (only set when tokens come from the node)',
+                type: "array",
+                items: {type: "string"}
+            },
+            "unavailable": {
+                description: 'response parts this chain cannot serve yet, omitted rather than returned empty',
+                type: "array",
+                items: {type: "string"}
+            },
             "total_actions": {type: "number"},
             "actions": {
                 type: "array",

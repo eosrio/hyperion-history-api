@@ -11,6 +11,6 @@ for (const profileId of ['wire-sysio-6508c9e8-engineering-v1', 'wire-sysio-7dede
             liveActionProof: true, historicalActionProof: true, boundedOrderedLive: true, shardCleanup: true, decodedMembershipUnavailable: true,
             nodeKeyCache: true, rootStruct: true, primitiveRoots: true, timestampAction: true, standardCompaction: true, httpCancellation: true,
             awaitFence: true, cacheFence: true, rawStreams: true, metadataHidden: true,
-            unqualifiedRowsUnavailable: true, transportQualification: false});
+            unqualifiedRowsUnavailable: true, nodeAccount: true, transportQualification: false});
     }, 45000);
 }
