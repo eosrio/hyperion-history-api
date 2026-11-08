@@ -234,23 +234,31 @@ const proofWorkersPerRequest = 4;
 /** Free shared workers right now; exposed for tests. */
 export const freeProtocolProofWorkers = (): number => sharedProofWorkers.free;
 
-/** Proves independent actions of one response with bounded concurrency; same checks as one-by-one calls.
- * `prepare` runs on each action right before it is proved. The first failure stops further actions. */
-export async function protectProtocolActions(fastify: FastifyInstance, request: object, actions: any[],
-    options: {encoding?: boolean; decode?: boolean; noBinary?: boolean} = {}, prepare?: (action: any) => void): Promise<void> {
-    const extension = fastify.manager.config.settings?.protocol?.provider === 'extension';
-    const extra = extension ? Math.min(sharedProofWorkers.free, proofWorkersPerRequest - 1, Math.max(0, actions.length - 1)) : 0;
+/** Runs independent proof work with the caller's own worker plus borrowed shared ones.
+ * The first failure stops new items; borrowed workers return only after every started item settles. */
+async function eachWithSharedWorkers<T>(items: readonly T[], run: (item: T) => Promise<void>, concurrent = true): Promise<void> {
+    const extra = concurrent ? Math.min(sharedProofWorkers.free, proofWorkersPerRequest - 1, Math.max(0, items.length - 1)) : 0;
     sharedProofWorkers.free -= extra;
-    let next = 0, failed = false;
+    let next = 0, failure: {error: unknown} | undefined;
     const worker = async () => {
-        while (!failed && next < actions.length) {
-            const action = actions[next++];
-            try {prepare?.(action); await protectProtocolAction(fastify, request, action, options);}
-            catch (error) {failed = true; throw error;}
+        while (!failure && next < items.length) {
+            const item = items[next++];
+            try {await run(item);}
+            catch (error) {failure ??= {error};}
         }
     };
     try {await Promise.all(Array.from({length: extra + 1}, worker));}
     finally {sharedProofWorkers.free += extra;}
+    if (failure) throw failure.error;
+}
+
+/** Proves independent actions of one response with bounded concurrency; same checks as one-by-one calls.
+ * `prepare` runs on each action right before it is proved. The first failure stops further actions. */
+export async function protectProtocolActions(fastify: FastifyInstance, request: object, actions: any[],
+    options: {encoding?: boolean; decode?: boolean; noBinary?: boolean} = {}, prepare?: (action: any) => void): Promise<void> {
+    await eachWithSharedWorkers(actions, async action => {
+        prepare?.(action); await protectProtocolAction(fastify, request, action, options);
+    }, fastify.manager.config.settings?.protocol?.provider === 'extension');
 }
 
 /** Call before grouping/shaping drops original anchors. Raw history remains available without ABI authority. */
@@ -438,30 +446,29 @@ export async function revalidateProtocolActionScope(fastify: FastifyInstance, sc
     if (proofs.views.length) {
         await withProtocolProofRequest(scope, async options => {
             const {reader} = await context(fastify);
-            for (const view of new Set(proofs.views)) await reader.revalidate(view, options);
+            await eachWithSharedWorkers([...new Set(proofs.views)], view => reader.revalidate(view, options));
         });
     }
     if (proofs.native.length) {
         await withProtocolProofRequest(scope, async options => {
             const {nativeReader} = await context(fastify);
             if (!nativeReader) throw unavailable('has no installed native provider');
-            for (const proof of proofs.native) {
-                await nativeReader.verifyEnvelope(proof.grant, proof.envelope, options);
-                await nativeReader.verifyValue(proof.grant, proof.value, options);
-            }
-            for (const obligation of obligations) {
-                const proof = obligation.proof as NativeProof;
-                await nativeReader.verifyEnvelope(proof.grant, obligation.envelope, options);
-                await nativeReader.verifyValue(proof.grant, obligation.value, options);
-            }
-            for (const view of new Set(proofs.native.map(proof => proof.view))) await nativeReader.revalidate(view, options);
+            // Every check is independent, so they share bounded workers; views are revalidated only after all of them.
+            const checks = [...proofs.native.map(proof => ({grant: proof.grant, envelope: proof.envelope, value: proof.value})),
+                ...obligations.map(obligation => ({grant: (obligation.proof as NativeProof).grant,
+                    envelope: obligation.envelope, value: obligation.value}))];
+            await eachWithSharedWorkers(checks, async check => {
+                await nativeReader.verifyEnvelope(check.grant, check.envelope, options);
+                await nativeReader.verifyValue(check.grant, check.value, options);
+            });
+            await eachWithSharedWorkers([...new Set(proofs.native.map(proof => proof.view))], view => nativeReader.revalidate(view, options));
         });
     }
     if (proofs.classifications.length) {
         await withProtocolProofRequest(scope, async options => {
             const {nativeReader} = await context(fastify);
             if (!nativeReader) throw unavailable('requires its installed native classification provider');
-            for (const view of new Set(proofs.classifications)) await nativeReader.revalidate(view, options);
+            await eachWithSharedWorkers([...new Set(proofs.classifications)], view => nativeReader.revalidate(view, options));
         });
     }
     assertProtocolProofRequestActive(scope);
@@ -491,11 +498,11 @@ export async function validateProtocolCachedResponse(fastify: FastifyInstance, r
         if (cached.actions.length === 0 && !cached.nodeResponse && hasDecodedActions(route, detached))
             throw unavailable('lacks original cached occurrence metadata');
         const proofs = requestProofs(request);
-        for (const entry of cached.actions) {
+        // Check every entry's shape before any authority read, then reopen the entries concurrently.
+        const entries = cached.actions.map((entry: any) => {
             const metadata = copyMetadata(entry?.metadata);
             if (!successfulMetadata(metadata))
                 throw unavailable('has unsupported cached occurrence metadata');
-            proofs.actions.push(metadata);
             if (metadata.schemaVersion === 2) {
                 if (!Object.hasOwn(entry, 'value') || !Object.hasOwn(entry, 'envelope')) throw unavailable('lacks its checked native value or envelope');
                 // get_account always renders its actions with noBinary.
@@ -503,6 +510,12 @@ export async function validateProtocolCachedResponse(fastify: FastifyInstance, r
                     && (route !== 'get_actions' || (request.query as any)?.noBinary !== true)))) throw unavailable('has an unsupported native renderer');
                 if (entry.dataMode !== undefined && (entry.dataMode !== 'raw' || entry.envelope?.act?.data !== metadata.input.rawHex))
                     throw unavailable('has an unsupported native data presentation');
+            }
+            proofs.actions.push(metadata);
+            return {entry, metadata};
+        });
+        await eachWithSharedWorkers(entries, async ({entry, metadata}: {entry: any; metadata: ActionMetadata}) => {
+            if (metadata.schemaVersion === 2) {
                 const proof = await resolveNative(fastify, request, metadata), {nativeReader} = await context(fastify);
                 if (!nativeReader) throw unavailable('has no installed native provider');
                 await withProtocolProofRequest(request, options => nativeReader.verifyValue(proof.grant, entry.value, options));
@@ -515,7 +528,7 @@ export async function validateProtocolCachedResponse(fastify: FastifyInstance, r
                 proofs.views.push(view);
                 if (classification) proofs.classifications.push(classification);
             }
-        }
+        });
         assertCachedActionCoverage(detached, proofs);
         // Recheck earlier views after later asynchronous lookups, immediately before return.
         await revalidateProtocolActionScope(fastify, request, {body: detached, route});
