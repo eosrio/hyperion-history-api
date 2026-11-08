@@ -674,6 +674,57 @@ try {
         assert.equal(await emptyIndexCount(unsafe.index), 0);
     });
 
+    await check('a real durability change refuses the next write at once and reads within the fixed bound', async () => {
+        const {ImmutableProtocolBundleStore, protocolMetadataReadBoundMs: bound} = await import('../../build/indexer/protocol/immutable-bundle-store.js');
+        const store = new ImmutableProtocolBundleStore(client, chain, 1, 'metadata-bound', 'metadata-bound-v1', undefined, {metadataReadBoundMs: bound});
+        const durability = value => client.indices.putSettings({index: store.index, settings: {'translog.durability': value}});
+        await store.prepare('first', {value: 1}); assert.deepEqual(await store.read('first'), {value: 1});
+        await durability('async');
+        await assert.rejects(store.prepare('second', {value: 2}), /durability or retention/);
+        await durability('request');
+        await store.read('first');
+        await durability('async');
+        const started = performance.now(); let reads = 0, refusedAfterMs = null;
+        while (refusedAfterMs === null && performance.now() - started < bound + 500) {
+            reads++;
+            try {await store.read('first');}
+            catch (error) {assert.match(String(error.message), /durability or retention/); refusedAfterMs = Math.round(performance.now() - started);}
+        }
+        assert.notEqual(refusedAfterMs, null, 'A read must be refused soon after the bound');
+        await durability('request');
+        assert.deepEqual(await store.read('first'), {value: 1});
+        // The same engine and record with and without the bound; zero restores a check on every read.
+        const median = async reader => {
+            const samples = [];
+            for (let sample = 0; sample < 300; sample++) {
+                const begun = performance.now(); await reader.read('first'); samples.push(performance.now() - begun);
+            }
+            return Number(samples.sort((a, b) => a - b)[150].toFixed(3));
+        };
+        const open = metadataReadBoundMs => new ImmutableProtocolBundleStore(client, chain, 1, 'metadata-bound', 'metadata-bound-v1', undefined,
+            {readOnly: true, metadataReadBoundMs});
+        const everyReadP50Ms = await median(open(0)), boundedReadP50Ms = await median(open(bound));
+        report.observations.metadataReadBound = {boundMs: bound, refusedAfterMs, readsBeforeRefusal: reads, everyReadP50Ms, boundedReadP50Ms};
+        return report.observations.metadataReadBound;
+    });
+
+    await check('a stored record is reasserted and read back with one realtime read on a real engine', async () => {
+        const {ImmutableProtocolBundleStore} = await import('../../build/indexer/protocol/immutable-bundle-store.js');
+        const store = new ImmutableProtocolBundleStore(client, chain, 1, 'request-order', 'request-order-v1');
+        const prepared = await store.prepare('absent-first', {value: 1}, undefined, 'absent');
+        const chunk = `absent-first:${prepared.digest}:0`;
+        const versions = async () => Promise.all([chunk, 'absent-first'].map(async id => (await client.get({index: store.index, id, realtime: true}))._seq_no));
+        assert.deepEqual(await store.read('absent-first', undefined, prepared.digest), {value: 1});
+        const before = await versions();
+        assert.equal((await store.prepare('absent-first', {value: 1}, undefined, 'present')).digest, prepared.digest);
+        const after = await versions();
+        assert.ok(after[0] > before[0] && after[1] > after[0], 'Both documents take a fresh write, chunk first');
+        await assert.rejects(store.prepare('absent-first', {value: 2}, undefined, 'present'), /conflict/);
+        assert.deepEqual(await versions(), after);
+        report.observations.requestOrder = {seqNoBefore: before, seqNoAfter: after};
+        return report.observations.requestOrder;
+    });
+
     await check('read-only readers observe retained membership without provisioning or mutating storage', async () => {
         const absent = new ActionHistorySourceJournal(client, `${chain}-readonly-absent`, 1, {readOnly: true});
         await assert.rejects(absent.readPlan(firstId));

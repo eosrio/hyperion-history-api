@@ -54,6 +54,8 @@ interface HistoricalActivation {
 export interface ProtocolAbiCoordinatorOptions {
     chainId:string; profile:ProtocolSourceProfile; ownerId:string; bindings:ProtocolSourceBindingStore;
     observations:ProtocolAbiObservationStore; store:ProtocolAbiFrontierStore;
+    /** Resolves prior account state while reducing a block. Nothing else may use it, because it can remember records. */
+    accountReader?:ProtocolAbiFrontierStore;
     maxPendingBlocks?:number; recoveryWindowBlocks?:number;
     /** Explicit new qualification namespace request boundary, never canonical proof. */
     qualificationGenesisStart?:true;
@@ -67,6 +69,7 @@ export interface ProtocolAbiCoordinatorOptions {
 export class ProtocolAbiCoordinatorStaleError extends Error {
     constructor(message='Protocol ABI source was superseded'){super(message);this.name='ProtocolAbiCoordinatorStaleError';}
 }
+const boundStateConcurrency=8;
 class InvalidPreparedObservation extends Error {}
 class HistoricalWorkYield extends Error {}
 const hex64=/^[0-9a-f]{64}$/;
@@ -268,7 +271,7 @@ export class ProtocolAbiCoordinator {
                     lastGlobalSequence:disk.value.lastGlobalSequence,coverageStart:1,bindings:[],catalogId:disk.value.catalogId,
                     ...(this.options.nativeActionInterfaceVersion===1?{nativeActionInterfaceVersion:1 as const}:{})};
                 const prepared=await this.options.store.prepareCommit(commit);
-                if(json(await this.readCommit(prepared.id))!==json(commit))throw new Error('Disk ABI baseline readback differs');
+                if(json(await this.readCommit(prepared.id,prepared.digest))!==json(commit))throw new Error('Disk ABI baseline readback differs');
                 await catalog.revalidate();head=this.head(commit,prepared.id);reason=null;replayFromBlock=null;
             }
             await catalog.revalidate();
@@ -417,8 +420,8 @@ export class ProtocolAbiCoordinator {
 
     private head(commit:Commit,commitId:string):Head {return {blockNum:commit.source.blockNum,blockId:commit.source.blockId,commitId,
         stateRootId:commit.stateRootId,lastGlobalSequence:commit.lastGlobalSequence,coverageStart:commit.coverageStart};}
-    private async readCommit(commitId:string):Promise<Commit> {
-        const value=await this.options.store.readCommit(commitId) as Commit;
+    private async readCommit(commitId:string,digest?:string):Promise<Commit> {
+        const value=await this.options.store.readCommit(commitId,undefined,digest) as Commit;
         if(value?.kind==='disk-abi-baseline'){
             if(!this.options.diskAbiHistory)throw new Error('Retained ABI progress requires its configured disk ABI catalog');
             const disk=await this.preparedDiskBaseline();
@@ -462,20 +465,29 @@ export class ProtocolAbiCoordinator {
             throw new InvalidPreparedObservation('Observation does not match the admitted source selection');
     }
 
+    /** Almost always already stored, yet each still takes fresh writes: a stored ID is not a receipt.
+     * Independent records, so they overlap; every group settles first, leaving no write running after a failure. */
+    private async prepareBoundStates(bindings:readonly {state:ProtocolAbiAccountState|null}[]):Promise<Map<ProtocolAbiAccountState,string>> {
+        const distinct=[...new Set(bindings.flatMap(binding=>binding.state?[binding.state]:[]))],ids=new Map<ProtocolAbiAccountState,string>();
+        for(let start=0;start<distinct.length;start+=boundStateConcurrency){
+            const group=distinct.slice(start,start+boundStateConcurrency);
+            const settled=await Promise.allSettled(group.map(state=>this.options.store.prepareAccountState(state,'present')));
+            for(const [index,result] of settled.entries()){
+                if(result.status==='rejected')throw result.reason;
+                ids.set(group[index]!,result.value.id);
+            }
+        }
+        return ids;
+    }
+
     private async prepareBlock(control:ProtocolAbiCoordinatorControl,selectedId:string,selected:ProtocolSourceSelection,
                                link:{observationId:string;observationDigest:string},reduction:ProtocolAbiBlockReduction):Promise<{commit:Commit;id:string}> {
         const materialize=async(value:ProtocolAbiBlockReduction)=>{
             const stateRootId=await this.options.store.prepareState(control.head?.stateRootId??null,value.updates,value.reset);
-            const states=new Map<ProtocolAbiAccountState,Promise<string>>(),bindings:Commit['bindings']=[];
+            const states=await this.prepareBoundStates(value.bindings),bindings:Commit['bindings']=[];
             for(const binding of value.bindings){
-                let stateId:string|null=null;
-                if(binding.state){
-                    let prepared=states.get(binding.state);
-                    if(!prepared){prepared=this.options.store.prepareAccountState(binding.state).then(result=>result.id);states.set(binding.state,prepared);}
-                    stateId=await prepared;
-                }
-                const {rawHex,state:_state,...input}=binding;
-                bindings.push({...input,rawSha256:digest(Buffer.from(rawHex,'hex')),stateId});
+                const {rawHex,state,...input}=binding;
+                bindings.push({...input,rawSha256:digest(Buffer.from(rawHex,'hex')),stateId:state?states.get(state)!:null});
             }
             const complete=!value.reset,reason=value.status==='incomplete'?gap(value.reason.code,value.reason.message,selected.source.blockNum):null;
             const commit:Commit={schemaVersion:1,kind:'canonical-abi-block',chainId:this.options.chainId,profile:this.profile,generation:control.generation,
@@ -486,7 +498,7 @@ export class ProtocolAbiCoordinator {
                 ...(this.options.nativeActionInterfaceVersion===1?{nativeActionInterfaceVersion:1 as const}:{}),
                 ...(value.status==='complete'&&value.nativeGenesis?{nativeGenesis:value.nativeGenesis}:{})};
             const prepared=await this.options.store.prepareCommit(commit);
-            if(json(await this.readCommit(prepared.id))!==json(commit))throw new Error('Prepared canonical ABI commit readback mismatch');
+            if(json(await this.readCommit(prepared.id,prepared.digest))!==json(commit))throw new Error('Prepared canonical ABI commit readback mismatch');
             return {commit,id:prepared.id};
         };
         try {return await materialize(reduction);} catch(error){
@@ -503,7 +515,7 @@ export class ProtocolAbiCoordinator {
         const certificateId=this.options.store.certificateId(certificate);
         if(this.certifiedId!==certificateId) {
             const certified=await this.options.store.prepareCertificate(certificate);
-            if(json(await this.options.store.readCertificate(certified.id))!==json(certificate))
+            if(json(await this.options.store.readCertificate(certified.id,undefined,certified.digest))!==json(certificate))
                 throw new Error('Settled ABI certificate readback mismatch');
             this.assertEpoch(epoch);this.certifiedId=certificateId;
         }
@@ -549,7 +561,7 @@ export class ProtocolAbiCoordinator {
         await this.assertHistoricalAuthority(control,epoch,control.historical.addressRootId,control.historical.activationCertificateId);
         const prepared=await this.options.store.prepareCertificate(value);
         await this.assertHistoricalAuthority(control,epoch,control.historical.addressRootId,control.historical.activationCertificateId);
-        if(json(await this.options.store.readCertificate(prepared.id))!==json(value))throw new Error('Historical root certificate readback differs');
+        if(json(await this.options.store.readCertificate(prepared.id,undefined,prepared.digest))!==json(value))throw new Error('Historical root certificate readback differs');
         await this.assertHistoricalAuthority(control,epoch,control.historical.addressRootId,control.historical.activationCertificateId);
         this.historicalAuthorityId=expected;
     }
@@ -560,11 +572,12 @@ export class ProtocolAbiCoordinator {
             ||json(work.anchor.source)!==json(control.source)
             ||(work.published?.historical?.addressRootId??work.baseRoot)!==(control.historical?.addressRootId??null)))
             this.historicalActivation=work=undefined;
-        // This fresh entry check also guards the first step: only synchronous scope setup intervenes.
+        // A check also guards the next step when no store request separates them. This entry check
+        // qualifies because only synchronous scope setup intervenes, and so does each check after a step.
         // Bind it to the retained operation's anchor/root, including rewinds below an older anchor.
-        let entryAuthority:Version|undefined=await this.historicalAuthorityVersion(work?.anchor??control,epoch,
+        let checked:Version|undefined=await this.historicalAuthorityVersion(work?.anchor??control,epoch,
             work?(work.published?.historical?.addressRootId??work.baseRoot):undefined,work?.published?.historical?.activationCertificateId);
-        const current=entryAuthority.value;
+        const current=checked.value;
         if(current.pending.length&&!this.historicalCertificates!.allowPendingWork)return;
         const generation=json([current.ownerId,current.generation]);
         if(generation!==this.historicalQueueGeneration)return;
@@ -575,20 +588,20 @@ export class ProtocolAbiCoordinator {
         }
         const operation=work;
         const authority=async()=>{
-            entryAuthority=undefined;
+            checked=undefined;
             const selected=operation.published?.historical;
             const version=await this.historicalAuthorityVersion(operation.anchor,epoch,selected?.addressRootId??operation.baseRoot,
                 selected?.activationCertificateId);
             const value=version.value;
             if(json(value.source)!==json(operation.anchor.source))throw new ProtocolAbiCoordinatorStaleError('Historical source context changed');
             if(value.pending.length&&!this.historicalCertificates!.allowPendingWork)throw new HistoricalWorkYield();
-            return version;
+            checked=version;return version;
         };
         const checkpoint=async()=>{
             const live=()=>this.queuedAdmissions>0&&!this.historicalCertificates!.allowPendingWork;
             this.assertEpoch(epoch);
             if(live()||performance.now()>=deadline)throw new HistoricalWorkYield();
-            const version=entryAuthority??await authority();entryAuthority=undefined;
+            const version=checked??await authority();checked=undefined;
             this.assertEpoch(epoch);
             if(live()||performance.now()>=deadline)throw new HistoricalWorkYield();return version;
         };
@@ -694,9 +707,14 @@ export class ProtocolAbiCoordinator {
             const selected=this.historicalCursor(oldest);if(!selected)break;
             walk=selected;
             const anchor={...control,head:walk.anchor};
+            // A check also guards the next step when no store request separates them; each walk step ends with one.
+            let checked:ProtocolAbiCoordinatorControl|undefined;
+            const authority=async()=>{checked=undefined;checked=await this.assertHistoricalAuthority(anchor,epoch);};
             const checkpoint=async()=>{
                 if(performance.now()>=deadline)throw new HistoricalWorkYield();
-                const current=await this.assertHistoricalAuthority(anchor,epoch);
+                if(this.queuedAdmissions&&!budget.allowPendingWork)throw new HistoricalWorkYield();
+                this.assertEpoch(epoch);
+                const current=checked??await this.assertHistoricalAuthority(anchor,epoch);checked=undefined;
                 if(current.pending.length&&!budget.allowPendingWork||performance.now()>=deadline)throw new HistoricalWorkYield();return current;
             };
             // Durable pending blocks permit background progress; a live RPC waiting on
@@ -704,7 +722,7 @@ export class ProtocolAbiCoordinator {
             // Break so the existing bounded activation can preserve that partial work.
             if(budget.allowPendingWork&&count>0&&this.queuedAdmissions)break;
             const work=walk.work??={commitId:walk.nextCommitId!};
-            if(!work.commit) {await checkpoint();work.commit=await this.readCommit(work.commitId);await this.assertHistoricalAuthority(anchor,epoch);}
+            if(!work.commit) {await checkpoint();work.commit=await this.readCommit(work.commitId);await authority();}
             const {commitId,commit}=work;
             const size=Buffer.byteLength(json(commit));
             if(bytes+size>budget.maxCommitBytesPerDrain) {
@@ -732,12 +750,12 @@ export class ProtocolAbiCoordinator {
             if(!work.preparedId) {
                 const current=await checkpoint();work.certificate=protocolAbiCertificateForControl({...current,head:this.head(commit,commitId)});
                 work.preparedId=(await this.options.store.prepareCertificate(work.certificate)).id;
-                await this.assertHistoricalAuthority(anchor,epoch);
+                await authority();
             }
             if(!work.verified) {
                 await checkpoint();
                 if(json(await this.options.store.readCertificate(work.preparedId))!==json(work.certificate))throw new Error('Historical certificate readback differs');
-                work.verified=true;await this.assertHistoricalAuthority(anchor,epoch);
+                work.verified=true;await authority();
             }
             await checkpoint();
             if(!this.queueHistorical(work.certificate!)) {await this.activateHistorical({...control,head:oldest.anchor},epoch,deadline);return;}
@@ -796,9 +814,10 @@ export class ProtocolAbiCoordinator {
                     const context=await this.options.bindings.readContext(selected.contextId);
                     this.validateObservation(record,selected,context.schemaJson,link.observationId,link.observationDigest);
                     const accounts=new Map<string,Promise<ProtocolAbiAccountState|null>>();
+                    const reader=this.options.accountReader??this.options.store;
                     reduction=await reduceProtocolAbiBlock(record,account=>{
                         let state=accounts.get(account);
-                        if(!state){state=this.options.store.readAccount(version.value.head?.stateRootId??null,account) as Promise<ProtocolAbiAccountState|null>;accounts.set(account,state);}
+                        if(!state){state=reader.readAccount(version.value.head?.stateRootId??null,account) as Promise<ProtocolAbiAccountState|null>;accounts.set(account,state);}
                         return state;
                     },version.value.head?.lastGlobalSequence??null,this.options.verifyNativeGenesis,
                     this.options.diskAbiHistory?state=>this.options.diskAbiHistory!.matchesState(state):undefined);

@@ -143,8 +143,9 @@ process-local preparation handle and retains completed root, bucket, account and
 within that operation. Every step finishes its I/O before yielding; no background promise survives a
 drain return. New live admissions preempt the work between operations. Count, byte and elapsed-time
 budgets are unchanged; a single already-started operation can finish beyond the cooperative deadline.
-The fresh entry authority check also guards the first operation when only synchronous scope setup
-intervenes. That result is consumed once; subsequent operations require their own authority checks.
+A fresh authority check also guards the next operation when no store request separates them: the entry
+check, where only synchronous scope setup intervenes, and the check that follows each operation. That
+result is consumed once, so every operation still starts from a check with no store request after it.
 
 Authority loss, a replaced base root, unknown/partial writes and process replacement discard the
 continuation. Stored content IDs and primary reads never replace fresh preparation receipts. Canonical
@@ -166,6 +167,23 @@ The control and immutable frontier-record indices are dedicated, owned projectio
 stored source, request translog durability, all configured-copy receipts, exact-ID realtime reads, and
 refusal of pruning pipelines or ILM/rollover. Identical CAS repair needs a fresh complete receipt. A primary
 GET alone grants no durability. Immutable bundles compare exact canonical UTF8 bytes, including on readback.
+Every write checks these index properties again, so a change refuses the next write, and by default so does
+every read. The coordinator's and API reader's frontier, source-binding and ABI observation stores opt into a
+read bound: a read may rely on a check that started less than one second earlier, because durability only
+matters to writes and reads keep their own content checks. A store can lower that bound but not raise it, a
+failed check is never reused, and the record is local to one store. Other stores keep a check on every read.
+
+The coordinator also avoids repeating store requests where the answer cannot differ. Its source-binding store
+remembers verified contexts and selections, whose IDs hash their content; observation links are always read.
+A separate read-only frontier handle remembers verified records for resolving prior account state while
+reducing a block. Those reads are the only ones it serves: writes, readback, activation and historical work use
+the writing store, which remembers nothing. A readback passes the digest of its fresh PREPARE, which names the
+first chunk, so a one-chunk record comes back in one realtime read that bypasses any memo and keeps every
+content check. Frontier PREPARE skips the opening manifest read because each frontier ID hashes its whole
+record, and the manifest write still compares any bytes it finds. An account state bound by a block is almost
+always already stored, so it finds both documents in one read and goes straight to the identical-byte CAS
+writes. None of this removes a write: chunks still precede the manifest, and each document takes its own
+complete receipt.
 Existing observation IDs and valid retained bytes stay compatible.
 
 Account state uses copy-on-write roots over 256 hash buckets. Updated account values are immutable records;
