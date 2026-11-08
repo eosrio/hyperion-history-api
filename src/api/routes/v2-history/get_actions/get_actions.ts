@@ -3,7 +3,7 @@ import {getTrackTotalHits, mergeActionMeta, timedQuery} from "../../../helpers/f
 import {assertActionSearchActive, searchActions} from "../../../helpers/action-search.js";
 import {hydrateActions} from "../../../helpers/archive-hydration.js";
 import {isHydrationDisabled} from "../../../helpers/archive-query.js";
-import {protectProtocolAction} from '../../../helpers/protocol-abi.js';
+import {protectProtocolActions} from '../../../helpers/protocol-abi.js';
 import {assertProtocolActionQueryReady} from '../../../helpers/protocol-action-query.js';
 import {
     addSortedBy,
@@ -15,8 +15,8 @@ import {
     getSortDir
 } from "./functions.js";
 
-async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
-    const query: any = request.query;
+/** `query` defaults to the request's own; get_account passes its own query so proofs stay in its request scope. */
+export async function getActions(fastify: FastifyInstance, request: FastifyRequest, query: any = request.query) {
     assertProtocolActionQueryReady(fastify, query);
     const maxActions = fastify.manager.config.api.limits.get_actions ?? 0;
     const queryStruct = {
@@ -102,11 +102,12 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
             await hydrateActions(fastify, results.hits);
         }
 
-        const actions = results.hits;
-        for (let action of actions.map(a => a._source)) {
-
+        const actions = results.hits.map(a => a._source);
+        const extension = fastify.manager.config.settings?.protocol?.provider === 'extension';
+        // Proofs are independent per action, so they run concurrently; shaping below keeps hit order.
+        await protectProtocolActions(fastify, request, actions, {noBinary: query.noBinary === true}, action => {
             try {
-                if (fastify.manager.config.settings?.protocol?.provider !== 'extension' && action.act.data) {
+                if (!extension && action.act.data) {
                     if (action.act.data.account && action.act.data.name && action.act.data.authorization) {
                         action.act.data = action.act.data.data;
                     }
@@ -114,10 +115,10 @@ async function getActions(fastify: FastifyInstance, request: FastifyRequest) {
             } catch (e: any) {
                 console.log(e);
             }
-
-            mergeActionMeta(action, false, fastify.manager.config.settings?.protocol?.provider === 'extension');
-            await protectProtocolAction(fastify, request, action, {noBinary: query.noBinary === true});
-            if (fastify.manager.config.settings?.protocol?.provider === 'extension') delete action.protocol;
+            mergeActionMeta(action, false, extension);
+        });
+        for (let action of actions) {
+            if (extension) delete action.protocol;
 
             if (query.noBinary === true) {
                 for (const key in action['act']['data']) {

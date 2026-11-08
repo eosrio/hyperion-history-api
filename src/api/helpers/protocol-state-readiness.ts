@@ -33,7 +33,7 @@ const projections: Readonly<Record<string, ProtocolProjection>> = {
     get_proposals: 'contract-state',
     get_voter_scopes: 'contract-state',
     get_links: 'native-permissions',
-    get_account: 'contract-state',
+    // get_account is not listed: for extension providers it serves only node state and metadata action search.
 };
 
 /** Check before response-cache access as well as the underlying projection query. */

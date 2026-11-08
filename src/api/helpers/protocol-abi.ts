@@ -227,6 +227,33 @@ async function resolveNative(fastify: FastifyInstance, scope: object, metadata: 
     });
 }
 
+/** Extra workers shared by every request in this process. Each request always keeps its own
+ * first worker, so it never waits for a slot, and the shared pool caps added load on the
+ * process-wide native open and proof read budgets. */
+const sharedProofWorkers = {free: 3};
+const proofWorkersPerRequest = 4;
+/** Free shared workers right now; exposed for tests. */
+export const freeProtocolProofWorkers = (): number => sharedProofWorkers.free;
+
+/** Proves independent actions of one response with bounded concurrency; same checks as one-by-one calls.
+ * `prepare` runs on each action right before it is proved. The first failure stops further actions. */
+export async function protectProtocolActions(fastify: FastifyInstance, request: object, actions: any[],
+    options: {encoding?: boolean; decode?: boolean; noBinary?: boolean} = {}, prepare?: (action: any) => void): Promise<void> {
+    const extension = fastify.manager.config.settings?.protocol?.provider === 'extension';
+    const extra = extension ? Math.min(sharedProofWorkers.free, proofWorkersPerRequest - 1, Math.max(0, actions.length - 1)) : 0;
+    sharedProofWorkers.free -= extra;
+    let next = 0, failed = false;
+    const worker = async () => {
+        while (!failed && next < actions.length) {
+            const action = actions[next++];
+            try {prepare?.(action); await protectProtocolAction(fastify, request, action, options);}
+            catch (error) {failed = true; throw error;}
+        }
+    };
+    try {await Promise.all(Array.from({length: extra + 1}, worker));}
+    finally {sharedProofWorkers.free += extra;}
+}
+
 /** Call before grouping/shaping drops original anchors. Raw history remains available without ABI authority. */
 export async function protectProtocolAction(fastify: FastifyInstance, request: object, action: any,
     options: {encoding?: boolean; decode?: boolean; noBinary?: boolean} = {}): Promise<string | undefined> {
@@ -472,8 +499,9 @@ export async function validateProtocolCachedResponse(fastify: FastifyInstance, r
             proofs.actions.push(metadata);
             if (metadata.schemaVersion === 2) {
                 if (!Object.hasOwn(entry, 'value') || !Object.hasOwn(entry, 'envelope')) throw unavailable('lacks its checked native value or envelope');
-                if (entry.presentation !== undefined && (entry.presentation !== 'noBinary' || route !== 'get_actions'
-                    || (request.query as any)?.noBinary !== true)) throw unavailable('has an unsupported native renderer');
+                // get_account always renders its actions with noBinary.
+                if (entry.presentation !== undefined && (entry.presentation !== 'noBinary' || (route !== 'get_account'
+                    && (route !== 'get_actions' || (request.query as any)?.noBinary !== true)))) throw unavailable('has an unsupported native renderer');
                 if (entry.dataMode !== undefined && (entry.dataMode !== 'raw' || entry.envelope?.act?.data !== metadata.input.rawHex))
                     throw unavailable('has an unsupported native data presentation');
                 const proof = await resolveNative(fastify, request, metadata), {nativeReader} = await context(fastify);
