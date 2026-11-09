@@ -14,7 +14,7 @@ import {createMongoDbStatefulIndexedAdapterV1, type MongoDbStatefulIndexedAdapte
 import {captureIndexedDeclarationV1, negotiateIndexedQueryV1, STATEFUL_INDEXED_QUERY_FAMILY_V1, type IndexedDeclarationV1, type IndexedLimitsV1}
     from '@eosrio/hyperion-sdk/projection-stateful-indexed-query-v1';
 import type {HyperionModuleLoader} from '../modules/loader.js';
-import {installedRuntimeArtifacts} from '../helpers/runtime-artifacts.js';
+import {installedStatefulDecoderIdentity} from './stateful-decoder-identity.js';
 import {protocolImmutableJson} from '../protocol/immutable-bundle-store.js';
 import type {ProtocolSourceProfile} from '../protocol/source-bindings.js';
 import type {PortableProjectionSource} from './source.js';
@@ -44,14 +44,16 @@ export class StatefulProjectionRegistryV2 {
     private initializing?: Promise<void>;
     private constructor(private readonly options: RegistryOptions) {}
     static async create(options: RegistryOptions, loader: HyperionModuleLoader) {
-        const registry = new StatefulProjectionRegistryV2(options), runtime = await installedRuntimeArtifacts(true);
+        // Revisions pin the decoder closure, not the whole build: a release that leaves the decoder
+        // unchanged keeps projected state, and the indexer and API agree whenever their decoders match.
+        const registry = new StatefulProjectionRegistryV2(options), decoder = await installedStatefulDecoderIdentity();
         for (const entry of loader.statefulPluginsV2()) {
             const binding = Object.freeze({chainId: options.chainId, backendId: options.configuration.backend.id,
                 generation: hash(['hyperion-stateful-instance-v2', options.chainId, options.configuration.generation]),
                 mappingRevision: hash(['hyperion-stateful-plugin-mapping-v2', entry.configuration]),
                 hookArtifact: entry.hookArtifact, hookRevision: hash(['hyperion-stateful-hook-v2', entry.hookArtifact, entry.configuration]),
-                codecRevision: hash(['hyperion-stateful-codecs-v2', runtime.executableSha256, entry.hookArtifact, options.profile]),
-                normalizerRevision: hash(['hyperion-stateful-normalizer-v2', runtime.executableSha256, options.profile])});
+                codecRevision: hash(['hyperion-stateful-codecs-v3', decoder.sha256, entry.hookArtifact, options.profile]),
+                normalizerRevision: hash(['hyperion-stateful-normalizer-v3', decoder.sha256, options.profile])});
             let registration: StatefulPluginRegistrationV2;
             try {
                 registration = await entry.plugin.getStatefulProjectionsV2(Object.freeze({binding, sourceCapabilities: STATEFUL_SOURCE_CAPABILITIES_V2,

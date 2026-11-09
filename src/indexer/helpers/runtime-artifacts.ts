@@ -9,6 +9,8 @@ import {actionHistoryImmutableJson} from '../history/action-history-manifest.js'
 const hash = (value: string | Uint8Array) => createHash('sha256').update(value).digest('hex');
 const execute = promisify(execFile);
 const artifacts = new Map<boolean, Promise<{codeRevision: string; executableSha256: string; pluginsSha256: string}>>();
+/** Sorted relative paths and SHA-256 of every code/data member, skipping `.git` and nested `node_modules`. */
+export async function artifactTree(root: string, optional = false): Promise<Array<{path: string; sha256: string}>> {return tree(root, optional);}
 async function tree(root: string, optional = false): Promise<Array<{path: string; sha256: string}>> {
     const members: Array<{path: string; sha256: string}> = []; let bytes = 0;
     const visit = async (directory: string) => {
