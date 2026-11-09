@@ -1174,7 +1174,9 @@ export default class DSPoolWorker extends HyperionWorker {
                         // Behind the recovery window a block is provable only once the historical root covers it.
                         // Wait for that root instead of recording the block's actions as incomplete.
                         // One block waits once: its later traces do not repeat a wait that already ran out.
+                        // A fenced worker attempt must drain promptly, so its signal ends the wait.
                         const wait = {maxWaitMs: this.historicalWaitSpentBlock === source.blockNum ? 0 : undefined,
+                            signal: currentProofConsumerScope()?.signal,
                             onWait: () => hLog(`Block ${source.blockNum} waits for the historical ABI root`)};
                         try {
                             if (this.protocol.nativeActions) {

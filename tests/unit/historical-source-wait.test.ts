@@ -2,6 +2,7 @@ import {describe,expect,it} from 'bun:test';
 import {waitForHistoricalSource} from '../../src/indexer/protocol/historical-source-wait.js';
 import {ProtocolAbiProofUnavailableError} from '../../src/indexer/protocol/abi-proof.js';
 import {ProtocolNativeActionUnavailableError} from '../../src/indexer/protocol/native-authorization.js';
+import {ProofConsumerScope} from '../../src/indexer/protocol/proof-consumer-scope.js';
 
 const missing=()=>new ProtocolAbiProofUnavailableError('historical_source_unavailable','Historical address is not in the activated root');
 function clock(){
@@ -42,6 +43,22 @@ describe('waiting for the historical ABI root',()=>{
         const c=clock();calls=0;const once=missing();
         await expect(waitForHistoricalSource(async()=>{calls++;throw once;},{now:c.now,sleep:c.sleep,maxWaitMs:0})).rejects.toBe(once);
         expect(calls).toBe(1);expect(c.sleeps).toEqual([]);
+    });
+    it('ends at once with the fence reason when the owning attempt is fenced, with the real timer',async()=>{
+        const scope=new ProofConsumerScope('historical-wait-fence');let calls=0;
+        const started=performance.now();
+        const pending=waitForHistoricalSource(async()=>{calls++;throw missing();},{signal:scope.signal,initialDelayMs:60_000});
+        await new Promise(resolve=>setTimeout(resolve,20));
+        scope.fence();
+        const thrown=await pending.catch(error=>error);
+        expect(scope.ownsFenceError(thrown)).toBe(true);expect((thrown as {code?:string}).code).toBe('worker_attempt_fenced');
+        expect(calls).toBe(1);expect(performance.now()-started).toBeLessThan(5000);
+    });
+    it('does not open again after the signal aborts between attempts',async()=>{
+        const controller=new AbortController(),reason=new Error('fenced');let calls=0;
+        const thrown=await waitForHistoricalSource(async()=>{calls++;controller.abort(reason);throw missing();},
+            {signal:controller.signal,now:()=>0,sleep:async()=>{}}).catch(error=>error);
+        expect(thrown).toBe(reason);expect(calls).toBe(1);
     });
     it('rejects an invalid bound before opening',async()=>{
         let calls=0;
