@@ -27,6 +27,9 @@ export default function (fastify: FastifyInstance, opts: any, next) {
                         precision: { type: "number" },
                         amount: { type: "number" },
                         contract: { type: "string" },
+                        // Exact asset text, for example "75323.350694444 WIRE"; `amount` is a float.
+                        // Sent by projection-backed providers only.
+                        balance: { type: "string" },
                     }
                 }
             }

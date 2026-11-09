@@ -118,6 +118,21 @@ the eligible LIB in irreversible mode) by more blocks. The bound can only cause
 refusals, and it stays out of the configuration digest. Changing it does not
 disturb an existing instance.
 
+### Token routes
+
+Token balances are float `amount` values in the legacy responses, and explorers
+add them up. A projection-backed `get_tokens` or `get_top_holders` also returns
+`balance`, the exact asset text (for example `75323.350694444 WIRE`). WIRE's
+supply alone is 10^18 base units, beyond float precision. `get_tokens` declares
+the field in its response schema; `get_top_holders` has no response schema.
+
+`tests/unit/wire-token-state-native.mjs` replays the retained real Wire blocks
+1..1480 through this host with the Wire state plugin. That plugin is the `state/`
+package of the Wire plugin repository, and a test copy of its build is in
+`tests/fixtures/wire-token-state/plugin`. The test compares both
+routes, for every balance and ranked symbol, with the delta index's rows as of
+block 1480 in `tests/fixtures/wire-token-state/oracle-1480.json`.
+
 ## Remaining production boundaries
 
 The optional `getStatefulProjectionsV2` method belongs on the existing enabled

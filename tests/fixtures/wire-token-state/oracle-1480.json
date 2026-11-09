@@ -1,0 +1,485 @@
+{
+ "description": "Latest sysio.token, sysio.liq and sysio.swap balance and stat rows at or below block 1480 in the Wire testnet delta index.",
+ "throughBlock": 1480,
+ "balances": [
+  {
+   "contract": "sysio.liq",
+   "owner": "sysio",
+   "symbol": "LIQETH",
+   "balance": "0.000000000 LIQETH",
+   "block": 694
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "sysio.swap",
+   "symbol": "LIQETH",
+   "balance": "10.000000000 LIQETH",
+   "block": 694
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "sysio.synd",
+   "symbol": "LIQETH",
+   "balance": "100.000000000 LIQETH",
+   "block": 1035
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.5toc4",
+   "symbol": "LIQETH",
+   "balance": "100.000000000 LIQETH",
+   "block": 1087
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.btvc1",
+   "symbol": "LIQETH",
+   "balance": "100.000000000 LIQETH",
+   "block": 1133
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.gwk5i",
+   "symbol": "LIQETH",
+   "balance": "100.000000000 LIQETH",
+   "block": 1094
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.jacyf",
+   "symbol": "LIQETH",
+   "balance": "100.000000000 LIQETH",
+   "block": 1159
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.jubqo",
+   "symbol": "LIQETH",
+   "balance": "100.000000000 LIQETH",
+   "block": 1055
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.k3mg5",
+   "symbol": "LIQETH",
+   "balance": "100.000000000 LIQETH",
+   "block": 1042
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.nkdgq",
+   "symbol": "LIQETH",
+   "balance": "100.000000000 LIQETH",
+   "block": 1121
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.nwdo2",
+   "symbol": "LIQETH",
+   "balance": "100.000000000 LIQETH",
+   "block": 1101
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.q54lm",
+   "symbol": "LIQETH",
+   "balance": "100.000000000 LIQETH",
+   "block": 1107
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.qlcub",
+   "symbol": "LIQETH",
+   "balance": "100.000000000 LIQETH",
+   "block": 1049
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.qnz5v",
+   "symbol": "LIQETH",
+   "balance": "100.000000000 LIQETH",
+   "block": 1074
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.rnfp1",
+   "symbol": "LIQETH",
+   "balance": "100.000000000 LIQETH",
+   "block": 1067
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.stgmo",
+   "symbol": "LIQETH",
+   "balance": "100.000000000 LIQETH",
+   "block": 1061
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.teg2e",
+   "symbol": "LIQETH",
+   "balance": "100.000000000 LIQETH",
+   "block": 1146
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.tqr2p",
+   "symbol": "LIQETH",
+   "balance": "100.000000000 LIQETH",
+   "block": 1127
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.upd5u",
+   "symbol": "LIQETH",
+   "balance": "100.000000000 LIQETH",
+   "block": 1166
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.uuwq3",
+   "symbol": "LIQETH",
+   "balance": "100.000000000 LIQETH",
+   "block": 1114
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.wh5ew",
+   "symbol": "LIQETH",
+   "balance": "100.000000000 LIQETH",
+   "block": 1153
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.xgqiw",
+   "symbol": "LIQETH",
+   "balance": "100.000000000 LIQETH",
+   "block": 1081
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.zkvp3",
+   "symbol": "LIQETH",
+   "balance": "100.000000000 LIQETH",
+   "block": 1173
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.znt1z",
+   "symbol": "LIQETH",
+   "balance": "100.000000000 LIQETH",
+   "block": 1139
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "sysio",
+   "symbol": "LIQSOL",
+   "balance": "0.000000000 LIQSOL",
+   "block": 697
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "sysio.swap",
+   "symbol": "LIQSOL",
+   "balance": "10.000000000 LIQSOL",
+   "block": 697
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "sysio.synd",
+   "symbol": "LIQSOL",
+   "balance": "100.000000000 LIQSOL",
+   "block": 1032
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.5toc4",
+   "symbol": "LIQSOL",
+   "balance": "100.000000000 LIQSOL",
+   "block": 1084
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.btvc1",
+   "symbol": "LIQSOL",
+   "balance": "100.000000000 LIQSOL",
+   "block": 1130
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.gwk5i",
+   "symbol": "LIQSOL",
+   "balance": "100.000000000 LIQSOL",
+   "block": 1091
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.jacyf",
+   "symbol": "LIQSOL",
+   "balance": "100.000000000 LIQSOL",
+   "block": 1156
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.jubqo",
+   "symbol": "LIQSOL",
+   "balance": "100.000000000 LIQSOL",
+   "block": 1052
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.k3mg5",
+   "symbol": "LIQSOL",
+   "balance": "100.000000000 LIQSOL",
+   "block": 1039
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.nkdgq",
+   "symbol": "LIQSOL",
+   "balance": "100.000000000 LIQSOL",
+   "block": 1117
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.nwdo2",
+   "symbol": "LIQSOL",
+   "balance": "100.000000000 LIQSOL",
+   "block": 1097
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.q54lm",
+   "symbol": "LIQSOL",
+   "balance": "100.000000000 LIQSOL",
+   "block": 1104
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.qlcub",
+   "symbol": "LIQSOL",
+   "balance": "100.000000000 LIQSOL",
+   "block": 1045
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.qnz5v",
+   "symbol": "LIQSOL",
+   "balance": "100.000000000 LIQSOL",
+   "block": 1071
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.rnfp1",
+   "symbol": "LIQSOL",
+   "balance": "100.000000000 LIQSOL",
+   "block": 1064
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.stgmo",
+   "symbol": "LIQSOL",
+   "balance": "100.000000000 LIQSOL",
+   "block": 1058
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.teg2e",
+   "symbol": "LIQSOL",
+   "balance": "100.000000000 LIQSOL",
+   "block": 1143
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.tqr2p",
+   "symbol": "LIQSOL",
+   "balance": "100.000000000 LIQSOL",
+   "block": 1124
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.upd5u",
+   "symbol": "LIQSOL",
+   "balance": "100.000000000 LIQSOL",
+   "block": 1163
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.uuwq3",
+   "symbol": "LIQSOL",
+   "balance": "100.000000000 LIQSOL",
+   "block": 1111
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.wh5ew",
+   "symbol": "LIQSOL",
+   "balance": "100.000000000 LIQSOL",
+   "block": 1149
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.xgqiw",
+   "symbol": "LIQSOL",
+   "balance": "100.000000000 LIQSOL",
+   "block": 1077
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.zkvp3",
+   "symbol": "LIQSOL",
+   "balance": "100.000000000 LIQSOL",
+   "block": 1169
+  },
+  {
+   "contract": "sysio.liq",
+   "owner": "wireno.znt1z",
+   "symbol": "LIQSOL",
+   "balance": "100.000000000 LIQSOL",
+   "block": 1136
+  },
+  {
+   "contract": "sysio.swap",
+   "owner": "sysio",
+   "symbol": "LIQETHP",
+   "balance": "10.000000000 LIQETHP",
+   "block": 694
+  },
+  {
+   "contract": "sysio.swap",
+   "owner": "sysio",
+   "symbol": "LIQSOLP",
+   "balance": "10.000000000 LIQSOLP",
+   "block": 697
+  },
+  {
+   "contract": "sysio.token",
+   "owner": "defproducera",
+   "symbol": "SYS",
+   "balance": "1000000.0000 SYS",
+   "block": 149
+  },
+  {
+   "contract": "sysio.token",
+   "owner": "defproducerb",
+   "symbol": "SYS",
+   "balance": "1000000.0000 SYS",
+   "block": 152
+  },
+  {
+   "contract": "sysio.token",
+   "owner": "defproducerc",
+   "symbol": "SYS",
+   "balance": "1000000.0000 SYS",
+   "block": 155
+  },
+  {
+   "contract": "sysio.token",
+   "owner": "defproducerd",
+   "symbol": "SYS",
+   "balance": "1000000.0000 SYS",
+   "block": 158
+  },
+  {
+   "contract": "sysio.token",
+   "owner": "defproducere",
+   "symbol": "SYS",
+   "balance": "1000000.0000 SYS",
+   "block": 161
+  },
+  {
+   "contract": "sysio.token",
+   "owner": "defproducerf",
+   "symbol": "SYS",
+   "balance": "1000000.0000 SYS",
+   "block": 164
+  },
+  {
+   "contract": "sysio.token",
+   "owner": "defproducerg",
+   "symbol": "SYS",
+   "balance": "1000000.0000 SYS",
+   "block": 168
+  },
+  {
+   "contract": "sysio.token",
+   "owner": "defproducerh",
+   "symbol": "SYS",
+   "balance": "1000000.0000 SYS",
+   "block": 171
+  },
+  {
+   "contract": "sysio.token",
+   "owner": "sysio",
+   "symbol": "SYS",
+   "balance": "992000000.0000 SYS",
+   "block": 171
+  },
+  {
+   "contract": "sysio.token",
+   "owner": "sysio",
+   "symbol": "WIRE",
+   "balance": "999999745.354248208 WIRE",
+   "block": 1480
+  },
+  {
+   "contract": "sysio.token",
+   "owner": "sysio.gov",
+   "symbol": "WIRE",
+   "balance": "78.215250597 WIRE",
+   "block": 1480
+  },
+  {
+   "contract": "sysio.token",
+   "owner": "sysio.ops",
+   "symbol": "WIRE",
+   "balance": "156.430501195 WIRE",
+   "block": 1480
+  },
+  {
+   "contract": "sysio.token",
+   "owner": "sysio.swap",
+   "symbol": "WIRE",
+   "balance": "20.000000000 WIRE",
+   "block": 697
+  }
+ ],
+ "stats": [
+  {
+   "contract": "sysio.liq",
+   "symbol": "LIQETH",
+   "supply": "2210.000000000 LIQETH",
+   "block": 1173
+  },
+  {
+   "contract": "sysio.liq",
+   "symbol": "LIQSOL",
+   "supply": "2210.000000000 LIQSOL",
+   "block": 1169
+  },
+  {
+   "contract": "sysio.swap",
+   "symbol": "LIQETHP",
+   "supply": "10.000000000 LIQETHP",
+   "block": 694
+  },
+  {
+   "contract": "sysio.swap",
+   "symbol": "LIQSOLP",
+   "supply": "10.000000000 LIQSOLP",
+   "block": 697
+  },
+  {
+   "contract": "sysio.token",
+   "symbol": "SYS",
+   "supply": "1000000000.0000 SYS",
+   "block": 146
+  },
+  {
+   "contract": "sysio.token",
+   "symbol": "WIRE",
+   "supply": "1000000000.000000000 WIRE",
+   "block": 390
+  }
+ ]
+}
