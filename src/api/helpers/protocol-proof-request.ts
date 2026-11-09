@@ -2,7 +2,7 @@ import type {FastifyRequest} from 'fastify';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {performance} from 'node:perf_hooks';
 import {setTimeout as delay} from 'node:timers/promises';
-import {ProtocolAbiProofUnavailableError, isUnsettledCertificate, type ProtocolAbiProofReadOptions} from '../../indexer/protocol/abi-proof.js';
+import {ProtocolAbiProofUnavailableError, isProtocolHistoricalAdvance, isUnsettledCertificate, type ProtocolAbiProofReadOptions} from '../../indexer/protocol/abi-proof.js';
 import {withProofReadRecovery} from '../../indexer/protocol/proof-consumer-scope.js';
 import {ProtocolNativeActionUnavailableError} from '../../indexer/protocol/native-authorization.js';
 
@@ -127,6 +127,28 @@ export function assertProtocolProofRequestActive(scope: object): void {
     if (raw?.aborted || raw?.socket?.destroyed) throw reason(scope);
 }
 
+/** Per proof read of a stream batch; the stream scope's own cancellation still ends it at once. */
+export const streamProofRecoveryMs = 5000;
+/**
+ * Stream batches install their own bounded read recovery, as HTTP attempts do. The historical walk
+ * keeps activating newer roots while a stream scrolls history, so a read can land on a root that
+ * advanced after its view was issued. Revalidation then rereads current membership, and a read that
+ * hit a valid advance is repeated. Any other failure, including a real authority change, is final.
+ */
+async function streamProofRead<T>(scope: object, signal: AbortSignal,
+    operation: (options: ProtocolApiProofReadOptions) => Promise<T>): Promise<T> {
+    const deadline = performance.now() + streamProofRecoveryMs;
+    const recovery = {key: scope, signal, remainingMs: () => deadline - performance.now()};
+    for (let wait = 25; ; wait = Math.min(wait * 2, 250)) {
+        try {return await withProofReadRecovery(recovery, () => operation({signal}));} catch (error) {
+            if (!isProtocolHistoricalAdvance(error) || recovery.remainingMs() <= 0) throw error;
+            assertProtocolProofRequestActive(scope);
+            await delay(Math.max(1, Math.min(wait, recovery.remainingMs())), undefined, {signal});
+            assertProtocolProofRequestActive(scope);
+        }
+    }
+}
+
 /** Stop HTTP proof continuations on disconnect without retaining per-request listeners. */
 export async function withProtocolProofRequest<T>(scope: object,
     operation: (options: ProtocolApiProofReadOptions) => Promise<T>): Promise<T> {
@@ -152,7 +174,7 @@ export async function withProtocolProofRequest<T>(scope: object,
     raw?.socket?.once('close', abort);
     streamSignal?.addEventListener('abort', abort, {once: true});
     try {
-        const value = await Promise.race([operation({signal}), stopped]);
+        const value = await Promise.race([streamSignal ? streamProofRead(scope, signal, operation) : operation({signal}), stopped]);
         assertProtocolProofRequestActive(scope);
         return value;
     } finally {

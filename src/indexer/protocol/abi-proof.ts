@@ -62,9 +62,19 @@ export function isUnsettledCertificate(error:unknown):boolean {
 export function transferUnsettledCertificate(source:unknown,target:object):void {
     if(isUnsettledCertificate(source))unsettledCertificateErrors.add(target);
 }
+/** The activated historical root or canonical head moved on validly while a read was in flight. A
+ * later read under the newer root resolves it; any other authority change stays final. */
+export function isProtocolHistoricalAdvance(error:unknown):boolean {
+    return typeof error==='object'&&error!==null&&advancedHistoricalErrors.has(error);
+}
 export class ProtocolAbiProofUnavailableError extends Error {
     readonly statusCode=503;
     constructor(readonly code:string,message:string){super(message);this.name='ProtocolAbiProofUnavailableError';}
+}
+/** The error the reader issues for a valid historical advance; see `isProtocolHistoricalAdvance`. */
+export function protocolHistoricalAdvanceError(message:string):ProtocolAbiProofUnavailableError {
+    const error=new ProtocolAbiProofUnavailableError('authority_changed',message);
+    advancedHistoricalErrors.add(error);return error;
 }
 
 type Head=NonNullable<ProtocolAbiCoordinatorControl['head']>;
@@ -358,10 +368,7 @@ export class ProtocolAbiProofReader {
                 unavailable('authority_changed','Activated historical address root changed');
             }
     }
-    private historicalAdvanced(message:string):never {
-        const error=new ProtocolAbiProofUnavailableError('authority_changed',message);
-        advancedHistoricalErrors.add(error);throw error;
-    }
+    private historicalAdvanced(message:string):never {throw protocolHistoricalAdvanceError(message);}
     private validHistoricalAdvance(value:any,current:ProtocolAbiHeadCertificate):boolean {
         const historical=value?.historical;
         return value?.schemaVersion===1&&Number.isSafeInteger(value.revision)&&value.revision>=0
