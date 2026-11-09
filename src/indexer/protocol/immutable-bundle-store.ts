@@ -15,6 +15,9 @@ interface StoredDocument {
 
 const sha256=(value:Uint8Array|string)=>createHash('sha256').update(value).digest('hex');
 const hex64=/^[0-9a-f]{64}$/;
+/** Legacy source-addressed candidates, and block-addressed ones whose zero-padded height sorts by block. */
+const candidateCustodyId=/^(?:h45statecandidate2:[0-9a-f]{64}|h45statecustody2:[0-9a-f]{64}:[0-9]{16}):[0-9a-f]{64}$/;
+const candidateCustodyBound=/^h45statecustody2:([0-9a-f]{64}):(?:[0-9]{16}|~)?$/;
 const settingsValue = (entry: any, name: string) => entry?.settings?.[`index.${name}`]
     ?? entry?.settings?.index?.[name] ?? entry?.defaults?.[`index.${name}`] ?? entry?.defaults?.index?.[name];
 
@@ -277,7 +280,7 @@ export class ImmutableProtocolBundleStore {
     async prepareCandidateBytes(id:string, input:Uint8Array, signal?:AbortSignal):Promise<FreshBundlePrepare> {
         signal?.throwIfAborted();
         if(this.options.readOnly)throw new Error('Read-only protocol bundles cannot prepare records');
-        if(this.kind!=='stateful-candidate-v2'||!/^h45statecandidate2:[0-9a-f]{64}:[0-9a-f]{64}$/.test(id)||!(input instanceof Uint8Array)) throw new Error('Invalid candidate custody bytes');
+        if(this.kind!=='stateful-candidate-v2'||!candidateCustodyId.test(id)||!(input instanceof Uint8Array)) throw new Error('Invalid candidate custody bytes');
         if (input.byteLength < 1 || input.byteLength > this.bounds.maximumBytes) throw new Error('Candidate custody exceeds raw byte bound');
         return this.prepareBytes(id,Buffer.from(input),signal);
     }
@@ -486,12 +489,39 @@ export class ImmutableProtocolBundleStore {
     }
 
     async readCandidateBytes(id:string,signal?:AbortSignal):Promise<Buffer> {
-        if(this.kind!=='stateful-candidate-v2'||!/^h45statecandidate2:[0-9a-f]{64}:[0-9a-f]{64}$/.test(id)) throw new Error('Invalid candidate custody bytes');
+        if(this.kind!=='stateful-candidate-v2'||!candidateCustodyId.test(id)) throw new Error('Invalid candidate custody bytes');
         const {manifest,payloads,bytes}=await this.readParts(id,signal);
         signal?.throwIfAborted();
         const payload=Buffer.concat(payloads);
         if(bytes!==manifest.byte_length||sha256(payload)!==manifest.digest) throw new ImmutableProtocolBundleReadError('invalid',id,'ABI observation bundle integrity mismatch');
         return payload;
+    }
+
+    /**
+     * Candidate retention only: deletes every manifest and chunk of the block-addressed candidates of
+     * one declaration whose IDs sort in [gte, lt). Callers choose a range no recovery can still read.
+     * Refresh first when recently written candidates must be seen. Incomplete means call again.
+     */
+    async deleteCandidateRange(gte:string,lt:string,options:{refresh:boolean;maximumDocuments:number},signal?:AbortSignal):Promise<{deleted:number;complete:boolean}> {
+        signal?.throwIfAborted();
+        if(this.options.readOnly)throw new Error('Read-only protocol bundles cannot delete records');
+        const lower=candidateCustodyBound.exec(gte),upper=candidateCustodyBound.exec(lt);
+        if(this.kind!=='stateful-candidate-v2'||!lower||!upper||lower[1]!==upper[1]||!(gte<lt)||gte.endsWith('~')
+            ||!Number.isSafeInteger(options.maximumDocuments)||options.maximumDocuments<1||options.maximumDocuments>100_000)
+            throw new Error('Invalid candidate custody retention range');
+        await this.initialize(signal,true);
+        if(options.refresh){
+            const refreshed:any=await checkedIo(signal,()=>this.client.indices.refresh({index:this.index},{signal}));
+            if(!refreshed?._shards||refreshed._shards.failed!==0)throw new Error('Incomplete candidate custody refresh');
+        }
+        const response:any=await checkedIo(signal,()=>this.client.deleteByQuery({index:this.index,conflicts:'proceed',
+            max_docs:options.maximumDocuments,refresh:false,wait_for_completion:true,
+            query:{range:{bundle_id:{gte,lt}}}},{signal}));
+        if(!response||response.timed_out!==false||!Array.isArray(response.failures)||response.failures.length!==0
+            ||!Number.isSafeInteger(response.deleted)||response.deleted<0||!Number.isSafeInteger(response.version_conflicts))
+            throw new Error('Incomplete candidate custody retention receipt');
+        // A conflict is an identical reassert racing this delete; the next call removes it.
+        return {deleted:response.deleted,complete:response.deleted<options.maximumDocuments&&response.version_conflicts===0};
     }
 
     /** Undefined sends the caller to the ordered read, which classifies anything unexpected. */
