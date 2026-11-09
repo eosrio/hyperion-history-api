@@ -65,6 +65,6 @@ async function getLinks(fastify: FastifyInstance, request: FastifyRequest) {
 
 export function getLinksHandler(fastify: FastifyInstance, route: string) {
 	return async (request: FastifyRequest, reply: FastifyReply) => {
-		reply.send(await timedQuery(getLinks, fastify, request, route));
+		return reply.send(await timedQuery(getLinks, fastify, request, route));
 	}
 }

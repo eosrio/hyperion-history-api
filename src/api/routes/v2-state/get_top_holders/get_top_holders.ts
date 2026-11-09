@@ -52,6 +52,6 @@ async function getTopHolders(fastify: FastifyInstance, request: FastifyRequest) 
 
 export function getTopHoldersHandler(fastify: FastifyInstance, route: string) {
     return async (request: FastifyRequest, reply: FastifyReply) => {
-        reply.send(await timedQuery(getTopHolders, fastify, request, route));
+        return reply.send(await timedQuery(getTopHolders, fastify, request, route));
     }
 }
