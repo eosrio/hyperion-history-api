@@ -127,6 +127,18 @@ The stateful request timeout is separate from the Elasticsearch search timeout.
 `generation` chooses an explicit private namespace; changing an ABI or executable
 does not adopt or mutate an incompatible existing metadata record.
 
+The binding's codec and normalizer revisions pin the decoder, not the whole build.
+They hash the static import closure of the compiled `indexer/projection/stateful-source.js`
+and `indexer/projection/source.js`, every package that closure imports, the SDK and the
+native codec (`src/indexer/projection/stateful-decoder-identity.ts`), together with the
+selected protocol profile and the plugin's hook artifact. A release that changes only
+modules outside that closure, such as API routes or workers, keeps the same declaration,
+so existing projected state stays servable and the indexer and API agree on it. A change
+to any decoder module or package still changes the declaration and requires a new
+`generation`. The closure is resolved at startup and fails closed: a computed dynamic
+import, a module outside the build root or an unresolvable package refuses registration.
+For the built-in Antelope provider, the profile component still pins the whole executable.
+
 SDK39 fixes selector epochs in the declaration digest, and native storage is
 namespaced by that digest. Adding another ABI deployment therefore changes
 durable identity. Live mapping-version continuity requires an explicit SDK/native
