@@ -1,6 +1,6 @@
 import {expect, test} from 'bun:test';
 import {installProtocolStateRoutes, queryProtocolStateRoute, resolveProtocolRouteBacking, assertProtocolRouteReady,
-    ProtocolProjectionUnavailableError} from '../../src/api/helpers/protocol-state-readiness.js';
+    ProtocolProjectionUnavailableError, ProtocolStateRequestError} from '../../src/api/helpers/protocol-state-readiness.js';
 
 function app(provider?: string) {
     const instance: any = {manager: {config: {settings: {protocol: provider ? {provider} : undefined}, api: {limits: {get_tokens: 25, get_top_holders: 0}}}},
@@ -75,4 +75,24 @@ test('the host composes each backing with a detached request and the right read'
     await expect(queryProtocolStateRoute(fastify, request, {kind: 'stateful', projection: 'contract-state', route: 'get_tokens',
         plugin: 'forged', backing: keyed('tokens')} as any)).rejects.toBeInstanceOf(ProtocolProjectionUnavailableError);
     expect(calls.length).toBe(2);
+});
+
+test('a backing can refuse parameters with 400 before any read, and a failing check is unavailable', async () => {
+    const fastify = app('extension'), {calls, value} = context(), seen: unknown[] = [];
+    await installProtocolStateRoutes(fastify, [plugin({
+        get_tokens: {...keyed(), validate: (request: any) => {seen.push(request); return request.query.account === 'bad' ? 'account is not projected' : undefined;}},
+        get_voters: {...keyed('voters'), validate: () => {throw new Error('broken check');}},
+        get_links: {...keyed('links'), validate: 'not a function'},
+    })], value, lag, quiet);
+    expect(resolveProtocolRouteBacking(fastify, 'get_links')?.kind).toBe('unavailable');
+    const refused = queryProtocolStateRoute(fastify, {query: {account: 'bad'}} as any, resolveProtocolRouteBacking(fastify, 'get_tokens') as any);
+    await expect(refused).rejects.toBeInstanceOf(ProtocolStateRequestError);
+    await expect(refused).rejects.toMatchObject({statusCode: 400, code: 'invalid_state_request', message: 'account is not projected'});
+    await expect(queryProtocolStateRoute(fastify, {query: {}} as any, resolveProtocolRouteBacking(fastify, 'get_voters') as any))
+        .rejects.toBeInstanceOf(ProtocolProjectionUnavailableError);
+    expect(calls).toEqual([]);
+    expect(await queryProtocolStateRoute(fastify, {query: {account: 'good'}} as any, resolveProtocolRouteBacking(fastify, 'get_tokens') as any))
+        .toMatchObject({request: {query: {account: 'good'}}});
+    expect(seen).toHaveLength(2);
+    expect(calls).toEqual([['keyed', 'tokens']]);
 });

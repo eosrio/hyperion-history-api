@@ -5,6 +5,6 @@ test('core state routes delegate to a ready plugin projection through the owner-
         {stdout: 'pipe', stderr: 'pipe', timeout: 60000});
     const [code, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
     expect({code, error: code ? stderr : undefined}).toEqual({code: 0, error: undefined});
-    expect(JSON.parse(stdout.trim().split('\n').at(-1)!)).toEqual({cases: 6, delegatedThroughOwnerHost: true, cacheBypassed: true,
-        completeKindRoute: true, unbackedRoutesRefuse: true, lagBoundRequired: true});
+    expect(JSON.parse(stdout.trim().split('\n').at(-1)!)).toEqual({cases: 7, delegatedThroughOwnerHost: true, cacheBypassed: true,
+        completeKindRoute: true, unbackedRoutesRefuse: true, lagBoundRequired: true, parameterRefusal: true});
 }, 65000);

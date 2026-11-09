@@ -22,7 +22,9 @@ export default class LegacyStateRoutesFixture {
     getLegacyStateRoutesV1(context) {
         assert.equal(context.interfaceVersion, 1);
         assert.ok(context.routes.includes('get_tokens'));
-        const routes = {get_tokens: {projectionId: PROJECTION_ID, read: 'keyed', compose: async (reader, request) => {
+        const routes = {get_tokens: {projectionId: PROJECTION_ID, read: 'keyed',
+            validate: request => request.query.account === 'refused' ? 'The fixture does not project this account' : undefined,
+            compose: async (reader, request) => {
             const row = await reader.get('collection', 'last');
             return {account: request.query.account, tokens: row.status === 'present'
                 ? [{symbol: 'HEIGHT', precision: 0, amount: row.value.height, contract: 'target'}] : []};

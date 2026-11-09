@@ -97,7 +97,10 @@ An extension provider used to refuse every legacy state route with
 Plugin routes register before core routes, so a plugin cannot take over a core
 path. Instead, the optional `getLegacyStateRoutesV1` method on the loaded plugin
 declares, per route, a projection ID, a read (`keyed`, or `complete-kind` when
-the host offers it) and a `compose(reader, request)` callback. Only `get_tokens`,
+the host offers it), a `compose(reader, request)` callback and an optional
+`validate(request)`. A message from `validate` refuses the request with 400
+`invalid_state_request` before any read, for parameters the projection can never
+answer. Only `get_tokens`,
 `get_top_holders`, `get_voters`, `get_voter_scopes` and `get_links` accept a
 backing. A route claimed by two plugins stays unavailable.
 

@@ -60,6 +60,14 @@ for (const provider of ['extension', 'antelope']) {
         assert.deepEqual(legacyStorage(calls), [], `${provider}: a backed route touched the response cache or legacy storage`);
         cases++;
         if (provider === 'extension') {
+            // Parameters the projection can never answer are a client error, not a retryable outage.
+            const probes = fixture.probes;
+            const refused = await fixture.app.inject('/v2/state/get_tokens?account=refused');
+            assert.equal(refused.statusCode, 400, refused.body);
+            assert.deepEqual({code: refused.json().code, message: refused.json().message},
+                {code: 'invalid_state_request', message: 'The fixture does not project this account'});
+            assert.equal(fixture.probes, probes, 'A refused request opens no state read');
+            assert.equal(refused.headers['hyperion-state-block-num'], undefined); cases++;
             // A route without a backing keeps its refusal and never consults cache or storage.
             const voters = await fixture.app.inject('/v2/state/get_voters');
             assert.equal(voters.statusCode, 503, voters.body);
@@ -102,4 +110,4 @@ for (const provider of ['extension', 'antelope']) {
 }
 
 console.log(JSON.stringify({cases, delegatedThroughOwnerHost: true, cacheBypassed: true, completeKindRoute: true,
-    unbackedRoutesRefuse: true, lagBoundRequired: true}));
+    unbackedRoutesRefuse: true, lagBoundRequired: true, parameterRefusal: true}));

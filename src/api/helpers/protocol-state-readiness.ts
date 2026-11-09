@@ -18,6 +18,16 @@ export class ProtocolProjectionUnavailableError extends Error {
     }
 }
 
+/** A backed route refused parameters its projection can never answer. Retrying does not help. */
+export class ProtocolStateRequestError extends Error {
+    readonly statusCode = 400;
+    readonly code = 'invalid_state_request';
+    constructor(message: string) {
+        super(message);
+        this.name = 'ProtocolStateRequestError';
+    }
+}
+
 /** Legacy projections lack a qualified extension read view and canonical rollback.
  * A block-local ABI proof does not establish complete current state or query membership.
  * Routes leave this gate only through a backing resolved by resolveProtocolRouteBacking.
@@ -79,14 +89,18 @@ function plain(value: unknown, message: string): asserts value is object {
 }
 function backingFor(value: unknown, completeKind: boolean): LegacyStateRouteBackingV1 {
     plain(value, 'Legacy state route backing must be a plain object');
-    if (Object.keys(value).length !== 3) throw new Error('Legacy state route backing has unknown fields');
+    const validates = Object.hasOwn(value, 'validate');
+    if (Object.keys(value).length !== (validates ? 4 : 3)) throw new Error('Legacy state route backing has unknown fields');
     const projectionId = data(value, 'projectionId'), read = data(value, 'read'), compose = data(value, 'compose');
+    const validate = validates ? data(value, 'validate') : undefined;
+    if (validates && typeof validate !== 'function') throw new Error('Legacy state route validate must be a function');
     if (typeof projectionId !== 'string' || !projectionId.length || Buffer.byteLength(projectionId) > 256 || !projectionId.isWellFormed())
         throw new Error('Legacy state route projection ID is invalid');
     if (read !== 'keyed' && read !== 'complete-kind') throw new Error('Legacy state route read must be keyed or complete-kind');
     if (read === 'complete-kind' && !completeKind) throw new Error('Complete-kind reads are not offered by this host');
     if (typeof compose !== 'function') throw new Error('Legacy state route compose must be a function');
-    return Object.freeze({projectionId, read, compose: (reader: unknown, request: LegacyStateRequestV1) => Reflect.apply(compose, value, [reader, request])}) as LegacyStateRouteBackingV1;
+    return Object.freeze({projectionId, read, compose: (reader: unknown, request: LegacyStateRequestV1) => Reflect.apply(compose, value, [reader, request]),
+        ...(validate ? {validate: (request: LegacyStateRequestV1) => Reflect.apply(validate as Function, value, [request])} : {})}) as LegacyStateRouteBackingV1;
 }
 
 /** Collect plugin backings for core state routes. Two plugins claiming one route leave it unavailable. */
@@ -139,6 +153,10 @@ export async function queryProtocolStateRoute(fastify: FastifyInstance, request:
         query: Object.freeze(JSON.parse(JSON.stringify(request.query ?? {}))),
         ...(typeof limit === 'number' && Number.isSafeInteger(limit) && limit > 0 ? {configuredLimit: limit} : {})});
     const backing = selected.backing, {projectionId} = backing;
+    let refusal: unknown;
+    try {refusal = backing.validate?.(input);} catch {throw new ProtocolProjectionUnavailableError(selected.projection);}
+    if (refusal !== undefined) throw new ProtocolStateRequestError(typeof refusal === 'string' && refusal.length && refusal.isWellFormed()
+        ? refusal.slice(0, 256) : 'This state route cannot answer the request');
     let value: object;
     if (backing.read === 'complete-kind') {
         const host = await installed.context.statefulCompleteKindQueryHost!(request, projectionId);

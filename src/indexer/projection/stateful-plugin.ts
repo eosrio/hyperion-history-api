@@ -59,17 +59,21 @@ export interface LegacyStateRequestV1 {
     /** The operator's api.limits entry for this route, when set. */
     readonly configuredLimit?: number;
 }
-/** HAPI opens the request-local read and fences publication; the plugin only composes the legacy body. */
-export type LegacyStateRouteBackingV1 = {
+interface LegacyStateRouteBackingCommonV1 {
     readonly projectionId: string;
+    /** Optional. A returned message refuses the request with 400 before any read: parameters the projection
+     * can never answer, such as an unranked symbol, must not look like a retryable outage. */
+    readonly validate?: (request: LegacyStateRequestV1) => string | undefined;
+}
+/** HAPI opens the request-local read and fences publication; the plugin only composes the legacy body. */
+export type LegacyStateRouteBackingV1 = LegacyStateRouteBackingCommonV1 & ({
     readonly read: 'keyed';
     readonly compose: (reader: StatefulQueryRead, request: LegacyStateRequestV1) => Promise<unknown>;
 } | {
-    readonly projectionId: string;
     /** Requires the projection's negotiated complete-kind read; without it the route refuses. */
     readonly read: 'complete-kind';
     readonly compose: (reader: StatefulCompleteKindReadV1, request: LegacyStateRequestV1) => Promise<unknown>;
-};
+});
 export interface LegacyStateRoutesContextV1 {
     readonly interfaceVersion: 1;
     readonly routes: readonly LegacyStateRouteV1[];
