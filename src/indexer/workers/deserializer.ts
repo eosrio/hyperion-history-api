@@ -941,18 +941,7 @@ export default class MainDSWorker extends HyperionWorker {
                     });
                 }
 
-                // stream light block
-                if (this.allowStreaming && this.ch && light_block) {
-                    this.ch.publish('', this.chain + ':stream',
-                        Buffer.from(JSON.stringify(light_block)),
-                        {
-                            headers: {
-                                event: 'block',
-                                blockNum: light_block.block_num
-                            }
-                        }
-                    );
-                }
+                this.streamLightBlock(light_block);
             }
 
             // Process Delta Traces (must be done first to catch ABI updates)
@@ -1779,6 +1768,18 @@ export default class MainDSWorker extends HyperionWorker {
         this.stageProtocolPublication(() => queue(retained),
             retained.content.length + Buffer.byteLength(JSON.stringify(retained.headers ?? {})));
         return Promise.resolve();
+    }
+
+    /**
+     * Streams a block header to the router, for live blocks only, like action and delta traces.
+     * The router reports the newest streamed block to the API as the current block, and the API ends
+     * a stream request's history phase there. A bulk block would move that boundary to the bulk
+     * reader's position and skip every action between it and the live reader.
+     */
+    streamLightBlock(light_block: any): void {
+        if (!this.allowStreaming || !this.ch || !light_block || process.env['live_mode'] !== 'true') return;
+        this.ch.publish('', this.chain + ':stream', Buffer.from(JSON.stringify(light_block)),
+            {headers: {event: 'block', blockNum: light_block.block_num}});
     }
 
     pushToDeltaStreamingQueue(payload, jsonRow) {
