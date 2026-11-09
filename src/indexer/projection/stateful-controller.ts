@@ -44,6 +44,8 @@ interface OwnerOptions {
     readonly run: (metadata: unknown, operation: () => Promise<boolean>) => Promise<boolean>;
     readonly maximumFramesPerDrain: number;
     readonly finality?: StatefulOwnerFinality;
+    /** Refusal only: a view trailing its finality target by more blocks is catching up, not current. */
+    readonly maximumServingLagBlocks?: number;
     readonly sourceMetadata?: StatefulActionMetadataOptionsV2;
     readonly onError?: (error: unknown) => void;
 }
@@ -69,6 +71,8 @@ export class StatefulProjectionControllerV2 {
         this.irreversible = options.finality === 'irreversible';
         requireOwner(Number.isSafeInteger(options.maximumFramesPerDrain) && options.maximumFramesPerDrain > 0,
             'Stateful drain quantum is invalid');
+        requireOwner(options.maximumServingLagBlocks === undefined
+            || (Number.isSafeInteger(options.maximumServingLagBlocks) && options.maximumServingLagBlocks > 0), 'Stateful serving lag bound is invalid');
         this.pruneInterval = options.candidatePruneIntervalBlocks ?? 512;
         requireOwner(Number.isSafeInteger(this.pruneInterval) && this.pruneInterval > 0, 'Stateful candidate prune interval is invalid');
         if (bounded(options.custody)) this.retention = options.custody;
@@ -262,8 +266,14 @@ export class StatefulProjectionControllerV2 {
             && same(recovery.owner, expected.owner) && same(recovery.owner.identity, this.options.identity)
             && same(recovery.view, expected.view) && recovery.gap === null
             && (!recovery.rollback || recovery.rollback.status === 'complete'), 'Requested live owner/view is unavailable');
-        if (this.irreversible) requireOwner(expected.view.checkpoint.blockNum <= (await this.options.source.irreversibleTarget()).blockNum,
-            'Requested view exceeds the eligible finality target');
+        const lag = this.options.maximumServingLagBlocks;
+        if (this.irreversible || lag !== undefined) {
+            const target = this.irreversible ? await this.options.source.irreversibleTarget() : await this.options.source.head();
+            if (this.irreversible) requireOwner(expected.view.checkpoint.blockNum <= target.blockNum,
+                'Requested view exceeds the eligible finality target');
+            if (lag !== undefined) requireOwner(target.blockNum - expected.view.checkpoint.blockNum <= lag,
+                'Requested view trails the finality target beyond the serving lag bound');
+        }
         const proof = await this.options.source.open(expected.view.checkpoint);
         if (recovery.raw) requireOwner(await this.canonical(recovery.raw.target.target.block), 'In-flight raw source is no longer canonical');
         await this.options.source.assertStatefulView(proof, this.options.declaration);

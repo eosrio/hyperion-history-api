@@ -80,6 +80,7 @@ export default class ProjectionWorker extends HyperionWorker {
                                 assertActive: () => {if (this.stopped) throw new Error('Stateful worker stopped'); this.assertWorkerAttemptActive();},
                                 run: (metadata, operation) => this.runProjectionFrameAttempt(metadata, operation, () => !this.stopped),
                                 maximumFramesPerDrain: configuration.maximumFramesPerDrain,
+                                maximumServingLagBlocks: configuration.maximumServingLagBlocks,
                                 onError: error => hLog(`Stateful projection ${id} recovery pending:`, error),
                                 onRetentionError: error => hLog(`Stateful projection ${id} candidate pruning deferred:`, error)}));
                         }

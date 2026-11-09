@@ -2,7 +2,7 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { timedQuery } from '../../../helpers/functions.js';
 import { getSkipLimit } from '../../v2-history/get_actions/functions.js';
 import { IVoter } from '../../../../interfaces/table-voter.js';
-import {assertProtocolProjectionReady} from '../../../helpers/protocol-state-readiness.js';
+import {assertProtocolRouteReady} from '../../../helpers/protocol-state-readiness.js';
 
 async function getVoters(fastify: FastifyInstance, request: FastifyRequest) {
     const query: any = request.query;
@@ -76,18 +76,18 @@ async function getVoters(fastify: FastifyInstance, request: FastifyRequest) {
 
 export function getVotersHandler(fastify: FastifyInstance, route: string) {
     return async (request: FastifyRequest, reply: FastifyReply) => {
-        assertProtocolProjectionReady(fastify, 'contract-state');
+        // A plugin backing answers through timedQuery; without one, extension providers refuse here.
+        const backing = assertProtocolRouteReady(fastify, route);
         // Check conditions that require direct response without timedQuery
-        if (
+        if (backing?.kind !== 'stateful' && (
             !fastify.manager.conn.mongodb ||
             fastify.manager.conn.mongodb.enabled === false ||
             fastify.manager.config.features?.tables?.voters === false
-        ) {
+        )) {
             // Call directly without timedQuery to avoid response modification
             const result = await getVoters(fastify, request);
-            reply.send(result);
-            return;
+            return reply.send(result);
         }
-        reply.send(await timedQuery(getVoters, fastify, request, route));
+        return reply.send(await timedQuery(getVoters, fastify, request, route));
     };
 }
