@@ -39,6 +39,7 @@ import {ActionContractOutputFailure, isActionContractOutputFailure, actionContra
 import {createHash} from 'node:crypto';
 import type {ProtocolAbiActionInput} from '@eosrio/hyperion-sdk/protocol';
 import {currentProofConsumerScope, trackProofConsumerOperation} from '../protocol/proof-consumer-scope.js';
+import {waitForHistoricalSource} from '../protocol/historical-source-wait.js';
 
 type ActionAdmissionPredicate = 'owner_current' | 'producer_epoch' | 'executable' | 'source_chain'
     | 'source_block_number' | 'source_block_id' | 'source_producer' | 'source_timestamp' | 'target_identity'
@@ -152,6 +153,7 @@ export default class DSPoolWorker extends HyperionWorker {
     private noActionCounter = 0;
     private protocolProofReader?: ProtocolAbiProofReader;
     private protocolWorkerReaders?: ProtocolNativeWorkerReaders;
+    private historicalWaitSpentBlock?: number;
     private protocolTrace?: {view?: ProtocolAbiProofView; nativeView?: ProtocolNativeActionView;
         error?: ProtocolAbiProofUnavailableError | ProtocolNativeActionUnavailableError};
     private protocolActions = new WeakMap<ActionTrace, ProtocolActionWork>();
@@ -1169,13 +1171,27 @@ export default class DSPoolWorker extends HyperionWorker {
                         if (typeof selectionId !== 'string' || !/^h45srcsel1:[0-9a-f]{64}$/.test(selectionId))
                             throw new ProtocolAbiProofUnavailableError('source_unbound', 'Action trace lacks its source selection');
                         const source = {chainId: this.chainId, blockNum: Number(block_num), blockId: String(block_id)};
-                        if (this.protocol.nativeActions) {
-                            this.protocolTrace = await this.getProtocolWorkerReaders().waitForOpen(source, selectionId);
-                        } else {
-                            const view = await this.getProtocolProofReader().waitForOpen(source, selectionId);
-                            if (view.nativeActionInterfaceVersion === 1)
-                                throw new ProtocolNativeActionUnavailableError('native_capability_unavailable', 'Canonical source requires its selected native action capability');
-                            this.protocolTrace = {view};
+                        // Behind the recovery window a block is provable only once the historical root covers it.
+                        // Wait for that root instead of recording the block's actions as incomplete.
+                        // One block waits once: its later traces do not repeat a wait that already ran out.
+                        // A fenced worker attempt must drain promptly, so its signal ends the wait.
+                        const wait = {maxWaitMs: this.historicalWaitSpentBlock === source.blockNum ? 0 : undefined,
+                            signal: currentProofConsumerScope()?.signal,
+                            onWait: () => hLog(`Block ${source.blockNum} waits for the historical ABI root`)};
+                        try {
+                            if (this.protocol.nativeActions) {
+                                this.protocolTrace = await waitForHistoricalSource(
+                                    () => this.getProtocolWorkerReaders().waitForOpen(source, selectionId), wait);
+                            } else {
+                                const view = await waitForHistoricalSource(
+                                    () => this.getProtocolProofReader().waitForOpen(source, selectionId), wait);
+                                if (view.nativeActionInterfaceVersion === 1)
+                                    throw new ProtocolNativeActionUnavailableError('native_capability_unavailable', 'Canonical source requires its selected native action capability');
+                                this.protocolTrace = {view};
+                            }
+                        } catch (error) {
+                            if ((error as {code?: unknown})?.code === 'historical_source_unavailable') this.historicalWaitSpentBlock = source.blockNum;
+                            throw error;
                         }
                     } catch (error) {
                         if (!(error instanceof ProtocolAbiProofUnavailableError) && !(error instanceof ProtocolNativeActionUnavailableError)) throw error;

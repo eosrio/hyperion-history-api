@@ -155,6 +155,30 @@ describe('canonical ABI runtime coordinator',()=>{
             expect(await f.coordinator.inspect()).toEqual(before);
         }
     });
+    it('replaces progress bound to an earlier catalog with a catalog that ends ahead of it',async()=>{
+        for(const tail of [false,true]){
+            const f=await fixture({diskAbiHistory:diskCatalog()});if(tail){await f.append(4);await f.append(5);}
+            const extended=f.make('extended-catalog-owner',{diskAbiHistory:diskCatalog(8,'e')});await extended.start();
+            const head=(await extended.inspect()).head!;
+            expect(head).toMatchObject({blockNum:8,blockId:block(8),coverageStart:1,lastGlobalSequence:'10'});
+            const stored:any=await f.store.readCommit(head.commitId);
+            expect(stored).toMatchObject({kind:'disk-abi-baseline',catalogId:'h45abihistory1:'+'e'.repeat(64),previousCommitId:null});
+            expect((await extended.inspect()).gap).toBeNull();expect((await extended.inspect()).replayFromBlock).toBeNull();
+            await expect(f.coordinator.inspect()).rejects.toThrow('superseded');
+            expect(await extended.openSource(f.contextId,'session-b')).toMatchObject({resumeFromBlock:9});
+        }
+    });
+    it('refuses a newer catalog that disagrees with, or does not end ahead of, progress bound to an earlier catalog',async()=>{
+        const forked=await fixture({diskAbiHistory:diskCatalog()});await forked.append(4);await forked.append(5,empty(),50,4);
+        const before=await forked.coordinator.inspect();
+        await expect(forked.make('forked-extension',{diskAbiHistory:diskCatalog(8,'e')}).start()).rejects.toThrow('conflicts with the retained canonical prefix');
+        expect(await forked.coordinator.inspect()).toEqual(before);
+        for(const end of [4,5]){
+            const f=await fixture({diskAbiHistory:diskCatalog()});await f.append(4);await f.append(5);const prior=await f.coordinator.inspect();
+            await expect(f.make('short-extension',{diskAbiHistory:diskCatalog(end,'e')}).start()).rejects.toThrow('matching catalog ancestry');
+            expect(await f.coordinator.inspect()).toEqual(prior);
+        }
+    });
     it('does not activate a sparse root if catalog custody changes while its immutable states are being prepared',async()=>{
         const f=await fixture();await f.append(1);const before=await f.coordinator.inspect(),catalog=diskCatalog();let changed=false;
         f.memory.faults.beforeWrite=(request:any)=>{if(!changed&&request.index===f.store.recordsIndex){changed=true;catalog.invalidate();}};
