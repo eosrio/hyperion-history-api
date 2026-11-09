@@ -37,6 +37,7 @@ import fastifyHttpProxy from '@fastify/http-proxy';
 import {resolveStatefulOwnerConfigurationV2} from '../indexer/projection/stateful-config.js';
 import {StatefulApiProbeClient} from '../indexer/projection/stateful-control.js';
 import {installStatefulApiHostV2, statefulApiRegistryFactory} from './helpers/stateful-owner.js';
+import {installProtocolStateRoutes} from './helpers/protocol-state-readiness.js';
 
 class HyperionApiServer {
   private readonly fastify: FastifyInstance;
@@ -409,6 +410,10 @@ class HyperionApiServer {
         );
       }
 
+    }
+    // Plugin routes register first, so core state routes delegate to plugin projections instead.
+    if (statefulApiContext && statefulConfiguration) {
+      await installProtocolStateRoutes(this.fastify, this.mLoader.plugins, statefulApiContext, statefulConfiguration);
     }
 
     // FASTIFY ROUTES

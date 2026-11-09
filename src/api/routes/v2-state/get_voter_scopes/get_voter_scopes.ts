@@ -36,6 +36,6 @@ async function getVoterScopes(fastify: FastifyInstance, request: FastifyRequest)
 
 export function getVoterScopesHandler(fastify: FastifyInstance, route: string) {
     return async (request: FastifyRequest, reply: FastifyReply) => {
-        reply.send(await timedQuery(getVoterScopes, fastify, request, route));
+        return reply.send(await timedQuery(getVoterScopes, fastify, request, route));
     }
 }

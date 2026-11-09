@@ -5,6 +5,7 @@ import {CacheManager} from "../../src/api/helpers/cacheManager.js";
 import {Client} from "@elastic/elasticsearch";
 import {AccountObject, ChainAPI} from "@wharfkit/antelope";
 import {SavedAbi} from "../../src/interfaces/hyperion-abi.js";
+import type {ProtocolStateRoutes} from "../../src/api/helpers/protocol-state-readiness.js";
 
 declare module 'fastify' {
     export interface FastifyInstance {
@@ -26,5 +27,7 @@ declare module 'fastify' {
         tokenCache: Map<string, any>;
         allowedActionQueryParamSet: Set<string>;
         routeSet: Set<string>;
+        /** Plugin backings for core state routes; absent unless stateful_owner_v2 is configured. */
+        protocolStateRoutes?: ProtocolStateRoutes;
     }
 }

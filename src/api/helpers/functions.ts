@@ -8,7 +8,7 @@ import {StreamActionsRequest, StreamDeltasRequest, StreamTypeMap} from "../../in
 import {isExtensionActionResponse, protectProtocolAction, protocolActionsForStream, protocolResponseForCache, protocolResponseForReturn, validateProtocolCachedResponse} from './protocol-abi.js';
 import {assertProtocolProofRequestActive, createProtocolStreamScope, withProtocolProofTransaction} from './protocol-proof-request.js';
 import {assertCompleteActionSearch, normalizeActionSearchSources} from './action-search.js';
-import {assertProtocolProjectionReady, assertProtocolRouteReady} from './protocol-state-readiness.js';
+import {assertProtocolProjectionReady, assertProtocolRouteReady, queryProtocolStateRoute} from './protocol-state-readiness.js';
 import {assertProtocolActionRequestReady, assertProtocolActionStreamReady} from './protocol-action-query.js';
 import {canonicalUint64} from '../../indexer/helpers/uint64.js';
 import {validateActionSequenceQuery} from './action-sequence-query.js';
@@ -1009,7 +1009,7 @@ export async function timedQuery(
 async function timedQueryAttempt(
     queryFunction: (fastify: FastifyInstance, request: FastifyRequest) => Promise<any>,
     fastify: FastifyInstance, request: FastifyRequest, route: string, cacheKey: string) {
-    assertProtocolRouteReady(fastify, route);
+    const backing = assertProtocolRouteReady(fastify, route);
     assertProtocolActionRequestReady(fastify, request, route);
 
     if (route === 'get_actions') {
@@ -1019,9 +1019,12 @@ async function timedQueryAttempt(
     }
 
     const query = request.query as any;
+    // An owner-v2 view is fenced per request and published only through the host's final check,
+    // so a stateful backing never reads or fills the shared response cache.
+    const stateful = backing?.kind === 'stateful' ? backing : undefined;
 
     // check for cached data, return the response hash if caching is enabled
-    const [cachedResponse, hash] = await getCachedResponse(
+    const [cachedResponse, hash] = stateful ? [null, null] : await getCachedResponse(
         fastify,
         fastify.manager.config.settings?.protocol?.provider === 'extension'
             ? `${request.method}:${request.routeOptions.url ?? request.url.split('?')[0]}` : route,
@@ -1037,6 +1040,10 @@ async function timedQueryAttempt(
             lastIndexedBlockNumber = parseInt(arr[0], 10);
             lastIndexedBlockTime = arr[1];
         }
+    }
+
+    if (stateful) {
+        return {response: await queryProtocolStateRoute(fastify, request, stateful), lastIndexedBlock, lastIndexedBlockNumber, lastIndexedBlockTime};
     }
 
     if (cachedResponse && !query["ignoreCache"] && cachedCountMatchesContract(route, cachedResponse)

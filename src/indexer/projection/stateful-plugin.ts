@@ -1,6 +1,6 @@
-import type {StatefulDefinition, StatefulLimits, StatefulSelector} from '@eosrio/hyperion-sdk/projection-stateful';
+import type {StatefulDefinition, StatefulLimits, StatefulQueryRead, StatefulSelector} from '@eosrio/hyperion-sdk/projection-stateful';
 import type {StatefulReductionV2, StatefulQueryHostV2, StatefulCompleteKindCapabilitiesV1,
-    StatefulCompleteKindQueryHostV1} from '@eosrio/hyperion-sdk/projection-stateful-owner-v2';
+    StatefulCompleteKindQueryHostV1, StatefulCompleteKindReadV1} from '@eosrio/hyperion-sdk/projection-stateful-owner-v2';
 import type {FastifyRequest} from 'fastify';
 import type {IndexedLimitsV1, IndexedModelV1, IndexedQueryHostV1} from '@eosrio/hyperion-sdk/projection-stateful-indexed-query-v1';
 
@@ -46,4 +46,45 @@ export interface StatefulPluginApiContextV2 {
     readonly statefulQueryHost: (request: FastifyRequest) => StatefulOwnerQueryHostV2;
     readonly statefulCompleteKindQueryHost?: (request: FastifyRequest, projectionId: string) => Promise<StatefulCompleteKindQueryHostV1>;
     readonly statefulIndexedQueryHost?: (request: FastifyRequest, projectionId: string, modelId: string) => Promise<IndexedQueryHostV1>;
+}
+
+/** Core routes a plugin projection may answer. get_table_rows and get_proposals stay unavailable, and
+ * row history (get_deltas, get_table_state) needs a history watermark rather than a projection. */
+export const LEGACY_STATE_ROUTES_V1 = Object.freeze(['get_tokens', 'get_top_holders', 'get_voters', 'get_voter_scopes', 'get_links'] as const);
+export type LegacyStateRouteV1 = typeof LEGACY_STATE_ROUTES_V1[number];
+/** Validated request parameters only; the plugin never receives the HTTP request or reply. */
+export interface LegacyStateRequestV1 {
+    readonly route: LegacyStateRouteV1;
+    readonly query: Readonly<Record<string, unknown>>;
+    /** The operator's api.limits entry for this route, when set. */
+    readonly configuredLimit?: number;
+}
+interface LegacyStateRouteBackingCommonV1 {
+    readonly projectionId: string;
+    /** Optional. A returned message refuses the request with 400 before any read: parameters the projection
+     * can never answer, such as an unranked symbol, must not look like a retryable outage. */
+    readonly validate?: (request: LegacyStateRequestV1) => string | undefined;
+}
+/** HAPI opens the request-local read and fences publication; the plugin only composes the legacy body. */
+export type LegacyStateRouteBackingV1 = LegacyStateRouteBackingCommonV1 & ({
+    readonly read: 'keyed';
+    readonly compose: (reader: StatefulQueryRead, request: LegacyStateRequestV1) => Promise<unknown>;
+} | {
+    /** Requires the projection's negotiated complete-kind read; without it the route refuses. */
+    readonly read: 'complete-kind';
+    readonly compose: (reader: StatefulCompleteKindReadV1, request: LegacyStateRequestV1) => Promise<unknown>;
+});
+export interface LegacyStateRoutesContextV1 {
+    readonly interfaceVersion: 1;
+    readonly routes: readonly LegacyStateRouteV1[];
+    readonly completeKindRead: boolean;
+}
+export interface LegacyStateRoutesV1 {
+    readonly interfaceVersion: 1;
+    readonly routes: Readonly<Partial<Record<LegacyStateRouteV1, LegacyStateRouteBackingV1>>>;
+}
+/** Optional, additive. Plugin routes register before core routes, so core delegates instead of the plugin
+ * registering the same path. Declaring a backing grants nothing: each request still needs a ready owner. */
+export interface LegacyStateRoutePluginV1 {
+    getLegacyStateRoutesV1(context: LegacyStateRoutesContextV1): LegacyStateRoutesV1 | Promise<LegacyStateRoutesV1>;
 }

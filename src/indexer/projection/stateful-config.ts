@@ -16,6 +16,8 @@ export interface StatefulOwnerConfigurationV2 {
     readonly finality?: StatefulOwnerFinality;
     readonly operationTimeoutMS?: number;
     readonly transactionTimeoutMS?: number;
+    /** Serving policy, not state identity: refuse views trailing the finality target by more blocks. */
+    readonly maximumServingLagBlocks?: number;
 }
 export interface ResolvedStatefulOwnerConfigurationV2 {
     readonly interfaceVersion: 2; readonly sourceInputVersion: 2;
@@ -26,6 +28,7 @@ export interface ResolvedStatefulOwnerConfigurationV2 {
     readonly generation: string;
     readonly finality: StatefulOwnerFinality;
     readonly configDigest: string;
+    readonly maximumServingLagBlocks?: number;
 }
 function requireConfig(value: unknown, message: string): asserts value {if (!value) throw new Error(message);}
 function record(value: any, required: string[], optional: string[] = []): asserts value is Record<string, any> {
@@ -41,7 +44,7 @@ export function resolveStatefulOwnerConfigurationV2(input: unknown): ResolvedSta
     if (input === undefined) return undefined;
     const value = JSON.parse(protocolImmutableJson(input, 64 * 1024));
     record(value, ['interfaceVersion', 'sourceInputVersion', 'backend', 'recovery', 'api'],
-        ['maximumFramesPerDrain', 'operationTimeoutMS', 'transactionTimeoutMS', 'generation', 'finality']);
+        ['maximumFramesPerDrain', 'operationTimeoutMS', 'transactionTimeoutMS', 'generation', 'finality', 'maximumServingLagBlocks']);
     requireConfig(value.interfaceVersion === 2 && value.sourceInputVersion === 2, 'Stateful owner/source version2 must be explicitly selected');
     record(value.backend, ['kind', 'id', 'database']);
     requireConfig(value.backend.kind === 'mongodb' && typeof value.backend.id === 'string' && value.backend.id.isWellFormed()
@@ -70,5 +73,8 @@ export function resolveStatefulOwnerConfigurationV2(input: unknown): ResolvedSta
     requireConfig(resolved.operationTimeoutMS <= resolved.transactionTimeoutMS, 'Stateful operation timeout exceeds transaction timeout');
     // Reversible stays out of the digest, so existing instances keep their configuration identity.
     const digest = protocolImmutableJson(['hyperion-stateful-owner-config-v2', irreversible ? {...resolved, finality} : resolved]);
-    return Object.freeze({...resolved, finality, configDigest: createHash('sha256').update(digest).digest('hex')});
+    // Kept out of the digest: a serving bound can change without disturbing the owned instance.
+    const lag = value.maximumServingLagBlocks === undefined ? undefined : bounded(value.maximumServingLagBlocks, 100_000_000, 'serving lag bound');
+    return Object.freeze({...resolved, finality, configDigest: createHash('sha256').update(digest).digest('hex'),
+        ...(lag === undefined ? {} : {maximumServingLagBlocks: lag})});
 }

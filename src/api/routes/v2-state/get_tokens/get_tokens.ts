@@ -95,6 +95,6 @@ async function getTokens(fastify: FastifyInstance, request: FastifyRequest) {
 
 export function getTokensHandler(fastify: FastifyInstance, route: string) {
     return async (request: FastifyRequest, reply: FastifyReply) => {
-        reply.send(await timedQuery(getTokens, fastify, request, route));
+        return reply.send(await timedQuery(getTokens, fastify, request, route));
     }
 }

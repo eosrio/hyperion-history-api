@@ -82,6 +82,42 @@ above the eligible target.
   more than `protocol_abi_coordination.recovery_window_blocks` needs
   `historical_certificates`; otherwise the view fails closed as unavailable.
 
+## Core state routes
+
+An extension provider used to refuse every legacy state route with
+`protocol_projection_unavailable`. Each route now resolves a backing in
+`src/api/helpers/protocol-state-readiness.ts`:
+
+- **Unavailable:** the default, and the only backing for `get_table_rows`,
+  `get_proposals` and row history (`get_deltas`, `get_table_state`, delta
+  streams). The refusal still happens before any response-cache or storage read.
+- **Stateful:** a plugin's owner-v2 projection answers the route. Row history
+  will instead need a delta history watermark.
+
+Plugin routes register before core routes, so a plugin cannot take over a core
+path. Instead, the optional `getLegacyStateRoutesV1` method on the loaded plugin
+declares, per route, a projection ID, a read (`keyed`, or `complete-kind` when
+the host offers it), a `compose(reader, request)` callback and an optional
+`validate(request)`. A message from `validate` refuses the request with 400
+`invalid_state_request` before any read, for parameters the projection can never
+answer. Only `get_tokens`,
+`get_top_holders`, `get_voters`, `get_voter_scopes` and `get_links` accept a
+backing. A route claimed by two plugins stays unavailable.
+
+HAPI opens the request-local read itself and passes the plugin only validated
+query parameters and the configured `api.limits` entry. The response then
+follows the normal owner-v2 path: owner and view checks around the composition,
+the worker attestation and the final `onSend` check. A backed route never reads
+or fills the Redis response cache. A backed route that is not ready answers 503
+`stateful.query-unavailable`.
+
+Legacy bodies carry no view metadata that clients check, so plugin backings
+install only when `features.stateful_owner_v2.maximumServingLagBlocks` is set.
+The worker then refuses any view that trails its finality target (the head, or
+the eligible LIB in irreversible mode) by more blocks. The bound can only cause
+refusals, and it stays out of the configuration digest. Changing it does not
+disturb an existing instance.
+
 ## Remaining production boundaries
 
 The optional `getStatefulProjectionsV2` method belongs on the existing enabled
