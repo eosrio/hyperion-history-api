@@ -81,6 +81,8 @@ jobs:
           name: retained-wire-cpu-${{ matrix.node-version }}
           path: ${{ runner.temp }}/retained-wire-cpu/*.cpuprofile
           if-no-files-found: warn
+      - name: Check the Wire token projection on retained Wire blocks on Node ${{ matrix.node-version }}
+        run: node --test tests/unit/wire-token-state-native.mjs
       - name: Check historical Wire source authority on Node ${{ matrix.node-version }}
         run: node --test tests/unit/protocol-abi-history-native.mjs tests/unit/protocol-abi-history-progress.test.mjs tests/unit/protocol-abi-round-trips.test.mjs tests/unit/protocol-store-request-rules.test.mjs
       - name: Check Fastify request admission and state route compatibility on Node ${{ matrix.node-version }}

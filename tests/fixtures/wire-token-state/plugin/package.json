@@ -1,0 +1,16 @@
+{
+  "name": "@eosrio/hyperion-wire-state",
+  "version": "0.0.0-dev.1",
+  "private": true,
+  "description": "Wire contract state projections for the Hyperion 4.5 owner-v2 runtime",
+  "type": "module",
+  "main": "./build/index.js",
+  "types": "./build/index.d.ts",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "files": [
+    "build/"
+  ]
+}
