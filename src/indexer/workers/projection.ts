@@ -81,7 +81,8 @@ export default class ProjectionWorker extends HyperionWorker {
                                 run: (metadata, operation) => this.runProjectionFrameAttempt(metadata, operation, () => !this.stopped),
                                 maximumFramesPerDrain: configuration.maximumFramesPerDrain,
                                 maximumServingLagBlocks: configuration.maximumServingLagBlocks,
-                                onError: error => hLog(`Stateful projection ${id} recovery pending:`, error)}));
+                                onError: error => hLog(`Stateful projection ${id} recovery pending:`, error),
+                                onRetentionError: error => hLog(`Stateful projection ${id} candidate pruning deferred:`, error)}));
                         }
                         return true;
                     }, () => !this.stopped);

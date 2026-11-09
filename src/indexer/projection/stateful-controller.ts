@@ -12,12 +12,17 @@ import type {PortableProjectionRawTarget, PortableProjectionSource} from './sour
 import type {StatefulActionMetadataOptionsV2} from '@eosrio/hyperion-sdk/projection-stateful-source-v2';
 import {statefulOwnerExpectationDigest, type StatefulOwnerExpectation} from './stateful-expectation.js';
 import type {StatefulOwnerFinality} from './stateful-config.js';
+import type {StatefulCandidateCustodyV2} from './stateful-custody.js';
 export {statefulOwnerExpectationDigest, type StatefulOwnerExpectation} from './stateful-expectation.js';
 
 const json = protocolImmutableJson;
 const hash = (input: unknown) => createHash('sha256').update(json(input)).digest('hex');
 const zero = Object.freeze({blockNum: 0, blockId: '0'.repeat(64)});
 const same = (a: unknown, b: unknown) => json(a) === json(b);
+const bounded = (custody: OwnerOptions['custody']): custody is StatefulCandidateCustodyV2 =>
+    typeof (custody as Partial<StatefulCandidateCustodyV2>).block === 'function'
+    && typeof (custody as Partial<StatefulCandidateCustodyV2>).pruneBelow === 'function'
+    && typeof (custody as Partial<StatefulCandidateCustodyV2>).purgeAbove === 'function';
 function requireOwner(value: unknown, message: string): asserts value {
     if (!value) throw new StatefulContractError('stateful.unavailable', message);
 }
@@ -26,7 +31,12 @@ interface OwnerOptions {
     readonly adapter: StatefulOwnerAdapterV2;
     readonly source: Pick<PortableProjectionSource, 'head' | 'irreversibleTarget' | 'open' | 'revalidate' | 'statefulBlock' | 'assertStatefulView'>;
     readonly identity: StatefulOwnerIdentityV2;
-    readonly custody: StatefulCandidateStoreV2;
+    /** Bounded custody is pruned and purged by this owner; plain custody keeps every candidate. */
+    readonly custody: StatefulCandidateStoreV2 | StatefulCandidateCustodyV2;
+    /** Blocks the custody floor advances between prune requests. Default 512. */
+    readonly candidatePruneIntervalBlocks?: number;
+    /** Pruning is maintenance: its failures never fail or fence a frame, and the next frame retries. */
+    readonly onRetentionError?: (error: unknown) => void;
     readonly reduce: (reduction: StatefulReductionV2) => Promise<void>;
     /** Actual worker incarnation/attempt checks, never a declaration or metadata readiness label. */
     readonly assertActive: () => void;
@@ -51,12 +61,21 @@ export class StatefulProjectionControllerV2 {
     private admitting = false;
     private observedTarget?: string;
     private readonly irreversible: boolean;
+    private readonly retention?: StatefulCandidateCustodyV2;
+    private readonly pruneInterval: number;
+    /** Highest floor fully pruned by this process. Zero after a restart, so the first prune also clears earlier leftovers. */
+    private prunedFloor = 0;
+    /** Set after a rollback, or on a claim of storage that completed one; cleared once undone-branch custody is purged. */
+    private purgeStale = false;
     constructor(private readonly options: OwnerOptions) {
         this.irreversible = options.finality === 'irreversible';
         requireOwner(Number.isSafeInteger(options.maximumFramesPerDrain) && options.maximumFramesPerDrain > 0,
             'Stateful drain quantum is invalid');
         requireOwner(options.maximumServingLagBlocks === undefined
             || (Number.isSafeInteger(options.maximumServingLagBlocks) && options.maximumServingLagBlocks > 0), 'Stateful serving lag bound is invalid');
+        this.pruneInterval = options.candidatePruneIntervalBlocks ?? 512;
+        requireOwner(Number.isSafeInteger(this.pruneInterval) && this.pruneInterval > 0, 'Stateful candidate prune interval is invalid');
+        if (bounded(options.custody)) this.retention = options.custody;
     }
     private guard = () => {
         requireOwner(!this.stopped, 'Stateful owner is stopped'); this.options.assertActive();
@@ -76,6 +95,8 @@ export class StatefulProjectionControllerV2 {
         this.guard(); const current = await this.recovery();
         requireOwner(current?.owner && same(current.owner.identity, this.options.identity), 'Native owner acquisition is unresolved');
         this.lease = lease; this.revision = current.view.revision; this.reconciled = false;
+        // A restart may have lost the purge that follows a rollback. Purging again is cheap and safe.
+        if (current.rollback?.status === 'complete') this.purgeStale = true;
         return current;
     }
     private async canonical(point: ProjectionCheckpoint): Promise<boolean> {
@@ -101,7 +122,7 @@ export class StatefulProjectionControllerV2 {
         }
         if (retained && retained.status !== 'complete') {
             requireOwner(retained.status !== 'unavailable', 'Stateful rollback needs historical recovery');
-            this.reconciled = false;
+            this.reconciled = false; this.purgeStale = true;
             await this.options.adapter.rollbackOwned(this.lease!, {declarationDigest: this.options.declaration.digest,
                 revision: retained.sourceRevision, operationId: retained.operationId, from: retained.from,
                 ancestor: retained.ancestor, maxBlocks: this.options.maximumFramesPerDrain});
@@ -115,6 +136,7 @@ export class StatefulProjectionControllerV2 {
         let ancestor: ProjectionCheckpoint | undefined = checkpointCanonical ? recovery.view.checkpoint : undefined;
         if (!ancestor) for (const point of checkpoints.checkpoints) if (await this.canonical(point)) {ancestor = point; break;}
         requireOwner(ancestor, 'Stateful canonical ancestor is outside retained undo');
+        this.purgeStale = true;
         await this.options.adapter.rollbackOwned(this.lease!, {declarationDigest: this.options.declaration.digest,
             revision: recovery.view.revision, operationId: hash(['hyperion-stateful-owner-fork-v2', this.options.declaration.digest,
                 recovery.view.revision, recovery.view.checkpoint, ancestor]), from: recovery.view.checkpoint,
@@ -144,6 +166,13 @@ export class StatefulProjectionControllerV2 {
             if (!this.lease || !recovery || this.revision !== recovery.view.revision) recovery = await this.claim(recovery);
             requireOwner(recovery.owner && same(recovery.owner.identity, this.options.identity), 'Another native owner holds this projection');
             if (await this.recoverFork(recovery)) return true;
+            if (this.purgeStale && this.retention) {
+                // A rollback cleared raw and pending input, so every candidate above the surviving input belongs
+                // to an undone branch. Its view names the old revision. If a fork switches back, the same block
+                // returns with the same source digest, and must reduce again rather than reuse that candidate.
+                await this.retention.purgeAbove(recovery.raw?.target.target.block.blockNum ?? recovery.view.checkpoint.blockNum);
+                this.guard(); this.purgeStale = false;
+            }
             const target = this.irreversible ? await this.options.source.irreversibleTarget() : await this.options.source.head();
             const height = recovery.raw?.target.target.block.blockNum ?? recovery.view.checkpoint.blockNum + 1;
             if (height > target.blockNum) {
@@ -163,16 +192,19 @@ export class StatefulProjectionControllerV2 {
                 if (height > eligible.blockNum) {this.reconciled = false; return false;}
             }
             await this.options.source.revalidate(selected.proof); this.guard();
+            const custody = this.retention?.block(selected.source.source.block.blockNum, recovery.pending?.sourceDigest ?? null)
+                ?? this.options.custody;
             await executeStatefulOwnerBlockV2(this.options.declaration, this.options.adapter, this.lease!, admitted.digest,
-                selected.source.source, this.options.custody, this.options.reduce, this.guard);
+                selected.source.source, custody, this.options.reduce, this.guard);
             await this.options.source.revalidate(selected.proof); this.guard();
             const receipt = await this.options.adapter.inspectOwned(this.lease!, admitted.digest, selected.source);
             requireOwner(receipt.status === 'committed' && receipt.sourceDigest === selected.source.digest && receipt.candidateDigest,
                 'Applied source lacks its exact original candidate receipt');
             await this.options.adapter.retireRaw(this.lease!, admitted.digest, selected.source.digest, receipt.candidateDigest);
             await this.options.source.revalidate(selected.proof); this.guard();
-            await this.recovery();
-            this.reconciled = true; this.failed = false; return true;
+            const settled = await this.recovery();
+            this.reconciled = true; this.failed = false;
+            await this.prune(settled); return true;
         } catch (error) {
             this.failed = true; this.reconciled = false;
             const assertFailureActive = () => {if (scope?.signal.aborted) throw error; this.guard();};
@@ -192,6 +224,26 @@ export class StatefulProjectionControllerV2 {
             assertFailureActive();
             try {this.options.onError?.(error);} catch {}
             return false;
+        }
+    }
+    /**
+     * Candidates are read only for input above the checkpoint: a pending apply, an unknown apply, a cold
+     * takeover or an exact retry of the one raw target. Committed sources inspect as duplicates from their
+     * receipts and never read custody. So a candidate below the floor is unreachable: reversible keeps
+     * every block an exact-branch rollback can still undo, and irreversible effects never roll back.
+     */
+    private async prune(recovery: StatefulOwnerRecoveryV2 | null): Promise<void> {
+        const custody = this.retention;
+        if (!custody || !recovery || recovery.raw || recovery.pending || recovery.gap
+            || (recovery.rollback && recovery.rollback.status !== 'complete')) return;
+        const checkpoint = recovery.view.checkpoint.blockNum;
+        const floor = this.irreversible ? checkpoint : Math.min(checkpoint, recovery.coverage?.floor?.blockNum ?? 0);
+        if (floor < this.prunedFloor + this.pruneInterval) return;
+        try {
+            const result = await custody.pruneBelow(floor);
+            if (result.complete) this.prunedFloor = floor;
+        } catch (error) {
+            try {this.options.onRetentionError?.(error);} catch {}
         }
     }
     drain(): Promise<void> {
