@@ -39,7 +39,7 @@ export function regroupActions(actions: any[]): any[] {
         const canonical = isNotification ? creator : ordinal;
         const protocol = action.protocol;
         // Callers protect decoded occurrences before regrouping. Metadata is only a grouping locator here.
-        const occurrence = (protocol?.schemaVersion === 1 || (protocol?.schemaVersion === 2
+        const occurrence = (protocol?.schemaVersion === 1 || protocol?.schemaVersion === 3 || (protocol?.schemaVersion === 2
             && (protocol.kind === 'native' || protocol.kind === 'incomplete'))) && protocol.input;
         // Certified origins distinguish notification copies from independent identical inputs.
         // An incomplete occurrence cannot invent its notification origin.

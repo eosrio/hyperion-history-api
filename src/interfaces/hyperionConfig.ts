@@ -442,7 +442,8 @@ export const HyperionSettingsConfigSchema = z.object({
     ]).optional(),
     reader_recovery_window_blocks: z.number().int().positive().optional(),
     protocol_abi_history: z.object({interface_version:z.literal(1),manifest:z.string().min(1),manifest_sha256:z.string().regex(/^[0-9a-f]{64}$/),
-        producer_profile_id:z.string().min(1).max(128),node_revision:z.string().regex(/^[0-9a-f]{40}$/),ship_abi_sha256:z.string().regex(/^[0-9a-f]{64}$/)}).strict().optional(),
+        producer_profile_id:z.string().min(1).max(128),node_revision:z.string().regex(/^[0-9a-f]{40}$/),ship_abi_sha256:z.string().regex(/^[0-9a-f]{64}$/),
+        capture:z.object({state_history_dir:z.string().min(1),blocks_dir:z.string().min(1),ship_abi:z.string().min(1)}).strict().optional()}).strict().optional(),
     protocol_abi_coordination: z.object({
         qualification_genesis_start: z.literal(true).optional(),
         max_pending_blocks: z.number().int().min(1).max(4096).optional(),

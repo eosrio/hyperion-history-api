@@ -186,7 +186,14 @@ export class ProtocolNativeActionReader {
             const proof = await this.read(() => wait
                 ? this.proofs.waitForOpen(source, selectionId, {signal, timeoutMs})
                 : this.proofs.open(source, selectionId, {signal}), signal);
-            const retained = await this.read(() => this.store.readSelection(selectionId, signal), signal);
+            // A disk selection's records are recomputed from the node's logs; others are stored.
+            const disk = this.proofs.diskEvidence(proof);
+            if (disk) requireNative(disk.native && disk.selectionId === selectionId, 'Disk source has no native observation for its selection');
+            const retained = disk?.native
+                ? {record: disk.native.record, context: disk.context, selection: {source: disk.position, contextId: disk.contextId},
+                    abiObservation: disk.abi.record, linkId: disk.native.linkId,
+                    link: {observationId: disk.native.id, observationDigest: disk.native.digest}}
+                : await this.read(() => this.store.readSelection(selectionId, signal), signal);
             const {record, context, selection, abiObservation} = retained;
             if (record.inventory === null) unavailable('native_source_incomplete', 'Native source inventory is incomplete');
             const current = {proof, scope: currentProofConsumerScope(), inputs: new Map(), decisions: new Map(), occurrences: new Map(), receipts: new Map(), provenance: snapshot({

@@ -66,6 +66,53 @@ controls with controlled transports, not evidence that a physical node has synce
 MongoDB/AtomicAssets parity is qualified. Activation and live replay acceptance are
 recorded separately.
 
+## Proving covered history from the node's logs
+
+With `capture`, readers recompute each covered block's source records from the node's own
+logs instead of reading the copies retained in Elasticsearch. The design is described in
+[disk-capture-proofs.md](../architecture/disk-capture-proofs.md).
+
+```json
+{
+  "protocol_abi_history": {
+    "interface_version": 1,
+    "manifest": "/absolute/path/wire-abis.ndjson.manifest.json",
+    "manifest_sha256": "<sha256 of exact manifest bytes>",
+    "producer_profile_id": "<producerProfileId>",
+    "node_revision": "<nodeRevision>",
+    "ship_abi_sha256": "<shipAbiSha256>",
+    "capture": {
+      "state_history_dir": "/absolute/path/node/state-history",
+      "blocks_dir": "/absolute/path/node/blocks",
+      "ship_abi": "/absolute/path/exact-ship-handshake.json"
+    }
+  }
+}
+```
+
+- **Handshake.** The `ship_abi` file must hash to `ship_abi_sha256`, which the manifest also pins.
+  Its block header types must keep the layout the reader walks; otherwise the configuration is
+  refused.
+- **Per-block reads.** For block `n`, the reader takes the chain-state and trace entries through
+  their indexes, and the block-log entry. Each entry must carry the catalog's id for `n`: the
+  state-history headers name it, and the block bytes must hash to it as a block header. The block
+  must also name the catalog's id for `n - 1` as its parent.
+- **Errors.** A damaged or replaced entry makes the proof unavailable with
+  `disk_capture_invalid`. A block the logs do not hold yields `disk_capture_unavailable`.
+- **Records.** The ABI and native observations are recomputed with the indexer's own observers,
+  so they equal the stored records byte for byte. Their ids and digests stand in for stored
+  links.
+- **Selections and rows.** Rows name the deterministic selection
+  `h45abidiskselection1:<sha256 of the canonical position>`. A direct-from-disk importer can write
+  servable rows with schema-3 occurrence metadata, `{schemaVersion: 3, source, selectionId,
+  input}`. The API classifies each one and verifies it exactly as the schema-1 or schema-2
+  metadata the indexer would have written.
+- **Existing data.** Stored selections keep working, and nothing is removed from existing indices.
+
+Every process that proves covered history (MainDS, action pool and API) needs read access to
+these logs. Only catalog-covered blocks are read. They are irreversible, so appends by the
+running node do not affect them.
+
 ## Historical serving after the catalog cutoff (#456)
 
 The fixed catalog covers its irreversible prefix. Retained tail actions also need

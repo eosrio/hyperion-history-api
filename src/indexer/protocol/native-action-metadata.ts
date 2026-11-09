@@ -49,7 +49,7 @@ export function parseProtocolNativeActionMetadata(input: unknown): ProtocolNativ
         && (value.kind !== 'incomplete' || incomplete));
     valid(keys(value.source, ['chainId', 'blockNum', 'blockId']) && digest(value.source.chainId) && digest(value.source.blockId)
         && Number.isSafeInteger(value.source.blockNum) && value.source.blockNum >= 1 && value.source.blockNum <= 0xffffffff
-        && id('h45srcsel1', value.selectionId));
+        && (id('h45srcsel1', value.selectionId) || id('h45abidiskselection1', value.selectionId)));
     valid(keys(value.input, ['transactionId', 'actionOrdinal', 'inputActionOrdinal', 'receiver', 'account', 'name',
         'rawHex', 'globalSequence', 'receiptAbiSequence']));
     const native = value.native;

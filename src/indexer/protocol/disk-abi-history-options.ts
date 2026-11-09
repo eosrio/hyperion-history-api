@@ -8,14 +8,18 @@ import {protocolImmutableJson} from './immutable-bundle-store.js';
 import {assertProtocolAbiObservationFacts} from './abi-observation-facts.js';
 import {verifyNativeGenesisRecord} from './native-genesis.js';
 import {DiskAbiHistoryCatalog, type DiskAbiHistoryConfiguration} from './disk-abi-history.js';
+import {DiskSourceEvidence} from './disk-source-evidence.js';
 
 /** The host selects installed code and explicitly pinned data before constructing a reader. */
 export function diskAbiHistoryOptions(configuration:DiskAbiHistoryConfiguration|undefined, client:Client,
     chain:string,chainId:string,profile:ProtocolSourceProfile,provider:ProtocolProvider,replicas=0) {
-    const catalog=DiskAbiHistoryCatalog.fromConfiguration(configuration,chainId,profile);
+    // Where the node's logs are read from is not part of the catalog's identity or its restart-gated budget.
+    const {capture,...pinned}=configuration??({} as Partial<DiskAbiHistoryConfiguration>);
+    const catalog=DiskAbiHistoryCatalog.fromConfiguration(configuration?pinned as DiskAbiHistoryConfiguration:undefined,chainId,profile);
     return catalog?{catalog,bindings:new ProtocolSourceBindingStore(client,chain,replicas,{readOnly:true}),
         observations:new ProtocolAbiObservationStore(client,chain,replicas,undefined,{readOnly:true}),
-        verifyNativeGenesis:provider.verifyNativeGenesis?.bind(provider)}:undefined;
+        verifyNativeGenesis:provider.verifyNativeGenesis?.bind(provider),
+        evidence:capture?new DiskSourceEvidence(capture,configuration!.ship_abi_sha256,catalog,provider,chainId,profile):undefined}:undefined;
 }
 
 /** Publish original raw-input readiness separately from the immutable ABI coverage prefix. */
