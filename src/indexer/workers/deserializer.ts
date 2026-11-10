@@ -2268,6 +2268,25 @@ export default class MainDSWorker extends HyperionWorker {
         // },
     }
 
+    /**
+     * True only when this block's canonical proof keeps an older ABI epoch for the account, with the
+     * same bytes as its row: the reducer saw an ordinary account touch, not a deployment. Without a
+     * proof view for exactly this block the row is recorded, as before. Storage failures redeliver.
+     */
+    private async retainsProtocolAbiEpoch(account: string, abiHex: string, blockNum: number, blockId: string | undefined, row: any): Promise<boolean> {
+        const view = this.activeProtocolAbiProofView;
+        if (!view || !abiHex || !(row?.present === true || row?.present === 1)
+            || view.source.blockNum !== blockNum || view.source.blockId !== blockId) return false;
+        let state;
+        try { state = await this.getProtocolAbiProofReader().inspectFinalState(view, account); }
+        catch (error) {
+            if (error instanceof ProtocolAbiProofUnavailableError) return false;
+            throw new ProtocolProofStorageError(error);
+        }
+        return state?.account === account && state.present === true && state.abiHex === abiHex
+            && Number.isSafeInteger(state.source?.blockNum) && state.source.blockNum < blockNum;
+    }
+
     private async processProtocolAccount(account: any, blockNum: number, blockTs: string, row: any, blockId?: string) {
         const reference = {
             '@timestamp': blockTs, account: String(account.name), block: blockNum, block_id: blockId ?? '',
@@ -2275,6 +2294,9 @@ export default class MainDSWorker extends HyperionWorker {
             abi_hex: Buffer.from(protocolBytes(account.abi)).toString('hex'), abi: '', actions: [] as string[], tables: [] as string[],
             abi_available: false, abi_error: '',
         };
+        // A row changes whenever its account does, not only on setabi. A retained epoch is already the
+        // indexed deployment: recording it again would add an ABI document and a cache-clearing broadcast per touch.
+        if (await this.retainsProtocolAbiEpoch(reference.account, reference.abi_hex, blockNum, blockId, row)) return;
         // A clear/rejected ABI is a deployment barrier too. Register it before
         // decoding so no same-block record can reuse a previous schema.
         this.protocolAbiAtBlock.set(reference.account, reference);
