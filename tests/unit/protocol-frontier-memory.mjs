@@ -75,6 +75,29 @@ export function frontierMemoryClient(replicas=0) {
             documents.set(key(request.index,request.id),{document:structuredClone(request.document),seq:result._seq_no,primaryTerm:1});
             return faults.receipt?.(result,request)??result;
         },
+        /** Items apply in order, each with its own receipt and the same faults as a single write.
+         * A thrown receipt fault is an unknown outcome for the whole request, after earlier items applied. */
+        async bulk(request){
+            note('bulk',request);await faults.beforeBulk?.(request);
+            const items=[];
+            for(let offset=0;offset<request.operations.length;offset+=2){
+                const action=request.operations[offset],method=Object.keys(action)[0],meta=action[method];
+                const item={index:meta._index??request.index,id:meta._id,document:request.operations[offset+1],refresh:request.refresh,
+                    wait_for_active_shards:request.wait_for_active_shards,pipeline:request.pipeline,
+                    ...(meta.if_seq_no!==undefined?{if_seq_no:meta.if_seq_no,if_primary_term:meta.if_primary_term}:{})};
+                await faults.beforeWrite?.(item,method);
+                if(!mappings.has(item.index)){items.push({[method]:{_index:item.index,_id:item.id,status:404,error:{type:'index_not_found_exception'}}});continue;}
+                const previous=documents.get(key(item.index,item.id));
+                if(method==='create'?previous:item.if_seq_no!==undefined&&(previous?.seq!==item.if_seq_no||previous?.primaryTerm!==item.if_primary_term)) {
+                    items.push({[method]:{_index:item.index,_id:item.id,status:409,error:{type:'version_conflict_engine_exception'}}});continue;
+                }
+                const result=receipt(item,previous?'updated':'created');
+                documents.set(key(item.index,item.id),{document:structuredClone(item.document),seq:result._seq_no,primaryTerm:1});
+                const settled=await (faults.receipt?.(result,item)??result);
+                items.push({[method]:{...settled,status:previous?200:201}});
+            }
+            return {took:1,errors:items.some(item=>Object.values(item)[0].error),items};
+        },
         async mget(request,options){
             note('mget',request);await faults.beforeMget?.(request,options);
             if(!mappings.has(request.index))throw missingIndex(request.index);

@@ -6,6 +6,7 @@ import {Client} from '@elastic/elasticsearch';
 import {ProtocolAbiObservationStore,protocolAbiCaptureDigest} from '../../build/indexer/protocol/abi-observation-store.js';
 import {ProtocolSourceBindingStore} from '../../build/indexer/protocol/source-bindings.js';
 import {ProtocolAbiFrontierStore,ProtocolAbiFrontierConflictError} from '../../build/indexer/protocol/abi-frontier-store.js';
+import {ImmutableProtocolBundleStore} from '../../build/indexer/protocol/immutable-bundle-store.js';
 import {ProtocolAbiCoordinator} from '../../build/indexer/protocol/abi-coordinator.js';
 import {ProtocolAbiProofReader,ProtocolAbiProofUnavailableError} from '../../build/indexer/protocol/abi-proof.js';
 import {ensureProtocolActionMapping} from '../../build/indexer/protocol/action-proof-mapping.js';
@@ -226,6 +227,37 @@ try {
         query:{bool:{filter:[{ids:{values:['control']}},{term:{digest:currentControl._source.digest}}]}},size:1});
     assert.equal(hiddenControl.timed_out,false);assert.equal(hiddenControl._shards.failed,0);assert.equal(hiddenControl.hits.hits.length,0);
     report.checks.push('real canonical coordinator activates ordered PREPAREs and compact bindings without search refresh');
+
+    // Ordered multi-record PREPARE over _bulk: every chunk has its own complete receipt before any manifest is sent.
+    const bulkBounds={chunkBytes:256,maximumBytes:32768,maximumChunks:128};
+    const bulkRecords=[{id:'bulk-a',record:{value:'a'.repeat(40)}},{id:'bulk-b',record:{value:'b'.repeat(900)}},{id:'bulk-c',record:{value:'c'}}];
+    const failedChunk=item=>item?.kind==='chunk'&&item.bundle_id==='bulk-b'&&item.chunk_index===2;
+    let failChunk=true;
+    const bulkFault=new Proxy(client,{get(target,key){
+        if(key==='bulk')return async request=>{
+            if(!failChunk||!request.operations.some(failedChunk))return target.bulk(request);
+            failChunk=false;
+            // A field outside the strict mapping fails only this item; the rest of the request still applies.
+            return target.bulk({...request,operations:request.operations.map(item=>failedChunk(item)?{...item,unexpected:true}:item)});
+        };
+        const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value;
+    }});
+    const bundles=new ImmutableProtocolBundleStore(client,`${chain}-bulk`,0,'bulk-fixture','bulk-fixture-v1',bulkBounds);
+    const faultBundles=new ImmutableProtocolBundleStore(bulkFault,`${chain}-bulk`,0,'bulk-fixture','bulk-fixture-v1',bulkBounds);
+    await assert.rejects(faultBundles.prepareMany(bulkRecords),/Failed immutable bundle write item/);
+    assert.equal(failChunk,false);
+    const unsent=await client.mget({index:bundles.index,ids:bulkRecords.map(value=>value.id),realtime:true});
+    assert.ok(unsent.docs.every(doc=>doc.found===false),'No manifest is sent after a failed chunk item');
+    const leftover=await client.mget({index:bundles.index,ids:['bulk-a','bulk-c'].map(id=>`${id}:${createHash('sha256').update(JSON.stringify(bulkRecords.find(value=>value.id===id).record)).digest('hex')}:0`),realtime:true});
+    assert.ok(leftover.docs.every(doc=>doc.found===true),'Chunks of the other records applied in the same request');
+    const bulkPrepared=await bundles.prepareMany(bulkRecords);
+    for(const value of bulkRecords)assert.deepEqual(await bundles.read(value.id),value.record);
+    assert.deepEqual(await bundles.readPreparedMany(bulkPrepared.map((value,index)=>({id:value.id,digest:value.digest,
+        byteLength:Buffer.byteLength(JSON.stringify(bulkRecords[index].record))}))),bulkRecords.map(value=>value.record));
+    const reasserted=await client.mget({index:bundles.index,ids:bulkPrepared.map(value=>`${value.id}:${value.digest}:0`),realtime:true});
+    assert.ok(reasserted.docs.every(doc=>doc._version===2),'Leftover chunks took one fresh CAS write each during the repair');
+    await assert.rejects(bundles.prepareMany([{id:'bulk-a',record:{value:'changed'}}]),/conflict/);
+    report.checks.push('ordered bulk PREPARE: a failed chunk item sends no manifest, repair reasserts leftover chunks, a changed record is refused');
 
     // This consumer has no write or index-creation methods. All authority must
     // come from the settled certificate, never from a consumer-side CAS repair.

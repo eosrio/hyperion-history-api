@@ -293,6 +293,7 @@ export class HyperionMaster {
     private protocolAbiSource?: {worker: Worker; readerSessionId: string; generation?: string};
     private protocolAbiDrainTimer?: Timeout;
     private protocolAbiDrainInFlight = false;
+    private protocolAbiDrainAgain = false;
     private protocolAbiFailed = false;
     private activeReadersCount = 0;
     private lastAssignedBlock = 0;
@@ -844,11 +845,21 @@ export class HyperionMaster {
                     maxCommitsPerDrain: options.historical_certificates.max_commits_per_drain,
                     maxCommitBytesPerDrain: options.historical_certificates.max_commit_bytes_per_drain,
                     maxMillisecondsPerDrain: options.historical_certificates.max_ms_per_drain},
-                onHistoricalError: error => hLog('Historical state source remains unavailable:', error)});
+                onHistoricalError: error => hLog('Historical state source remains unavailable:', error),
+                onSettled: head => this.broadcastProtocolAbiSettled(head.blockNum)});
             await coordinator.start();
             this.protocolAbiCoordinator = coordinator;
             this.protocolAbiDrainTimer = setInterval(() => this.requestProtocolAbiDrain(), 1000).unref();
         } catch (error) { this.failProtocolAbiCoordinator(error); throw error; }
+    }
+
+    /** Wakes proof waits in workers that read canonical ABI proofs. They still read control fresh. */
+    private broadcastProtocolAbiSettled(blockNum: number): void {
+        for (const definition of this.workerMap) {
+            const worker = definition.wref;
+            if (!worker?.isConnected() || !['deserializer', 'ds_pool_worker', 'projection'].includes(definition.worker_role ?? '')) continue;
+            try { worker.send({event: 'protocol_abi_committed', data: {blockNum}}, () => {}); } catch {}
+        }
     }
 
     private isCurrentProtocolLiveReader(worker: Worker): boolean {
@@ -916,10 +927,13 @@ export class HyperionMaster {
     }
 
     private requestProtocolAbiDrain(): void {
-        if (!this.protocolAbiCoordinator || this.protocolAbiDrainInFlight || this.protocolAbiFailed || this.shutdownStarted) return;
+        if (!this.protocolAbiCoordinator || this.protocolAbiFailed || this.shutdownStarted) return;
+        // A request during a drain may name a link that drain read too early; run once more right after it.
+        if (this.protocolAbiDrainInFlight) { this.protocolAbiDrainAgain = true; return; }
         this.protocolAbiDrainInFlight = true;
+        this.protocolAbiDrainAgain = false;
         void this.protocolAbiCoordinator.drain().catch(error => this.failProtocolAbiCoordinator(error))
-            .finally(() => { this.protocolAbiDrainInFlight = false; });
+            .finally(() => { this.protocolAbiDrainInFlight = false; if (this.protocolAbiDrainAgain) this.requestProtocolAbiDrain(); });
     }
 
     private failProtocolAbiCoordinator(error: unknown): void {

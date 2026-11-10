@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import type {Client} from '@elastic/elasticsearch';
 import {ImmutableProtocolBundleStore,ImmutableProtocolBundleReadError,ProtocolImmutableRecordMemo,ProtocolMetadataFreshness,protocolImmutableJson,
     type ImmutableProtocolBundleExpectation} from './immutable-bundle-store.js';
+export type {ImmutableProtocolBundleExpectation as ProtocolAbiFrontierExpectation} from './immutable-bundle-store.js';
 import {historicalAddressId, historicalAddressIdentity, ProtocolAbiHistoricalAddressReadError,
     type ProtocolAbiHistoricalAddress, type ProtocolAbiHistoricalAddressIdentity} from './abi-history.js';
 import type {ProtocolAbiHeadCertificate} from './abi-proof.js';
@@ -248,6 +249,9 @@ export class ProtocolAbiFrontierStore {
             if(error instanceof ImmutableProtocolBundleReadError)throw new ProtocolAbiFrontierReadError(error.code,kind,id,error.message);
             throw error;
         }
+        return this.verified(kind,id,raw);
+    }
+    private verified(kind:ProtocolAbiFrontierRecordKind,id:string,raw:unknown):any {
         try {
             const record=bounded(raw,{bytes:limits[kind].bytes+1024,nodes:limits[kind].nodes+10}).value;
             if(!recordKeys(record,['schemaVersion','chain','kind','value'])||record.schemaVersion!==1||record.chain!==this.chain
@@ -259,6 +263,134 @@ export class ProtocolAbiFrontierStore {
             return verified.value;
         }catch{throw new ProtocolAbiFrontierReadError('invalid',kind,id,'Stored ABI frontier type, chain or identity mismatch');}
     }
+
+    /** Pure identity of a record; computing it grants nothing. */
+    recordId(kind:ProtocolAbiFrontierRecordKind,value:unknown):string {
+        return this.id(this.envelope(kind,kind==='account-state'?this.accountStateValue(value):value));
+    }
+    private accountStateValue(state:unknown):unknown {
+        const copy=bounded(state,limits['account-state']).value;
+        if(!copy||typeof copy!=='object'||Array.isArray(copy)||!Object.hasOwn(copy,'account')||!validAccount(copy.account))throw new Error('Invalid ABI account state identity');
+        return copy;
+    }
+    /**
+     * Several records in one ordered PREPARE: all chunks, then all manifests, each document with its own complete
+     * receipt. Callers publish nothing that references these records until this resolves.
+     */
+    async prepareRecords(items:readonly ProtocolAbiFrontierRecordInput[]):Promise<Array<{id:string;digest:string;byteLength:number}>> {
+        if(this.options.readOnly)throw new Error('Read-only ABI frontier cannot prepare records');
+        const planned=items.map(item=>{
+            const record=this.envelope(item.kind,item.kind==='account-state'?this.accountStateValue(item.value):item.value);
+            return {id:this.id(record),record,expected:item.expected??'absent' as const,byteLength:Buffer.byteLength(protocolImmutableJson(record))};
+        });
+        const prepared=await this.bundles.prepareMany(planned);
+        return prepared.map((value,index)=>({id:value.id,digest:value.digest,byteLength:planned[index]!.byteLength}));
+    }
+    /** Readback of fresh PREPAREs from `prepareRecords`; it never consults a memo. */
+    async readPreparedRecords(items:readonly {kind:ProtocolAbiFrontierRecordKind;id:string;digest:string;byteLength:number}[]):Promise<any[]> {
+        for(const item of items)if(!validId(item.kind,item.id))throw new ProtocolAbiFrontierReadError('invalid',item.kind,item.id,'Invalid ABI frontier record ID');
+        let raw:unknown[];
+        try {raw=await this.bundles.readPreparedMany(items.map(({id,digest,byteLength})=>({id,digest,byteLength})));}catch(error) {
+            if(error instanceof ImmutableProtocolBundleReadError){
+                const item=items.find(value=>value.id===error.recordId)??items[0]!;
+                throw new ProtocolAbiFrontierReadError(error.code,item.kind,error.recordId,error.message);
+            }
+            throw error;
+        }
+        return raw.map((value,index)=>this.verified(items[index]!.kind,items[index]!.id,value));
+    }
+
+    /** Ordered fresh reads of several records of one kind: two packed requests, each record checked as `read` does. */
+    async readRecords(kind:ProtocolAbiFrontierRecordKind,ids:readonly string[]):Promise<any[]> {
+        for(const id of ids)if(!validId(kind,id))throw new ProtocolAbiFrontierReadError('invalid',kind,id,'Invalid ABI frontier record ID');
+        const distinct=[...new Set(ids)];
+        let raw:unknown[];
+        try {raw=await this.bundles.readRecords(distinct);}catch(error) {
+            if(error instanceof ImmutableProtocolBundleReadError)throw new ProtocolAbiFrontierReadError(error.code,kind,error.recordId,error.message);
+            throw error;
+        }
+        const values=new Map(distinct.map((id,index)=>[id,this.verified(kind,id,raw[index])]));
+        return ids.map(id=>values.get(id));
+    }
+    /** One certificate keeps the single-record request order; several are one ordered PREPARE. */
+    async prepareCertificates(values:readonly unknown[]):Promise<Array<{id:string;digest:string;byteLength:number}>> {
+        if(values.length===1){
+            const prepared=await this.prepareCertificate(values[0]);
+            return [{...prepared,byteLength:Buffer.byteLength(protocolImmutableJson(this.envelope('certificate',values[0])))}];
+        }
+        return this.prepareRecords(values.map(value=>({kind:'certificate' as const,value})));
+    }
+    /** Readback of `prepareCertificates`, with the same single-record request order. */
+    async readPreparedCertificates(prepared:readonly {id:string;digest:string;byteLength:number}[]):Promise<unknown[]> {
+        if(prepared.length===1)return [await this.readCertificate(prepared[0]!.id,undefined,prepared[0]!.digest)];
+        return this.readPreparedRecords(prepared.map(value=>({kind:'certificate' as const,...value})));
+    }
+    async readCertificates(ids:readonly string[]):Promise<unknown[]> {
+        return ids.length===1?[await this.readCertificate(ids[0]!)]:this.readRecords('certificate',ids);
+    }
+    /** Batched `prepareHistoricalCertificateAddress`: the same exact-certificate check, records and readback. */
+    async prepareHistoricalCertificateAddresses(certificates:readonly ProtocolAbiHeadCertificate[]):Promise<Array<{id:string;digest:string}>> {
+        if(this.options.readOnly)throw new Error('Read-only ABI frontier cannot prepare historical addresses');
+        if(certificates.length===1)return [await this.prepareHistoricalCertificateAddress(certificates[0]!)];
+        const copied=certificates.map(certificate=>bounded(certificate,limits.certificate).value as ProtocolAbiHeadCertificate);
+        const stored=await this.readCertificates(copied.map(certificate=>this.certificateId(certificate)));
+        const addresses=copied.map((certificate,index)=>{
+            if(protocolImmutableJson(stored[index])!==protocolImmutableJson(certificate))throw new Error('Historical address requires an exact settled certificate');
+            const identity=historicalAddressIdentity(certificate);
+            return {identity,address:{schemaVersion:1,kind:'historical-abi-certificate-address',identity,certificateId:this.certificateId(certificate)} as ProtocolAbiHistoricalAddress};
+        });
+        const records=addresses.map(({identity,address})=>({id:historicalAddressId(identity),
+            record:{schemaVersion:1,chain:this.chain,kind:'historical-certificate-address',value:address}}));
+        const prepared=await this.bundles.prepareMany(records);
+        const readback=await this.readHistoricalCertificateAddresses(addresses.map(({identity})=>identity),prepared.map((value,index)=>({digest:value.digest,
+            byteLength:Buffer.byteLength(protocolImmutableJson(records[index]!.record))})));
+        for(const [index,value] of readback.entries())
+            if(protocolImmutableJson(value)!==protocolImmutableJson(addresses[index]!.address))throw new Error('Historical certificate address readback differs');
+        return prepared.map(({id,digest})=>({id,digest}));
+    }
+    /** Batched exact locator reads, each checked as `readHistoricalCertificateAddress` does. A digest marks a fresh readback. */
+    async readHistoricalCertificateAddresses(identities:readonly ProtocolAbiHistoricalAddressIdentity[],
+                                             prepared?:readonly {digest:string;byteLength:number}[]):Promise<ProtocolAbiHistoricalAddress[]> {
+        if(identities.length===1)return [await this.readHistoricalCertificateAddress(identities[0]!,undefined,prepared?.[0]?.digest)];
+        const expected=identities.map(identity=>JSON.parse(protocolImmutableJson(identity,64*1024)));
+        const ids=expected.map(identity=>historicalAddressId(identity));
+        let raw:unknown[];
+        try {raw=prepared?await this.bundles.readPreparedMany(ids.map((id,index)=>({id,...prepared[index]!})))
+            :await this.bundles.readRecords([...new Set(ids)]).then(values=>{const byId=new Map([...new Set(ids)].map((id,index)=>[id,values[index]]));return ids.map(id=>byId.get(id));});}
+        catch(error) {
+            if(error instanceof ImmutableProtocolBundleReadError)throw new ProtocolAbiHistoricalAddressReadError(error.code,error.recordId,error.message);
+            throw error;
+        }
+        return raw.map((value,index)=>this.verifiedAddress(raw[index],expected[index],ids[index]!));
+    }
+    private verifiedAddress(raw:unknown,expected:ProtocolAbiHistoricalAddressIdentity,id:string):ProtocolAbiHistoricalAddress {
+        try {
+            const record=bounded(raw,{bytes:64*1024,nodes:2048}).value,address=record.value;
+            if(!recordKeys(record,['schemaVersion','chain','kind','value'])||record.schemaVersion!==1||record.chain!==this.chain
+                ||record.kind!=='historical-certificate-address'||!recordKeys(address,['schemaVersion','kind','identity','certificateId'])
+                ||address.schemaVersion!==1||address.kind!=='historical-abi-certificate-address'
+                ||protocolImmutableJson(address.identity)!==protocolImmutableJson(expected)||!validId('certificate',address.certificateId))
+                throw new Error('Historical certificate address differs');
+            return address;
+        } catch {throw new ProtocolAbiHistoricalAddressReadError('invalid',id,'Stored historical certificate address identity differs');}
+    }
+
+    /**
+     * Plans the state records of several consecutive blocks without writing any of them. Each step yields the
+     * same root, buckets and account records `prepareState` would prepare, so the IDs are identical. The base
+     * root and each touched bucket are read once per plan, from this writing store.
+     */
+    beginStatePlan(previousRootId:string|null):ProtocolAbiStatePlan {
+        if(this.options.readOnly)throw new Error('Read-only ABI frontier cannot prepare state');
+        if(previousRootId!==null&&!validId('root',previousRootId))throw new Error('Invalid ABI state root or reset');
+        return new ProtocolAbiStatePlan(this,previousRootId);
+    }
+    /** @internal Plan support: verified fresh reads from this store. */
+    async planRoot(id:string):Promise<Record<string,string>> {return this.root(id);}
+    /** @internal */
+    async planBucket(id:string,key:string):Promise<Record<string,string>> {return this.bucket(id,key);}
+    /** @internal */
+    planUpdates(updates:readonly ProtocolAbiAccountUpdate[]):ProtocolAbiAccountUpdate[] {return this.stateUpdates(updates);}
 
     async prepareCommit(value:unknown):Promise<{id:string;digest:string}> {return this.prepare('commit',value);}
     async readCommit(id:string,signal?:AbortSignal,digest?:string):Promise<unknown> {return this.read('commit',id,signal,digest);}
@@ -316,30 +448,56 @@ export class ProtocolAbiFrontierStore {
             const state={account,kind:'historical-certificate-address-entry',address};bounded(state,limits['account-state']);
             changes.get(key)!.push({account,state,address});
         }
+        // Each read step covers every touched bucket, locator or prior entry at once; the map's records are then
+        // one ordered PREPARE. Nothing references them until the coordinator's control CAS publishes the root.
         const buckets=await this.root(previousRootId);yield;
+        const keys=[...changes.keys()].filter(key=>buckets[key]),accountsOf=new Map<string,Record<string,string>>();
+        if(keys.length){
+            const values=await this.readRecords('bucket',keys.map(key=>buckets[key]!));
+            for(const [index,key] of keys.entries())accountsOf.set(key,Object.assign(Object.create(null),this.checkedBucket(buckets[key]!,key,values[index])));
+            yield;
+        }
+        const pending=[...changes.values()].flat();
+        // Locators are always read fresh: the map may only point at their exact stored bytes.
+        if(pending.length){
+            const locators=await this.readHistoricalCertificateAddresses(pending.map(({address})=>address.identity));yield;
+            for(const [index,{address}] of pending.entries())
+                if(protocolImmutableJson(locators[index])!==protocolImmutableJson(address))throw new Error('Historical map address differs from its exact locator');
+        }
+        const priors=pending.filter(({account})=>accountsOf.get(hash(account).slice(0,2))?.[account]);
+        if(priors.length){
+            const values=await this.readRecords('account-state',priors.map(({account})=>accountsOf.get(hash(account).slice(0,2))![account]!));yield;
+            for(const [index,{state}] of priors.entries())
+                if(protocolImmutableJson(values[index])!==protocolImmutableJson(state))throw new Error('Historical address map cannot replace an existing height');
+        }
+        const records:ProtocolAbiFrontierRecordInput[]=[];
         let changed=false;
         for(const [key,entries] of changes) {
-            const accounts=buckets[key]?await this.bucket(buckets[key],key):Object.create(null);yield;
+            const accounts=accountsOf.get(key)??Object.create(null);
             let bucketChanged=false;
-            for(const {account,state,address} of entries) {
-                const locator=await this.readHistoricalCertificateAddress(address.identity);yield;
-                if(protocolImmutableJson(locator)!==protocolImmutableJson(address))throw new Error('Historical map address differs from its exact locator');
-                if(accounts[account]) {
-                    const prior=await this.readAccountState(accounts[account]);yield;
-                    if(protocolImmutableJson(prior)!==protocolImmutableJson(state))throw new Error('Historical address map cannot replace an existing height');
-                }
+            for(const {account,state} of entries) {
                 // Always freshly prepare, including unchanged content. A prior map entry is not a receipt.
-                const prepared=await this.prepareAccountState(state);
-                if(accounts[account]!==prepared.id){accounts[account]=prepared.id;bucketChanged=true;}yield;
+                const id=this.recordId('account-state',state);records.push({kind:'account-state',value:state});
+                if(accounts[account]!==id){accounts[account]=id;bucketChanged=true;}
             }
             if(!bucketChanged)continue;
             if(Object.keys(accounts).length>20000)throw new ProtocolAbiFrontierLimitError('ABI account bucket exceeds bounded entry budget');
-            buckets[key]=(await this.prepare('bucket',{prefix:key,accounts})).id;changed=true;yield;
+            const value={prefix:key,accounts};buckets[key]=this.recordId('bucket',value);records.push({kind:'bucket',value});changed=true;
         }
         if(!Object.keys(buckets).length)throw new Error('Historical address map cannot be empty');
-        if(!changed)return previousRootId!;
-        const root=(await this.prepare('root',{buckets})).id;yield;
+        const root=changed?this.recordId('root',{buckets}):previousRootId!;
+        if(changed)records.push({kind:'root',value:{buckets}});
+        if(records.length){await this.prepareRecords(records);yield;}
         return root;
+    }
+    private checkedBucket(id:string,key:string,value:any):Readonly<Record<string,string>> {
+        const known=this.verifiedBuckets.get(value);
+        if(known&&value.prefix===key)return known;
+        if(!recordKeys(value,['prefix','accounts'])||value.prefix!==key
+            ||!recordKeysMap(value.accounts,20000,([account,stateId])=>validAccount(account)&&hash(account).slice(0,2)===key&&validId('account-state',stateId))) {
+            throw new ProtocolAbiFrontierReadError('invalid','bucket',id,'Invalid ABI account bucket map');
+        }
+        return Object.freeze(Object.assign(Object.create(null),value.accounts));
     }
     /** Existing single-call entry point; an optional store-issued handle resumes the exact same operation. */
     async prepareHistoricalAddressRoot(previousRootId:string|null,addresses:readonly ProtocolAbiHistoricalAddress[],checkpoint?:()=>Promise<void>,
@@ -484,6 +642,67 @@ export class ProtocolAbiFrontierStore {
         const state:any=await this.readAccountState(id,signal);
         if(state.account!==account)throw new ProtocolAbiFrontierReadError('invalid','account-state',id,'ABI bucket/account identity mismatch');
         return state;
+    }
+}
+
+export interface ProtocolAbiFrontierRecordInput {kind:ProtocolAbiFrontierRecordKind;value:unknown;expected?:ImmutableProtocolBundleExpectation}
+
+/** Process-local planning of consecutive state roots; it writes nothing and is never authority. */
+export class ProtocolAbiStatePlan {
+    private rootId:string|null;
+    private buckets?:Record<string,string>;
+    private readonly bucketValues=new Map<string,Readonly<Record<string,string>>>();
+    private readonly planned:ProtocolAbiFrontierRecordInput[]=[];
+    constructor(private readonly store:ProtocolAbiFrontierStore,previousRootId:string|null) {this.rootId=previousRootId;}
+    /** Every record the applied steps need, in step order, to be prepared before anything references them. */
+    get records():readonly ProtocolAbiFrontierRecordInput[] {return this.planned;}
+    /** One block, as `prepareState(current, updates, reset)`. A failed step leaves the plan unchanged. */
+    async apply(updates:readonly ProtocolAbiAccountUpdate[],reset=false):Promise<string|null> {
+        if(typeof reset!=='boolean')throw new Error('Invalid ABI state root or reset');
+        const input=this.store.planUpdates(updates);
+        // A reset never reads the old root; anything else reads it once, which is how a lost root is noticed.
+        const buckets:Record<string,string>=Object.assign(Object.create(null),reset?{}:await this.currentBuckets());
+        const changes=new Map<string,ProtocolAbiAccountUpdate[]>();
+        for(const update of input){const key=createHash('sha256').update(update.account).digest('hex').slice(0,2);
+            if(!changes.has(key))changes.set(key,[]);changes.get(key)!.push(update);}
+        const records:ProtocolAbiFrontierRecordInput[]=[],written=new Map<string,Readonly<Record<string,string>>>();
+        let changed=reset&&this.rootId!==null;
+        for(const [key,entries] of changes){
+            const accounts:Record<string,string>=Object.assign(Object.create(null),buckets[key]?await this.bucket(buckets[key],key):{});
+            let bucketChanged=false;
+            for(const update of entries){
+                if(update.state===null){if(Object.hasOwn(accounts,update.account)){delete accounts[update.account];bucketChanged=true;}continue;}
+                // Always freshly prepared, including unchanged content: a stored ID is not a receipt.
+                const id=this.store.recordId('account-state',update.state);
+                records.push({kind:'account-state',value:update.state});
+                if(accounts[update.account]!==id){accounts[update.account]=id;bucketChanged=true;}
+            }
+            if(!bucketChanged)continue;
+            changed=true;
+            if(Object.keys(accounts).length===0)delete buckets[key];
+            else {
+                if(Object.keys(accounts).length>20000)throw new ProtocolAbiFrontierLimitError('ABI account bucket exceeds bounded entry budget');
+                const value={prefix:key,accounts},id=this.store.recordId('bucket',value);
+                records.push({kind:'bucket',value});buckets[key]=id;written.set(id,Object.freeze({...accounts}));
+            }
+        }
+        let root:string|null;
+        if(Object.keys(buckets).length===0)root=null;
+        else if(!changed)root=this.rootId;
+        else {const value={buckets};root=this.store.recordId('root',value);records.push({kind:'root',value});}
+        this.planned.push(...records);
+        for(const [id,accounts] of written)this.bucketValues.set(id,accounts);
+        this.rootId=root;this.buckets=root===null?Object.create(null):buckets;
+        return root;
+    }
+    private async currentBuckets():Promise<Record<string,string>> {
+        this.buckets??=this.rootId===null?Object.create(null):await this.store.planRoot(this.rootId);
+        return this.buckets!;
+    }
+    private async bucket(id:string,key:string):Promise<Readonly<Record<string,string>>> {
+        let accounts=this.bucketValues.get(id);
+        if(!accounts){accounts=Object.freeze(await this.store.planBucket(id,key));this.bucketValues.set(id,accounts);}
+        return accounts;
     }
 }
 
