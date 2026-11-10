@@ -11,7 +11,7 @@ import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError,
 import {ProtocolNativeActionReader, ProtocolNativeActionUnavailableError,
     type ProtocolNativeActionProofMetadata, type ProtocolNativeActionView, type ProtocolNativeActionGrant} from '../../indexer/protocol/native-authorization.js';
 import {ProtocolNativeObservationStore} from '../../indexer/protocol/native-observation-store.js';
-import {protocolImmutableJson, protocolMetadataReadBoundMs} from '../../indexer/protocol/immutable-bundle-store.js';
+import {protocolImmutableJson, protocolProofReadView} from '../../indexer/protocol/immutable-bundle-store.js';
 import {parseProtocolNativeActionMetadata} from '../../indexer/protocol/native-action-metadata.js';
 import {isProtocolHex} from '../../indexer/protocol/hex.js';
 import {assertProtocolProofRequestActive, protocolProofScope, withProtocolProofRequest} from './protocol-proof-request.js';
@@ -52,10 +52,10 @@ export class ProtocolActionConsumer {
         const chain = host.manager.chain, chainId = host.manager.conn?.chains[chain]?.chain_id;
         if (!chainId) throw unavailable('Configured chain identity is unavailable');
         const profile = {id: selected.id, profileId: selected.provider.profileId, components: selected.components ?? []};
-        const replicas = host.manager.config.settings.es_replicas ?? 0, view = {readOnly: true, metadataReadBoundMs: protocolMetadataReadBoundMs};
+        const replicas = host.manager.config.settings.es_replicas ?? 0, view = protocolProofReadView;
         this.reader = new ProtocolAbiProofReader({chainId, profile,
             diskHistory:diskAbiHistoryOptions(host.manager.config.settings.protocol_abi_history,host.elastic,chain,chainId,
-                profile,selected.provider,host.manager.config.settings.es_replicas??0),
+                profile,selected.provider,host.manager.config.settings.es_replicas??0,view),
             sourceEquivalence: new ProtocolSourceEquivalence(new ProtocolSourceBindingStore(host.elastic,chain,replicas,view),
                 new ProtocolAbiObservationStore(host.elastic,chain,replicas,undefined,view)),
             historicalCertificates: host.manager.config.settings.protocol_abi_coordination?.historical_certificates !== undefined,
@@ -64,7 +64,7 @@ export class ProtocolActionConsumer {
         this.nativeReader = selected.provider.nativeActions ? new ProtocolNativeActionReader({chainId, profile,
             provider: selected.provider, proofReader: this.reader,
             store: new ProtocolNativeObservationStore(host.elastic, chain,
-                host.manager.config.settings.es_replicas ?? 0, undefined, {readOnly: true})}) : undefined;
+                host.manager.config.settings.es_replicas ?? 0, undefined, view)}) : undefined;
     }
     belongsTo(host: FastifyInstance): boolean {
         // Fastify route plugins inherit their host's decorators through encapsulation.

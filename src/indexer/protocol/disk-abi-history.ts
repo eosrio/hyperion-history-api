@@ -161,6 +161,8 @@ export class DiskAbiHistoryCatalog {
         catch(error){if(error instanceof DiskAbiHistoryUnavailableError)throw error;throw new DiskAbiHistoryUnavailableError('catalog artifact disappeared or became unreadable');}
     }
     async revalidate():Promise<void> {await this.revalidateLoaded(await this.data());}
+    /** Range only, and never authority: false means covers() is false for every source at this height. */
+    async mayCover(blockNum:number):Promise<boolean> {const value=await this.data();return uint(blockNum,1)&&blockNum<=value.manifest.endBlock;}
     async covers(source:Pick<ProtocolSourcePosition,'chainId'|'blockNum'|'blockId'>):Promise<boolean> {
         const value=await this.data();if(source.chainId!==this.chainId||!uint(source.blockNum,1)||source.blockNum>value.manifest.endBlock)return false;
         requireData(hex.test(source.blockId)&&await this.idAt(value,source.blockNum)===source.blockId,'source block is outside pinned irreversible history');

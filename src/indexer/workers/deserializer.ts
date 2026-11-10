@@ -25,7 +25,7 @@ import {assertCompleteProtocolSearch} from '../protocol/search.js';
 import {ProtocolAbiObservationStore, type ProtocolAbiObservationRecord} from '../protocol/abi-observation-store.js';
 import {assertProtocolAbiObservationFacts} from '../protocol/abi-observation-facts.js';
 import {ProtocolSourceBindingStore, ProtocolSourceBindingReadError, protocolSourceSelectionHeader} from '../protocol/source-bindings.js';
-import {protocolImmutableJson} from '../protocol/immutable-bundle-store.js';
+import {protocolImmutableJson, protocolProofReadView} from '../protocol/immutable-bundle-store.js';
 import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, type ProtocolAbiProofView} from '../protocol/abi-proof.js';
 import {diskAbiHistoryOptions,publishDiskAbiSource} from '../protocol/disk-abi-history-options.js';
 import {ProtocolAbiFrontierStore, ProtocolAbiFrontierRecordMemo} from '../protocol/abi-frontier-store.js';
@@ -646,7 +646,7 @@ export default class MainDSWorker extends HyperionWorker {
         await this.prepareProtocolNativeObservations(abiRecord, prepared);
         this.assertWorkerAttemptActive();
         await publishDiskAbiSource(this.getProtocolAbiProofReaderOptions(),this.protocolSourceBindingStore,this.activeSourceSelectionId,
-            ()=>this.assertWorkerAttemptActive());
+            ()=>this.assertWorkerAttemptActive(),position);
         // This is only a wake-up hint. Master resolves the durable link and source order itself.
         // Losing IPC cannot erase PREPARE; the master's bounded periodic drain repairs it.
         try {
@@ -730,7 +730,8 @@ export default class MainDSWorker extends HyperionWorker {
         return this.protocolAbiProofReader ??= new ProtocolAbiProofReader({chainId: this.chainId,
             diskHistory:this.getProtocolAbiProofReaderOptions(),
             profile: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
-            store: new ProtocolAbiFrontierStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0, {readOnly: true, recordMemo: new ProtocolAbiFrontierRecordMemo()}),
+            // Proof reads only: delta records revalidate around every effect, so this takes the API reader's bounded view.
+            store: new ProtocolAbiFrontierStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0, {...protocolProofReadView, recordMemo: new ProtocolAbiFrontierRecordMemo()}),
             historicalCertificates:this.conf.settings.protocol_abi_coordination?.historical_certificates!==undefined,
             requireAttemptScope: this.workerAttemptScopeRequired,
             maxAncestryBlocks: this.conf.settings.protocol_abi_coordination?.recovery_window_blocks});
