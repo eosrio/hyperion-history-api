@@ -38,6 +38,11 @@ async function checkedIo<T>(signal: AbortSignal | undefined, operation: () => Pr
 
 /** The most a read may rely on an earlier metadata check. A write never relies on one. */
 export const protocolMetadataReadBoundMs=1000;
+/**
+ * Read handles of proof consumers (the API reader and indexer workers verifying actions and deltas):
+ * they never write, and revalidate authority many times per block. Writers and the default stay strict.
+ */
+export const protocolProofReadView=Object.freeze({readOnly:true as const,metadataReadBoundMs:protocolMetadataReadBoundMs});
 /** Process-local and never authority. Zero, the default, checks every read; only measured hot stores opt in. */
 export class ProtocolMetadataFreshness {
     private validatedAt?:number;

@@ -119,19 +119,23 @@ export class ProtocolNativeObservationStore {
     private readonly abis:ProtocolAbiObservationStore;
     private readonly bounds:ImmutableProtocolBundleBounds;
     private readonly readOnly:boolean;
-    constructor(private readonly client:Client,private readonly chain:string,private readonly replicas=0,bounds:ImmutableProtocolBundleBounds=protocolNativeObservationBounds,options:{readOnly?:boolean}={}) {
+    private readonly reads:{metadataReadBoundMs?:number;rememberRecords?:boolean};
+    /** Read options apply to reads only: prepare always checks metadata before it writes. */
+    constructor(private readonly client:Client,private readonly chain:string,private readonly replicas=0,bounds:ImmutableProtocolBundleBounds=protocolNativeObservationBounds,
+                options:{readOnly?:boolean;metadataReadBoundMs?:number;rememberRecords?:boolean}={}) {
         if(bounds.maximumBytes>protocolNativeObservationBounds.maximumBytes||bounds.maximumChunks>protocolNativeObservationBounds.maximumChunks) {
             throw new Error('Invalid native observation storage bounds');
         }
         this.bounds={...bounds};this.readOnly=options.readOnly===true;
-        this.bundles=new ImmutableProtocolBundleStore(client,chain,replicas,'protocol-native-actions','protocol-native-actions-v1',bounds,{readOnly:this.readOnly});
-        this.sources=new ProtocolSourceBindingStore(client,chain,replicas,{readOnly:true});
-        this.abis=new ProtocolAbiObservationStore(client,chain,replicas,undefined,{readOnly:true});
+        const {metadataReadBoundMs,rememberRecords}=options;this.reads={metadataReadBoundMs,rememberRecords};
+        this.bundles=new ImmutableProtocolBundleStore(client,chain,replicas,'protocol-native-actions','protocol-native-actions-v1',bounds,{readOnly:this.readOnly,metadataReadBoundMs});
+        this.sources=new ProtocolSourceBindingStore(client,chain,replicas,{readOnly:true,metadataReadBoundMs,rememberRecords});
+        this.abis=new ProtocolAbiObservationStore(client,chain,replicas,undefined,{readOnly:true,metadataReadBoundMs});
         this.index=this.bundles.index;
     }
-    /** A detached read handle cannot provision indices or prepare observations. */
+    /** A detached read handle cannot provision indices or prepare observations. It keeps this handle's read options. */
     asReadOnly():ProtocolNativeObservationStore {
-        return new ProtocolNativeObservationStore(this.client,this.chain,this.replicas,this.bounds,{readOnly:true});
+        return new ProtocolNativeObservationStore(this.client,this.chain,this.replicas,this.bounds,{...this.reads,readOnly:true});
     }
     private async references(selectionId:string,signal?:AbortSignal):Promise<References> {
         signal?.throwIfAborted();

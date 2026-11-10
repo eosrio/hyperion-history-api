@@ -24,7 +24,7 @@ import {protocolStateKey} from '../helpers/protocol-document-id.js';
 import {assertCompleteProtocolSearch} from '../protocol/search.js';
 import {ProtocolAbiObservationStore, type ProtocolAbiObservationRecord} from '../protocol/abi-observation-store.js';
 import {ProtocolSourceBindingStore, ProtocolSourceBindingReadError, protocolSourceSelectionHeader} from '../protocol/source-bindings.js';
-import {protocolImmutableJson} from '../protocol/immutable-bundle-store.js';
+import {protocolImmutableJson, protocolProofReadView} from '../protocol/immutable-bundle-store.js';
 import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, type ProtocolAbiProofView} from '../protocol/abi-proof.js';
 import {diskAbiHistoryOptions,publishDiskAbiSource} from '../protocol/disk-abi-history-options.js';
 import {ProtocolAbiFrontierStore, ProtocolAbiFrontierRecordMemo} from '../protocol/abi-frontier-store.js';
@@ -603,7 +603,7 @@ export default class MainDSWorker extends HyperionWorker {
         await this.prepareProtocolNativeObservations(abiRecord, prepared);
         this.assertWorkerAttemptActive();
         await publishDiskAbiSource(this.getProtocolAbiProofReaderOptions(),this.protocolSourceBindingStore,this.activeSourceSelectionId,
-            ()=>this.assertWorkerAttemptActive());
+            ()=>this.assertWorkerAttemptActive(),position);
         // This is only a wake-up hint. Master resolves the durable link and source order itself.
         // Losing IPC cannot erase PREPARE; the master's bounded periodic drain repairs it.
         try {
@@ -658,7 +658,8 @@ export default class MainDSWorker extends HyperionWorker {
         return this.protocolAbiProofReader ??= new ProtocolAbiProofReader({chainId: this.chainId,
             diskHistory:this.getProtocolAbiProofReaderOptions(),
             profile: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
-            store: new ProtocolAbiFrontierStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0, {readOnly: true, recordMemo: new ProtocolAbiFrontierRecordMemo()}),
+            // Proof reads only: delta records revalidate around every effect, so this takes the API reader's bounded view.
+            store: new ProtocolAbiFrontierStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0, {...protocolProofReadView, recordMemo: new ProtocolAbiFrontierRecordMemo()}),
             historicalCertificates:this.conf.settings.protocol_abi_coordination?.historical_certificates!==undefined,
             requireAttemptScope: this.workerAttemptScopeRequired,
             maxAncestryBlocks: this.conf.settings.protocol_abi_coordination?.recovery_window_blocks});
@@ -2195,6 +2196,25 @@ export default class MainDSWorker extends HyperionWorker {
         // },
     }
 
+    /**
+     * True only when this block's canonical proof keeps an older ABI epoch for the account, with the
+     * same bytes as its row: the reducer saw an ordinary account touch, not a deployment. Without a
+     * proof view for exactly this block the row is recorded, as before. Storage failures redeliver.
+     */
+    private async retainsProtocolAbiEpoch(account: string, abiHex: string, blockNum: number, blockId: string | undefined, row: any): Promise<boolean> {
+        const view = this.activeProtocolAbiProofView;
+        if (!view || !abiHex || !(row?.present === true || row?.present === 1)
+            || view.source.blockNum !== blockNum || view.source.blockId !== blockId) return false;
+        let state;
+        try { state = await this.getProtocolAbiProofReader().inspectFinalState(view, account); }
+        catch (error) {
+            if (error instanceof ProtocolAbiProofUnavailableError) return false;
+            throw new ProtocolProofStorageError(error);
+        }
+        return state?.account === account && state.present === true && state.abiHex === abiHex
+            && Number.isSafeInteger(state.source?.blockNum) && state.source.blockNum < blockNum;
+    }
+
     private async processProtocolAccount(account: any, blockNum: number, blockTs: string, row: any, blockId?: string) {
         const reference = {
             '@timestamp': blockTs, account: String(account.name), block: blockNum, block_id: blockId ?? '',
@@ -2202,6 +2222,9 @@ export default class MainDSWorker extends HyperionWorker {
             abi_hex: Buffer.from(protocolBytes(account.abi)).toString('hex'), abi: '', actions: [] as string[], tables: [] as string[],
             abi_available: false, abi_error: '',
         };
+        // A row changes whenever its account does, not only on setabi. A retained epoch is already the
+        // indexed deployment: recording it again would add an ABI document and a cache-clearing broadcast per touch.
+        if (await this.retainsProtocolAbiEpoch(reference.account, reference.abi_hex, blockNum, blockId, row)) return;
         // A clear/rejected ABI is a deployment barrier too. Register it before
         // decoding so no same-block record can reuse a previous schema.
         this.protocolAbiAtBlock.set(reference.account, reference);
