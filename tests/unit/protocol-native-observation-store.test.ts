@@ -360,3 +360,41 @@ describe('durable native observations without ABI authority',()=>{
         expect(f.memory.calls.length).toBe(before);
     });
 });
+
+describe('proof read views of native observations',()=>{
+    const metadata=(f:any,mark:number,index?:string)=>f.memory.calls.slice(mark)
+        .filter((call:any)=>call.method==='getIndex'&&(index===undefined||call.request.index===index)).length;
+    it('checks each index at most once per bound on a read handle, and its read-only copy keeps the bound',async()=>{
+        const f=await fixture(),prepared=await f.store.prepare(f.selectionId,f.record);
+        const bounded=new ProtocolNativeObservationStore(f.client,chain,0,undefined,{readOnly:true,metadataReadBoundMs:1000});
+        expect(await bounded.readSelection(f.selectionId)).toEqual(prepared);
+        let mark=f.memory.calls.length;expect(await bounded.readSelection(f.selectionId)).toEqual(prepared);
+        expect(metadata(f,mark)).toBe(0);expect(f.memory.calls.slice(mark).length).toBeGreaterThan(0);
+        const copy=bounded.asReadOnly();await copy.readSelection(f.selectionId);
+        mark=f.memory.calls.length;await copy.readSelection(f.selectionId);expect(metadata(f,mark)).toBe(0);
+        const strict=new ProtocolNativeObservationStore(f.client,chain,0,undefined,{readOnly:true});
+        await strict.readSelection(f.selectionId);mark=f.memory.calls.length;await strict.readSelection(f.selectionId);
+        // Native, source-binding and ABI-observation indices are each validated again on a strict handle.
+        for(const index of [f.store.index,f.sources.index,f.abis.index])expect(metadata(f,mark,index)).toBeGreaterThan(0);
+        expect(f.memory.calls.some((call:any)=>isWrite(call)&&f.memory.calls.indexOf(call)>=mark)).toBe(false);
+    });
+    it('never lets a read bound skip the check before a write',async()=>{
+        const f=await fixture(),writer=new ProtocolNativeObservationStore(f.client,chain,0,undefined,{metadataReadBoundMs:1000});
+        await writer.prepare(f.selectionId,f.record);
+        const mark=f.memory.calls.length;await writer.prepare(f.selectionId,f.record);
+        const calls=f.memory.calls.slice(mark),firstWrite=calls.findIndex((call:any)=>isWrite(call)&&call.request.index===f.store.index);
+        expect(firstWrite).toBeGreaterThan(0);
+        expect(calls.slice(0,firstWrite).some((call:any)=>call.method==='getIndex'&&call.request.index===f.store.index)).toBe(true);
+    });
+    it('remembers content-addressed source records only, so a removed ABI link still fails the read',async()=>{
+        const f=await fixture();await f.store.prepare(f.selectionId,f.record);
+        const reader=new ProtocolNativeObservationStore(f.client,chain,0,undefined,{readOnly:true,rememberRecords:true});
+        await reader.readSelection(f.selectionId);
+        f.memory.documents.delete(f.memory.key(f.sources.index,f.selectionId));
+        await reader.readSelection(f.selectionId);
+        await expect(new ProtocolNativeObservationStore(f.client,chain,0,undefined,{readOnly:true}).readSelection(f.selectionId))
+            .rejects.toMatchObject({code:'missing'});
+        f.memory.documents.delete(f.memory.key(f.sources.index,protocolSourceObservationLinkId(f.selectionId)));
+        await expect(reader.readSelection(f.selectionId)).rejects.toMatchObject({code:'missing'});
+    });
+});
