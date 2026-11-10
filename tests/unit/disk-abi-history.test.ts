@@ -123,23 +123,10 @@ test('published source keeps first equivalent recapture, refuses conflict and ex
     const source=new PortableProjectionSource({client:f.memory.client as any,chain:f.chain,chainId,profile,provider:{} as any,diskAbiHistory:f.config});
     const packet=await source.originalBlock(2,async()=>{});expect(packet.proof.selectionId).toBe(f.selected);expect(packet.observation.source.blockId).toBe(block(2));
     await expect(source.originalBlock(3,async()=>{})).rejects.toMatchObject({statusCode:503,code:'source_publication_pending'});
-});
-
-test('a source past the catalog end publishes nothing and reads nothing; a covered height still reads its stored selection',async()=>{
-    const f=await retainedFixture();
-    expect(await f.options.catalog.mayCover(4)).toBe(true);expect(await f.options.catalog.mayCover(5)).toBe(false);
-    let mark=f.memory.calls.length;
-    await publishDiskAbiSource(f.options,f.bindings,f.selected,()=>{},{blockNum:5});
-    expect(f.memory.calls.slice(mark)).toEqual([]);
-    // The position only short-cuts heights no source can cover; a covered one is decided by the stored selection.
-    mark=f.memory.calls.length;await publishDiskAbiSource(f.options,f.bindings,f.selected,()=>{},{blockNum:2});
-    expect(f.memory.calls.slice(mark).some((call:any)=>call.request.index===f.bindings.index)).toBe(true);
-    expect((await f.bindings.readPublishedSource(chainId,block(2))).selectionId).toBe(f.selected);
-});
-
-test('disk-history read handles take the caller read view and stay read-only',async()=>{
-    const f=await retainedFixture(),view={metadataReadBoundMs:1000,rememberRecords:true};
-    const options=diskAbiHistoryOptions(f.config,f.memory.client as any,f.chain,chainId,profile,{} as any,0,view)!;keep(options.catalog);
+    // Read views and the past-the-end short cut, on this fixture: each catalog counts against the per-process budget.
+    const view={metadataReadBoundMs:1000,rememberRecords:true};
+    const options=diskAbiHistoryOptions(f.config,f.memory.client as any,f.chain,chainId,profile,{} as any,0,view)!;
+    expect(options.catalog).toBe(f.options.catalog);
     const metadata=(mark:number)=>f.memory.calls.slice(mark).filter((call:any)=>call.method==='getIndex').length;
     await options.bindings.readSelection(f.selected);let mark=f.memory.calls.length;
     await options.bindings.readSelection(f.selected);
@@ -147,9 +134,16 @@ test('disk-history read handles take the caller read view and stay read-only',as
     mark=f.memory.calls.length;await options.bindings.readObservationLink(f.selected);
     expect(metadata(mark)).toBe(0);expect(f.memory.calls.slice(mark).length).toBeGreaterThan(0);
     await expect(options.bindings.prepareContext({schemaVersion:1,chainId,protocol:profile,schemaJson})).rejects.toThrow(/Read-only/);
-    const strict=diskAbiHistoryOptions(f.config,f.memory.client as any,f.chain,chainId,profile,{} as any)!;keep(strict.catalog);
-    await strict.bindings.readSelection(f.selected);mark=f.memory.calls.length;await strict.bindings.readSelection(f.selected);
+    await f.options.bindings.readSelection(f.selected);mark=f.memory.calls.length;await f.options.bindings.readSelection(f.selected);
     expect(metadata(mark)).toBeGreaterThan(0);
+    expect(await f.options.catalog.mayCover(4)).toBe(true);expect(await f.options.catalog.mayCover(5)).toBe(false);
+    mark=f.memory.calls.length;
+    await publishDiskAbiSource(f.options,f.bindings,f.selected,()=>{},{blockNum:5});
+    expect(f.memory.calls.slice(mark)).toEqual([]);
+    // The position only short-cuts heights no source can cover; a covered one is decided by the stored selection.
+    mark=f.memory.calls.length;await publishDiskAbiSource(f.options,f.bindings,f.selected,()=>{},{blockNum:2});
+    expect(f.memory.calls.slice(mark).some((call:any)=>call.request.index===f.bindings.index)).toBe(true);
+    expect((await f.bindings.readPublishedSource(chainId,block(2))).selectionId).toBe(f.selected);
 });
 
 test('publication refuses unknown durability receipts and cannot repair them through a primary read',async()=>{

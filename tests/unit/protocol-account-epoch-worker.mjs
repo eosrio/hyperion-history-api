@@ -16,7 +16,8 @@ const {ProtocolAbiProofUnavailableError}=await import('../../build/indexer/proto
 
 const block=n=>n.toString(16).padStart(64,'0'),abiHex='0e7379736f2e61626900000000',blockNum=100,blockId=block(100);
 const sent=[];process.send=message=>{sent.push(message);return true;};
-function worker({view={source:{blockNum,blockId}},inspect}={}) {
+function worker(options={}) {
+    const view=Object.hasOwn(options,'view')?options.view:{source:{blockNum,blockId}},inspect=options.inspect;
     const value=Object.create(MainDS.prototype),published=[],inspected=[];
     const fields={chain,conf:config,protocol:{profileId:'epoch-profile',contractCodec:{decodeAbi:()=>({actions:[{name:'setcode'}],tables:[{name:'global'}]})}},
         abieos:{deleteContract(){}},protocolAbiAtBlock:new Map(),protocolAbiSelections:new Map([['kept',{}]]),verifyTypeCache:new Map([['kept',[true,'t']]]),
