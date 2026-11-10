@@ -32,6 +32,7 @@ import {actionHistoryImmutableJson} from '../history/action-history-manifest.js'
 import {WorkerAttemptClient, createControlledLocalAttemptClient, type WorkerAttempt} from '../protocol/worker-attempt-client.js';
 import type {WorkerAttemptBinding, WorkerAttemptKind, WorkerAttemptRole} from '../protocol/worker-attempt-supervisor.js';
 import {currentProofConsumerScope, assertProofConsumerCapability, trackProofConsumerOperation} from '../protocol/proof-consumer-scope.js';
+import {protocolAbiCommitHints} from '../protocol/abi-proof.js';
 
 const maximumProjectionInitializationAttempts = 4;
 const durablePublicationBounds = {maximumPending: 1024, maximumBytes: 128 * 1024 * 1024};
@@ -503,6 +504,11 @@ export abstract class HyperionWorker {
                             }
                         });
                     }
+                    break;
+                }
+                case 'protocol_abi_committed': {
+                    // Scheduling hint only; proof readers still open through fresh control reads.
+                    protocolAbiCommitHints.notify(msg.data?.blockNum);
                     break;
                 }
                 case 'request_memory_usage': {

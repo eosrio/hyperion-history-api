@@ -1,7 +1,8 @@
 import {createHash} from 'node:crypto';
 import type {Client} from '@elastic/elasticsearch';
 import type {ProtocolComponent} from '@eosrio/hyperion-sdk/protocol';
-import {ImmutableProtocolBundleStore, ImmutableProtocolBundleReadError, ProtocolImmutableRecordMemo, protocolImmutableJson} from './immutable-bundle-store.js';
+import {ImmutableProtocolBundleStore, ImmutableProtocolBundleReadError, ProtocolImmutableRecordMemo, protocolImmutableJson,
+    protocolBundleMembershipHintBounds} from './immutable-bundle-store.js';
 import {isProtocolHex} from './hex.js';
 
 export const protocolSourceSelectionHeader = 'hyperion-source-selection-v1';
@@ -201,6 +202,18 @@ export class ProtocolSourceBindingStore {
         signal?.throwIfAborted();
         if(value.selectionId!==selectedId)throw new ProtocolSourceBindingReadError('invalid','observation-link',recordId,'Source observation link mismatch');
         await this.readSelection(selectedId,signal);signal?.throwIfAborted();return value;
+    }
+    /** Realtime existence hint only: the first selection, in order, whose observation link is not stored yet.
+     * A present link still has to be read in full, and a link that appears later is found by the next call. */
+    async firstUnlinkedSelection(selectedIds:readonly string[],signal?:AbortSignal):Promise<string|null> {
+        if(!Array.isArray(selectedIds)||selectedIds.some(value=>typeof value!=='string'||!selectionId.test(value)))
+            throw new Error('Invalid source selection IDs');
+        for(let start=0;start<selectedIds.length;start+=protocolBundleMembershipHintBounds.maximumItems){
+            const group=selectedIds.slice(start,start+protocolBundleMembershipHintBounds.maximumItems);
+            const missing=await this.bundles.missingManifestHint(group.map(value=>protocolSourceObservationLinkId(value)),signal);
+            if(missing!==null)return group[group.findIndex(value=>protocolSourceObservationLinkId(value)===missing)]!;
+        }
+        return null;
     }
     /** The caller validates catalog membership and complete original observation before publication. */
     async preparePublishedSource(selectedId:string,checkpoint:()=>Promise<void>):Promise<ProtocolPublishedSource> {

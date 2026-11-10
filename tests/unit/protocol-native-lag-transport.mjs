@@ -57,6 +57,18 @@ export async function proofMeasurementTransport({chain, url}) {
             documents.set(key(request.index, request.id), {document: structuredClone(request.document), seq: result._seq_no, primaryTerm: result._primary_term});
             return result;
         },
+        async bulk(request, options) {
+            note('bulk', request);
+            for (let offset = 0; offset < request.operations.length; offset += 2)
+                assert(Object.values(request.operations[offset])[0]._index.startsWith(chain + '-'), 'diagnostic writes must stay inside the owned namespace');
+            const result = await transport.bulk(request, options);
+            for (const [index, item] of result.items.entries()) {
+                const written = Object.values(item)[0];
+                if (written.error === undefined) documents.set(key(written._index, written._id),
+                    {document: structuredClone(request.operations[index * 2 + 1]), seq: written._seq_no, primaryTerm: written._primary_term});
+            }
+            return result;
+        },
         async get(request, options) {
             note('get', request); await faults.beforeRead?.(request);
             const result = await transport.get(request, options);

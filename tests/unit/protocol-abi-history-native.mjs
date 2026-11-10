@@ -237,10 +237,11 @@ test('byte budget counts the actual original commits and a late work deadline ca
     const control = await coordinator.inspect(), sizes = new Map();
     let id = control.head.commitId;
     while (id) {const value = await p.store.readCommit(id); sizes.set(id, Buffer.byteLength(JSON.stringify(value))); id = value.previousCommitId;}
-    const prepare = p.store.prepareCertificate.bind(p.store); let processed = 0;
-    p.store.prepareCertificate = async value => {
-        if (value.kind === 'settled-abi-head') processed += sizes.get(value.head.commitId) ?? 0;
-        return prepare(value);
+    // Walked certificates are prepared together; count every one that the walk reached.
+    const prepare = p.store.prepareCertificates.bind(p.store); let processed = 0;
+    p.store.prepareCertificates = async values => {
+        for (const value of values) if (value.kind === 'settled-abi-head') processed += sizes.get(value.head.commitId) ?? 0;
+        return prepare(values);
     };
     await coordinator.drain();
     assert.ok(processed <= budget.maxCommitBytesPerDrain);
@@ -302,10 +303,10 @@ test('a same-generation control rewind below the activation anchor cannot serve 
 test('live work queued inside the real address-map publication prevents further background store calls', async () => {
     const p=await setup(), coordinator=await reopen(p,'map-publication-priority-owner');
     const before=await coordinator.inspect(), tip=await p.store.readCommit(before.head.commitId);
-    const publish=p.store.prepareHistoricalAddressRoot.bind(p.store),read=p.store.readHistoricalCertificateAddress.bind(p.store);
+    const publish=p.store.prepareHistoricalAddressRoot.bind(p.store),read=p.store.readHistoricalCertificateAddresses.bind(p.store);
     let inside=false,injected=false,admission,continued=0;
     p.store.prepareHistoricalAddressRoot=async (...args)=>{inside=true;try{return await publish(...args);}finally{inside=false;}};
-    p.store.readHistoricalCertificateAddress=async (...args)=>{
+    p.store.readHistoricalCertificateAddresses=async (...args)=>{
         const value=await read(...args);
         if(inside&&!injected){injected=true;const calls=p.memory.calls.length;
             admission=coordinator.admit(tip.selectionId,before.generation);
@@ -323,10 +324,10 @@ test('live work queued inside the real address-map publication prevents further 
 
 test('deadline expiry inside the real address-map publication prevents further background store calls', async () => {
     const p=await setup(), coordinator=await reopen(p,'map-publication-deadline-owner'),before=await coordinator.inspect();
-    const publish=p.store.prepareHistoricalAddressRoot.bind(p.store),read=p.store.readHistoricalCertificateAddress.bind(p.store);
+    const publish=p.store.prepareHistoricalAddressRoot.bind(p.store),read=p.store.readHistoricalCertificateAddresses.bind(p.store);
     let inside=false,injected=false,continued=0,now=0;const clock=mock.method(performance,'now',()=>now);
     p.store.prepareHistoricalAddressRoot=async (...args)=>{inside=true;try{return await publish(...args);}finally{inside=false;}};
-    p.store.readHistoricalCertificateAddress=async (...args)=>{
+    p.store.readHistoricalCertificateAddresses=async (...args)=>{
         const value=await read(...args);
         if(inside&&!injected){injected=true;now=2000;const calls=p.memory.calls.length;
             p.memory.faults.beforeRead=()=>{if(inside&&p.memory.calls.length>calls)continued++;};

@@ -39,24 +39,27 @@ async function fixture(options={}) {
     const coordinator=new ProtocolAbiCoordinator({chainId,profile,ownerId:'owner',bindings,observations,store,accountReader,maxPendingBlocks:512,...options});
     await coordinator.start();
     let {generation}=await coordinator.openSource(contextId,'session');
-    async function prepare(n,facts) {
+    const unlinked=new Map();
+    async function prepare(n,facts,linked=true) {
         const source={chainId,blockNum:n,blockId:block(n),previousBlockId:n===1?null:block(n-1)};
         const capture={kind:'unattested-ship-result-sections-v1',schemaJson,blockHex:'00',tracesHex:'00',deltasHex:'00'};
         const captureSha256=protocolAbiCaptureDigest(source,capture);
         const selectionId=(await workerBindings.prepareSelection({schemaVersion:1,contextId,readerSessionId:'session',readerRole:'live',assignmentId:null,
             source,captureSha256,frameSha256:createHash('sha256').update('frame-'+n).digest('hex'),head:{blockNum:n,blockId:block(n)},irreversible:{blockNum:0,blockId:block(0)}})).id;
         const observed=await workerObservations.prepare({schemaVersion:1,protocol:profile,source:{...source,inputSha256:captureSha256},capture,observation:{status:'observed',facts}});
-        await workerBindings.prepareObservationLink({schemaVersion:1,selectionId,observationId:observed.id,observationDigest:observed.digest});
+        const link=()=>workerBindings.prepareObservationLink({schemaVersion:1,selectionId,observationId:observed.id,observationDigest:observed.digest});
+        if(linked)await link();else unlinked.set(selectionId,link);
         return selectionId;
     }
+    const link=selectionId=>unlinked.get(selectionId)();
     async function admit(selectionId) {
         const result=await coordinator.admit(selectionId,generation);generation=result.generation;
         assert.equal(result.status,'accepted');
     }
-    return {memory,coordinator,store,prepare,admit,get generation(){return generation;}};
+    return {memory,coordinator,store,prepare,admit,link,get generation(){return generation;}};
 }
 
-const methods=['create','index','get','mget','getIndex'];
+const methods=['create','index','bulk','get','mget','getIndex'];
 function tally(calls) {
     const counts=Object.fromEntries(methods.map(name=>[name,0]));
     for(const {method} of calls)if(Object.hasOwn(counts,method))counts[method]++;
@@ -82,15 +85,17 @@ const warmed=async(f,first,warm,count,facts)=>{await following(f,first,warm,fact
 test('live blocks without historical work',async()=>{
     const counts=await warmed(await fixture(),1,4,32);
     report('live',counts);
-    assert.deepEqual(operations(counts.admit),{create:0,index:1,get:3,mget:0});
-    assert.deepEqual(operations(counts.drain),{create:4,index:1,get:5,mget:2});
+    assert.deepEqual(operations(counts.admit),{create:0,index:1,bulk:0,get:3,mget:0});
+    // The commit's chunk and manifest are two ordered bulk requests; the settled certificate keeps its two creates.
+    assert.deepEqual(operations(counts.drain),{create:2,index:1,bulk:2,get:5,mget:2});
 });
 test('live blocks with historical certificates',async()=>{
     const counts=await warmed(await fixture({historicalCertificates:budget}),1,4,32);
     report('live-historical',counts);
-    const {get,...writes}=operations(counts.drain);
-    assert.deepEqual(writes,{create:14,index:2,mget:3});
-    assert.ok(get<=31,'Historical reads per block: '+get);
+    const {get,mget,...writes}=operations(counts.drain);
+    assert.deepEqual(writes,{create:6,index:2,bulk:4});
+    // A drain whose activation finds two queued locators reads them as one pack, so reads vary slightly.
+    assert.ok(get<=28,'Historical reads per block: '+get);assert.ok(mget<=3.25,'Historical packed reads per block: '+mget);
 });
 test('a backlog with historical certificates',async()=>{
     const f=await fixture({historicalCertificates:{...budget,allowPendingWork:true}}),count=32,calls=f.memory.calls;
@@ -106,11 +111,14 @@ test('a backlog with historical certificates',async()=>{
 });
 // A later check would also notice these, so each case proves the very next store request never starts.
 test('authority lost during a map step stops the next map step',async()=>{
-    const f=await fixture({historicalCertificates:budget}),prepare=f.store.prepareAccountState.bind(f.store);
-    let mark;
-    f.store.prepareAccountState=async(...args)=>{
-        const result=await prepare(...args);
-        if(mark===undefined) {
+    // The locator read is a map step; the map's one ordered PREPARE is the step it must stop.
+    const f=await fixture({historicalCertificates:budget}),publish=f.store.prepareHistoricalAddressRoot.bind(f.store);
+    const read=f.store.readHistoricalCertificateAddress.bind(f.store);
+    let mark,inside=false;
+    f.store.prepareHistoricalAddressRoot=async(...args)=>{inside=true;try{return await publish(...args);}finally{inside=false;}};
+    f.store.readHistoricalCertificateAddress=async(...args)=>{
+        const result=await read(...args);
+        if(inside&&mark===undefined) {
             const control=await f.store.readControl();
             await f.store.compareAndSet(control,{...control.value,ownerId:'other-owner',revision:control.value.revision+1});
             mark=f.memory.calls.length;
@@ -143,26 +151,42 @@ const active=n=>({...empty(),actionInputs:contracts.map((account,index)=>input(i
 test('blocks with eight active contracts',async()=>{
     const counts=await warmed(await fixture({diskAbiHistory:catalogOf(contracts)}),4,4,32,active);
     report('active-contracts',counts);
-    assert.deepEqual(operations(counts.drain),{create:4,index:17,get:7,mget:10});
+    // Eight bound states, the commit and its readback: two ordered bulk requests and one read, not 17 CAS writes and 10 reads.
+    assert.deepEqual(operations(counts.drain),{create:2,index:1,bulk:2,get:7,mget:3});
 });
-test('overlapping bound state writes all settle before a failure stops the block',async()=>{
-    const f=await fixture({diskAbiHistory:catalogOf(contracts)}),state=request=>request.id.startsWith('h45abist1:');
+test('bound state writes share one ordered request and a failed receipt commits nothing',async()=>{
+    const f=await fixture({diskAbiHistory:catalogOf(contracts)}),state=id=>id.startsWith('h45abist1:');
     await following(f,4,2,active);
     const head=(await f.coordinator.inspect()).head;
     await f.admit(await f.prepare(6,active(6)));
-    let running=0,peak=0,failed=false;
-    f.memory.faults.beforeWrite=async request=>{
-        if(!state(request))return;
-        running++;peak=Math.max(peak,running);await new Promise(resolve=>setImmediate(resolve));running--;
-    };
+    let failed=false;const mark=f.memory.calls.length;
     f.memory.faults.receipt=(result,request)=>{
-        if(failed||!state(request))return result;
+        if(failed||!state(request.id))return result;
         failed=true;return {...result,_shards:{total:1,successful:0,failed:1}};
     };
     await assert.rejects(f.coordinator.drain(),/durable write receipt/);
-    assert.equal(running,0,'No write may outlive the failed block');
-    assert.ok(peak>1,'Independent states overlap');
-    delete f.memory.faults.beforeWrite;delete f.memory.faults.receipt;
+    delete f.memory.faults.receipt;
+    const bulks=f.memory.calls.slice(mark).filter(call=>call.method==='bulk');
+    const ids=call=>call.request.operations.filter((_,index)=>index%2===0).map(action=>Object.values(action)[0]._id);
+    assert.equal(bulks.length,1,'The failed request is the last write');
+    assert.equal(ids(bulks[0]).filter(state).length,contracts.length,'Every bound state of the block shares that request');
+    assert.ok(ids(bulks[0]).every(id=>/:[0-9a-f]{64}:0$/.test(id)),'No manifest is sent with or after a chunk that lacks its receipt');
     assert.deepEqual((await f.coordinator.inspect()).head,head,'A failed bound state commits nothing');
     assert.equal((await f.coordinator.drain()).committed,1);
+});
+test('a backlog reads observation links only up to the first unlinked block, then commits them in one batch',async()=>{
+    const f=await fixture(),calls=f.memory.calls;await following(f,1,2);
+    const selections=[];
+    for(let n=3;n<=10;n++){selections.push(await f.prepare(n,empty(),n<=5));await f.admit(selections.at(-1));}
+    const links=mark=>calls.slice(mark).filter(call=>call.method==='get'&&String(call.request.id).startsWith('h45srcobs1:'));
+    let mark=calls.length;
+    assert.deepEqual(await f.coordinator.drain(),{committed:3,pending:5});
+    // Manifest and chunk of exactly the three usable links; the five unlinked blocks cost one existence read.
+    assert.equal(links(mark).length,6);
+    assert.equal(calls.slice(mark).filter(call=>call.method==='bulk').length,2,'One batch: every chunk, then every manifest');
+    for(const selectionId of selections.slice(3))await f.link(selectionId);
+    mark=calls.length;
+    assert.deepEqual(await f.coordinator.drain(),{committed:5,pending:0});
+    assert.equal(links(mark).length,10);
+    assert.equal(calls.slice(mark).filter(call=>call.method==='index'&&call.request.index===f.store.controlIndex).length,1,'One control CAS for the whole batch');
 });

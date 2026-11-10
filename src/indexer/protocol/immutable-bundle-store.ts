@@ -104,6 +104,11 @@ export interface ImmutableProtocolBundleBounds {chunkBytes:number;maximumBytes:n
  * documents in one read and reasserts them directly.
  */
 export type ImmutableProtocolBundleExpectation='absent'|'present';
+/** One record of an ordered multi-record PREPARE. */
+export interface ImmutableProtocolBundleItem {readonly id:string;readonly record:unknown;readonly expected?:ImmutableProtocolBundleExpectation}
+/** Per bulk request. Every item still needs its own complete receipt; only the fsync and the round trip are shared.
+ * A batch may hold any number of records the caller already has in memory: it is split into bounded requests. */
+export const protocolBundleBulkBounds = Object.freeze({maximumItems: 512, maximumBytes: 16 * 1024 * 1024, maximumRecords: 1_000_000});
 declare const freshPrepareBrand: unique symbol;
 export interface FreshBundlePrepare {readonly id:string;readonly digest:string;readonly [freshPrepareBrand]:true}
 const freshPrepares=new WeakMap<object,{store:ImmutableProtocolBundleStore;id:string;digest:string;scope?:ProofConsumerScope}>();
@@ -314,6 +319,173 @@ export class ImmutableProtocolBundleStore {
         scope?.assertActive();freshPrepares.set(result,{store:this,id,digest,scope});return result;
     }
 
+    /**
+     * Several records in one ordered PREPARE: every chunk of every record is written first, and only after each
+     * has its own complete receipt are the manifests written. A bulk request shares one translog fsync, so N
+     * records cost two durable round trips instead of 2N, and a failed item leaves no manifest ahead of its
+     * chunks. Expectations, conflict refusal and identical-byte CAS repair follow `prepare` exactly.
+     */
+    async prepareMany(input: readonly ImmutableProtocolBundleItem[], signal?: AbortSignal): Promise<FreshBundlePrepare[]> {
+        const scope = currentProofConsumerScope();
+        signal?.throwIfAborted();
+        if (this.options.readOnly) throw new Error('Read-only protocol bundles cannot prepare records');
+        if (!Array.isArray(input) || input.length < 1 || input.length > protocolBundleBulkBounds.maximumRecords)
+            throw new Error('Invalid immutable bundle batch');
+        type Planned = {id: string; digest: string; manifest: StoredDocument; chunks: StoredDocument[]; chunkIds: string[]; expected?: ImmutableProtocolBundleExpectation};
+        const planned = new Map<string, Planned>(), order: Planned[] = [];
+        for (const item of input) {
+            if (!item || typeof item.id !== 'string' || !/^[a-zA-Z0-9_.:-]{1,256}$/.test(item.id)
+                || (item.expected !== undefined && !['absent', 'present'].includes(item.expected))) throw new Error('Invalid immutable bundle batch item');
+            const bytes = Buffer.from(canonical(item.record, this.bounds.maximumBytes));
+            const count = Math.ceil(bytes.length / this.bounds.chunkBytes);
+            if (bytes.length > this.bounds.maximumBytes || count > this.bounds.maximumChunks) throw new Error('ABI observation exceeds bounded storage budget');
+            const digest = sha256(bytes), known = planned.get(item.id);
+            if (known) {
+                // The same ID twice is one record; different bytes under one ID is the ordinary conflict.
+                if (known.digest !== digest) throw new Error(`Immutable ABI observation conflict: ${item.id}`);
+                if (known.expected !== item.expected) known.expected = known.expected === 'absent' || item.expected === 'absent' ? 'absent' : undefined;
+                order.push(known); continue;
+            }
+            const chunkIds = Array.from({length: count}, (_, index) => `${item.id}:${digest}:${index}`);
+            const chunks = chunkIds.map((_, index): StoredDocument => {
+                const payload = bytes.subarray(index * this.bounds.chunkBytes, (index + 1) * this.bounds.chunkBytes);
+                return {kind: 'chunk', bundle_id: item.id, digest: sha256(payload), byte_length: payload.length, chunk_index: index, payload: payload.toString('base64')};
+            });
+            const value: Planned = {id: item.id, digest, chunks, chunkIds, expected: item.expected,
+                manifest: {kind: 'manifest', bundle_id: item.id, digest, byte_length: bytes.length, chunk_ids: chunkIds}};
+            planned.set(item.id, value); order.push(value);
+        }
+        const records = [...planned.values()];
+        await this.initialize(signal, true);
+        const chunkWrites = new Map<string, {document: StoredDocument; existing?: any}>();
+        const manifestWrites = new Map<string, {document: StoredDocument; existing?: any}>();
+        // 'present' one-chunk records find both documents in one read and go straight to identical-byte CAS writes.
+        const present = records.filter(record => record.expected === 'present' && record.chunks.length === 1);
+        const reads = present.flatMap(record => [{id: record.id, maximumBytes: 4096 + record.id.length * 3},
+            {id: record.chunkIds[0]!, maximumBytes: 4096 + Math.ceil(record.manifest.byte_length / 3) * 4 + record.chunkIds[0]!.length * 3}]);
+        const found = new Map<string, any>();
+        for (const batch of this.readPacks(reads, this.documentPackBytes()))
+            for (const [offset, doc] of (await this.readDocuments(batch.map(x => x.id), this.documentPackBytes(), signal)).entries())
+                if (doc.found) found.set(batch[offset]!.id, doc);
+        const reasserted = new Set<string>();
+        for (const record of present) {
+            const storedManifest = found.get(record.id), storedChunk = found.get(record.chunkIds[0]!);
+            if (storedManifest && canonical(storedManifest._source) !== canonical(record.manifest)) throw new Error(`Immutable ABI observation conflict: ${record.id}`);
+            if (!storedManifest || !storedChunk) continue;
+            if (canonical(storedChunk._source) !== canonical(record.chunks[0])) throw new Error(`Immutable ABI observation conflict: ${record.chunkIds[0]}`);
+            chunkWrites.set(record.chunkIds[0]!, {document: record.chunks[0]!, existing: storedChunk});
+            manifestWrites.set(record.id, {document: record.manifest, existing: storedManifest});
+            reasserted.add(record.id);
+        }
+        // An unexpected record still refuses a different stored manifest before any chunk write.
+        const checked = records.filter(record => !reasserted.has(record.id) && record.expected !== 'absent'
+            && !(record.expected === 'present' && record.chunks.length === 1));
+        for (const batch of this.readPacks(checked.map(record => ({id: record.id, maximumBytes: 4096 + this.bounds.maximumChunks * (record.id.length + 82)})), this.documentPackBytes()))
+            for (const [offset, doc] of (await this.readDocuments(batch.map(x => x.id), this.documentPackBytes(), signal)).entries()) {
+                const record = planned.get(batch[offset]!.id)!;
+                if (doc.found && canonical(doc._source) !== canonical(record.manifest)) throw new Error(`Immutable ABI observation conflict: ${record.id}`);
+            }
+        for (const record of records) {
+            if (reasserted.has(record.id)) continue;
+            for (const [index, chunkId] of record.chunkIds.entries()) chunkWrites.set(chunkId, {document: record.chunks[index]!});
+            manifestWrites.set(record.id, {document: record.manifest});
+        }
+        await this.writeDocuments(chunkWrites, signal);
+        // The immutable manifest is the sole PREPARE completion marker; partial chunks grant nothing.
+        await this.writeDocuments(manifestWrites, signal);
+        scope?.assertActive();
+        return order.map(record => {
+            const result = Object.freeze({id: record.id, digest: record.digest}) as FreshBundlePrepare;
+            freshPrepares.set(result, {store: this, id: record.id, digest: record.digest, scope});
+            return result;
+        });
+    }
+
+    /** Bulk writes with the receipts and repair of `createImmutable`/`writeIdentical`, one request per pack. */
+    private async writeDocuments(input: Map<string, {document: StoredDocument; existing?: any}>, signal?: AbortSignal): Promise<void> {
+        let work = [...input].map(([id, value]) => ({id, ...value}));
+        for (let attempt = 0; attempt < 4 && work.length; attempt++) {
+            const retry: typeof work = [];
+            for (const batch of this.bulkPacks(work)) {
+                const operations = batch.flatMap(item => [item.existing
+                    ? {index: {_index: this.index, _id: item.id, if_seq_no: item.existing._seq_no, if_primary_term: item.existing._primary_term}}
+                    : {create: {_index: this.index, _id: item.id}}, item.document]);
+                const response: any = await checkedIo(signal, () => this.client.bulk({operations, refresh: false,
+                    wait_for_active_shards: 'all', pipeline: '_none'}, {signal}));
+                if (!response || !Array.isArray(response.items) || response.items.length !== batch.length)
+                    throw new Error('Incomplete ABI observation durable write receipt');
+                for (const [offset, item] of batch.entries()) {
+                    const operation = item.existing ? 'index' : 'create', entry = response.items[offset];
+                    const result = entry?.[operation];
+                    if (!result || Object.keys(entry).length !== 1) throw new Error('Incomplete ABI observation durable write receipt');
+                    if (result.status === 409 && result.error?.type === 'version_conflict_engine_exception') {retry.push(item); continue;}
+                    if (result.error !== undefined) throw new Error('Failed immutable bundle write item', {cause: result.error});
+                    this.assertWrite(result, item.id, item.existing ? 'updated' : 'created');
+                }
+            }
+            if (!retry.length) return;
+            // A prior partial/unknown receipt cannot become durable just because a read found it.
+            // Reassert identical bytes under CAS and require a fresh complete copy receipt.
+            work = [];
+            const items = retry.map(item => ({id: item.id, maximumBytes: 4096 + Math.ceil(item.document.byte_length / 3) * 4 + item.id.length * 3
+                + (item.document.chunk_ids?.length ?? 0) * (item.id.length + 82)}));
+            for (const batch of this.readPacks(items, this.documentPackBytes()))
+                for (const [offset, doc] of (await this.readDocuments(batch.map(x => x.id), this.documentPackBytes(), signal)).entries()) {
+                    const item = input.get(batch[offset]!.id)!;
+                    if (doc.found && canonical(doc._source) !== canonical(item.document)) throw new Error(`Immutable ABI observation conflict: ${batch[offset]!.id}`);
+                    work.push({id: batch[offset]!.id, document: item.document, existing: doc.found ? doc : undefined});
+                }
+        }
+        if (work.length) throw new Error('ABI observation CAS retry budget exhausted');
+    }
+
+    private *bulkPacks<T extends {id: string; document: StoredDocument}>(items: readonly T[]): Generator<T[]> {
+        let batch: T[] = [], bytes = 0;
+        for (const item of items) {
+            const size = 512 + item.id.length + (item.document.payload?.length ?? 0) + (item.document.chunk_ids?.length ?? 0) * (item.id.length + 84);
+            if (batch.length && (batch.length >= protocolBundleBulkBounds.maximumItems || bytes + size > protocolBundleBulkBounds.maximumBytes)) {
+                yield batch; batch = []; bytes = 0;
+            }
+            batch.push(item); bytes += size;
+        }
+        if (batch.length) yield batch;
+    }
+
+    /** Readback of fresh PREPAREs: one realtime read of each one-chunk record's two documents, packed. */
+    async readPreparedMany(input: readonly {id: string; digest: string; byteLength: number}[], signal?: AbortSignal): Promise<unknown[]> {
+        signal?.throwIfAborted();
+        if (!Array.isArray(input) || input.length < 1 || input.length > protocolBundleBulkBounds.maximumRecords
+            || input.some(item => typeof item?.id !== 'string' || !/^[a-zA-Z0-9_.:-]{1,256}$/.test(item.id) || !hex64.test(item.digest)
+                || !Number.isSafeInteger(item.byteLength) || item.byteLength < 1 || item.byteLength > this.bounds.maximumBytes))
+            throw new Error('Invalid immutable bundle readback');
+        // One fresh validation per original logical read, unless this store opted into the read bound.
+        for (const _ of input) await this.initialize(signal);
+        // The expected length only sizes the read packs; every content check below still applies.
+        const items = input.flatMap(({id, digest, byteLength}) => [{id, maximumBytes: 4096 + id.length * 3},
+            {id: `${id}:${digest}:0`, maximumBytes: 4096 + Math.ceil(Math.min(this.bounds.chunkBytes, byteLength) / 3) * 4 + id.length * 3 + 72}]);
+        const found = new Map<string, any>();
+        for (const batch of this.readPacks([...new Map(items.map(item => [item.id, item])).values()], this.documentPackBytes()))
+            for (const [offset, doc] of (await this.readDocuments(batch.map(x => x.id), this.documentPackBytes(), signal)).entries())
+                found.set(batch[offset]!.id, doc);
+        const records: unknown[] = [];
+        for (const {id, digest} of input) {
+            signal?.throwIfAborted();
+            const chunkId = `${id}:${digest}:0`, stored = found.get(id), storedChunk = found.get(chunkId);
+            let parts: {manifest: StoredDocument; payloads: Buffer[]; bytes: number} | undefined;
+            if (stored?.found && storedChunk?.found) {
+                const manifest = this.validateManifest(id, stored._source);
+                if (manifest.digest === digest && manifest.chunk_ids!.length === 1 && manifest.chunk_ids![0] === chunkId) {
+                    const payload = this.decodeChunk(id, storedChunk._source, 0);
+                    parts = {manifest, payloads: [payload], bytes: payload.length};
+                }
+            }
+            // Anything unexpected takes the ordered read, which classifies it.
+            parts ??= await this.readParts(id, signal);
+            records.push(this.decodeRecord(id, parts.manifest, parts.payloads, parts.bytes));
+        }
+        return records;
+    }
+
     private async assertManifestUnchanged(id: string, manifest: StoredDocument, signal?: AbortSignal) {
         try {
             const existing = await this.get(id, signal);
@@ -391,9 +563,18 @@ export class ImmutableProtocolBundleStore {
 
     /** Fresh independent reads only. Manifest bytes reserve the whole window before any payload is acquired. */
     async readMany(input: readonly string[], maximumRetainedBytes: number, signal?: AbortSignal): Promise<unknown[]> {
+        return this.readManyBounded(input, 4, maximumRetainedBytes, signal);
+    }
+
+    /** `readMany` for a writer's own batch of records: two packed realtime reads instead of two per record. */
+    async readRecords(input: readonly string[], signal?: AbortSignal): Promise<unknown[]> {
+        return this.readManyBounded(input, protocolBundleBulkBounds.maximumRecords, 128 * 1024 * 1024, signal);
+    }
+
+    private async readManyBounded(input: readonly string[], maximumItems: number, maximumRetainedBytes: number, signal?: AbortSignal): Promise<unknown[]> {
         const scope = currentProofConsumerScope(); scope?.assertActive();
         signal = proofConsumerSignal(signal); signal?.throwIfAborted();
-        if (!Array.isArray(input) || input.length < 1 || input.length > 4 || new Set(input).size !== input.length
+        if (!Array.isArray(input) || input.length < 1 || input.length > maximumItems || new Set(input).size !== input.length
             || input.some(id => typeof id !== 'string' || !/^[a-zA-Z0-9_.:-]{1,256}$/.test(id))
             || !Number.isSafeInteger(maximumRetainedBytes) || maximumRetainedBytes < 1 || maximumRetainedBytes > 128 * 1024 * 1024)
             throw new Error('Invalid immutable bundle staged read budget');

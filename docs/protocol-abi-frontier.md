@@ -156,8 +156,9 @@ Existing single-call preparation, record formats and public plugin/backend inter
 With `allow_pending_work`, durable pending blocks and queued admissions do not interrupt this work, as
 elsewhere on that path, so only the deadline yields it.
 
-In that mode live heads do not enter the address queue, so head commits never wait for locator work and
-cannot fill the queue ahead of the walk. A second verified walk covers the heads above the older walk's
+In that mode head commits never wait for locator work. Heads settled directly above the covered stretch enter
+the address queue after their certificates (see [Batched commits](#batched-commits)), taking at most half of it
+while the older walk still has work. A second verified walk covers any other heads above the older walk's
 anchor, down to the last covered head. The two take turns inside the same count, byte and time budgets, and
 either can finish first. Fresh locators keep up while new heads per drain stay under about half of
 `max_commits_per_drain`; beyond that they lag and catch up later, and older ancestry slows while both have
@@ -185,6 +186,48 @@ always already stored, so it finds both documents in one read and goes straight 
 writes. None of this removes a write: chunks still precede the manifest, and each document takes its own
 complete receipt.
 Existing observation IDs and valid retained bytes stay compatible.
+
+### Batched commits
+
+A drain commits every ready admitted block in batches of up to 64 blocks (fewer when a batch reaches 8 MiB of
+commits or 4,096 records). It reads, reduces and plans a batch without holding the coordinator's serial lane, so
+admissions keep landing meanwhile. Accounts changed earlier in the batch resolve from the batch and the rest from
+the last stored root. The planned state, bound-state and commit records are the same records, with the same IDs,
+that one PREPARE per block produced.
+
+The batch is one ordered PREPARE over `_bulk`. Every chunk of every record is written first. Each item must
+return its own complete configured-copy receipt. A conflict on create or CAS is repaired as for a single record:
+the batch reads the stored bytes, refuses different bytes, and reasserts identical bytes under CAS with a fresh
+receipt. Only then are the manifests written, the same way. A failed chunk item therefore sends no manifest at
+all. One request shares one translog fsync, so N records cost two durable round trips instead of 2N. All commits
+of the batch are then read back in one realtime read.
+
+Back on the lane, the batch is published only if the control it was planned from is still current: the same
+generation, head and source epoch, and its selections still first in `pending`. Admissions only append to
+`pending`. Any other change discards the batch, and its records stay unreferenced. One control CAS then
+advances the head across the whole batch.
+
+Certificates follow the complete CAS receipt as before. With historical certificates enabled, every head of the
+batch gets one: each is verified ancestry of the settled head, so it is the certificate a historical walk would
+prepare under this owner and generation. They are one ordered PREPARE and one readback. In pending-work mode,
+heads settled directly on top of the walks' covered stretch enter the locator queue and extend that stretch, so no
+walk revisits them. While older ancestry is still walking, they may take only half of the queue.
+
+Historical work is batched the same way. Walked commits are still read one at a time, each behind its own
+authority check, but their certificates are prepared and read back together. Locators are one read of their
+certificates followed by one ordered PREPARE. The address map reads its root, touched buckets, locators and
+prior entries in one step each, then writes every entry, bucket and root record in one ordered PREPARE. Each of
+these is one operation behind a fresh authority check, and a yield keeps its completed operations as before.
+
+Blocks within `recovery_window_blocks` of the settled head are proven through ancestry. So while the source
+trails its chain head by more than that window, pending-work mode lets fresh locators wait and publishes them
+together. It still publishes them before any queued block falls halfway out of the window, and whenever the
+queue is full. Near the chain head, every drain publishes as before.
+
+After each settled batch the master sends deserializer, DS pool and projection workers the settled height.
+Their proof waits for an uncommitted source, or for the next certificate, wake on it instead of polling control
+every 50 ms. A woken wait still opens through fresh control and certificate reads. If hints stop arriving, the
+wait falls back to a one-second poll, and processes without hints keep the 50 ms poll.
 
 Account state uses copy-on-write roots over 256 hash buckets. Updated account values are immutable records;
 only changed bucket references and the root are rewritten. A bucket has at most 20,000 entries and 4 MiB;

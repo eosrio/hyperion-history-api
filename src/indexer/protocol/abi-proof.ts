@@ -54,6 +54,8 @@ export interface ProtocolAbiProofReaderOptions {
     /** Internal opt-in exact historical-address port; unchanged recent ancestry remains bounded. */
     readonly historicalCertificates?:boolean;
     readonly sourceEquivalence?:ProtocolSourceEquivalence;
+    /** Wait scheduling only; defaults to this process's master-fed hints. */
+    readonly commitHints?:ProtocolAbiCommitHints;
 }
 // Internal provenance: only a missing certificate manifest can represent the activation publication gap.
 const unsettledCertificateErrors=new WeakSet<object>();
@@ -74,6 +76,40 @@ export class ProtocolAbiProofUnavailableError extends Error {
     readonly statusCode=503;
     constructor(readonly code:string,message:string){super(message);this.name='ProtocolAbiProofUnavailableError';}
 }
+/**
+ * Process-local hints that the canonical ABI head settled at a height, sent by the coordinator's master after
+ * each settled batch. Scheduling only: a woken wait still opens through fresh control and certificate reads.
+ * Without recent hints (any process the master does not notify) waits keep the original short poll.
+ */
+export class ProtocolAbiCommitHints {
+    private sequence=0;
+    private head=0;
+    private lastHint=-Infinity;
+    private readonly waiters=new Set<()=>void>();
+    constructor(private readonly activeMs=5000,private readonly fallbackMs=1000) {}
+    notify(blockNum:unknown):void {
+        if(!uint(blockNum,1))return;
+        this.sequence++;this.head=blockNum;this.lastHint=performance.now();
+        for(const wake of [...this.waiters])wake();
+    }
+    /** A wait that starts after `seen` returns at once if any hint has arrived since. */
+    get seen():number {return this.sequence;}
+    async wait(seen:number,blockNum:number|undefined,pollMs:number,signal:AbortSignal):Promise<void> {
+        signal.throwIfAborted();
+        const active=performance.now()-this.lastHint<this.activeMs;
+        if(active&&this.sequence!==seen&&(blockNum===undefined||this.head>=blockNum))return;
+        await new Promise<void>((resolve,reject)=>{
+            const finish=()=>{clearTimeout(timer);signal.removeEventListener('abort',abort);this.waiters.delete(check);};
+            const check=()=>{if(blockNum===undefined||this.head>=blockNum){finish();resolve();}};
+            const abort=()=>{finish();reject(signal.reason);};
+            const timer=setTimeout(()=>{finish();resolve();},active?this.fallbackMs:pollMs);
+            signal.addEventListener('abort',abort,{once:true});
+            if(active)this.waiters.add(check);
+        });
+    }
+}
+export const protocolAbiCommitHints=new ProtocolAbiCommitHints();
+
 /** The error the reader issues for a valid historical advance; see `isProtocolHistoricalAdvance`. */
 export function protocolHistoricalAdvanceError(message:string):ProtocolAbiProofUnavailableError {
     const error=new ProtocolAbiProofUnavailableError('authority_changed',message);
@@ -136,6 +172,7 @@ export class ProtocolAbiProofReader {
     private readonly profile:ProtocolSourceProfile;
     private readonly maximumAncestry:number;
     private readonly issued=new WeakMap<ProtocolAbiProofView,Issued>();
+    private get hints():ProtocolAbiCommitHints {return this.options.commitHints??protocolAbiCommitHints;}
     /** Frozen memoized commits already structurally valid for this reader's fixed chain/profile/catalog. */
     private readonly validatedCommits=new WeakSet<object>();
     private activeReads=0;
@@ -151,7 +188,8 @@ export class ProtocolAbiProofReader {
     asReadOnly(workerProofRecovery=this.options.workerProofRecovery):ProtocolAbiProofReader {
         return new ProtocolAbiProofReader({chainId:this.options.chainId,profile:this.profile,
             store:this.options.store.asReadOnly(),maxAncestryBlocks:this.maximumAncestry,requireAttemptScope:this.options.requireAttemptScope,workerProofRecovery,
-            historicalCertificates:this.options.historicalCertificates,sourceEquivalence:this.options.sourceEquivalence,diskHistory:this.options.diskHistory});
+            historicalCertificates:this.options.historicalCertificates,sourceEquivalence:this.options.sourceEquivalence,diskHistory:this.options.diskHistory,
+            commitHints:this.options.commitHints});
     }
     private consume<T>(view:ProtocolAbiProofView|undefined, operation:()=>Promise<T>):Promise<T> {
         const issued=view&&(this.issued.get(view)??this.diskIssued.get(view)),scope=issued?issued.scope:currentProofConsumerScope(this.options.requireAttemptScope);
@@ -469,6 +507,7 @@ export class ProtocolAbiProofReader {
         const poll=async()=>{
             while(true){
                 if(controller.signal.aborted)throw reason();
+                const seen=this.hints.seen;
                 try{
                     const view=await this.open(source,selectionId,{signal:controller.signal});
                     if(controller.signal.aborted)throw reason();
@@ -478,7 +517,13 @@ export class ProtocolAbiProofReader {
                     if(!(error instanceof ProtocolAbiProofUnavailableError)
                         ||!['authority_unavailable','authority_changed','source_pending','certificate_unavailable','proof_busy'].includes(error.code))throw error;
                     await keepWaiting?.(error,controller.signal);
-                    try{await delay(50,undefined,{signal:controller.signal});}
+                    try{
+                        // An uncommitted source waits for a settled head at its height, a missing certificate for the
+                        // next settled batch; both still poll if the hints stop. Anything else keeps the short poll.
+                        if(error.code==='source_pending'||error.code==='certificate_unavailable')
+                            await this.hints.wait(seen,error.code==='source_pending'?source.blockNum:undefined,50,controller.signal);
+                        else await delay(50,undefined,{signal:controller.signal});
+                    }
                     catch(stopped){if(controller.signal.aborted)throw reason();throw stopped;}
                 }
             }

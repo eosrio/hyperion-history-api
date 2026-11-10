@@ -42,7 +42,7 @@ function clocked(store,step=100) {
     let now=0;const original=Object.getOwnPropertyDescriptor(performance,'now');
     Object.defineProperty(performance,'now',{configurable:true,value:()=>now});
     const restore=[];const counts=new Map();
-    for(const name of ['prepareHistoricalCertificateAddress','prepareAccountState','prepare']) {
+    for(const name of ['prepareHistoricalCertificateAddress','prepareHistoricalCertificateAddresses','prepareAccountState','prepare','prepareRecords']) {
         const fn=store[name].bind(store);restore.push(()=>{store[name]=fn;});
         store[name]=async(...args)=>{const result=await fn(...args);now+=step;counts.set(name,(counts.get(name)??0)+1);return result;};
     }
@@ -107,6 +107,8 @@ for(const waiting of [0,1])test('pending-work walk '+(waiting?'stops after one c
     if(waiting)assert.notEqual(nextCommitId,null);else assert.equal(nextCommitId,null);
 });
 
+// The address map's account-state entries, all bucket and root records go out in one ordered PREPARE.
+const mapStep=items=>items.some(item=>item.kind==='account-state'&&item.value?.kind==='historical-certificate-address-entry');
 const reader=f=>new ProtocolAbiProofReader({chainId,profile,store:f.store.asReadOnly(),maxAncestryBlocks:1,historicalCertificates:true});
 async function until(f,predicate,maximum=100) {
     for(let n=0;n<maximum;n++){await f.coordinator.drain();if(predicate())return;}
@@ -134,11 +136,11 @@ for(const milliseconds of [125,150,249])test('one authority read below the drain
 
 test('repeated live preemption preserves completed steps with 150ms authority reads',async()=>{
     const f=await fixture(),clock=clocked(f.store,0),read=f.store.readControl.bind(f.store),preempted=new Set(),admissions=[];
-    const originals=['readCertificate','prepareHistoricalCertificateAddress','prepareAccountState'].map(name=>[name,f.store[name].bind(f.store)]);
+    const originals=['readCertificate','prepareHistoricalCertificateAddress','prepareRecords'].map(name=>[name,f.store[name].bind(f.store)]);
     f.store.readControl=async(...args)=>{const value=await read(...args);clock.tick(150);return value;};
     for(const [name,original] of originals)f.store[name]=async(...args)=>{
         const result=await original(...args);
-        if(f.coordinator.historicalActivation&&!preempted.has(name)) {
+        if(f.coordinator.historicalActivation&&!preempted.has(name)&&(name!=='prepareRecords'||mapStep(args[0]))) {
             preempted.add(name);admissions.push(f.coordinator.admit(f.selections[0],f.generation));
         }
         return result;
@@ -188,9 +190,10 @@ const settle=async(f,height,maximum=2000)=>{
 
 test('no height is walked twice within a generation',async()=>{
     const f=await fixture(40,{...history,maxCommitsPerDrain:4,allowPendingWork:true}),clock=clocked(f.store,0);
-    const prepare=f.store.prepareHistoricalCertificateAddress.bind(f.store),seen=new Map();
-    f.store.prepareHistoricalCertificateAddress=async certificate=>{
-        seen.set(certificate.head.blockNum,(seen.get(certificate.head.blockNum)??0)+1);return prepare(certificate);};
+    const prepare=f.store.prepareHistoricalCertificateAddresses.bind(f.store),seen=new Map();
+    f.store.prepareHistoricalCertificateAddresses=async certificates=>{
+        for(const certificate of certificates)seen.set(certificate.head.blockNum,(seen.get(certificate.head.blockNum)??0)+1);
+        return prepare(certificates);};
     try {
         await f.coordinator.drain();
         for(let n=41;n<=50;n++){await f.append(n);await f.coordinator.drain();}
@@ -199,11 +202,11 @@ test('no height is walked twice within a generation',async()=>{
         for(let n=51;n<=55;n++){await f.append(n);await f.coordinator.drain();}
         await settle(f,55);
         for(let n=1;n<=55;n++)assert.equal(seen.get(n),1,'block '+n+' was prepared once');
-    } finally {clock.close();f.store.prepareHistoricalCertificateAddress=prepare;}
+    } finally {clock.close();f.store.prepareHistoricalCertificateAddresses=prepare;}
 });
 
 test('a fresh cursor does not outlive a fork',async()=>{
-    const f=await fixture(20,{...history,maxCommitsPerDrain:2,allowPendingWork:true}),clock=clocked(f.store,0);
+    const f=await fixture(20,{...history,maxCommitsPerDrain:1,allowPendingWork:true}),clock=clocked(f.store,0);
     const other=n=>'f'+block(n).slice(1);
     try {
         await f.coordinator.drain();
@@ -256,11 +259,11 @@ test('a selected root remains unavailable and its queue retained until activatio
     } finally {f.store.compareAndSet=save;clock.close();}
 });
 
-test('live admission preempts a completed account prepare without repeating it',async()=>{
-    const f=await fixture(),clock=clocked(f.store),prepare=f.store.prepareAccountState.bind(f.store);
+test('live admission preempts a completed map prepare without repeating it',async()=>{
+    const f=await fixture(),clock=clocked(f.store),prepare=f.store.prepareRecords.bind(f.store);
     let admission,work,calls=0,afterBoundary;
-    f.store.prepareAccountState=async(...args)=>{
-        const result=await prepare(...args);calls++;
+    f.store.prepareRecords=async(...args)=>{
+        const result=await prepare(...args);if(!mapStep(args[0]))return result;calls++;
         if(!admission){work=f.coordinator.historicalActivation;admission=f.coordinator.admit(f.selections[0],f.generation);afterBoundary=f.memory.calls.length;}
         return result;
     };
@@ -269,15 +272,17 @@ test('live admission preempts a completed account prepare without repeating it',
         assert.ok(f.memory.calls.slice(afterBoundary).every(call=>call.request.index===f.store.controlIndex),'Only the admitted live task may read after the map boundary');
         assert.equal((await admission).status,'accepted');assert.equal(f.coordinator.historicalActivation,work);
         await complete(f);assert.equal(calls,1);assert.equal((await reader(f).openHistorical(1)).source.blockNum,1);
-    } finally {f.store.prepareAccountState=prepare;clock.close();}
+    } finally {f.store.prepareRecords=prepare;clock.close();}
 });
 
 for(const mode of ['revoke','owner','fork','source','generation','rewind'])test('authority loss discards continuation: '+mode,async()=>{
-    const f=await fixture(2),clock=clocked(f.store),prepare=f.store.prepareAccountState.bind(f.store);
+    // Two write operations spend the 250 ms budget, so the fresh operation that replaces the discarded one
+    // cannot also publish within the drain that discards it.
+    const f=await fixture(2),clock=clocked(f.store,125),prepare=f.store.prepareRecords.bind(f.store);
     let changed=false,change,oldWork;
-    f.store.prepareAccountState=async(...args)=>{
+    f.store.prepareRecords=async(...args)=>{
         const result=await prepare(...args);
-        if(!changed) {
+        if(!changed&&mapStep(args[0])) {
             changed=true;oldWork=f.coordinator.historicalActivation;
             if(mode==='revoke')change=f.coordinator.revokeSource('progress-session');
             else if(mode==='owner')await f.make('replacement-owner').start();
@@ -301,7 +306,7 @@ for(const mode of ['revoke','owner','fork','source','generation','rewind'])test(
         assert.notEqual(f.coordinator.historicalActivation,oldWork);
         assert.equal((await f.store.readControl()).value.historical,undefined);
         await assert.rejects(reader(f).openHistorical(1));
-    } finally {f.store.prepareAccountState=prepare;clock.close();}
+    } finally {f.store.prepareRecords=prepare;clock.close();}
 });
 
 for(const outcome of ['partial','unknown'])for(const phase of ['locator','account','bucket','root','control','certificate'])
