@@ -533,13 +533,14 @@ export default class DSPoolWorker extends HyperionWorker {
 
     private getStandaloneProtocolProofReader(): ProtocolAbiProofReader {
         // Every store here only reads, and each action revalidates authority many times: the API reader's bounded view.
-        const view = protocolProofReadView;
+        // Contexts and selections hash their content, so, as on the coordinator, they are remembered. Links are always read.
+        const view = protocolProofReadView, sources = {...protocolProofReadView, rememberRecords: true};
         return this.protocolProofReader ??= new ProtocolAbiProofReader({chainId: this.chainId,
             diskHistory:diskAbiHistoryOptions(this.conf.settings.protocol_abi_history,this.client,this.chain,this.chainId,
-                {id:this.protocolId,profileId:this.protocol.profileId,components:this.protocolComponents??[]},this.protocol,this.conf.settings.es_replicas??0,view),
+                {id:this.protocolId,profileId:this.protocol.profileId,components:this.protocolComponents??[]},this.protocol,this.conf.settings.es_replicas??0,sources),
             profile: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
             store: new ProtocolAbiFrontierStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0, {...view, recordMemo: new ProtocolAbiFrontierRecordMemo()}),
-            sourceEquivalence: new ProtocolSourceEquivalence(new ProtocolSourceBindingStore(this.client,this.chain,this.conf.settings.es_replicas ?? 0,view),
+            sourceEquivalence: new ProtocolSourceEquivalence(new ProtocolSourceBindingStore(this.client,this.chain,this.conf.settings.es_replicas ?? 0,sources),
                 new ProtocolAbiObservationStore(this.client,this.chain,this.conf.settings.es_replicas ?? 0,undefined,view)),
             historicalCertificates: this.conf.settings.protocol_abi_coordination?.historical_certificates !== undefined,
             requireAttemptScope: this.workerAttemptScopeRequired, workerProofRecovery: true,
@@ -555,7 +556,7 @@ export default class DSPoolWorker extends HyperionWorker {
             profile: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
             provider: this.protocol, proofReader: this.getStandaloneProtocolProofReader(),
             store: new ProtocolNativeObservationStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0,
-                undefined, protocolProofReadView)});
+                undefined, {...protocolProofReadView, rememberRecords: true})});
     }
 
     /** Called before parser mutation; only the certified occurrence can select an ABI. */
