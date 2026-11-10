@@ -29,7 +29,8 @@ export class NativeObservationReadError extends Error {
 }
 type References=Pick<ProtocolNativeObservationReadback,'selection'|'context'|'abiObservation'|'abiLink'>;
 const hex64=/^[0-9a-f]{64}$/;
-const sourceSelectionId=/^h45srcsel1:[0-9a-f]{64}$/;
+/** A stored reader selection, or the deterministic selection of a catalog position recomputed from disk. */
+const sourceSelectionId=/^(?:h45srcsel1|h45abidiskselection1):[0-9a-f]{64}$/;
 const nativeObservationId=/^h45natobs1:[0-9a-f]{64}$/;
 const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
 const keys=(value:any,fields:readonly string[])=>value&&typeof value==='object'&&!Array.isArray(value)
@@ -93,6 +94,11 @@ function observationId(record:ProtocolNativeObservationRecord):string {
 /** Source/profile identity excludes derived outcomes and delivery/session/head/LIB metadata. */
 export function protocolNativeObservationId(input:ProtocolNativeObservationRecord):string {
     return observationId(normalizeRecord(input,protocolNativeObservationBounds.maximumBytes));
+}
+/** The record exactly as `prepare` stores it, with its id and digest. */
+export function protocolNativeObservationEvidence(input:ProtocolNativeObservationRecord):{record:ProtocolNativeObservationRecord;id:string;digest:string} {
+    const record=normalizeRecord(input,protocolNativeObservationBounds.maximumBytes);
+    return {record,id:observationId(record),digest:hash(protocolImmutableJson(record,protocolNativeObservationBounds.maximumBytes))};
 }
 export function protocolSourceNativeObservationLinkId(selectionId:string):string {
     if(typeof selectionId!=='string'||!sourceSelectionId.test(selectionId))throw new NativeObservationReadError('invalid','source-link',selectionId,'Invalid source selection ID');

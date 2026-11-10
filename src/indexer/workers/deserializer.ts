@@ -18,12 +18,11 @@ import { GetBlocksResultV0 } from "./state-reader.js";
 import { de } from "zod/v4/locales";
 import { log } from "console";
 import {protocolBytes, protocolNumber} from "../protocol/contract-cache.js";
-import type {ProtocolAbiDeployment, ProtocolNormalizedDelta, ProtocolAbiAccountRowInput} from "@eosrio/hyperion-sdk/protocol";
+import type {ProtocolAbiDeployment, ProtocolNormalizedDelta} from "@eosrio/hyperion-sdk/protocol";
 import {protocolDeployment, type IndexedProtocolAbi} from "../protocol/deployments.js";
 import {protocolStateKey} from '../helpers/protocol-document-id.js';
 import {assertCompleteProtocolSearch} from '../protocol/search.js';
 import {ProtocolAbiObservationStore, type ProtocolAbiObservationRecord} from '../protocol/abi-observation-store.js';
-import {assertProtocolAbiObservationFacts} from '../protocol/abi-observation-facts.js';
 import {ProtocolSourceBindingStore, ProtocolSourceBindingReadError, protocolSourceSelectionHeader} from '../protocol/source-bindings.js';
 import {protocolImmutableJson, protocolProofReadView} from '../protocol/immutable-bundle-store.js';
 import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError, type ProtocolAbiProofView} from '../protocol/abi-proof.js';
@@ -34,12 +33,11 @@ import {actionSourceAdmissionHeader, actionSourceIngressHeader, type ActionSourc
 import {actionProducerEpoch, currentActionConfiguration} from '../history/action-producer-epoch.js';
 import {actionHistoryImmutableJson} from '../history/action-history-manifest.js';
 import type {ActionPublicationOwner} from '../history/action-confirmed-publication.js';
-import {deriveProtocolActionInputs, type ActionSourceInventoryInput} from '../history/action-source-inventory.js';
+import type {ActionSourceInventoryInput} from '../history/action-source-inventory.js';
 import type {ProtocolAbiActionInput} from '@eosrio/hyperion-sdk/protocol';
-import {snapshotNativeGenesisFacts, zeroBlockId} from '../protocol/native-genesis.js';
-import {ProtocolNativeObservationStore, protocolNativeObservationBounds,
-    type ProtocolNativeObservationRecord} from '../protocol/native-observation-store.js';
-import {protocolNativeInputInventory, snapshotProtocolNativeDecisions} from '../protocol/native-observation-facts.js';
+import {zeroBlockId} from '../protocol/native-genesis.js';
+import {ProtocolNativeObservationStore, type ProtocolNativeObservationRecord} from '../protocol/native-observation-store.js';
+import {observeProtocolAbiSource, observeProtocolNativeSource} from '../protocol/source-observation.js';
 import {currentProofConsumerScope} from '../protocol/proof-consumer-scope.js';
 
 class ProtocolProofStorageError extends Error {
@@ -583,51 +581,10 @@ export default class MainDSWorker extends HyperionWorker {
         }
         const {source: position, capture, captureSha256} = protocolSourceCapture(this.chainId, res, this.activeProtocolShipSchemaJson);
         const source = {...position, inputSha256: captureSha256};
-        const decoded: {traces?: any; deltas?: any[]; wireActionInputs?: readonly ProtocolAbiActionInput[]} = {};
-        let observation: ProtocolAbiObservationRecord['observation'];
-        let codecFailure: ProtocolSourceCodecError | undefined;
-        try {
-            if (res.traces && protocolBytes(res.traces).length) decoded.traces = this.decodeShipValue('transaction_trace[]', res.traces);
-            if (res.deltas && protocolBytes(res.deltas).length) decoded.deltas = this.decodeShipValue('table_delta[]', res.deltas);
-            let accountRows: ProtocolAbiAccountRowInput[] | undefined;
-            if (decoded.deltas !== undefined) {
-                accountRows = [];
-                let ordinal = 0;
-                for (const delta of decoded.deltas) {
-                    if (!Array.isArray(delta) || !['table_delta_v0', 'table_delta_v1'].includes(delta[0])
-                        || !Array.isArray(delta[1]?.rows)) throw new Error('Unsupported ABI observation delta framing');
-                    for (const row of delta[1].rows) {
-                        if (delta[1].name === 'account') {
-                            if (![true, false, 0, 1].includes(row.present)) throw new Error('Invalid ABI account presence');
-                            const raw = protocolBytes(row.data);
-                            accountRows.push({ordinal, present: row.present === true || row.present === 1,
-                                raw, value: this.decodeShipValue('account', raw)});
-                        }
-                        ordinal++;
-                    }
-                }
-            }
-            const provider = this.protocol;
-            if (position.blockNum === 1 && capture.tracesHex === null) {
-                if (!provider.verifyNativeGenesis || capture.schemaJson === null || !capture.blockHex || !capture.deltasHex) {
-                    throw new Error('Native genesis requires a selected verifier and original header/state sections');
-                }
-                const facts = snapshotNativeGenesisFacts(provider.verifyNativeGenesis({schemaJson: capture.schemaJson,
-                    block: Buffer.from(capture.blockHex, 'hex'), traces: null, deltas: Buffer.from(capture.deltasHex, 'hex')}, position));
-                observation = {status: 'native-genesis', facts};
-            } else {
-                if (typeof provider.observeBlockAbi !== 'function') throw new Error('Selected provider has no ABI observation hook');
-                const facts = provider.observeBlockAbi({traces: decoded.traces, accountRows}, position);
-                assertProtocolAbiObservationFacts(facts);
-                if (this.usesExtensionProtocol) decoded.wireActionInputs = facts.actionInputs;
-                // Validate malformed provider output here so raw source survives as an incomplete record.
-                observation = {status: 'observed', facts};
-            }
-        } catch (error: any) {
-            if (error instanceof ProtocolSourceCodecError) codecFailure = error;
-            observation = {status: 'incomplete', error: {code: 'protocol_abi_observation_incomplete',
-                message: String(error?.message ?? error).slice(0, 4096).toWellFormed()}};
-        }
+        // The proof reader recomputes this record from the node's logs with the same function.
+        const {observation, decoded, failure} = observeProtocolAbiSource(this.protocol,
+            (type, bytes) => this.decodeShipValue(type, bytes), position, capture, this.usesExtensionProtocol);
+        const codecFailure = failure instanceof ProtocolSourceCodecError ? failure : undefined;
         this.protocolAbiObservationStore ??= new ProtocolAbiObservationStore(this.client, this.chain, this.conf.settings.es_replicas ?? 0);
         const abiRecord: ProtocolAbiObservationRecord = {schemaVersion: 1,
             protocol: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []},
@@ -679,42 +636,13 @@ export default class MainDSWorker extends HyperionWorker {
             && this.activeSourceDelivery === delivery && this.activeSourceSelectionId === selectionId
             && this.activeSourceBinding === binding;
         if (!selectionId || !binding || !current()) throw new Error('Native observations require the original active source delivery');
-        const {inputSha256, ...position} = abi.source;
-        const record: ProtocolNativeObservationRecord = {schemaVersion: 1, kind: 'observation', nativeInterfaceVersion: 1,
-            contextId: binding.selection.contextId, protocol: binding.context.protocol, source: position,
-            captureRef: {abiObservationId: prepared.id, abiObservationDigest: prepared.digest, inputSha256}, inventory: null,
-            observation: {status: 'incomplete', error: {code: 'protocol_native_observation_incomplete', message: 'Native extraction unavailable'}}};
         const stopExtract = this.profiler.start('protocol_native_extract');
-        let code = 'protocol_native_observation_incomplete';
+        let record: ProtocolNativeObservationRecord;
         try {
-            const capture = abi.capture;
-            if (!capture.tracesHex) {code = 'native_source_traces_absent'; throw new Error('Original native source traces are absent');}
-            if (!capture.blockHex) {code = 'native_source_block_absent'; throw new Error('Original native source block is absent');}
-            if (capture.schemaJson !== binding.context.schemaJson) throw new Error('Native source handshake differs from its retained context');
-            // Re-decode retained bytes independently: the ABI hook may fail or mutate its own decoded arguments.
-            const inputs = deriveProtocolActionInputs(this.decodeShipValue('transaction_trace[]', Buffer.from(capture.tracesHex, 'hex')));
-            record.inventory = protocolNativeInputInventory(inputs);
-            const block = Buffer.from(capture.blockHex, 'hex'), traces = Buffer.from(capture.tracesHex, 'hex');
-            const blockDigest = createHash('sha256').update(block).digest('hex'), traceDigest = createHash('sha256').update(traces).digest('hex');
-            const facts = native.observe(Object.freeze({schemaJson: capture.schemaJson, block, traces}), Object.freeze({...position}));
-            if (createHash('sha256').update(block).digest('hex') !== blockDigest
-                || createHash('sha256').update(traces).digest('hex') !== traceDigest) throw new Error('Native observer mutated its source bytes');
-            record.observation = {status: 'observed', facts: snapshotProtocolNativeDecisions(facts, inputs)};
-            // Deterministic extraction/budget errors become small explicit evidence;
-            // storage/configuration/reference errors below must escape to redelivery.
-            protocolImmutableJson(record, protocolNativeObservationBounds.maximumBytes);
-        } catch (error: unknown) {
-            // Hooks can throw any JavaScript value. Error retention must not
-            // invoke accessors or coercion hooks and fail before PREPARE itself.
-            let message = code;
-            if (typeof error === 'string') message = error;
-            else if (error !== null && (typeof error === 'object' || typeof error === 'function')) {
-                try {
-                    const property = Object.getOwnPropertyDescriptor(error, 'message');
-                    if (property && Object.hasOwn(property, 'value') && typeof property.value === 'string') message = property.value;
-                } catch { /* An opaque or revoked proxy still produces incomplete evidence. */ }
-            }
-            record.observation = {status: 'incomplete', error: {code, message: message.slice(0, 4096).toWellFormed() || code}};
+            // The proof reader recomputes this record from the node's logs with the same function.
+            record = observeProtocolNativeSource(native, (type, bytes) => this.decodeShipValue(type, bytes), {
+                contextId: binding.selection.contextId, protocol: binding.context.protocol, schemaJson: binding.context.schemaJson,
+                abi, abiObservationId: prepared.id, abiObservationDigest: prepared.digest});
         } finally { stopExtract(); }
         this.assertWorkerAttemptActive();
         if (!current()) throw new Error('Native observation source channel changed during extraction');

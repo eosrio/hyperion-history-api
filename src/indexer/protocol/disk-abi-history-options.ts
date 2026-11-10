@@ -8,16 +8,20 @@ import {protocolImmutableJson} from './immutable-bundle-store.js';
 import {assertProtocolAbiObservationFacts} from './abi-observation-facts.js';
 import {verifyNativeGenesisRecord} from './native-genesis.js';
 import {DiskAbiHistoryCatalog, type DiskAbiHistoryConfiguration} from './disk-abi-history.js';
+import {DiskSourceEvidence} from './disk-source-evidence.js';
 
 /** The host selects installed code and explicitly pinned data before constructing a reader. These handles only read. */
 export function diskAbiHistoryOptions(configuration:DiskAbiHistoryConfiguration|undefined, client:Client,
     chain:string,chainId:string,profile:ProtocolSourceProfile,provider:ProtocolProvider,replicas=0,
     reads:{metadataReadBoundMs?:number;rememberRecords?:boolean}={}) {
-    const catalog=DiskAbiHistoryCatalog.fromConfiguration(configuration,chainId,profile);
+    // Where the node's logs are read from is not part of the catalog's identity or its restart-gated budget.
+    const {capture,...pinned}=configuration??({} as Partial<DiskAbiHistoryConfiguration>);
+    const catalog=DiskAbiHistoryCatalog.fromConfiguration(configuration?pinned as DiskAbiHistoryConfiguration:undefined,chainId,profile);
     const {metadataReadBoundMs,rememberRecords}=reads;
     return catalog?{catalog,bindings:new ProtocolSourceBindingStore(client,chain,replicas,{readOnly:true,metadataReadBoundMs,rememberRecords}),
         observations:new ProtocolAbiObservationStore(client,chain,replicas,undefined,{readOnly:true,metadataReadBoundMs}),
-        verifyNativeGenesis:provider.verifyNativeGenesis?.bind(provider)}:undefined;
+        verifyNativeGenesis:provider.verifyNativeGenesis?.bind(provider),
+        evidence:capture?new DiskSourceEvidence(capture,configuration!.ship_abi_sha256,catalog,provider,chainId,profile):undefined}:undefined;
 }
 
 /**
