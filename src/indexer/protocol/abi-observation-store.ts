@@ -51,6 +51,13 @@ export function protocolAbiObservationId(record: ProtocolAbiObservationRecord): 
         artifacts, source.chainId, source.blockId, inputSha256]));
 }
 
+/** The record exactly as `prepare` stores it, with its id and digest: what a recomputed
+ * observation must equal to stand in for a stored one. */
+export function protocolAbiObservationEvidence(record:ProtocolAbiObservationRecord):{record:ProtocolAbiObservationRecord;id:string;digest:string} {
+    const stored={...record,protocol:{...record.protocol,components:orderedComponents(record.protocol.components)}};
+    return {record:stored,id:protocolAbiObservationId(stored),digest:sha256(canonical(stored))};
+}
+
 /** Existing public IDs and payload bytes remain unchanged. */
 export class ProtocolAbiObservationStore {
     private readonly bundles:ImmutableProtocolBundleStore;

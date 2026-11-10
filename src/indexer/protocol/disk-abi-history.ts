@@ -10,6 +10,8 @@ import {protocolImmutableJson} from './immutable-bundle-store.js';
 export interface DiskAbiHistoryConfiguration {
     interface_version: 1; manifest: string; manifest_sha256: string;
     producer_profile_id: string; node_revision: string; ship_abi_sha256: string;
+    /** The node's logs the catalog covers: proofs then recompute each source from them instead of stored copies. */
+    capture?: import('./disk-capture-source.js').DiskCaptureConfiguration;
 }
 interface Member {name: string; bytes: number; sha256: string}
 interface Manifest {

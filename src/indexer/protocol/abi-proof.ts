@@ -16,6 +16,9 @@ import type {ProtocolNativeActionProofMetadata, ProtocolNativeActionSourceMetada
 import {historicalAddressIdentity, historicalRootCertificate, ProtocolAbiHistoricalAddressReadError} from './abi-history.js';
 import type {diskAbiHistoryOptions} from './disk-abi-history-options.js';
 import {assertProtocolAbiObservationFacts} from './abi-observation-facts.js';
+import type {ProtocolAbiObservationRecord} from './abi-observation-store.js';
+import {DiskCaptureUnavailableError} from './disk-capture-source.js';
+import {isProtocolDiskSelectionId, protocolDiskSelectionId, type DiskSourceEvidence, type DiskSourceRecords} from './disk-source-evidence.js';
 
 export interface ProtocolAbiProofSource {readonly chainId:string;readonly blockNum:number;readonly blockId:string}
 export type ProtocolAbiProofBinding=Omit<ProtocolAbiActionInput,'rawHex'> & {readonly rawSha256:string;readonly stateId:string|null};
@@ -128,7 +131,8 @@ export function protocolAbiCertificateForControl(control:ProtocolAbiCoordinatorC
 
 /** Read-only applicability checks; primary-visible control may revoke authority, never grant it. */
 export class ProtocolAbiProofReader {
-    private readonly diskIssued=new WeakMap<ProtocolAbiProofView,{scope?:ProofConsumerScope;states:Map<string,ProtocolAbiAccountState|null>;nativeGenesis?:ProtocolNativeGenesisCoverage}>();
+    private readonly diskIssued=new WeakMap<ProtocolAbiProofView,{scope?:ProofConsumerScope;states:Map<string,ProtocolAbiAccountState|null>;nativeGenesis?:ProtocolNativeGenesisCoverage;
+        evidence?:DiskSourceRecords}>();
     private readonly profile:ProtocolSourceProfile;
     private readonly maximumAncestry:number;
     private readonly issued=new WeakMap<ProtocolAbiProofView,Issued>();
@@ -254,12 +258,14 @@ export class ProtocolAbiProofReader {
         return this.consume(undefined,async()=>{
         signal=proofConsumerSignal(signal);
         requireProof(source?.chainId===this.options.chainId&&uint(source.blockNum,1)&&hex64.test(source.blockId)
-            &&(selectionId===undefined||ident('h45srcsel1',selectionId)),'Invalid requested ABI source');
+            &&(selectionId===undefined||ident('h45srcsel1',selectionId)
+                ||(this.options.diskHistory?.evidence!==undefined&&isProtocolDiskSelectionId(selectionId))),'Invalid requested ABI source');
         // Snapshot caller-owned data before any storage await.
         source=copy(source);
         this.assertActive(signal);
         if(this.options.diskHistory&&await this.options.diskHistory.catalog.covers(source)){
             this.assertActive(signal);return this.openDisk(source,selectionId,signal);}
+        if(isProtocolDiskSelectionId(selectionId))unavailable('source_not_covered','Disk selection is outside the configured catalog');
         const certificate=await this.authority(signal);
         if(certificate.head.blockNum<source.blockNum)unavailable('source_pending','Requested ABI source has not committed');
         if(certificate.head.blockNum-source.blockNum>this.maximumAncestry) {
@@ -688,18 +694,42 @@ export class ProtocolAbiProofReader {
         return freeze(copy(value));
     }
 
+    /** The recomputed records behind a disk-selection view this reader issued, for its paired native reader. */
+    diskEvidence(view:ProtocolAbiProofView):DiskSourceRecords|undefined {return this.diskIssued.get(view)?.evidence;}
+    private async diskRecords(evidence:DiskSourceEvidence,blockNum:number,signal?:AbortSignal):Promise<DiskSourceRecords> {
+        this.assertActive(signal);
+        try {const records=await trackProofConsumerOperation(()=>evidence.records(blockNum));this.assertActive(signal);return records;}
+        catch(error){
+            if(error instanceof DiskCaptureUnavailableError)unavailable(error.code,error.message);
+            throw error;
+        }
+    }
     private async openDisk(source:ProtocolAbiProofSource,selectionId:string|undefined,signal?:AbortSignal):Promise<ProtocolAbiProofView> {
         const disk=this.options.diskHistory!,position=await disk.catalog.source(source.blockNum),states=new Map<string,ProtocolAbiAccountState|null>();
-        let bindings:ProtocolAbiProofBinding[]=[],nativeGenesis:ProtocolNativeGenesisCoverage|undefined;
-        if(selectionId!==undefined){
+        let bindings:ProtocolAbiProofBinding[]=[],nativeGenesis:ProtocolNativeGenesisCoverage|undefined,evidence:DiskSourceRecords|undefined;
+        let record:ProtocolAbiObservationRecord|undefined;
+        if(isProtocolDiskSelectionId(selectionId)){
+            // Recomputed from the node's logs, so no stored selection, link or observation is read.
+            requireProof(disk.evidence,'Disk selection requires configured disk capture');
+            requireProof(selectionId===protocolDiskSelectionId(position),'Disk selection names another catalog position');
+            evidence=await this.diskRecords(disk.evidence,source.blockNum,signal);
+            requireProof(json(evidence.position)===json(position)&&evidence.selectionId===selectionId
+                &&json(evidence.abi.record.source)===json({...position,inputSha256:evidence.abi.record.source.inputSha256})
+                &&this.sameProfile(evidence.abi.record.protocol),'Disk evidence differs from the catalog position');
+            await disk.catalog.assertSchema(evidence.abi.record.capture.schemaJson??'');
+            record=evidence.abi.record;
+        }else if(selectionId!==undefined){
             const {selection:selected,context}=await this.retained(()=>disk.bindings.readSelection(selectionId,signal),undefined,signal);
             requireProof(json(selected.source)===json(position)&&context.chainId===source.chainId&&this.sameProfile(context.protocol),'Catalog source association mismatch');
             await disk.catalog.assertSchema(context.schemaJson);
             const link=await this.retained(()=>disk.bindings.readObservationLink(selectionId,signal),undefined,signal);
-            const record=await this.retained(()=>disk.observations.read(link.observationId,signal),undefined,signal);
-            requireProof(json(record.source)===json({...position,inputSha256:selected.captureSha256})
-                &&record.capture.schemaJson===context.schemaJson&&this.sameProfile(record.protocol)
-                &&hash(Buffer.from(json(record)))===link.observationDigest,'Catalog observation differs from original source');
+            const stored=await this.retained(()=>disk.observations.read(link.observationId,signal),undefined,signal);
+            requireProof(json(stored.source)===json({...position,inputSha256:selected.captureSha256})
+                &&stored.capture.schemaJson===context.schemaJson&&this.sameProfile(stored.protocol)
+                &&hash(Buffer.from(json(stored)))===link.observationDigest,'Catalog observation differs from original source');
+            record=stored;
+        }
+        if(record){
             if(record.observation.status==='native-genesis'){
                 const facts=verifyNativeGenesisRecord(record,disk.verifyNativeGenesis);
                 nativeGenesis={previousBlockId:facts.previousBlockId,applicationState:facts.applicationState};
@@ -723,7 +753,7 @@ export class ProtocolAbiProofReader {
             }
         }
         const view=freeze({certificateId:disk.catalog.catalogId,commitId:'h45abidiskblock1:'+hash(Buffer.from(json(position))),
-            selectionId:selectionId??('h45abidiskselection1:'+hash(Buffer.from(json(position)))),source:position,bindings,nativeActionInterfaceVersion:1 as const});
-        this.diskIssued.set(view,{scope:currentProofConsumerScope(),states,nativeGenesis});await this.revalidate(view,{signal});return view;
+            selectionId:selectionId??protocolDiskSelectionId(position),source:position,bindings,nativeActionInterfaceVersion:1 as const});
+        this.diskIssued.set(view,{scope:currentProofConsumerScope(),states,nativeGenesis,evidence});await this.revalidate(view,{signal});return view;
     }
 }

@@ -14,10 +14,16 @@ import {ProtocolNativeObservationStore} from '../../indexer/protocol/native-obse
 import {protocolImmutableJson, protocolMetadataReadBoundMs} from '../../indexer/protocol/immutable-bundle-store.js';
 import {parseProtocolNativeActionMetadata} from '../../indexer/protocol/native-action-metadata.js';
 import {isProtocolHex} from '../../indexer/protocol/hex.js';
+import {isProtocolDiskSelectionId} from '../../indexer/protocol/disk-source-evidence.js';
 import {assertProtocolProofRequestActive, protocolProofScope, withProtocolProofRequest} from './protocol-proof-request.js';
 import {assertNativeDerivedOutput, nativeResponseOutputs, nativeSourceOutput, type NativeOutputEvidence} from './protocol-action-output.js';
 
 type ActionMetadata = ProtocolActionProofMetadata | ProtocolNativeActionProofMetadata;
+/** A row loaded from the node's logs: the occurrence under its block's deterministic disk selection. */
+interface DiskOccurrenceMetadata {
+    readonly schemaVersion: 3; readonly source: ProtocolActionProofMetadata['source'];
+    readonly selectionId: string; readonly input: ProtocolActionProofMetadata['input'];
+}
 interface NativeAuthority {
     readonly metadata: ProtocolNativeActionProofMetadata;
     readonly view: ProtocolNativeActionView;
@@ -129,10 +135,15 @@ export function protocolActionInput(abi: EncodingAbi, type: string, data: unknow
         .map(name => [name, (data as Record<string, unknown>)[name]])) : data;
 }
 
-function successfulMetadata(input: any): input is ActionMetadata {
+function successfulMetadata(input: any): input is ActionMetadata | DiskOccurrenceMetadata {
     const common = input && input.source && typeof input.selectionId === 'string' && input.input
         && Number.isInteger(input.input.inputActionOrdinal) && input.status === undefined;
     if (!common) return false;
+    if (input.schemaVersion === 3) {
+        const fields = ['schemaVersion', 'source', 'selectionId', 'input'];
+        return isProtocolDiskSelectionId(input.selectionId) && Object.keys(input).length === fields.length
+            && fields.every(key => Object.hasOwn(input, key));
+    }
     if (input.schemaVersion === 2) {
         const parsed = parseProtocolNativeActionMetadata(input);
         return parsed.kind === 'native' && !('status' in parsed);
@@ -187,6 +198,24 @@ function enrichContractValue(certified: any, retained: any, annotation: any, dep
                 : Object.hasOwn(original, key) ? original[key] : extra[key]]));
     }
     return retained === undefined ? certified : retained;
+}
+
+/** A row loaded from the node's logs states only its occurrence under its block's disk selection.
+ * Classify it there and expand it to exactly the metadata the indexer would have written. */
+async function expandDiskMetadata(fastify: FastifyInstance, scope: object, metadata: DiskOccurrenceMetadata): Promise<ActionMetadata> {
+    return withProtocolProofRequest(scope, async options => {
+        const consumer = await context(fastify); const {reader, nativeReader} = consumer;
+        const views = scopedViews(scope, consumer, metadata.source, metadata.selectionId);
+        const membership = await (views.membership ??= reader.waitForOpen(metadata.source, metadata.selectionId, options));
+        const contract: ProtocolActionProofMetadata = {schemaVersion: 1, source: metadata.source, selectionId: metadata.selectionId, input: metadata.input};
+        if (membership.nativeActionInterfaceVersion !== 1) return contract;
+        if (!nativeReader) throw unavailable('requires its installed native classification provider');
+        const classification = await (views.nativeOpen ??= nativeReader.open(metadata.source, metadata.selectionId, options));
+        const decision = await nativeReader.authorize(classification, metadata.input, options);
+        if (decision.kind === 'contract') return contract;
+        if (decision.kind === 'native') return nativeReader.metadata(decision.grant, options);
+        throw unavailable('cannot decode an incomplete native origin');
+    });
 }
 
 async function resolve(fastify: FastifyInstance, scope: object, metadata: ProtocolActionProofMetadata) {
@@ -279,8 +308,9 @@ export async function protectProtocolAction(fastify: FastifyInstance, request: o
         return;
     }
     try {
-        const metadata = copyMetadata(action.protocol);
-        if (!successfulMetadata(metadata)) throw unavailable('requires complete original occurrence metadata');
+        const stored = copyMetadata(action.protocol);
+        if (!successfulMetadata(stored)) throw unavailable('requires complete original occurrence metadata');
+        let metadata: ActionMetadata = stored as ActionMetadata;
         const input = metadata.input;
         if (action.block_num !== metadata.source.blockNum || action.block_id !== metadata.source.blockId
             || action.trx_id !== input.transactionId || action.action_ordinal !== input.actionOrdinal
@@ -290,6 +320,11 @@ export async function protectProtocolAction(fastify: FastifyInstance, request: o
         }
         const proofs = requestProofs(request);
         if (proofs.actions.length >= maximumProtocolApiActions) throw unavailable('exceeds the bounded response proof budget');
+        if (stored.schemaVersion === 3) {
+            metadata = await expandDiskMetadata(fastify, request, stored);
+            // From here the action carries exactly the metadata the indexer would have stored for it.
+            action.protocol = copyMetadata(metadata);
+        }
         if (metadata.schemaVersion === 2) {
             const proof = await resolveNative(fastify, request, metadata);
             const {nativeReader, selected} = await context(fastify);
@@ -502,7 +537,8 @@ export async function validateProtocolCachedResponse(fastify: FastifyInstance, r
         // Check every entry's shape before any authority read, then reopen the entries concurrently.
         const entries = cached.actions.map((entry: any) => {
             const metadata = copyMetadata(entry?.metadata);
-            if (!successfulMetadata(metadata))
+            // Capsules record the metadata a disk occurrence expanded to, never schema 3 itself.
+            if (!successfulMetadata(metadata) || metadata.schemaVersion === 3)
                 throw unavailable('has unsupported cached occurrence metadata');
             if (metadata.schemaVersion === 2) {
                 if (!Object.hasOwn(entry, 'value') || !Object.hasOwn(entry, 'envelope')) throw unavailable('lacks its checked native value or envelope');
