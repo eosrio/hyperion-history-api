@@ -78,8 +78,13 @@ async function following(f,first,count,facts=()=>empty()) {
         mark=calls.length;await f.admit(selectionId);admit.push(...calls.slice(mark));
         mark=calls.length;assert.equal((await f.coordinator.drain()).committed,1);drain.push(...calls.slice(mark));
     }
-    return {prepare:perBlock(prepare,count),admit:perBlock(admit,count),drain:perBlock(drain,count)};
+    return {prepare:perBlock(prepare,count),admit:perBlock(admit,count),drain:perBlock(drain,count),drainCalls:drain,blocks:count};
 }
+/** IDs one store request names, for single and multi-document reads. */
+const requestIds=({request={}})=>request.id!==undefined?[String(request.id)]:(request.ids??request.docs?.map(doc=>doc._id)??[]).map(String);
+/** Address buckets are content-addressed, so which bucket a block's locator lands in follows the run's random
+ * coordinator generation. A first read of a bucket is one manifest and one chunk read plus one control check. */
+const bucketReads=calls=>calls.filter(call=>call.method==='mget'&&requestIds(call).some(id=>id.startsWith('h45abibkt1:')));
 const warmed=async(f,first,warm,count,facts)=>{await following(f,first,warm,facts);return following(f,first+warm,count,facts);};
 
 test('live blocks without historical work',async()=>{
@@ -92,10 +97,17 @@ test('live blocks without historical work',async()=>{
 test('live blocks with historical certificates',async()=>{
     const counts=await warmed(await fixture({historicalCertificates:budget}),1,4,32);
     report('live-historical',counts);
-    const {get,mget,...writes}=operations(counts.drain);
+    const {get:_get,mget:_mget,...writes}=operations(counts.drain);
     assert.deepEqual(writes,{create:6,index:2,bulk:4});
-    // A drain whose activation finds two queued locators reads them as one pack, so reads vary slightly.
-    assert.ok(get<=28,'Historical reads per block: '+get);assert.ok(mget<=3.25,'Historical packed reads per block: '+mget);
+    // Reads are exact once first bucket reads are accounted for: each costs two packed reads and one control check.
+    const buckets=bucketReads(counts.drainCalls),firstReads=buckets.length/2,{get,mget}=tally(counts.drainCalls);
+    assert.ok(Number.isInteger(firstReads),'Bucket reads come as manifest and chunk pairs');
+    assert.equal(get,27*counts.blocks+firstReads,'Historical reads');
+    assert.equal(mget,3*counts.blocks+2*firstReads,'Historical packed reads');
+    // A bucket is read once and then remembered, so first reads are bounded by the buckets the locators touch.
+    const bucketIds=buckets.flatMap(requestIds).filter(id=>/^h45abibkt1:[0-9a-f]{64}$/.test(id));
+    assert.equal(new Set(bucketIds).size,bucketIds.length,'A bucket was read twice');
+    report('live-historical-first-bucket-reads',{firstReads});
 });
 test('a backlog with historical certificates',async()=>{
     const f=await fixture({historicalCertificates:{...budget,allowPendingWork:true}}),count=32,calls=f.memory.calls;
