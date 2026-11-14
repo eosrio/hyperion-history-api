@@ -116,12 +116,33 @@ test('follow adopts a chain up to a published link and refuses a link that diffe
     expect(await reader.coverageEnd()).toBe(9);expect((await reader.finalState('alpha',8))?.abiHex).toBe('cc');
     expect(await reader.follow({manifestSha256:first.manifestSha256,endBlock:6,lastBlockId:block(6)})).toBe(true);
     await expect(reader.follow({manifestSha256:first.manifestSha256,endBlock:6,lastBlockId:block(7)})).rejects.toThrow('differs from coverage');
-    // Beyond what the directory holds: not covered yet, and nothing past it is adopted.
+    // Beyond what the directory holds: not covered yet, and no part of the chain toward it is adopted.
     expect(await reader.follow({manifestSha256:'f'.repeat(64),endBlock:20,lastBlockId:block(20)})).toBe(false);
-    expect(await reader.coverageEnd()).toBe(12);expect(third.endBlock).toBe(12);
+    expect(await reader.coverageEnd()).toBe(9);
+    expect(await reader.follow({manifestSha256:third.manifestSha256,endBlock:12,lastBlockId:block(12)})).toBe(true);
+    expect(await reader.coverageEnd()).toBe(12);
+    // A covered height reached through another digest is not the published link.
+    await expect(reader.follow({manifestSha256:'e'.repeat(64),endBlock:12,lastBlockId:block(12)})).rejects.toThrow('differs from coverage');
     // A catalog without a segments directory never moves.
     const {segments_dir:_,...withoutSegments}=g.config,pinned=open(withoutSegments);
     expect(await pinned.nextSegment()).toBeUndefined();
     expect(await pinned.follow({manifestSha256:first.manifestSha256,endBlock:6,lastBlockId:block(6)})).toBe(false);
     expect(await pinned.coverageEnd()).toBe(4);
+});
+
+test('follow never adopts a planted segment that reaches the published end through another digest',async()=>{
+    const g=await genesis([final('alpha',1,'aa')],4);
+    const genuine=await segment(g.segments,g.tip,6,[final('alpha',6,'bb')]);
+    const planted=await genesis([final('alpha',1,'aa')],4);
+    // Only a planted segment is present: same base, same end and end id, different records.
+    await segment(planted.segments,planted.tip,6,[final('alpha',6,'ff')]);
+    const victim=open(planted.config);
+    expect(await victim.follow({manifestSha256:genuine.manifestSha256,endBlock:6,lastBlockId:block(6)})).toBe(false);
+    expect(await victim.coverageEnd()).toBe(4);
+    // Both present: the published digest is the one adopted.
+    await segment(g.segments,g.tip,6,[final('alpha',6,'ff')],{name:'zz-planted'});
+    const reader=open(g.config);
+    expect(await reader.nextSegment()).toBeUndefined();
+    expect(await reader.follow({manifestSha256:genuine.manifestSha256,endBlock:6,lastBlockId:block(6)})).toBe(true);
+    expect((await reader.finalState('alpha',6))?.abiHex).toBe('bb');
 });

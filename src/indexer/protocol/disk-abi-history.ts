@@ -363,18 +363,31 @@ export class DiskAbiHistoryCatalog {
         return run;
     }
     /**
-     * Follow a link another reader adopted: verify and adopt the chain up to it from the segments directory.
-     * Once it is covered, its end must have its id. A link beyond what the directory holds is not covered yet.
+     * Follow a link another reader adopted. The chain from the adopted tip is resolved and verified first, and only a
+     * chain that ends exactly at the link's digest, end and id is adopted, whole and in order. Nothing else is adopted:
+     * not a partial chain, not a different segment that happens to reach the same block. A link already covered must
+     * be one of the adopted links. A link the directory cannot reach yet is not covered.
      */
     async follow(link:DiskAbiHistoryLink):Promise<boolean> {
         requireData(link&&hex.test(link.manifestSha256)&&uint(link.endBlock,1)&&hex.test(link.lastBlockId),'invalid catalog link');
-        for(let step=0;step<1024;step++){
-            const value=await this.data();
-            if(value.end>=link.endBlock){
-                requireData(await this.idAt(value,link.endBlock)===link.lastBlockId,'followed catalog link differs from coverage');return true;}
-            const next=await this.nextSegment();if(!next||next.link.endBlock>link.endBlock)return false;
-            await this.adopt(next);
+        const value=await this.data();
+        if(value.end>=link.endBlock){
+            requireData(value.adopted.has(link.manifestSha256)&&await this.idAt(value,link.endBlock)===link.lastBlockId,
+                'followed catalog link differs from coverage');
+            return true;
         }
-        return false;
+        const chain:DiskAbiHistoryPendingSegment[]=[];let tip={...value.tip},blocks=value.end-value.manifest.endBlock;
+        while(tip.endBlock<link.endBlock&&chain.length<4096){
+            const candidates=await this.children(tip.manifestSha256);
+            const selected=candidates.find(candidate=>candidate.sha===link.manifestSha256)??(candidates.length===1?candidates[0]:undefined);
+            if(!selected)return false;
+            const next=await this.verifySegment(value,tip,selected.path,selected.sha,blocks);
+            chain.push(next);blocks+=next.link.endBlock-next.link.startBlock+1;
+            tip={manifestSha256:next.link.manifestSha256,endBlock:next.link.endBlock,lastBlockId:next.link.lastBlockId,
+                lastGlobalSequence:next.link.lastGlobalSequence,totalRecords:next.link.totalRecords};
+        }
+        if(tip.manifestSha256!==link.manifestSha256||tip.endBlock!==link.endBlock||tip.lastBlockId!==link.lastBlockId)return false;
+        for(const segment of chain)await this.adopt(segment);
+        return true;
     }
 }
