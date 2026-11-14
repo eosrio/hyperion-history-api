@@ -4,7 +4,6 @@ import {mkdtemp,mkdir,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {DiskAbiHistoryCatalog,type DiskAbiHistoryConfiguration,type DiskAbiHistoryTip} from '../../src/indexer/protocol/disk-abi-history.js';
-import {diskAbiHistoryOptions} from '../../src/indexer/protocol/disk-abi-history-options.js';
 import {ProtocolSourceBindingStore,type ProtocolSourceProfile} from '../../src/indexer/protocol/source-bindings.js';
 import {ProtocolAbiObservationStore,protocolAbiCaptureDigest} from '../../src/indexer/protocol/abi-observation-store.js';
 import {ProtocolAbiProofReader} from '../../src/indexer/protocol/abi-proof.js';
@@ -54,6 +53,11 @@ async function segment(dir:string,tip:DiskAbiHistoryTip,end:number,rows:any[],{i
     return {manifestSha256:hash(text),endBlock:end,lastBlockId:blockIds.at(-1)!};
 }
 
+/** The disk options an API reader builds, around a catalog instance of its own (not the process-wide configured one). */
+function readerOptions(f:{memory:any;chain:string},catalog:DiskAbiHistoryCatalog) {
+    return {catalog,bindings:new ProtocolSourceBindingStore(f.memory.client as any,f.chain,0,{readOnly:true}),
+        observations:new ProtocolAbiObservationStore(f.memory.client as any,f.chain,0,undefined,{readOnly:true})};
+}
 async function settled(blocks:number) {
     const g=await genesis(),memory=frontierMemoryClient(),chain='catalog-attest';
     const bindings=new ProtocolSourceBindingStore(memory.client as any,chain),observations=new ProtocolAbiObservationStore(memory.client as any,chain);
@@ -92,7 +96,7 @@ test('a segment that agrees with the commits is adopted, published, and followed
     expect(control.catalog).toEqual(link);expect(f.refused).toEqual([]);expect(await f.catalog.coverageEnd()).toBe(8);
     // An API-like reader with its own catalog instance follows the published link on its first authority read.
     const own=new DiskAbiHistoryCatalog(f.g.config,chainId,profile);catalogs.add(own);
-    const options={...diskAbiHistoryOptions(f.g.config,f.memory.client as any,f.chain,chainId,profile,{} as any)!,catalog:own};
+    const options=readerOptions(f,own);
     const reader=new ProtocolAbiProofReader({chainId,profile,store:f.store.asReadOnly(),diskHistory:options});
     expect(await own.coverageEnd()).toBe(4);
     const view=await reader.open(f.sources[6].source,f.sources[6].selected);
@@ -165,4 +169,70 @@ test('the settled checkpoint is monotonic, bounded by the published catalog, and
     const third=new ProtocolAbiCoordinator({chainId,profile,ownerId:'blind-restart',bindings:f.bindings,observations:f.observations,store:f.store,
         diskAbiHistory:blind,nativeActionInterfaceVersion:1});
     await third.start();const control=await third.inspect();expect(control.catalog).toBeUndefined();expect(control.settled).toBeUndefined();
+});
+
+test('a store rotation rebuilds the chain in a new generation above a settled anchor and switches without a gap',async()=>{
+    const f=await settled(6);
+    const link=await segment(f.g.segments,f.g.tip,8,[final('beta',7,'cc')]);
+    expect((await f.attest()).catalog).toEqual(link);
+    // Nothing settled yet: no anchor to rotate to.
+    expect(await f.coordinator.rotateStores()).toBe(false);
+    await f.coordinator.recordSettled(8);
+    const before=await f.coordinator.inspect();expect(before.head!.blockNum).toBe(10);expect(before.storeGeneration).toBeUndefined();
+    expect(await f.coordinator.rotateStores()).toBe(true);
+    const after=await f.coordinator.inspect();
+    expect(after).toMatchObject({storeGeneration:1,anchor:8,previousStore:{generation:0,switchedAtBlock:10},catalog:link,settled:8});
+    // Same block and id at the head, but a commit of the new generation's chain.
+    expect(after.head!.blockNum).toBe(10);expect(after.head!.blockId).toBe(before.head!.blockId);expect(after.head!.commitId).not.toBe(before.head!.commitId);
+    expect(f.memory.mappings.has(f.chain+'-protocol-abi-frontier-records-v1-g1')).toBe(true);
+    expect(f.store.recordsIndex).toBe(f.chain+'-protocol-abi-frontier-records-v1-g1');
+    // A second rotation waits for the previous generation to be retired.
+    expect(await f.coordinator.rotateStores()).toBe(false);
+
+    // Readers: covered blocks prove from disk; blocks above the catalog prove through the new chain, whose
+    // selections and observations are still found in generation 0.
+    const reading=new DiskAbiHistoryCatalog(f.g.config,chainId,profile);catalogs.add(reading);
+    const options=readerOptions(f,reading);
+    const reader=new ProtocolAbiProofReader({chainId,profile,store:f.store.asReadOnly(),diskHistory:options});
+    const covered=await reader.open(f.sources[6].source,f.sources[6].selected);expect(covered.certificateId).toBe(options.catalog.catalogId);
+    for(const n of [9,10]){
+        const view=await reader.open(f.sources[n].source,f.sources[n].selected);
+        expect(view.certificateId).not.toBe(options.catalog.catalogId);
+        expect((await reader.action(view,f.sources[n].action)).state.abiHex).toBe('bb');
+        expect((await reader.finalState(view,'beta')).abiHex).toBe('cc');
+    }
+
+    // The next block is written and committed in generation 1.
+    const n=11,source={chainId,blockNum:n,blockId:block(n),previousBlockId:block(n-1)},capture={kind:'unattested-ship-result-sections-v1' as const,
+        schemaJson,blockHex:'01',tracesHex:'02',deltasHex:'03'},captureSha256=protocolAbiCaptureDigest(source,capture);
+    const contextId=(await f.bindings.readSelection(f.sources[5].selected)).selection.contextId;
+    const selected=(await f.bindings.prepareSelection({schemaVersion:1,contextId,readerSessionId:'live-session',readerRole:'live',assignmentId:null,
+        source,frameSha256:'e'.repeat(64),captureSha256,head:{blockNum:n,blockId:block(n)},irreversible:{blockNum:n,blockId:block(n)}})).id;
+    const prepared=await f.observations.prepare({schemaVersion:1,protocol:profile,source:{...source,inputSha256:captureSha256},capture,
+        observation:{status:'observed',facts:{schemaVersion:1,actionInputs:[input(sequenceAt(n))],deployments:[],finalStates:[]}}});
+    await f.bindings.prepareObservationLink({schemaVersion:1,selectionId:selected,observationId:prepared.id,observationDigest:prepared.digest});
+    expect(f.observations.index).toBe(f.chain+'-protocol-abi-observations-v1-g1');
+    await f.coordinator.admit(selected,(await f.coordinator.inspect()).generation);await f.coordinator.drain();
+    expect((await f.coordinator.inspect()).head!.blockNum).toBe(11);
+    const latest=await reader.open(source,selected);expect((await reader.action(latest,input(sequenceAt(n)))).state.abiHex).toBe('bb');
+
+    // Retirement waits for settling past the switch block and for the age bound.
+    expect(await f.coordinator.retirePreviousStore(1,0)).toBeUndefined();
+    expect(await f.coordinator.retirePreviousStore(0,60000,after.previousStore!.switchedAt+1000)).toBeUndefined();
+    expect(await f.coordinator.retirePreviousStore(0,0)).toBeUndefined();// settled 8 is below the switch block 10
+    await segment(f.g.segments,{...link,lastGlobalSequence:sequenceAt(8),totalRecords:3},11,[],{lastGlobalSequence:sequenceAt(11)});
+    expect((await f.attest()).catalog?.endBlock).toBe(11);
+    await f.coordinator.recordSettled(11);
+    expect(await f.coordinator.retirePreviousStore(0,0)).toBe(0);
+    const retired=await f.coordinator.inspect();expect(retired.previousStore).toBeUndefined();expect(retired.storeGeneration).toBe(1);
+    expect(f.store.generations.known()).toEqual({current:1,previous:null});
+
+    // A restarted owner keeps the rotated chain: its anchor validates against the catalog at block 8.
+    const fresh=new DiskAbiHistoryCatalog(f.g.config,chainId,profile);catalogs.add(fresh);
+    const next=new ProtocolAbiCoordinator({chainId,profile,ownerId:'rotated-restart',bindings:f.bindings,observations:f.observations,store:f.store,
+        diskAbiHistory:fresh,nativeActionInterfaceVersion:1});
+    await next.start();
+    const restarted=await next.inspect();
+    expect(restarted).toMatchObject({storeGeneration:1,anchor:8,head:{blockNum:11},settled:11});expect(restarted.previousStore).toBeUndefined();
+    expect(await fresh.coverageEnd()).toBe(11);
 });

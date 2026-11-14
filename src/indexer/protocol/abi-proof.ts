@@ -252,7 +252,9 @@ export class ProtocolAbiProofReader {
         if(value?.kind==='disk-abi-baseline'){
             const catalog=this.options.diskHistory?.catalog;
             requireProof(catalog,'Disk ABI baseline requires the configured validated catalog');
-            const baseline=await catalog.baseline();
+            // A chain is anchored at the pinned end or, after a store rotation, at a later adopted link's end.
+            requireProof(uint(value?.source?.blockNum,1)&&(await catalog.boundaries()).includes(value.source.blockNum),'Invalid disk ABI baseline');
+            const baseline=await catalog.baselineAt(value.source.blockNum);
             requireProof(value.schemaVersion===1&&value.chainId===this.options.chainId&&this.sameProfile(value.profile)
                 &&text(value.generation)&&value.catalogId===baseline.catalogId&&json(value.source)===json(baseline.source)
                 &&value.previousCommitId===null&&value.selectionId===null&&value.observationId===null&&value.observationDigest===null

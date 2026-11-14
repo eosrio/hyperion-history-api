@@ -239,3 +239,59 @@ store reads; sources above it use the stores as before.
   the chain into a new pinned catalog, which needs a controlled restart.
 - Adopting segments does not prune the proof stores.
 - Without `segments_dir`, the catalog behaves exactly as before.
+
+## Settling attested ranges
+
+An attested range proves from the logs, but the live indexer's action documents in it still name store
+selections. With `settle`, the indexer master replaces them with the range server's documents for the same
+blocks. Those differ only in the actions' `protocol` field, which is schema 3 (`{source, disk selectionId,
+input}`):
+
+```json
+"settle": {"range_server": "http://127.0.0.1:7180", "max_blocks": 512, "interval_ms": 5000, "repair_after_blocks": 1024}
+```
+
+**Bounds.** Each step settles blocks after the checkpoint, up to the attested catalog end and at least 128 blocks
+below the highest indexed block, so documents still being ingested are not overtaken.
+
+**Checks.** A step writes only after all of these hold:
+- the response is the requested range, sealed by an adopted segment;
+- every block id matches the catalog;
+- every document sits at the indexer's own index and id;
+- the live documents are the same set the range produced.
+
+**Repairs.** A document missing near the tip means wait. One missing more than `repair_after_blocks` below the
+indexed tip is written, provided no document holds its id. An undecoded live action is replaced. Any other
+body difference refuses the step.
+
+**Checkpoint.** It is recorded as `settled` in the ABI coordinator's control record. A range server that is
+not on loopback must use https.
+
+## Rotating the proof stores
+
+Settled documents need no stored proof records, so the stores only have to hold the chain above the newest
+settled catalog link end. With `rotation` (it needs `settle`), the four record indices (frontier records,
+observations, source bindings, native actions) move to a new generation (`<index>-g<N>`; generation 0 keeps the
+original names) once they hold `max_bytes`:
+
+```json
+"rotation": {"max_bytes": 8589934592, "retire_margin_blocks": 1024, "retire_after_ms": 600000, "drop_previous": false}
+```
+
+**Building the new chain.** The coordinator writes a disk baseline at the newest adopted link end at or below
+the settled block into the new generation. It then replays the live chain's own selections above it. The live
+chain keeps serving and advancing meanwhile, and nothing is read again from the node.
+
+**Switching.** When the new chain reaches the live head, one control update on the serial lane switches
+readers and writers to it. Readers may see one `authority_changed` retry; no read fails.
+
+**Reading across generations.** A record missing in the current generation is read from the previous one, so
+documents written against it still prove. A writer observes a switch within one second.
+
+**Retiring.** Once settling is `retire_margin_blocks` past the switch block and the switch is `retire_after_ms`
+old, no document can reference the previous generation, and it is retired.
+
+**Deleting.** With `drop_previous`, the indexer then deletes its four indices. Without it, it logs their names
+for an operator to delete.
+
+**Restarts.** A restart keeps the rotated chain: its anchor validates against the catalog at that link end.

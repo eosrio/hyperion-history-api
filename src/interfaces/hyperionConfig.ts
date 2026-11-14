@@ -450,7 +450,10 @@ export const HyperionSettingsConfigSchema = z.object({
         capture:z.object({state_history_dir:z.string().min(1),blocks_dir:z.string().min(1),ship_abi:z.string().min(1)}).strict().optional(),
         segments_dir:z.string().min(1).optional(),
         settle:z.object({range_server:z.string().url(),max_blocks:z.number().int().min(1).max(100000).optional(),
-            interval_ms:z.number().int().min(100).optional(),repair_after_blocks:z.number().int().min(128).optional()}).strict().optional()}).strict().optional(),
+            interval_ms:z.number().int().min(100).optional(),repair_after_blocks:z.number().int().min(128).optional()}).strict().optional(),
+        rotation:z.object({max_bytes:z.number().int().min(1024*1024).optional(),retire_margin_blocks:z.number().int().min(128).optional(),
+            retire_after_ms:z.number().int().min(10000).optional(),drop_previous:z.boolean().optional(),
+            check_interval_ms:z.number().int().min(1000).optional()}).strict().optional()}).strict().optional(),
     protocol_abi_coordination: z.object({
         qualification_genesis_start: z.literal(true).optional(),
         max_pending_blocks: z.number().int().min(1).max(4096).optional(),
