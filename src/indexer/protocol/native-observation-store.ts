@@ -130,11 +130,13 @@ export class ProtocolNativeObservationStore {
         this.bounds={...bounds};this.readOnly=options.readOnly===true;
         const {metadataReadBoundMs,rememberRecords}=options;this.reads={metadataReadBoundMs,rememberRecords};
         this.bundles=new GenerationalProtocolBundleStore(protocolStoreGenerations(client,chain,replicas),generation=>new ImmutableProtocolBundleStore(client,chain,replicas,
-            'protocol-native-actions',protocolStoreIndexSuffix('protocol-native-actions-v1',generation),bounds,{readOnly:this.readOnly,metadataReadBoundMs}));
+            'protocol-native-actions',protocolStoreIndexSuffix('protocol-native-actions-v1',generation),bounds,{readOnly:this.readOnly,metadataReadBoundMs}),!this.readOnly);
         this.sources=new ProtocolSourceBindingStore(client,chain,replicas,{readOnly:true,metadataReadBoundMs,rememberRecords});
         this.abis=new ProtocolAbiObservationStore(client,chain,replicas,undefined,{readOnly:true,metadataReadBoundMs});
         this.index=this.bundles.index;
     }
+    /** Create this store's index for a store generation before control switches to it. */
+    provisionGeneration(generation:number):Promise<void> {return this.bundles.provisionGeneration(generation);}
     /** A detached read handle cannot provision indices or prepare observations. It keeps this handle's read options. */
     asReadOnly():ProtocolNativeObservationStore {
         return new ProtocolNativeObservationStore(this.client,this.chain,this.replicas,this.bounds,{...this.reads,readOnly:true});

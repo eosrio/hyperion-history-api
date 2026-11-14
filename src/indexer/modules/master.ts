@@ -48,6 +48,7 @@ import {resolveSourceCreditCapacity, SourceCreditCapacityCoordinator, isSourceCr
 import {loadChainProtocol} from '../protocol/selection.js';
 import {ProtocolAbiCoordinator} from '../protocol/abi-coordinator.js';
 import {DiskAbiHistoryCatalog} from '../protocol/disk-abi-history.js';
+import {ProtocolNativeObservationStore} from '../protocol/native-observation-store.js';
 import {CatalogSettler, elasticSettleIO, type SettleStep} from '../protocol/catalog-settle.js';
 import {followProtocolStoreGenerations, protocolStoreGenerationIndices} from '../protocol/immutable-bundle-store.js';
 import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
@@ -856,6 +857,8 @@ export class HyperionMaster {
                     maxCommitBytesPerDrain: options.historical_certificates.max_commit_bytes_per_drain,
                     maxMillisecondsPerDrain: options.historical_certificates.max_ms_per_drain},
                 onHistoricalError: error => hLog('Historical state source remains unavailable:', error),
+                provisionStoreGeneration: generation => new ProtocolNativeObservationStore(this.esClient, this.chain, replicas, undefined,
+                    metadata).provisionGeneration(generation),
                 onCatalogError: error => hLog('Catalog attestation failed and will retry:', error instanceof Error ? error.message : String(error)),
                 onCatalogRefused: refusal => hLog(`[WARNING] Catalog segment ${refusal.manifestSha256} (blocks ${refusal.startBlock}-${refusal.endBlock})`
                     + ` disagrees with this indexer's ABI commits and is not adopted: ${refusal.message}`),
@@ -1004,6 +1007,7 @@ export class HyperionMaster {
         this.protocolStoreRotationInFlight = true;
         (async () => {
             const control = await coordinator.inspect();
+            if (rotation.drop_previous) await this.dropOrphanedStoreGenerations(control);
             if (control.previousStore) {
                 const retired = await coordinator.retirePreviousStore(rotation.retire_margin_blocks ?? 1024, rotation.retire_after_ms ?? 600000);
                 if (retired === undefined) return;
@@ -1027,6 +1031,27 @@ export class HyperionMaster {
             }
         })().catch(error => hLog('Proof store rotation step failed and will retry:', error instanceof Error ? error.message : String(error)))
             .finally(() => { this.protocolStoreRotationInFlight = false; });
+    }
+
+    /**
+     * Drop every proof store generation older than the current one that control no longer reads. Retirement is a
+     * durable control update but the delete that follows is not, so a restart in between leaves indices this
+     * sweep removes on the next check.
+     */
+    private async dropOrphanedStoreGenerations(control: Awaited<ReturnType<ProtocolAbiCoordinator['inspect']>>): Promise<void> {
+        const current = control.storeGeneration ?? 0, kept = control.previousStore?.generation;
+        // Chain names are [a-z0-9_.-]: only the dot needs escaping.
+        const pattern = new RegExp('^' + this.chain.split('.').join('[.]')
+            + '-protocol-(?:abi-frontier-records|abi-observations|source-bindings|native-actions)-v1(?:-g([0-9]+))?$');
+        const rows: any = await this.esClient.cat.indices({index: this.chain + '-protocol-*', format: 'json', h: 'index'} as any);
+        const orphaned = (rows as any[]).map(row => String(row.index)).filter(index => {
+            const match = pattern.exec(index); if (!match) return false;
+            const generation = match[1] === undefined ? 0 : Number(match[1]);
+            return generation < current && generation !== kept;
+        });
+        if (!orphaned.length) return;
+        await this.esClient.indices.delete({index: orphaned, ignore_unavailable: true});
+        hLog(`Dropped proof store indices of generations no longer read: ${orphaned.join(', ')}`);
     }
 
     /** Keep settling while there is a backlog, instead of one step per interval. */

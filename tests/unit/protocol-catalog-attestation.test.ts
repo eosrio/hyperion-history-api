@@ -186,6 +186,10 @@ test('a store rotation rebuilds the chain in a new generation above a settled an
     expect(after.head!.blockNum).toBe(10);expect(after.head!.blockId).toBe(before.head!.blockId);expect(after.head!.commitId).not.toBe(before.head!.commitId);
     expect(f.memory.mappings.has(f.chain+'-protocol-abi-frontier-records-v1-g1')).toBe(true);
     expect(f.store.recordsIndex).toBe(f.chain+'-protocol-abi-frontier-records-v1-g1');
+    // The new generation was fully prepared before control named it: its indices and the head's certificate exist.
+    for(const kind of ['source-bindings','abi-observations'])expect(f.memory.mappings.has(f.chain+'-protocol-'+kind+'-v1-g1'),kind).toBe(true);
+    const switched=await f.coordinator.inspect(),{protocolAbiCertificateForControl}=await import('../../src/indexer/protocol/abi-proof.js');
+    expect(await f.store.readCertificate(f.store.certificateId(protocolAbiCertificateForControl(switched)))).toEqual(protocolAbiCertificateForControl(switched));
     // A second rotation waits for the previous generation to be retired.
     expect(await f.coordinator.rotateStores()).toBe(false);
 
@@ -195,6 +199,9 @@ test('a store rotation rebuilds the chain in a new generation above a settled an
     const options=readerOptions(f,reading);
     const reader=new ProtocolAbiProofReader({chainId,profile,store:f.store.asReadOnly(),diskHistory:options});
     const covered=await reader.open(f.sources[6].source,f.sources[6].selected);expect(covered.certificateId).toBe(options.catalog.catalogId);
+    // A read-only reader found block 6's selection in generation 0 and copied nothing forward.
+    const bindingsG1=f.chain+'-protocol-source-bindings-v1-g1',manifestIn=(index:string,id:string)=>f.memory.documents.has(index+' '+id);
+    expect(manifestIn(bindingsG1,f.sources[6].selected)).toBe(false);
     for(const n of [9,10]){
         const view=await reader.open(f.sources[n].source,f.sources[n].selected);
         expect(view.certificateId).not.toBe(options.catalog.catalogId);
@@ -212,6 +219,8 @@ test('a store rotation rebuilds the chain in a new generation above a settled an
         observation:{status:'observed',facts:{schemaVersion:1,actionInputs:[input(sequenceAt(n))],deployments:[],finalStates:[]}}});
     await f.bindings.prepareObservationLink({schemaVersion:1,selectionId:selected,observationId:prepared.id,observationDigest:prepared.digest});
     expect(f.observations.index).toBe(f.chain+'-protocol-abi-observations-v1-g1');
+    // The writable pipeline read its source context from generation 0 and carried it forward.
+    expect(manifestIn(bindingsG1,contextId)).toBe(true);
     await f.coordinator.admit(selected,(await f.coordinator.inspect()).generation);await f.coordinator.drain();
     expect((await f.coordinator.inspect()).head!.blockNum).toBe(11);
     const latest=await reader.open(source,selected);expect((await reader.action(latest,input(sequenceAt(n)))).state.abiHex).toBe('bb');
@@ -226,6 +235,9 @@ test('a store rotation rebuilds the chain in a new generation above a settled an
     expect(await f.coordinator.retirePreviousStore(0,0)).toBe(0);
     const retired=await f.coordinator.inspect();expect(retired.previousStore).toBeUndefined();expect(retired.storeGeneration).toBe(1);
     expect(f.store.generations.known()).toEqual({current:1,previous:null});
+    // With generation 0 no longer read, the context and the new block's selection still resolve.
+    const readOnly=new ProtocolSourceBindingStore(f.memory.client as any,f.chain,0,{readOnly:true});
+    expect((await readOnly.readSelection(selected)).context.chainId).toBe(chainId);
 
     // A restarted owner keeps the rotated chain: its anchor validates against the catalog at block 8.
     const fresh=new DiskAbiHistoryCatalog(f.g.config,chainId,profile);catalogs.add(fresh);

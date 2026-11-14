@@ -183,6 +183,12 @@ export class ImmutableProtocolBundleStore {
         }
     }
 
+    /** Create and check this store's index now, before anything reads or writes it. Writable stores only. */
+    async ensureIndex(signal?: AbortSignal): Promise<void> {
+        if (this.options.readOnly) throw new Error('Read-only protocol bundles cannot provision an index');
+        await this.initialize(signal, true);
+    }
+
     private async provision(signal?: AbortSignal) {
         try {
             const created = await checkedIo(signal, () => this.client.indices.create({index: this.index,
@@ -756,7 +762,7 @@ let followingGenerations = false;
  * Indexer processes of a deployment that rotates its proof stores call this once: writes then read control when
  * their known generation is stale. Elsewhere generations change only through control reads a store already makes.
  */
-export function followProtocolStoreGenerations(): void {followingGenerations = true;}
+export function followProtocolStoreGenerations(enabled = true): void {followingGenerations = enabled;}
 const validGeneration = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) >= 0 && Number(value) <= 1_000_000;
 
 /**
@@ -828,10 +834,15 @@ const missingRecord = (error: unknown) => (error instanceof ImmutableProtocolBun
  * The bundle store of one proof store across generations. Writes go to the current generation. A read that finds
  * no record there reads the previous generation; corrupt or incomplete records never fall back. Records are
  * immutable and their ids name their content, so a record found in either generation is the same record.
+ *
+ * A writable store copies a record it finds only in the previous generation into the current one. Records that
+ * outlive a block, such as a reader session's source context, are then carried forward by the pipeline that keeps
+ * using them, before the previous generation is retired. Read-only stores never write.
  */
 export class GenerationalProtocolBundleStore {
     private readonly stores = new Map<number, ImmutableProtocolBundleStore>();
-    constructor(readonly generations: ProtocolStoreGenerations, private readonly make: (generation: number) => ImmutableProtocolBundleStore) {}
+    constructor(readonly generations: ProtocolStoreGenerations, private readonly make: (generation: number) => ImmutableProtocolBundleStore,
+                private readonly writable = false) {}
     at(generation: number): ImmutableProtocolBundleStore {
         let store = this.stores.get(generation);
         if (!store) {store = this.make(generation); this.stores.set(generation, store);}
@@ -839,15 +850,30 @@ export class GenerationalProtocolBundleStore {
     }
     /** The current generation's index, as last observed. */
     get index(): string {return this.at(this.generations.known().current).index;}
+    /** Create one generation's index ahead of a switch to it, so readers never meet a generation without one. */
+    provisionGeneration(generation: number): Promise<void> {return this.at(generation).ensureIndex();}
     private async writer() {return this.at((await this.generations.resolve()).current);}
-    /** Reads never wait for control; a miss under a stale state refreshes it and reads once more. */
-    private async fallback<T>(read: (store: ImmutableProtocolBundleStore) => Promise<T>, refreshed = false): Promise<T> {
-        const {current, previous} = this.generations.known();
-        try {return await read(this.at(current));}
+    /** Copy records found only in the previous generation forward. A failed copy never fails the read; the next read retries it. */
+    private async promote(records: readonly (readonly [string, unknown])[]): Promise<void> {
+        if (!this.writable || !records.length) return;
+        try {const store = await this.writer(); for (const [id, record] of records) await store.prepare(id, record);}
+        catch {/* The record is still read from the previous generation until a later read copies it. */}
+    }
+    /**
+     * The generations a read uses. A process that follows generations refreshes a stale state first, so a fresh
+     * process never reads (and, being writable, creates) the index of a generation that was already dropped.
+     * Elsewhere reads use what is known and refresh only on a miss.
+     */
+    private async readable(): Promise<ProtocolStoreGenerationState> {
+        return this.generations.stale() ? this.generations.resolve() : this.generations.known();
+    }
+    private async fallback<T>(read: (store: ImmutableProtocolBundleStore) => Promise<T>, refreshed = false): Promise<{value: T; previous: boolean}> {
+        const {current, previous} = await this.readable();
+        try {return {value: await read(this.at(current)), previous: false};}
         catch (error) {
             if (!missingRecord(error)) throw error;
             if (previous !== null) {
-                try {return await read(this.at(previous));}
+                try {return {value: await read(this.at(previous)), previous: true};}
                 catch (second) {if (!missingRecord(second)) throw second;}
             }
             if (refreshed || !this.generations.stale()) throw error;
@@ -858,23 +884,31 @@ export class GenerationalProtocolBundleStore {
     }
     async prepare(...args: Parameters<ImmutableProtocolBundleStore['prepare']>): Promise<FreshBundlePrepare> {return (await this.writer()).prepare(...args);}
     async prepareMany(...args: Parameters<ImmutableProtocolBundleStore['prepareMany']>): Promise<FreshBundlePrepare[]> {return (await this.writer()).prepareMany(...args);}
-    read(...args: Parameters<ImmutableProtocolBundleStore['read']>): Promise<unknown> {return this.fallback(store => store.read(...args));}
-    readPreparedMany(...args: Parameters<ImmutableProtocolBundleStore['readPreparedMany']>): Promise<unknown[]> {
-        return this.fallback(store => store.readPreparedMany(...args));
+    async read(id: string, signal?: AbortSignal, digest?: string): Promise<unknown> {
+        const {value, previous} = await this.fallback(store => store.read(id, signal, digest));
+        if (previous) await this.promote([[id, value]]);
+        return value;
+    }
+    async readPreparedMany(...args: Parameters<ImmutableProtocolBundleStore['readPreparedMany']>): Promise<unknown[]> {
+        return (await this.fallback(store => store.readPreparedMany(...args))).value;
     }
     /** All-or-nothing per generation; a mixed batch is read record by record, each with its own fallback. */
     private async many(input: readonly string[], read: (store: ImmutableProtocolBundleStore, ids: readonly string[]) => Promise<unknown[]>): Promise<unknown[]> {
-        const {current, previous} = this.generations.known();
+        const {current, previous} = await this.readable();
         try {return await read(this.at(current), input);}
         catch (error) {
             if (!missingRecord(error)) throw error;
             if (previous !== null) {
-                try {return await read(this.at(previous), input);}
+                try {const values = await read(this.at(previous), input); await this.promote(input.map((id, index) => [id, values[index]] as const)); return values;}
                 catch (second) {if (!missingRecord(second)) throw second;}
             }
             // Mixed across generations, or under a stale state: record by record, each with its own fallback.
-            const values: unknown[] = [];
-            for (const id of input) values.push((await this.fallback(store => read(store, [id])))[0]);
+            const values: unknown[] = [], promoted: [string, unknown][] = [];
+            for (const id of input) {
+                const found = await this.fallback(store => read(store, [id]));
+                values.push(found.value[0]); if (found.previous) promoted.push([id, found.value[0]]);
+            }
+            await this.promote(promoted);
             return values;
         }
     }
@@ -886,7 +920,7 @@ export class GenerationalProtocolBundleStore {
     }
     /** The first id with a manifest in neither generation. */
     async missingManifestHint(input: readonly string[], signal?: AbortSignal): Promise<string | null> {
-        const {current, previous} = this.generations.known();
+        const {current, previous} = await this.readable();
         const hint = async (generation: number, ids: readonly string[]) => {
             try {return await this.at(generation).missingManifestHint(ids, signal);}
             catch (error) {if (missingRecord(error)) return ids[0]!; throw error;}

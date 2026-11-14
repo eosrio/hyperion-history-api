@@ -62,11 +62,13 @@ export function protocolAbiObservationEvidence(record:ProtocolAbiObservationReco
 export class ProtocolAbiObservationStore {
     private readonly bundles:GenerationalProtocolBundleStore;
     get index():string {return this.bundles.index;}
+    /** Create this store's index for a store generation before control switches to it. */
+    provisionGeneration(generation:number):Promise<void> {return this.bundles.provisionGeneration(generation);}
 
     constructor(client:Client,chain:string,replicas=0,
                 bounds={chunkBytes:512*1024,maximumBytes:128*1024*1024,maximumChunks:256},options:{readOnly?:boolean;metadataReadBoundMs?:number}={}) {
         this.bundles=new GenerationalProtocolBundleStore(protocolStoreGenerations(client,chain,replicas),generation=>new ImmutableProtocolBundleStore(client,chain,replicas,
-            'protocol-abi-observations',protocolStoreIndexSuffix('protocol-abi-observations-v1',generation),bounds,options));
+            'protocol-abi-observations',protocolStoreIndexSuffix('protocol-abi-observations-v1',generation),bounds,options),options.readOnly!==true);
     }
 
     async prepare(record:ProtocolAbiObservationRecord):Promise<{id:string;digest:string}> {

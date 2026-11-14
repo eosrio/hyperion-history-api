@@ -282,16 +282,22 @@ original names) once they hold `max_bytes`:
 the settled block into the new generation. It then replays the live chain's own selections above it. The live
 chain keeps serving and advancing meanwhile, and nothing is read again from the node.
 
-**Switching.** When the new chain reaches the live head, one control update on the serial lane switches
-readers and writers to it. Readers may see one `authority_changed` retry; no read fails.
+**Switching.** Before the switch, the new generation is fully prepared: all four of its indices exist, and the
+certificate of the head the switch will name is stored. When the new chain reaches the live head, one control
+update on the serial lane switches readers and writers to it. Readers may see one `authority_changed` retry;
+no read fails.
 
 **Reading across generations.** A record missing in the current generation is read from the previous one, so
-documents written against it still prove. A writer observes a switch within one second.
+documents written against it still prove. A writable store copies such a record into the current generation,
+so records that outlive a block, such as a reader session's source context, move forward with the pipeline
+that uses them. Indexer processes refresh a state older than one second before they read or write, so they
+observe a switch within that bound, and a fresh process never touches a dropped generation.
 
 **Retiring.** Once settling is `retire_margin_blocks` past the switch block and the switch is `retire_after_ms`
 old, no document can reference the previous generation, and it is retired.
 
-**Deleting.** With `drop_previous`, the indexer then deletes its four indices. Without it, it logs their names
-for an operator to delete.
+**Deleting.** With `drop_previous`, the indexer then deletes its four indices, and each check also deletes the
+indices of any older generation that control no longer reads (left behind by a restart after retirement).
+Without it, it logs their names for an operator to delete.
 
 **Restarts.** A restart keeps the rotated chain: its anchor validates against the catalog at that link end.
