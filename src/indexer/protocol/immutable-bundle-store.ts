@@ -756,7 +756,7 @@ let followingGenerations = false;
  * Indexer processes of a deployment that rotates its proof stores call this once: writes then read control when
  * their known generation is stale. Elsewhere generations change only through control reads a store already makes.
  */
-export function followProtocolStoreGenerations(): void {followingGenerations = true;}
+export function followProtocolStoreGenerations(enabled = true): void {followingGenerations = enabled;}
 const validGeneration = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) >= 0 && Number(value) <= 1_000_000;
 
 /**
@@ -851,9 +851,16 @@ export class GenerationalProtocolBundleStore {
         try {const store = await this.writer(); for (const [id, record] of records) await store.prepare(id, record);}
         catch {/* The record is still read from the previous generation until a later read copies it. */}
     }
-    /** Reads never wait for control; a miss under a stale state refreshes it and reads once more. */
+    /**
+     * The generations a read uses. A process that follows generations refreshes a stale state first, so a fresh
+     * process never reads (and, being writable, creates) the index of a generation that was already dropped.
+     * Elsewhere reads use what is known and refresh only on a miss.
+     */
+    private async readable(): Promise<ProtocolStoreGenerationState> {
+        return this.generations.stale() ? this.generations.resolve() : this.generations.known();
+    }
     private async fallback<T>(read: (store: ImmutableProtocolBundleStore) => Promise<T>, refreshed = false): Promise<{value: T; previous: boolean}> {
-        const {current, previous} = this.generations.known();
+        const {current, previous} = await this.readable();
         try {return {value: await read(this.at(current)), previous: false};}
         catch (error) {
             if (!missingRecord(error)) throw error;
@@ -879,7 +886,7 @@ export class GenerationalProtocolBundleStore {
     }
     /** All-or-nothing per generation; a mixed batch is read record by record, each with its own fallback. */
     private async many(input: readonly string[], read: (store: ImmutableProtocolBundleStore, ids: readonly string[]) => Promise<unknown[]>): Promise<unknown[]> {
-        const {current, previous} = this.generations.known();
+        const {current, previous} = await this.readable();
         try {return await read(this.at(current), input);}
         catch (error) {
             if (!missingRecord(error)) throw error;
@@ -905,7 +912,7 @@ export class GenerationalProtocolBundleStore {
     }
     /** The first id with a manifest in neither generation. */
     async missingManifestHint(input: readonly string[], signal?: AbortSignal): Promise<string | null> {
-        const {current, previous} = this.generations.known();
+        const {current, previous} = await this.readable();
         const hint = async (generation: number, ids: readonly string[]) => {
             try {return await this.at(generation).missingManifestHint(ids, signal);}
             catch (error) {if (missingRecord(error)) return ids[0]!; throw error;}
