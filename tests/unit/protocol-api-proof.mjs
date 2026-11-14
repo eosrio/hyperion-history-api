@@ -74,7 +74,7 @@ const action = (occurrence = facts.actionInputs[0], data = {value: 7, enrichment
     act: {account: occurrence.account, name: occurrence.name, authorization: [], data},
     receipts: [{receiver: occurrence.receiver, recv_sequence: '1', global_sequence: occurrence.globalSequence, auth_sequence: []}],
     protocol: {schemaVersion: 1, source: structuredClone(bound.source), selectionId: bound.selectionId, input: structuredClone(occurrence)}});
-const responseCache = new Map(); let current = action(), transactionCache = {}, searches = 0;
+const responseCache = new Map(), deleted = []; let current = action(), transactionCache = {}, searches = 0;
 const cacheAction = value => ({[value.global_sequence]: JSON.stringify(value)});
 const complete = value => ({took: 1, timed_out: false, _shards: {total: 1, successful: 1, failed: 0, skipped: 0},
     hits: {total: {value: value.length, relation: 'eq'}, hits: value.map(_source => ({_source: structuredClone(_source)}))}});
@@ -89,7 +89,8 @@ app.decorate('elastic', {...memory.client, search: async query => {
 }});
 app.decorate('redis', {get: async key => responseCache.get(key) ?? null,
     set: async (key, value) => {responseCache.set(key, value); return 'OK';},
-    hgetall: async key => {assert.equal(key, `trx_seq_v1:${chain}:${transactionId}`); return transactionCache;}, ttl: async () => 60});
+    hgetall: async key => {assert.equal(key, `trx_seq_v1:${chain}:${transactionId}`); return transactionCache;}, ttl: async () => 60,
+    del: async key => {deleted.push(key); if (key === `trx_seq_v1:${chain}:${transactionId}`) transactionCache = {}; else responseCache.delete(key); return 1;}});
 app.decorate('antelope', {chain: {get_info: async () => ({last_irreversible_block_num: {toNumber: () => 99}})},
     getAbi: async () => {throw new Error('API attempted a head ABI fallback');}});
 app.decorate('allowedActionQueryParamSet', new Set());
@@ -115,6 +116,12 @@ try {
     assert.equal(writes(), before, 'An API proof consumer wrote/repaired coordinator storage');
     const searchBefore = searches, cached = await request(); assert.equal(cached.statusCode, 200, cached.body); assert.equal(searches, searchBefore);
     assert([...responseCache.values()].some(value => value.includes('_hyperion_protocol_abi_v3')));
+    // A response-cache entry whose evidence no longer opens is dropped, and the source answers instead of a 503.
+    const [cachedKey, cachedValue] = [...responseCache.entries()].find(([, value]) => value.includes('_hyperion_protocol_abi_v3'));
+    const corrupted = JSON.parse(cachedValue); corrupted._hyperion_protocol_abi_v3.proofSha256 = '0'.repeat(64);
+    responseCache.set(cachedKey, JSON.stringify(corrupted)); const searchesStale = searches;
+    const refreshed = await request(); assert.equal(refreshed.statusCode, 200, refreshed.body); assert.equal(searches, searchesStale + 1);
+    assert(deleted.includes(cachedKey)); assert(!responseCache.get(cachedKey).includes('"proofSha256":"' + '0'.repeat(64)));
     // Tampered rendered JSON and exact original anchors/raw hashes cannot borrow a valid ABI.
     for (const mutate of [value => {value.act.data.value = 8;}, value => {value.protocol.input.rawHex = '08000000';},
         value => {value.protocol.input.globalSequence = String(Number(value.protocol.input.globalSequence));},
@@ -154,12 +161,18 @@ try {
         }
     }
     // Both transaction Redis paths validate original occurrences before grouping or serving JSON.
+    // An entry that does not prove is never served: it is dropped and the source documents answer.
     for (const version of [1, 2]) {
         responseCache.clear(); transactionCache = cacheAction(action());
         const response = await transaction(version); assert.equal(response.statusCode, 200, response.body);
         assert(!response.body.includes('inputActionOrdinal')); assert(!response.body.includes('_hyperion_protocol_abi'));
         responseCache.clear(); const bad = action(); bad.protocol.input.rawHex = '08000000'; transactionCache = cacheAction(bad);
-        const refused = await transaction(version); assert.equal(refused.statusCode, 503, refused.body);
+        deleted.length = 0; const searchesBad = searches;
+        const replaced = await transaction(version); assert.equal(replaced.statusCode, 200, replaced.body);
+        assert.deepEqual(deleted, [`trx_seq_v1:${chain}:${transactionId}`]); assert.equal(searches, searchesBad + 1);
+        // When the source is just as stale, the reply stays unavailable.
+        responseCache.clear(); transactionCache = cacheAction(bad); const source = current; current = bad;
+        const refused = await transaction(version); assert.equal(refused.statusCode, 503, refused.body); current = source;
         responseCache.clear(); const raw = action(facts.actionInputs[0], facts.actionInputs[0].rawHex); delete raw.protocol;
         transactionCache = cacheAction(raw);
         const retained = await transaction(version); assert.equal(retained.statusCode, 200, retained.body);
