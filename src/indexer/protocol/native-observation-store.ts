@@ -130,7 +130,7 @@ export class ProtocolNativeObservationStore {
         this.bounds={...bounds};this.readOnly=options.readOnly===true;
         const {metadataReadBoundMs,rememberRecords}=options;this.reads={metadataReadBoundMs,rememberRecords};
         this.bundles=new GenerationalProtocolBundleStore(protocolStoreGenerations(client,chain,replicas),generation=>new ImmutableProtocolBundleStore(client,chain,replicas,
-            'protocol-native-actions',protocolStoreIndexSuffix('protocol-native-actions-v1',generation),bounds,{readOnly:this.readOnly,metadataReadBoundMs}));
+            'protocol-native-actions',protocolStoreIndexSuffix('protocol-native-actions-v1',generation),bounds,{readOnly:this.readOnly,metadataReadBoundMs}),!this.readOnly);
         this.sources=new ProtocolSourceBindingStore(client,chain,replicas,{readOnly:true,metadataReadBoundMs,rememberRecords});
         this.abis=new ProtocolAbiObservationStore(client,chain,replicas,undefined,{readOnly:true,metadataReadBoundMs});
         this.index=this.bundles.index;

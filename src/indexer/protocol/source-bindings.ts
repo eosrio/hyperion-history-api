@@ -162,7 +162,7 @@ export class ProtocolSourceBindingStore {
     constructor(client:Client,chain:string,replicas=0,options:{readOnly?:boolean;metadataReadBoundMs?:number;rememberRecords?:boolean}={}) {
         const {rememberRecords,...bundleOptions}=options;
         this.bundles=new GenerationalProtocolBundleStore(protocolStoreGenerations(client,chain,replicas),generation=>new ImmutableProtocolBundleStore(client,chain,replicas,
-            'protocol-source-bindings',protocolStoreIndexSuffix('protocol-source-bindings-v1',generation),undefined,bundleOptions));
+            'protocol-source-bindings',protocolStoreIndexSuffix('protocol-source-bindings-v1',generation),undefined,bundleOptions),options.readOnly!==true);
         if(rememberRecords===true)this.remembered=new ProtocolImmutableRecordMemo(16*1024*1024);
     }
     async prepareContext(input:ProtocolSourceContext):Promise<{id:string}> {

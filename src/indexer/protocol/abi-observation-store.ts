@@ -66,7 +66,7 @@ export class ProtocolAbiObservationStore {
     constructor(client:Client,chain:string,replicas=0,
                 bounds={chunkBytes:512*1024,maximumBytes:128*1024*1024,maximumChunks:256},options:{readOnly?:boolean;metadataReadBoundMs?:number}={}) {
         this.bundles=new GenerationalProtocolBundleStore(protocolStoreGenerations(client,chain,replicas),generation=>new ImmutableProtocolBundleStore(client,chain,replicas,
-            'protocol-abi-observations',protocolStoreIndexSuffix('protocol-abi-observations-v1',generation),bounds,options));
+            'protocol-abi-observations',protocolStoreIndexSuffix('protocol-abi-observations-v1',generation),bounds,options),options.readOnly!==true);
     }
 
     async prepare(record:ProtocolAbiObservationRecord):Promise<{id:string;digest:string}> {

@@ -104,7 +104,7 @@ export class ProtocolAbiFrontierStore {
             :protocolStoreGenerations(client,chain,replicas);
         this.bundles=new GenerationalProtocolBundleStore(this.generations,generation=>new ImmutableProtocolBundleStore(client,chain,replicas,
             'protocol-abi-frontier-records',protocolStoreIndexSuffix('protocol-abi-frontier-records-v1',generation),undefined,
-            {readOnly:options.readOnly,rejectLifecycle:true,metadataReadBoundMs:options.metadataReadBoundMs}));
+            {readOnly:options.readOnly,rejectLifecycle:true,metadataReadBoundMs:options.metadataReadBoundMs}),options.readOnly!==true&&options.generation===undefined);
         if(options.generation===undefined)this.generations.refresher??=async()=>{await this.readControl();};
         this.metadata=new ProtocolMetadataFreshness(options.metadataReadBoundMs);
     }
