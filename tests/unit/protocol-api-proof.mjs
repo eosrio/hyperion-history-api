@@ -253,8 +253,10 @@ try {
     const nullableResponse = await v2(); assert.equal(nullableResponse.statusCode, 200, nullableResponse.body);
     assert.equal(nullableResponse.json().actions[0].act.data, null);
     await append(3, optionalFacts, 30, 20);
-    const staleNull = await v2(); assert.equal(staleNull.statusCode, 503, 'Cached derived null bypassed a fork fence: ' + staleNull.body);
+    // The entry is taken before the fork's request, which drops it: a stale entry is never kept, nor served.
     const cachedNullEntry = [...responseCache.entries()].find(([, value]) => JSON.parse(value).actions?.[0]?.act?.data === null);
+    const staleNull = await v2(); assert.equal(staleNull.statusCode, 503, 'Cached derived null bypassed a fork fence: ' + staleNull.body);
+    assert(!responseCache.has(cachedNullEntry[0]), 'A stale cached response was kept');
     const legacyNull = JSON.parse(cachedNullEntry[1]);
     legacyNull._hyperion_protocol_abi_v1 = {...legacyNull._hyperion_protocol_abi_v3, actions: []}; delete legacyNull._hyperion_protocol_abi_v3;
     responseCache.set(cachedNullEntry[0], JSON.stringify(legacyNull));

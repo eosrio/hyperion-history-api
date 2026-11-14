@@ -49,6 +49,7 @@ async function api(source, selected = source.selected) {
                 query_timeout: '10s', limits: {get_actions: 100, get_trx_actions: 100}, stream_scroll_batch: 100}}});
     app.decorate('elastic', proxy);
     app.decorate('redis', {get: async key => cache.get(key) ?? null, set: async (key, value) => {cache.set(key, value); return 'OK';},
+        del: async key => cache.delete(key) ? 1 : 0,
         hgetall: async () => Object.fromEntries(rows.map(row => [row.global_sequence, JSON.stringify(row)])), ttl: async () => 60});
     app.decorate('antelope', {chain: {get_info: async () => ({last_irreversible_block_num: {valueOf: () => 999, toNumber: () => 999}})},
         getAbi: async () => {throw new Error('Native API attempted a head ABI lookup');}});
@@ -181,8 +182,10 @@ try {
     const cacheEntry = [...consumer.cache.entries()].find(([, raw]) => JSON.parse(raw)._hyperion_protocol_abi_v3);
     assert(cacheEntry); const cacheValue = JSON.parse(cacheEntry[1]); assert.equal(cacheValue._hyperion_protocol_abi_v3.schemaVersion, 2);
     cacheValue._hyperion_protocol_abi_v3.actions[0].value = {};
-    consumer.cache.set(cacheEntry[0], JSON.stringify(cacheValue));
-    const badCache = await consumer.request(); assert.equal(badCache.statusCode, 503, badCache.body);
+    consumer.cache.set(cacheEntry[0], JSON.stringify(cacheValue)); let beforeBad = consumer.searches;
+    // A cached entry whose checked value does not prove is never served: it is dropped and the source answers.
+    const badCache = await consumer.request(); assert.equal(badCache.statusCode, 200, badCache.body);
+    assert(consumer.searches > beforeBad); assert.deepEqual(badCache.json().actions[0].act.data, row.act.data);
     const refreshCapsuleHash = capsule => {capsule.proofSha256 = createHash('sha256').update(JSON.stringify([
         capsule.schemaVersion, capsule.bodySha256, capsule.actions, capsule.nodeResponse === true])).digest('hex');};
     // The ordinary integrity digest catches edits to entries, version, and node-response authority.
@@ -198,7 +201,9 @@ try {
         consumer.setRows([row]); assert.equal((await consumer.request()).statusCode, 200);
         const [key, raw] = [...consumer.cache.entries()].find(([, value]) => JSON.parse(value)._hyperion_protocol_abi_v3);
         const value = JSON.parse(raw); mutate(value._hyperion_protocol_abi_v3); consumer.cache.set(key, JSON.stringify(value));
-        const refused = await consumer.request(); assert.equal(refused.statusCode, 503, refused.body);
+        beforeBad = consumer.searches;
+        const replaced = await consumer.request(); assert.equal(replaced.statusCode, 200, replaced.body);
+        assert(consumer.searches > beforeBad); assert.deepEqual(replaced.json().actions[0].act.data, row.act.data);
     }
     // A downgraded old-format capsule misses and recomputes through current native authority.
     consumer.setRows([row]); assert.equal((await consumer.request()).statusCode, 200);
