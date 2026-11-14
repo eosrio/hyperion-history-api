@@ -8,6 +8,7 @@ import {protectProtocolAction} from '../../../helpers/protocol-abi.js';
 import {searchActions} from '../../../helpers/action-search.js';
 import {normalizeActionSequences} from '../../../../indexer/helpers/action-sequences.js';
 import {parseTransactionSequenceCache, transactionSequenceCacheKey} from '../../../../indexer/helpers/transaction-cache.js';
+import {dropUnavailableCachedEvidence} from '../../../helpers/protocol-proof-request.js';
 
 async function getTransaction(fastify: FastifyInstance, request: FastifyRequest) {
     const redis = fastify.redis;
@@ -30,6 +31,7 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
     };
 
     let hits = parseTransactionSequenceCache(cachedData, trxId);
+    const dropCached = hits ? () => redis.del(cacheKey) : undefined;
 
     // build get_info request with caching
     const $getInfo = new Promise<API.v1.GetInfoResponse | null>(resolve => {
@@ -118,7 +120,8 @@ async function getTransaction(fastify: FastifyInstance, request: FastifyRequest)
         for (let action of hits) {
             if (action._source.block_num === highestBlockNum) {
                 mergeActionMeta(action._source, false, fastify.manager.config.settings?.protocol?.provider === 'extension');
-                await protectProtocolAction(fastify, request, action._source);
+                await protectProtocolAction(fastify, request, action._source)
+                    .catch(async error => {throw await dropUnavailableCachedEvidence(error, dropCached);});
                 rawActions.push(action._source);
             }
         }

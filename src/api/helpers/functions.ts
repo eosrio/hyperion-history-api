@@ -6,7 +6,7 @@ import {Socket} from "socket.io";
 import {checkMetaFilter, hLog} from "../../indexer/helpers/common_functions.js";
 import {StreamActionsRequest, StreamDeltasRequest, StreamTypeMap} from "../../interfaces/stream-requests.js";
 import {isExtensionActionResponse, protectProtocolAction, protocolActionsForStream, protocolResponseForCache, protocolResponseForReturn, validateProtocolCachedResponse} from './protocol-abi.js';
-import {assertProtocolProofRequestActive, createProtocolStreamScope, withProtocolProofTransaction} from './protocol-proof-request.js';
+import {assertProtocolProofRequestActive, createProtocolStreamScope, dropUnavailableCachedEvidence, withProtocolProofTransaction} from './protocol-proof-request.js';
 import {assertCompleteActionSearch, normalizeActionSearchSources} from './action-search.js';
 import {assertProtocolProjectionReady, assertProtocolRouteReady, queryProtocolStateRoute} from './protocol-state-readiness.js';
 import {assertProtocolActionRequestReady, assertProtocolActionStreamReady} from './protocol-action-query.js';
@@ -1047,7 +1047,8 @@ async function timedQueryAttempt(
     }
 
     if (cachedResponse && !query["ignoreCache"] && cachedCountMatchesContract(route, cachedResponse)
-        && await validateProtocolCachedResponse(fastify, request, route, cachedResponse)) {
+        && await validateProtocolCachedResponse(fastify, request, route, cachedResponse)
+            .catch(async error => {throw await dropUnavailableCachedEvidence(error, hash ? () => fastify.redis.del(hash) : undefined);})) {
         return {response: cachedResponse, lastIndexedBlock, lastIndexedBlockNumber, lastIndexedBlockTime};
     }
 

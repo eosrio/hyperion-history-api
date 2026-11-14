@@ -159,7 +159,8 @@ app.decorate('elastic', {...memory.client, search: async query => {
     const result = complete([current]); result._scroll_id = 'next-entrypoint-scroll'; result.hits.total.value = streamTotal;
     nextFault?.(result); return result;
 }, clearScroll: async query => {clearCalls.push(query.scroll_id); return {succeeded: true};}});
-app.decorate('redis', {get: async key => {cacheReads++; return cache.get(key) ?? null;}, set: async (key, data) => {cache.set(key, data); return 'OK';}});
+app.decorate('redis', {get: async key => {cacheReads++; return cache.get(key) ?? null;}, set: async (key, data) => {cache.set(key, data); return 'OK';},
+    del: async key => cache.delete(key) ? 1 : 0});
 app.decorate('antelope', {chain: {get_info: async () => ({last_irreversible_block_num: {toNumber: () => 99, valueOf: () => 99}}),
     get_currency_balance: async (code, account) => {
         if (balancesFail) throw new Error('node unavailable');

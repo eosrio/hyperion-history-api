@@ -13,6 +13,35 @@ interface ProofAttempt {scope: object; key: object; signal: AbortSignal; deadlin
 const attempts = new AsyncLocalStorage<ProofAttempt>();
 export interface ProtocolApiProofReadOptions extends ProtocolAbiProofReadOptions {readonly timeoutMs?: number}
 
+type EvidenceError = ProtocolAbiProofUnavailableError | ProtocolNativeActionUnavailableError;
+const transientEvidenceCodes = new Set(['proof_timeout', 'proof_cancelled', 'authority_changed']);
+
+/** A cached action, transaction or response whose stored evidence no longer opens, after its entry was dropped.
+ * The proof transaction replaces the attempt once, so the reply is proved again from the source documents. */
+export class ProtocolCachedEvidenceUnavailableError extends Error {
+    constructor(readonly evidenceError: EvidenceError) {
+        super('Cached action evidence is unavailable: ' + evidenceError.message);
+        this.name = 'ProtocolCachedEvidenceUnavailableError';
+    }
+}
+
+/** Evidence errors a fresh read from the source can resolve: not a timeout, a cancellation or a retried authority race. */
+export function isCachedEvidenceUnavailable(error: unknown): error is EvidenceError {
+    return (error instanceof ProtocolAbiProofUnavailableError || error instanceof ProtocolNativeActionUnavailableError)
+        && !transientEvidenceCodes.has(error.code) && !isUnsettledCertificate(error);
+}
+
+/**
+ * For an error raised while proving a cache hit: drops the entry and returns the marker that makes the proof
+ * transaction read the source once more. A rewrite or a store replacement leaves cached evidence behind; without
+ * this every hit would answer 503 until the entry expires. Other errors, or a miss (no drop), pass through.
+ */
+export async function dropUnavailableCachedEvidence(error: unknown, drop?: () => Promise<unknown>): Promise<unknown> {
+    if (!drop || !isCachedEvidenceUnavailable(error)) return error;
+    await drop();
+    return new ProtocolCachedEvidenceUnavailableError(error);
+}
+
 function attemptFor(scope: object): ProofAttempt | undefined {
     const attempt = attempts.getStore();
     return attempt?.scope === scope ? attempt : undefined;
@@ -49,7 +78,7 @@ export async function withProtocolProofTransaction<T>(scope: object, operation: 
     const bound = typeof socketTimeout === 'number' && socketTimeout > 0 ? Math.min(timeoutMs, socketTimeout) : timeoutMs;
     // Raw/unproved history keeps its existing ES/cache timeout. The one shared proof
     // clock starts only when a consumer actually demands authority, not on route entry.
-    let deadline: number | undefined, timer: ReturnType<typeof setTimeout> | undefined;
+    let deadline: number | undefined, timer: ReturnType<typeof setTimeout> | undefined, droppedCache = false;
     const startProof = () => {
         if (deadline === undefined) {deadline = performance.now() + bound; timer = setTimeout(expire, bound);}
         return deadline;
@@ -70,6 +99,11 @@ export async function withProtocolProofTransaction<T>(scope: object, operation: 
             }
             catch (error) {
                 lifetime.signal.throwIfAborted();
+                // One replacement reads the source without the dropped entry; a second stale entry is the source's own answer.
+                if (error instanceof ProtocolCachedEvidenceUnavailableError) {
+                    if (droppedCache) throw error.evidenceError;
+                    droppedCache = true; continue;
+                }
                 if (deadline === undefined || !(error instanceof ProtocolAbiProofUnavailableError || error instanceof ProtocolNativeActionUnavailableError)
                     || (error.code !== 'authority_changed' && !isUnsettledCertificate(error))) throw error;
             } finally {
