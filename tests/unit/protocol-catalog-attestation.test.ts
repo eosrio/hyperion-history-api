@@ -69,8 +69,9 @@ async function settled(blocks:number) {
     for(let n=5;n<=4+blocks;n++){
         const source={chainId,blockNum:n,blockId:block(n),previousBlockId:block(n-1)},capture={kind:'unattested-ship-result-sections-v1' as const,
             schemaJson,blockHex:'01',tracesHex:'02',deltasHex:'03'},captureSha256=protocolAbiCaptureDigest(source,capture),action=input(sequenceAt(n));
-        // Block 7 adds an ABI for beta at block end.
-        const finalStates=n===7?[{account:'beta',present:true,abiHex:'cc',deltaOrdinal:0}]:[];
+        // Block 6 first touches gamma, which never had an ABI; block 7 adds an ABI for beta at block end.
+        const finalStates=n===6?[{account:'gamma',present:true,abiHex:'',deltaOrdinal:0}]
+            :n===7?[{account:'beta',present:true,abiHex:'cc',deltaOrdinal:0}]:[];
         const selected=(await bindings.prepareSelection({schemaVersion:1,contextId,readerSessionId:'live-session',readerRole:'live',assignmentId:null,
             source,frameSha256:'e'.repeat(64),captureSha256,head:{blockNum:n,blockId:block(n)},irreversible:{blockNum:n,blockId:block(n)}})).id;
         const prepared=await observations.prepare({schemaVersion:1,protocol:profile,source:{...source,inputSha256:captureSha256},capture,
@@ -111,7 +112,8 @@ test('a segment that disagrees with the commits is refused and never adopted',as
     const cases:[string,(f:Awaited<ReturnType<typeof settled>>)=>Promise<unknown>,RegExp][]=[
         ['other ABI',f=>segment(f.g.segments,f.g.tip,8,[final('beta',7,'dd')]),/beta ends block 7 with another ABI/],
         ['missing record',f=>segment(f.g.segments,f.g.tip,8,[]),/beta changes at block 7 without a catalog record/],
-        ['extra record',f=>segment(f.g.segments,f.g.tip,8,[final('beta',7,'cc'),final('gamma',6,'ee')]),/gamma has a catalog record at block 6/],
+        ['extra record',f=>segment(f.g.segments,f.g.tip,8,[final('beta',7,'cc'),final('delta',6,'ee')]),/delta has a catalog record at block 6/],
+        ['empty account recorded with an ABI',f=>segment(f.g.segments,f.g.tip,8,[final('gamma',6,'ee'),final('beta',7,'cc')]),/gamma ends block 6 with another ABI/],
         ['record at another block',f=>segment(f.g.segments,f.g.tip,8,[final('beta',6,'cc')]),/beta has a catalog record at block 6/],
         ['block id',f=>segment(f.g.segments,f.g.tip,8,[final('beta',7,'cc')],{ids:[block(5),block(66),block(7),block(8)]}),/block 6 id or parent differs/],
         ['global sequence',f=>segment(f.g.segments,f.g.tip,8,[final('beta',7,'cc')],{lastGlobalSequence:sequenceAt(9)}),/last global sequence/],

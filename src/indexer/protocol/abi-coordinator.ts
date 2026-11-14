@@ -1096,9 +1096,9 @@ export class ProtocolAbiCoordinator {
         return this.attestStates.get(stateId)??this.remember(this.attestStates,stateId,
             await this.options.store.readAccountState(stateId) as ProtocolAbiAccountState,4096);
     }
-    /** Accounts whose state differs between two roots, with the state id in the second (null when removed). */
-    private async changedAccounts(before:string|null,after:string|null):Promise<Map<string,string|null>> {
-        const changed=new Map<string,string|null>();if(before===after)return changed;
+    /** Accounts whose state differs between two roots: their state id in each (null where absent). */
+    private async changedAccounts(before:string|null,after:string|null):Promise<Map<string,{was:string|null;is:string|null}>> {
+        const changed=new Map<string,{was:string|null;is:string|null}>();if(before===after)return changed;
         const buckets=async(rootId:string|null):Promise<Record<string,string>>=>rootId===null?{}
             :this.attestRoots.get(rootId)??this.remember(this.attestRoots,rootId,await this.options.store.planRoot(rootId),1024);
         const accounts=async(bucketId:string|undefined,key:string):Promise<Record<string,string>>=>bucketId===undefined?{}
@@ -1107,7 +1107,8 @@ export class ProtocolAbiCoordinator {
         for(const key of new Set([...Object.keys(left),...Object.keys(right)])){
             if(left[key]===right[key])continue;
             const [was,is]=await Promise.all([accounts(left[key],key),accounts(right[key],key)]);
-            for(const account of new Set([...Object.keys(was),...Object.keys(is)]))if(was[account]!==is[account])changed.set(account,is[account]??null);
+            for(const account of new Set([...Object.keys(was),...Object.keys(is)]))
+                if(was[account]!==is[account])changed.set(account,{was:was[account]??null,is:is[account]??null});
         }
         return changed;
     }
@@ -1149,10 +1150,15 @@ export class ProtocolAbiCoordinator {
                 ||commit.previousCommitId!==this.attestChain.get(blockNum-1))disagree('block '+blockNum+' id or parent differs');
             const changed=await this.changedAccounts(parent.stateRootId,commit.stateRootId),recorded=new Set(segment.changedAt(blockNum));
             for(const account of new Set([...changed.keys(),...recorded])){
-                if(!recorded.has(account))disagree('account '+account+' changes at block '+blockNum+' without a catalog record');
                 if(!changed.has(account))disagree('account '+account+' has a catalog record at block '+blockNum+' but its state does not change');
-                const stateId=changed.get(account)!,frontier=stateId===null?null:await this.attestState(stateId);
-                if(shape(frontier)!==shape(segment.finalState(account,blockNum)))disagree('account '+account+' ends block '+blockNum+' with another ABI');
+                const {was,is}=changed.get(account)!,frontier=is===null?null:await this.attestState(is),sealed=segment.finalState(account,blockNum);
+                if(!recorded.has(account)){
+                    // The sealer records no account that only ever held an empty ABI, while the reducer gives such an
+                    // account an empty state on its first touch. Both mean the same: nothing to decode with.
+                    if(was===null&&sealed===null&&frontier?.present===true&&frontier.abiHex==='')continue;
+                    disagree('account '+account+' changes at block '+blockNum+' without a catalog record');
+                }
+                if(shape(frontier)!==shape(sealed))disagree('account '+account+' ends block '+blockNum+' with another ABI');
             }
             for(const binding of commit.bindings){
                 const frontier=binding.stateId===null?null:await this.attestState(binding.stateId);
