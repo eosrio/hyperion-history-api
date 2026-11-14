@@ -1,3 +1,4 @@
+import {followProtocolStoreGenerations} from '../protocol/immutable-bundle-store.js';
 import { Client } from "@elastic/elasticsearch";
 import { EventEmitter } from "events";
 import {queue as asyncQueue} from 'async';
@@ -444,6 +445,7 @@ export abstract class HyperionWorker {
         const cm = new ConfigurationModule();
         this.configModule = cm;
         this.conf = cm.config;
+        if (this.conf.settings?.protocol_abi_history?.rotation) followProtocolStoreGenerations();
 
         const isProfilingEnabled = !!this.conf.settings?.ds_profiling;
         const workerRole = process.env.worker_role || 'unknown';

@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import type {Client} from '@elastic/elasticsearch';
-import {ImmutableProtocolBundleStore,ImmutableProtocolBundleReadError,ProtocolImmutableRecordMemo,ProtocolMetadataFreshness,protocolImmutableJson,
+import {GenerationalProtocolBundleStore,ProtocolStoreGenerations,protocolStoreGenerations,protocolStoreGenerationSource,protocolStoreIndexSuffix,
+    ImmutableProtocolBundleStore,ImmutableProtocolBundleReadError,ProtocolImmutableRecordMemo,ProtocolMetadataFreshness,protocolImmutableJson,
     type ImmutableProtocolBundleExpectation} from './immutable-bundle-store.js';
 export type {ImmutableProtocolBundleExpectation as ProtocolAbiFrontierExpectation} from './immutable-bundle-store.js';
 import {historicalAddressId, historicalAddressIdentity, ProtocolAbiHistoricalAddressReadError,
@@ -82,8 +83,10 @@ export {ProtocolImmutableRecordMemo as ProtocolAbiFrontierRecordMemo};
 /** Physical storage only. The coordinator owns source/profile validation, ownership, generations and readiness. */
 export class ProtocolAbiFrontierStore {
     readonly controlIndex:string;
-    readonly recordsIndex:string;
-    private readonly bundles:ImmutableProtocolBundleStore;
+    /** The records index of the current store generation. */
+    get recordsIndex():string {return this.bundles.index;}
+    readonly generations:ProtocolStoreGenerations;
+    private readonly bundles:GenerationalProtocolBundleStore;
     private provisioned?:Promise<void>;
     private readonly metadata:ProtocolMetadataFreshness;
     private readonly verifiedBuckets=new WeakMap<object,Readonly<Record<string,string>>>();
@@ -92,24 +95,35 @@ export class ProtocolAbiFrontierStore {
     }>();
 
     constructor(private readonly client:Client,private readonly chain:string,private readonly replicas=0,
-                private readonly options:{readOnly?:boolean;recordMemo?:ProtocolImmutableRecordMemo;metadataReadBoundMs?:number}={}) {
+                private readonly options:{readOnly?:boolean;recordMemo?:ProtocolImmutableRecordMemo;metadataReadBoundMs?:number;
+                    /** Write and read exactly this generation's records, whatever control names. The coordinator's new chain only. */
+                    generation?:number}={}) {
         if(!/^[a-z0-9][a-z0-9_.-]{0,120}$/.test(chain)||!Number.isSafeInteger(replicas)||replicas<0)throw new Error('Invalid ABI frontier store configuration');
-        this.controlIndex=chain+'-protocol-abi-frontier-v1';this.recordsIndex=chain+'-protocol-abi-frontier-records-v1';
-        this.bundles=new ImmutableProtocolBundleStore(client,chain,replicas,'protocol-abi-frontier-records','protocol-abi-frontier-records-v1',undefined,
-            {readOnly:options.readOnly,rejectLifecycle:true,metadataReadBoundMs:options.metadataReadBoundMs});
+        this.controlIndex=chain+'-protocol-abi-frontier-v1';
+        this.generations=options.generation!==undefined?new ProtocolStoreGenerations({current:options.generation,previous:null})
+            :protocolStoreGenerations(client,chain,replicas);
+        this.bundles=new GenerationalProtocolBundleStore(this.generations,generation=>new ImmutableProtocolBundleStore(client,chain,replicas,
+            'protocol-abi-frontier-records',protocolStoreIndexSuffix('protocol-abi-frontier-records-v1',generation),undefined,
+            {readOnly:options.readOnly,rejectLifecycle:true,metadataReadBoundMs:options.metadataReadBoundMs}));
+        if(options.generation===undefined)this.generations.refresher??=async()=>{await this.readControl();};
         this.metadata=new ProtocolMetadataFreshness(options.metadataReadBoundMs);
     }
 
     /** Preserve the physical namespace while refusing provisioning and writes. */
     asReadOnly():ProtocolAbiFrontierStore {
         return new ProtocolAbiFrontierStore(this.client,this.chain,this.replicas,{readOnly:true,recordMemo:this.options.recordMemo,
-            metadataReadBoundMs:this.options.metadataReadBoundMs});
+            metadataReadBoundMs:this.options.metadataReadBoundMs,generation:this.options.generation});
     }
 
+    /** A writable handle on exactly one store generation, for building a new chain there before control switches to it. */
+    forGeneration(generation:number):ProtocolAbiFrontierStore {
+        if(this.options.readOnly)throw new Error('Read-only ABI frontier cannot open a generation for writing');
+        return new ProtocolAbiFrontierStore(this.client,this.chain,this.replicas,{metadataReadBoundMs:this.options.metadataReadBoundMs,generation});
+    }
     /** A separate handle for reducing blocks, so only account reads ever skip a store read. Writes, readback and activation keep this store. */
     asAccountReader():ProtocolAbiFrontierStore {
         return new ProtocolAbiFrontierStore(this.client,this.chain,this.replicas,{readOnly:true,recordMemo:new ProtocolImmutableRecordMemo(),
-            metadataReadBoundMs:this.options.metadataReadBoundMs});
+            metadataReadBoundMs:this.options.metadataReadBoundMs,generation:this.options.generation});
     }
 
     /** Control index only: immutable records are checked by their bundle store. */
@@ -161,6 +175,12 @@ export class ProtocolAbiFrontierStore {
         }
     }
 
+    /** Control names the store generations; anything else in it is the coordinator's to validate. */
+    private observeGenerations(value:any):void {
+        if(this.options.generation!==undefined)return;
+        try {this.generations.observe(value?.storeGeneration??0,value?.previousStore?.generation??null);}
+        catch {/* An invalid control record is refused by its readers; the known generations stay as they were. */}
+    }
     private document(value:unknown):{document:ControlDocument;value:unknown} {
         const copy=bounded(value,limits.control),payload=Buffer.from(copy.json);
         return {document:{schemaVersion:1,kind:'control',digest:hash(payload),payload:payload.toString('base64')},value:copy.value};
@@ -187,6 +207,7 @@ export class ProtocolAbiFrontierStore {
         try {value=JSON.parse(bytes.toString('utf8'));}catch{throw new Error('Invalid ABI frontier control JSON');}
         const copy=bounded(value,limits.control);
         if(!Buffer.from(copy.json).equals(bytes))throw new Error('Noncanonical ABI frontier control bytes');
+        this.observeGenerations(copy.value);
         return {value:copy.value,seqNo:response._seq_no,primaryTerm:response._primary_term};
     }
 
@@ -207,7 +228,8 @@ export class ProtocolAbiFrontierStore {
             try {
                 const request={index:this.controlIndex,id:'control',document:desired.document,refresh:false as const,wait_for_active_shards:'all' as const,pipeline:'_none'};
                 const receipt=token===null?await this.client.create(request):await this.client.index({...request,if_seq_no:token.seqNo,if_primary_term:token.primaryTerm});
-                return this.writeToken(receipt,token===null?'created':'updated',desired.value);
+                const written=this.writeToken(receipt,token===null?'created':'updated',desired.value);
+                this.observeGenerations(desired.value);return written;
             } catch(error:any) {
                 if(error?.meta?.statusCode!==409||error?.meta?.body?.error?.type!=='version_conflict_engine_exception')throw error;
             }
@@ -708,4 +730,12 @@ export class ProtocolAbiStatePlan {
 
 function recordKeysMap(value:any,maximum:number,valid:(entry:[string,unknown])=>boolean):boolean {
     return value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length<=maximum&&Object.entries(value).every(valid);
+}
+/** Give a store-less process's generation registry a control reader of its own. */
+export function ensureProtocolStoreGenerationSource(generations:ProtocolStoreGenerations):void {
+    if(generations.refresher)return;
+    const source=protocolStoreGenerationSource(generations);
+    if(!source)throw new Error('Protocol store generations have no control source');
+    const reader=new ProtocolAbiFrontierStore(source.client,source.chain,source.replicas,{readOnly:true});
+    generations.refresher??=async()=>{await reader.readControl();};
 }

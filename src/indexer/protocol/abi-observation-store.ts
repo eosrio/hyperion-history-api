@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import type {Client} from '@elastic/elasticsearch';
-import {ImmutableProtocolBundleStore,protocolImmutableJson} from './immutable-bundle-store.js';
+import {GenerationalProtocolBundleStore,ImmutableProtocolBundleStore,protocolImmutableJson,protocolStoreGenerations,protocolStoreIndexSuffix} from './immutable-bundle-store.js';
 import type {ProtocolComponent} from '@eosrio/hyperion-sdk/protocol';
 import {isProtocolHex} from './hex.js';
 
@@ -60,13 +60,13 @@ export function protocolAbiObservationEvidence(record:ProtocolAbiObservationReco
 
 /** Existing public IDs and payload bytes remain unchanged. */
 export class ProtocolAbiObservationStore {
-    private readonly bundles:ImmutableProtocolBundleStore;
+    private readonly bundles:GenerationalProtocolBundleStore;
     get index():string {return this.bundles.index;}
 
     constructor(client:Client,chain:string,replicas=0,
                 bounds={chunkBytes:512*1024,maximumBytes:128*1024*1024,maximumChunks:256},options:{readOnly?:boolean;metadataReadBoundMs?:number}={}) {
-        this.bundles=new ImmutableProtocolBundleStore(client,chain,replicas,
-            'protocol-abi-observations','protocol-abi-observations-v1',bounds,options);
+        this.bundles=new GenerationalProtocolBundleStore(protocolStoreGenerations(client,chain,replicas),generation=>new ImmutableProtocolBundleStore(client,chain,replicas,
+            'protocol-abi-observations',protocolStoreIndexSuffix('protocol-abi-observations-v1',generation),bounds,options));
     }
 
     async prepare(record:ProtocolAbiObservationRecord):Promise<{id:string;digest:string}> {

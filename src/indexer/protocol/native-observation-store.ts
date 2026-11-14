@@ -4,7 +4,8 @@ import {validateProtocolNativeActionObservations,type ProtocolNativeActionObserv
 import {ProtocolAbiObservationStore,type ProtocolAbiObservationRecord} from './abi-observation-store.js';
 import {ProtocolSourceBindingStore,ProtocolSourceBindingReadError,type ProtocolSourceContext,type ProtocolSourceObservationLink,
     type ProtocolSourcePosition,type ProtocolSourceProfile,type ProtocolSourceSelection} from './source-bindings.js';
-import {ImmutableProtocolBundleStore,ImmutableProtocolBundleReadError,protocolImmutableJson,type ImmutableProtocolBundleBounds} from './immutable-bundle-store.js';
+import {GenerationalProtocolBundleStore,ImmutableProtocolBundleStore,ImmutableProtocolBundleReadError,protocolImmutableJson,protocolStoreGenerations,
+    protocolStoreIndexSuffix,type ImmutableProtocolBundleBounds} from './immutable-bundle-store.js';
 
 export const protocolNativeObservationBounds=Object.freeze({chunkBytes:512*1024,maximumBytes:64*1024*1024,maximumChunks:128});
 export interface ProtocolNativeObservationRecord {
@@ -114,7 +115,7 @@ function normalizeLink(input:unknown,selectionId:string):ProtocolSourceNativeObs
 /** Retained evidence and exact references only; no canonical, native-decoding or readiness authority. */
 export class ProtocolNativeObservationStore {
     readonly index:string;
-    private readonly bundles:ImmutableProtocolBundleStore;
+    private readonly bundles:GenerationalProtocolBundleStore;
     private readonly sources:ProtocolSourceBindingStore;
     private readonly abis:ProtocolAbiObservationStore;
     private readonly bounds:ImmutableProtocolBundleBounds;
@@ -128,7 +129,8 @@ export class ProtocolNativeObservationStore {
         }
         this.bounds={...bounds};this.readOnly=options.readOnly===true;
         const {metadataReadBoundMs,rememberRecords}=options;this.reads={metadataReadBoundMs,rememberRecords};
-        this.bundles=new ImmutableProtocolBundleStore(client,chain,replicas,'protocol-native-actions','protocol-native-actions-v1',bounds,{readOnly:this.readOnly,metadataReadBoundMs});
+        this.bundles=new GenerationalProtocolBundleStore(protocolStoreGenerations(client,chain,replicas),generation=>new ImmutableProtocolBundleStore(client,chain,replicas,
+            'protocol-native-actions',protocolStoreIndexSuffix('protocol-native-actions-v1',generation),bounds,{readOnly:this.readOnly,metadataReadBoundMs}));
         this.sources=new ProtocolSourceBindingStore(client,chain,replicas,{readOnly:true,metadataReadBoundMs,rememberRecords});
         this.abis=new ProtocolAbiObservationStore(client,chain,replicas,undefined,{readOnly:true,metadataReadBoundMs});
         this.index=this.bundles.index;

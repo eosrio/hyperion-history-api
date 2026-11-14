@@ -748,3 +748,160 @@ export class ImmutableProtocolBundleStore {
         return {manifest,payloads,bytes};
     }
 }
+
+/** Which generation of the protocol proof stores is written, and which earlier one is still read. */
+export interface ProtocolStoreGenerationState {readonly current: number; readonly previous: number | null}
+let followingGenerations = false;
+/**
+ * Indexer processes of a deployment that rotates its proof stores call this once: writes then read control when
+ * their known generation is stale. Elsewhere generations change only through control reads a store already makes.
+ */
+export function followProtocolStoreGenerations(): void {followingGenerations = true;}
+const validGeneration = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) >= 0 && Number(value) <= 1_000_000;
+
+/**
+ * One per Elasticsearch client and chain. The ABI coordinator's control record names the generations, and every
+ * read of it observes them here. A write that has not seen control for `freshnessMs` reads it first, so writes
+ * reach a new generation within that bound after a switch; reads use what is known and refresh only on a miss.
+ * The previous generation is dropped far later than this bound.
+ */
+export class ProtocolStoreGenerations {
+    static readonly freshnessMs = 1000;
+    private state: ProtocolStoreGenerationState = {current: 0, previous: null};
+    private observedAt = 0;
+    private refreshing?: Promise<void>;
+    /** Reads control and observes it. Registered by the frontier store; absent until one exists in this process. */
+    refresher?: () => Promise<void>;
+    constructor(private readonly fixed?: ProtocolStoreGenerationState) {
+        if (fixed && (!validGeneration(fixed.current) || (fixed.previous !== null && !validGeneration(fixed.previous))))
+            throw new Error('Invalid fixed protocol store generation');
+    }
+    observe(current: number, previous: number | null): void {
+        if (this.fixed) return;
+        if (!validGeneration(current) || (previous !== null && (!validGeneration(previous) || previous >= current)))
+            throw new Error('Invalid protocol store generations');
+        this.state = Object.freeze({current, previous}); this.observedAt = Date.now();
+    }
+    /** The last observed state, without I/O. */
+    known(): ProtocolStoreGenerationState {return this.fixed ?? this.state;}
+    /** Whether the known state is older than the freshness bound. */
+    stale(): boolean {return !this.fixed && followingGenerations && Date.now() - this.observedAt > ProtocolStoreGenerations.freshnessMs;}
+    /** The known state, read from control first when it is stale. */
+    async resolve(): Promise<ProtocolStoreGenerationState> {
+        if (this.fixed) return this.fixed;
+        if (this.stale()) {
+            if (!this.refresher) {
+                // Lazily, so this module never imports the frontier store at load time.
+                const {ensureProtocolStoreGenerationSource} = await import('./abi-frontier-store.js');
+                ensureProtocolStoreGenerationSource(this);
+            }
+            this.refreshing ??= this.refresher!().finally(() => {this.refreshing = undefined;});
+            await this.refreshing;
+        }
+        return this.state;
+    }
+}
+const generationRegistries = new WeakMap<object, Map<string, ProtocolStoreGenerations>>();
+const generationSources = new WeakMap<ProtocolStoreGenerations, {client: Client; chain: string; replicas: number}>();
+/** The shared generation state of one chain's proof stores on one client. */
+export function protocolStoreGenerations(client: Client, chain: string, replicas = 0): ProtocolStoreGenerations {
+    let byChain = generationRegistries.get(client);
+    if (!byChain) {byChain = new Map(); generationRegistries.set(client, byChain);}
+    let value = byChain.get(chain);
+    if (!value) {value = new ProtocolStoreGenerations(); byChain.set(chain, value); generationSources.set(value, {client, chain, replicas});}
+    return value;
+}
+/** Where a registry reads control from, for a process that has no frontier store of its own. */
+export function protocolStoreGenerationSource(generations: ProtocolStoreGenerations): {client: Client; chain: string; replicas: number} | undefined {
+    return generationSources.get(generations);
+}
+/** Generation 0 keeps the original index names, so existing stores need no migration. */
+export function protocolStoreIndexSuffix(suffix: string, generation: number): string {
+    if (!validGeneration(generation)) throw new Error('Invalid protocol store generation');
+    return generation === 0 ? suffix : `${suffix}-g${generation}`;
+}
+/** No record: none under the id, or no index for the generation yet (or any more), which holds no records either. */
+const missingRecord = (error: unknown) => (error instanceof ImmutableProtocolBundleReadError && error.code === 'missing')
+    || ((error as any)?.meta?.statusCode === 404 && (error as any)?.meta?.body?.error?.type === 'index_not_found_exception');
+
+/**
+ * The bundle store of one proof store across generations. Writes go to the current generation. A read that finds
+ * no record there reads the previous generation; corrupt or incomplete records never fall back. Records are
+ * immutable and their ids name their content, so a record found in either generation is the same record.
+ */
+export class GenerationalProtocolBundleStore {
+    private readonly stores = new Map<number, ImmutableProtocolBundleStore>();
+    constructor(readonly generations: ProtocolStoreGenerations, private readonly make: (generation: number) => ImmutableProtocolBundleStore) {}
+    at(generation: number): ImmutableProtocolBundleStore {
+        let store = this.stores.get(generation);
+        if (!store) {store = this.make(generation); this.stores.set(generation, store);}
+        return store;
+    }
+    /** The current generation's index, as last observed. */
+    get index(): string {return this.at(this.generations.known().current).index;}
+    private async writer() {return this.at((await this.generations.resolve()).current);}
+    /** Reads never wait for control; a miss under a stale state refreshes it and reads once more. */
+    private async fallback<T>(read: (store: ImmutableProtocolBundleStore) => Promise<T>, refreshed = false): Promise<T> {
+        const {current, previous} = this.generations.known();
+        try {return await read(this.at(current));}
+        catch (error) {
+            if (!missingRecord(error)) throw error;
+            if (previous !== null) {
+                try {return await read(this.at(previous));}
+                catch (second) {if (!missingRecord(second)) throw second;}
+            }
+            if (refreshed || !this.generations.stale()) throw error;
+            const before = this.generations.known();await this.generations.resolve();const after = this.generations.known();
+            if (after.current === before.current && after.previous === before.previous) throw error;
+            return this.fallback(read, true);
+        }
+    }
+    async prepare(...args: Parameters<ImmutableProtocolBundleStore['prepare']>): Promise<FreshBundlePrepare> {return (await this.writer()).prepare(...args);}
+    async prepareMany(...args: Parameters<ImmutableProtocolBundleStore['prepareMany']>): Promise<FreshBundlePrepare[]> {return (await this.writer()).prepareMany(...args);}
+    read(...args: Parameters<ImmutableProtocolBundleStore['read']>): Promise<unknown> {return this.fallback(store => store.read(...args));}
+    readPreparedMany(...args: Parameters<ImmutableProtocolBundleStore['readPreparedMany']>): Promise<unknown[]> {
+        return this.fallback(store => store.readPreparedMany(...args));
+    }
+    /** All-or-nothing per generation; a mixed batch is read record by record, each with its own fallback. */
+    private async many(input: readonly string[], read: (store: ImmutableProtocolBundleStore, ids: readonly string[]) => Promise<unknown[]>): Promise<unknown[]> {
+        const {current, previous} = this.generations.known();
+        try {return await read(this.at(current), input);}
+        catch (error) {
+            if (!missingRecord(error)) throw error;
+            if (previous !== null) {
+                try {return await read(this.at(previous), input);}
+                catch (second) {if (!missingRecord(second)) throw second;}
+            }
+            // Mixed across generations, or under a stale state: record by record, each with its own fallback.
+            const values: unknown[] = [];
+            for (const id of input) values.push((await this.fallback(store => read(store, [id])))[0]);
+            return values;
+        }
+    }
+    readMany(input: readonly string[], maximumRetainedBytes: number, signal?: AbortSignal): Promise<unknown[]> {
+        return this.many(input, (store, ids) => store.readMany(ids, maximumRetainedBytes, signal));
+    }
+    readRecords(input: readonly string[], signal?: AbortSignal): Promise<unknown[]> {
+        return this.many(input, (store, ids) => store.readRecords(ids, signal));
+    }
+    /** The first id with a manifest in neither generation. */
+    async missingManifestHint(input: readonly string[], signal?: AbortSignal): Promise<string | null> {
+        const {current, previous} = this.generations.known();
+        const hint = async (generation: number, ids: readonly string[]) => {
+            try {return await this.at(generation).missingManifestHint(ids, signal);}
+            catch (error) {if (missingRecord(error)) return ids[0]!; throw error;}
+        };
+        const first = await hint(current, input);
+        if (first === null || previous === null) return first;
+        for (const id of input.slice(input.indexOf(first))) {
+            if (await hint(current, [id]) === null) continue;
+            if (await hint(previous, [id]) !== null) return id;
+        }
+        return null;
+    }
+}
+/** The four proof store indices of one generation (the control index is not generational). */
+export function protocolStoreGenerationIndices(chain: string, generation: number): string[] {
+    return ['protocol-abi-frontier-records-v1', 'protocol-abi-observations-v1', 'protocol-source-bindings-v1', 'protocol-native-actions-v1']
+        .map(suffix => chain + '-' + protocolStoreIndexSuffix(suffix, generation));
+}
