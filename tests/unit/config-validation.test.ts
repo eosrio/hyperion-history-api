@@ -187,6 +187,15 @@ describe('HyperionConfigSchema (full)', () => {
         expect(result.success).toBe(true);
     });
 
+    it('accepts a forced queue purge and rejects other strings', () => {
+        const withPurge = (purge_queues: unknown) => HyperionConfigSchema.safeParse({
+            ...validFullConfig, indexer: {...validFullConfig.indexer, purge_queues}
+        }).success;
+        expect(withPurge(true)).toBe(true);
+        expect(withPurge('force')).toBe(true);
+        expect(withPurge('always')).toBe(false);
+    });
+
     it('should reject incomplete configuration', () => {
         const result = HyperionConfigSchema.safeParse({ api: validApi });
         expect(result.success).toBe(false);

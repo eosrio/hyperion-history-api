@@ -24,6 +24,12 @@ const checkOwner=value=>{
     const labels=value.Config?.Labels??value.Labels;
     assert.equal(labels?.['io.eosrio.qualifier'],'protocol-abi-observation');assert.equal(labels?.['io.eosrio.run'],run);
 };
+// Turning automatic refresh off does not stop a scheduled refresh that already started. A manual refresh waits
+// for any in-flight one, so once it returns nothing can make a later write searchable behind the check's back.
+const disableRefresh=async(client,index)=>{
+    await client.indices.putSettings({index,settings:{refresh_interval:'-1'}});
+    const refreshed=await client.indices.refresh({index});assert.equal(refreshed._shards.failed,0);
+};
 const output=process.argv[2];if(process.argv.length>3)throw new Error('Usage: node check-protocol-abi-store.mjs [output.json]');
 let containerId,networkCreated=false,client;
 const report={schemaVersion:1,status:'running',createdAt:new Date().toISOString(),run,image,checks:[],cleanup:{container:false,network:false},qualification:false};
@@ -65,7 +71,7 @@ try {
     report.checks.push('real create/getsettings/mapping/copy receipts','existing-index detection and identical CAS redelivery');
 
     // Only this owned projection index is changed; automatic refresh stays disabled for the visibility case.
-    await client.indices.putSettings({index:store.index,settings:{refresh_interval:'-1'}});
+    await disableRefresh(client,store.index);
     const second=record(101);const unrefreshed=await store.prepare(second);
     const hidden=await client.search({index:store.index,query:{ids:{values:[unrefreshed.id]}},size:1});
     assert.equal(hidden.timed_out,false);assert.equal(hidden._shards.failed,0);assert.equal(hidden.hits.hits.length,0);
@@ -122,7 +128,7 @@ try {
         source:{chainId:context.chainId,blockNum:100,blockId:'2'.repeat(64),previousBlockId:'3'.repeat(64)},
         frameSha256:'4'.repeat(64),captureSha256:'5'.repeat(64),
         head:{blockNum:200,blockId:'6'.repeat(64)},irreversible:{blockNum:99,blockId:'7'.repeat(64)}};
-    await client.indices.putSettings({index:sourceIndex,settings:{refresh_interval:'-1'}});
+    await disableRefresh(client,sourceIndex);
     const selectionId=(await sources.prepareSelection(selection)).id;
     const hiddenSelection=await client.search({index:sourceIndex,query:{ids:{values:[selectionId]}},size:1});
     assert.equal(hiddenSelection.timed_out,false);assert.equal(hiddenSelection._shards.failed,0);assert.equal(hiddenSelection.hits.hits.length,0);
@@ -192,9 +198,9 @@ try {
         bindings:frontierSources,observations:frontierObservations,store:frontierStore,maxPendingBlocks:2,recoveryWindowBlocks:2};
     const coordinator=new ProtocolAbiCoordinator(coordinatorOptions);await coordinator.start();
     let generation=(await coordinator.openSource(frontierContextId,'frontier-session-a')).generation;
-    await client.indices.putSettings({index:frontierStore.controlIndex,settings:{refresh_interval:'-1'}});
+    await disableRefresh(client,frontierStore.controlIndex);
     await frontierStore.prepareCommit({fixture:'unactivated-record-index-initialization'});
-    await client.indices.putSettings({index:frontierStore.recordsIndex,settings:{refresh_interval:'-1'}});
+    await disableRefresh(client,frontierStore.recordsIndex);
     const positionId=number=>number.toString(16).padStart(64,'0');
     const selectedBlock=async(number,identity=number,parent=number-1,session='frontier-session-a')=>{
         const source={chainId:context.chainId,blockNum:number,blockId:positionId(identity),previousBlockId:number===1?null:positionId(parent)};
@@ -217,7 +223,7 @@ try {
     const frontierFirst=await selectedBlock(1),frontierSecond=await selectedBlock(2);
     await coordinator.admit(frontierFirst.selected,generation);await coordinator.admit(frontierSecond.selected,generation);
     await prepareBlock(frontierSecond);assert.deepEqual(await coordinator.drain(),{committed:0,pending:2});
-    await client.indices.putSettings({index:frontierObservations.index,settings:{refresh_interval:'-1'}});
+    await disableRefresh(client,frontierObservations.index);
     await prepareBlock(frontierFirst);assert.deepEqual(await coordinator.drain(),{committed:2,pending:0});
     const canonicalView=await coordinator.inspect();assert.equal(canonicalView.head.blockNum,2);assert.equal(canonicalView.head.coverageStart,1);
     const canonicalCommit=await frontierStore.readCommit(canonicalView.head.commitId);
