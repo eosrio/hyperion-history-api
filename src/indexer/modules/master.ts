@@ -35,6 +35,7 @@ import {
     messageAllWorkers,
     waitUntilReady
 } from '../helpers/common_functions.js';
+import {findFirstMissingIndexedBlock} from "../helpers/resume-frontier.js";
 import { AlertManagerOptions, AlertsManager, HyperionAlertTypes } from './alertsManager.js';
 import { ConfigurationModule } from './config.js';
 import { LocalHyperionController, WebSocketData } from './controller.js';
@@ -1256,8 +1257,19 @@ export class HyperionMaster {
                     }
                     if (lastIndexedBlockOnRange > this.starting_block) {
                         hLog('WARNING! Data present on target range!');
-                        hLog('Changing initial block num. Use REWRITE = true to bypass.');
-                        this.starting_block = lastIndexedBlockOnRange;
+                        // The highest indexed block is not a resume point: the live reader and parallel
+                        // readers index ahead of the historical frontier, so blocks below it may never
+                        // have been read. Resume at the first block missing from the block index.
+                        const firstMissing = this.conf.indexer.fetch_block
+                            ? await findFirstMissingIndexedBlock(this.esClient, this.chain, this.starting_block, lastIndexedBlockOnRange)
+                            : null;
+                        if (firstMissing !== null) {
+                            hLog(`Blocks are indexed up to ${lastIndexedBlockOnRange}, but block ${firstMissing} is missing. Resuming there, so the gap is read again.`);
+                            this.starting_block = firstMissing;
+                        } else {
+                            hLog('Changing initial block num. Use REWRITE = true to bypass.');
+                            this.starting_block = lastIndexedBlockOnRange;
+                        }
                     }
                 }
             }
