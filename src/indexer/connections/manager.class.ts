@@ -3,6 +3,8 @@ import {Client} from '@elastic/elasticsearch'
 import {HyperionConnections} from "../../interfaces/hyperionConnections.js";
 import {HyperionConfig} from "../../interfaces/hyperionConfig.js";
 import {amqpConnect, checkQueueSize, getAmpqUrl} from "./amqp.js";
+import {ChannelModel, connect} from "amqplib";
+import {purgeChainQueues} from "../helpers/queue-purge.js";
 import {StateHistorySocket} from "./state-history.js";
 import {exec} from "child_process";
 import {hLog} from "../helpers/common_functions.js";
@@ -71,56 +73,45 @@ export class ConnectionManager {
         return new APIClient({fetch, url: this.conn.chains[this.chain].http});
     }
 
-    async purgeQueues() {
-        hLog(`Purging all ${this.chain} queues!`);
-        const apiUrl = `http://${this.conn.amqp.api}`;
-        const vHost = encodeURIComponent(this.conn.amqp.vhost);
-        const getAllQueuesFromVHost = apiUrl + `/api/queues/${vHost}`;
-        const opts = {
-            username: this.conn.amqp.user,
-            password: this.conn.amqp.pass
-        };
-
-        let result: any[] = [];
-
+    /**
+     * Applies `indexer.purge_queues` at startup. Queues that still hold messages are only deleted
+     * when the start rewrites its range or the setting is `"force"`; see `purgeChainQueues`.
+     */
+    async purgeQueues(): Promise<void> {
+        const amqp = this.conn.amqp;
+        const apiUrl = `${amqp.protocol ?? 'http'}://${amqp.api}`;
+        const vHost = encodeURIComponent(amqp.vhost);
+        const headers = new Headers();
+        headers.set('Authorization', 'Basic ' + Buffer.from(amqp.user + ":" + amqp.pass).toString('base64'));
+        let connection: ChannelModel | undefined;
         try {
-
-            const headers = new Headers();
-            headers.set('Authorization', 'Basic ' + Buffer.from(opts.username + ":" + opts.password).toString('base64'));
-            result = await (await fetch(getAllQueuesFromVHost, {headers})).json();
-
-            // Got Impl
-            // const data = await got(getAllQueuesFromVHost, opts);
-            // if (data) {
-            //     result = JSON.parse(data.body);
-            // }
-        } catch (e: any) {
-            console.log(e.message);
-            console.error('failed to connect to rabbitmq http api');
-            process.exit(1);
-        }
-
-        for (const queue of result) {
-            if (queue.name.startsWith(this.chain + ":")) {
-                hLog(`Deleting queue ${queue.name}`);
-                try {
-
-                    const headers = new Headers();
-                    headers.set('Authorization', 'Basic ' + Buffer.from(opts.username + ":" + opts.password).toString('base64'));
-                    await fetch(apiUrl + `/api/queues/${vHost}/${queue.name}`, {
-                        method: "DELETE",
-                        headers
+            connection = await connect(getAmpqUrl(amqp));
+            const channel = await connection.createChannel();
+            await purgeChainQueues(this.chain, this.config.indexer.purge_queues, this.config.indexer.rewrite === true, {
+                listQueues: async () => {
+                    const response = await fetch(`${apiUrl}/api/queues/${vHost}`, {headers, signal: AbortSignal.timeout(30000)});
+                    const body: unknown = await response.json().catch(() => undefined);
+                    if (!response.ok || !Array.isArray(body)) {
+                        throw new Error(`RabbitMQ management API returned HTTP ${response.status} listing queues of vhost "${amqp.vhost}"; check the vhost, the credentials and amqp.api`);
+                    }
+                    return body.map(queue => ({name: String(queue.name), messages: Number(queue.messages) || 0}));
+                },
+                countReadyMessages: async name => (await channel.checkQueue(name)).messageCount,
+                deleteQueue: async name => {
+                    const response = await fetch(`${apiUrl}/api/queues/${vHost}/${encodeURIComponent(name)}`, {
+                        method: 'DELETE', headers, signal: AbortSignal.timeout(30000)
                     });
-
-                    // await got.delete(apiUrl + `/api/queues/${vHost}/${queue.name}/contents`, opts);
-
-                    hLog(`${queue.messages} messages deleted on queue ${queue.name}`);
-                } catch (e: any) {
-                    console.log(e.message);
-                    console.error('failed to connect to rabbitmq http api');
-                    process.exit(1);
-                }
-            }
+                    if (!response.ok && response.status !== 404) {
+                        throw new Error(`RabbitMQ management API returned HTTP ${response.status} deleting queue ${name}`);
+                    }
+                },
+                log: hLog
+            });
+        } catch (e: any) {
+            hLog(`Failed to purge ${this.chain} queues: ${e.message}`);
+            process.exit(1);
+        } finally {
+            await connection?.close().catch(() => undefined);
         }
     }
 

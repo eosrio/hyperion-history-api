@@ -108,7 +108,11 @@ export interface IndexerConfigs {
     start_on: number;
     stop_on: number;
     rewrite: boolean;
-    purge_queues: boolean;
+    /**
+     * `true` deletes the chain's queues at startup unless they hold messages a resuming start
+     * would lose; `"force"` always deletes them.
+     */
+    purge_queues: boolean | 'force';
     live_reader: boolean;
     live_only_mode: boolean;
     abi_scan_mode: boolean;
@@ -514,7 +518,7 @@ const IndexerConfigsSchema = z.object({
     start_on: z.number(),
     stop_on: z.number(),
     rewrite: z.boolean(),
-    purge_queues: z.boolean(),
+    purge_queues: z.union([z.boolean(), z.literal('force')]),
     live_reader: z.boolean(),
     live_only_mode: z.boolean(),
     abi_scan_mode: z.boolean(),
