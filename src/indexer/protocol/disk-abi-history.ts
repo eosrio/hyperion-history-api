@@ -102,6 +102,8 @@ export class DiskAbiHistoryCatalog {
     private loaded?: Loaded;
     private closed=false;
     private adopting: Promise<unknown>=Promise.resolve();
+    /** A followed link the directory could not reach, so frequent authority reads do not rescan it. */
+    private unreachable?: {link: string; until: number};
     /** Manifests already looked at in the segments directory, by path and file identity. */
     private readonly peeked=new Map<string,{identity:string;sha?:string;base?:string}>();
     private readonly profile: ProtocolSourceProfile;
@@ -218,7 +220,9 @@ export class DiskAbiHistoryCatalog {
     private async idAt(value:Loaded,blockNum:number):Promise<string> {
         requireData(uint(blockNum,1)&&blockNum<=value.end,'block outside covered range');
         if(blockNum>value.manifest.endBlock){
-            const piece=value.pieces.find(item=>item.start<=blockNum&&blockNum<=item.end);requireData(piece,'block outside covered range');
+            // Pieces are contiguous and ordered by start: binary search, since the chain grows by one piece a seal.
+            let low=0,high=value.pieces.length-1;while(low<high){const middle=(low+high+1)>>1;if(value.pieces[middle].start<=blockNum)low=middle;else high=middle-1;}
+            const piece=value.pieces[low];requireData(piece&&piece.start<=blockNum&&blockNum<=piece.end,'block outside covered range');
             const at=(blockNum-piece.start)*32;return piece.ids.subarray(at,at+32).toString('hex');
         }
         const bytes=Buffer.alloc(32),result=await value.ids.handle.read(bytes,0,32,(blockNum-1)*32);
@@ -248,8 +252,9 @@ export class DiskAbiHistoryCatalog {
     async blockId(blockNum:number):Promise<string|null> {const value=await this.data();return uint(blockNum,1)&&blockNum<=value.end?this.idAt(value,blockNum):null;}
     private select(value:Loaded,account:string,blockNum:number,globalSequence?:string,extra:readonly Entry[]=[]):Entry|undefined {
         const list=value.epochs.get(account)??[];
+        const items=extra.length?[...list,...extra.filter(entry=>entry.epoch.account===account)]:list;
         let selected:Entry|undefined;
-        for(const item of [...list,...extra.filter(entry=>entry.epoch.account===account)]){const row=item.epoch;if(row.blockNum>blockNum)break;
+        for(const item of items){const row=item.epoch;if(row.blockNum>blockNum)break;
             if(row.blockNum===blockNum&&globalSequence!==undefined&&(row.phase==='block-final'||BigInt(row.action!.globalSequence)>=BigInt(globalSequence)))continue;
             selected=item;}
         return selected;
@@ -376,17 +381,19 @@ export class DiskAbiHistoryCatalog {
                 'followed catalog link differs from coverage');
             return true;
         }
+        const key=json(link);if(this.unreachable?.link===key&&Date.now()<this.unreachable.until)return false;
         const chain:DiskAbiHistoryPendingSegment[]=[];let tip={...value.tip},blocks=value.end-value.manifest.endBlock;
         while(tip.endBlock<link.endBlock&&chain.length<4096){
             const candidates=await this.children(tip.manifestSha256);
             const selected=candidates.find(candidate=>candidate.sha===link.manifestSha256)??(candidates.length===1?candidates[0]:undefined);
-            if(!selected)return false;
+            if(!selected){this.unreachable={link:key,until:Date.now()+1000};return false;}
             const next=await this.verifySegment(value,tip,selected.path,selected.sha,blocks);
             chain.push(next);blocks+=next.link.endBlock-next.link.startBlock+1;
             tip={manifestSha256:next.link.manifestSha256,endBlock:next.link.endBlock,lastBlockId:next.link.lastBlockId,
                 lastGlobalSequence:next.link.lastGlobalSequence,totalRecords:next.link.totalRecords};
         }
-        if(tip.manifestSha256!==link.manifestSha256||tip.endBlock!==link.endBlock||tip.lastBlockId!==link.lastBlockId)return false;
+        if(tip.manifestSha256!==link.manifestSha256||tip.endBlock!==link.endBlock||tip.lastBlockId!==link.lastBlockId){
+            this.unreachable={link:key,until:Date.now()+1000};return false;}
         for(const segment of chain)await this.adopt(segment);
         return true;
     }

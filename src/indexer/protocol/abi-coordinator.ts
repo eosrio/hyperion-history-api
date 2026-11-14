@@ -11,6 +11,7 @@ import {validNativeGenesisCoverage, type ProtocolNativeGenesisCoverage, type Pro
 import {resolveProtocolAbiHistory, historicalAddressIdentity, historicalAddressId, historicalRootCertificate,
     type ProtocolAbiHistoryOptions, type ProtocolAbiHistoricalAddress} from './abi-history.js';
 import {isProtocolHex} from './hex.js';
+import type {DiskAbiHistoryLink, DiskAbiHistoryPendingSegment} from './disk-abi-history.js';
 
 type Head = {blockNum:number;blockId:string;commitId:string;stateRootId:string|null;
     lastGlobalSequence:string|null;coverageStart:number|null};
@@ -20,6 +21,8 @@ export interface ProtocolAbiCoordinatorControl {
     source:{contextId:string;readerSessionId:string}|null; head:Head|null; pending:string[];
     phase:'awaiting-source'|'recovering'|'following'|'incomplete'; gap:Gap|null; replayFromBlock:number|null;
     historical?:{interfaceVersion:1;addressRootId:string;activationCertificateId:string;anchor:Head};
+    /** The newest catalog segment this owner checked against its own commits and adopted. Readers follow it. */
+    catalog?:DiskAbiHistoryLink;
 }
 interface Commit {
     schemaVersion:1; kind:'canonical-abi-block'|'disk-abi-baseline'; chainId:string; profile:ProtocolSourceProfile; generation:string;
@@ -43,6 +46,10 @@ export interface ProtocolAbiDiskHistory {
     revalidate():Promise<void>;
     matchesState(state:ProtocolAbiAccountState):boolean;
     blockId(blockNum:number):string|null|undefined|Promise<string|null|undefined>;
+    /** Sealed segments past the covered end. Each is adopted only after it agrees with this owner's commits. */
+    nextSegment?():Promise<DiskAbiHistoryPendingSegment|undefined>;
+    adopt?(segment:DiskAbiHistoryPendingSegment):Promise<unknown>;
+    follow?(link:DiskAbiHistoryLink):Promise<boolean>;
 }
 type HistoricalCertificate=ReturnType<typeof protocolAbiCertificateForControl>;
 interface HistoricalActivation {
@@ -67,7 +74,13 @@ export interface ProtocolAbiCoordinatorOptions {
     /** Called after a settled head's certificates have complete receipts and readback. A scheduling hint only. */
     onSettled?:(head:{blockNum:number})=>void;
     diskAbiHistory?:ProtocolAbiDiskHistory;
+    /** A segment that disagrees with this owner's commits is refused once and never adopted by this owner. */
+    onCatalogRefused?:(refusal:{manifestSha256:string;startBlock:number;endBlock:number;message:string})=>void;
+    /** Catalog attestation is scheduled at most this often. */
+    catalogAttestIntervalMs?:number;
 }
+/** A sealed segment and this owner's commits disagree: the segment is never adopted. */
+class CatalogDisagreement extends Error {constructor(message:string){super(message);this.name='CatalogDisagreement';}}
 export class ProtocolAbiCoordinatorStaleError extends Error {
     constructor(message='Protocol ABI source was superseded'){super(message);this.name='ProtocolAbiCoordinatorStaleError';}
 }
@@ -137,6 +150,16 @@ export class ProtocolAbiCoordinator {
     /** Process-local evidence of successful live-source CAS admissions, never a restart cursor. */
     private readonly recentSelections=new Map<string,{source:ProtocolSourcePosition;generation:string;readerSessionId:string}>();
     private diskBaseline?:Promise<{value:ProtocolAbiDiskBaseline;stateRootId:string|null}>;
+    private catalogAttestAt=0;
+    private catalogAttesting?:Promise<void>;
+    private readonly refusedSegments=new Set<string>();
+    /** Immutable records by id, read while attesting: consecutive segments walk overlapping commits. */
+    private readonly attestCommits=new Map<string,Commit>();
+    private readonly attestRoots=new Map<string,Record<string,string>>();
+    private readonly attestBuckets=new Map<string,Record<string,string>>();
+    private readonly attestStates=new Map<string,ProtocolAbiAccountState>();
+    /** This owner's chain above the adopted catalog end, by block number, for attestation only. */
+    private readonly attestChain=new Map<number,string>();
 
     constructor(private readonly options:ProtocolAbiCoordinatorOptions) {
         if(!hex64.test(options.chainId)||!text(options.ownerId))throw new Error('Invalid ABI coordinator identity');
@@ -222,6 +245,9 @@ export class ProtocolAbiCoordinator {
             ||value.historical.interfaceVersion!==1||!id('h45abiroot1',value.historical.addressRootId)
             ||!id('h45abicert1',value.historical.activationCertificateId)))
             throw new Error('Invalid activated historical ABI address root');
+        if(value.catalog!==undefined&&(!value.catalog||Object.keys(value.catalog).sort().join(',')!=='endBlock,lastBlockId,manifestSha256'
+            ||!hex64.test(value.catalog.manifestSha256)||!uint32(value.catalog.endBlock)||value.catalog.endBlock<1||!hex64.test(value.catalog.lastBlockId)))
+            throw new Error('Invalid adopted ABI catalog link');
         if(value.historical) {
             this.validateHead(value.historical.anchor);
             if(!value.head||value.historical.anchor.coverageStart!==1||value.historical.anchor.blockNum>value.head.blockNum
@@ -306,8 +332,16 @@ export class ProtocolAbiCoordinator {
             }
             await catalog.revalidate();
         }
+        // Coverage a previous owner checked and published is followed again from the segments directory before it is
+        // published again. A link this catalog cannot reach (another pinned lineage, missing segments) is dropped.
+        let catalog:DiskAbiHistoryLink|undefined;
+        if(previous?.catalog&&this.options.diskAbiHistory?.follow){
+            try {if(await this.options.diskAbiHistory.follow(previous.catalog))catalog=previous.catalog;}
+            catch(error){this.noteHistoricalError(error);}
+        }
         const value:ProtocolAbiCoordinatorControl={schemaVersion:1,chainId:this.options.chainId,profile:this.profile,ownerId:this.options.ownerId,
-            generation,revision:(previous?.revision??-1)+1,source:null,head,pending:[],phase:'awaiting-source',gap:reason,replayFromBlock};
+            generation,revision:(previous?.revision??-1)+1,source:null,head,pending:[],phase:'awaiting-source',gap:reason,replayFromBlock,
+            ...(catalog?{catalog}:{})};
         const receipt=await this.options.store.compareAndSet(stored,value);
         this.known={...receipt,value:this.validateControl(receipt.value)};this.started=true;
     });}
@@ -1006,6 +1040,132 @@ export class ProtocolAbiCoordinator {
         this.clearHistoricalFresh();
     }
 
+    /**
+     * Adopt sealed catalog segments that this owner's own commits confirm, and publish the newest in control.
+     * A segment is checked only once this owner's settled head passed its end, and only on a following head without
+     * a gap. A disagreement refuses the segment for this owner; a stretch the commits cannot reach only waits.
+     */
+    private scheduleCatalogAttestation(epoch:number):void {
+        const catalog=this.options.diskAbiHistory;
+        if(!catalog?.nextSegment||!catalog.adopt||this.catalogAttesting)return;
+        const now=Date.now();if(now<this.catalogAttestAt)return;
+        this.catalogAttestAt=now+(this.options.catalogAttestIntervalMs??2000);
+        this.catalogAttesting=this.attestCatalog(epoch)
+            .catch(error=>{if(!(error instanceof ProtocolAbiCoordinatorStaleError))this.noteHistoricalError(error);})
+            .finally(()=>{this.catalogAttesting=undefined;});
+    }
+    /** Settles once any running attestation pass has finished. Tests and shutdown only. */
+    async catalogAttested():Promise<void> {await this.catalogAttesting;}
+    private async attestCatalog(epoch:number):Promise<void> {
+        const catalog=this.options.diskAbiHistory!;
+        for(let step=0;step<8;step++){
+            const control=this.known?.value,head=control?.head;
+            if(!control||!head||control.phase!=='following'||control.gap!==null||control.replayFromBlock!==null||!control.source)return;
+            const segment=await catalog.nextSegment!();this.assertEpoch(epoch);
+            if(!segment||segment.link.endBlock>head.blockNum||this.refusedSegments.has(segment.link.manifestSha256))return;
+            // Commits and states are immutable, so the comparison reads outside the serial lane.
+            try {if(!await this.segmentAgrees(segment,head,epoch))return;}
+            catch(error) {
+                if(!(error instanceof CatalogDisagreement))throw error;
+                this.refusedSegments.add(segment.link.manifestSha256);
+                this.options.onCatalogRefused?.({manifestSha256:segment.link.manifestSha256,startBlock:segment.link.startBlock,
+                    endBlock:segment.link.endBlock,message:error.message});
+                return;
+            }
+            const published=await this.run(async()=>{
+                this.assertEpoch(epoch);
+                const current=this.known??await this.owned();this.assertEpoch(epoch);
+                // The checked head must still be this generation's: its chain below the irreversible segment cannot change.
+                if(current.value.generation!==control.generation||!current.value.head||current.value.head.blockNum<head.blockNum)return false;
+                await catalog.adopt!(segment);this.assertEpoch(epoch);
+                await this.save(current,{...current.value,catalog:{manifestSha256:segment.link.manifestSha256,
+                    endBlock:segment.link.endBlock,lastBlockId:segment.link.lastBlockId}});
+                this.assertEpoch(epoch);return true;
+            });
+            if(!published)return;
+            for(const blockNum of [...this.attestChain.keys()])if(blockNum<segment.link.endBlock)this.attestChain.delete(blockNum);
+        }
+    }
+    private remember<T>(map:Map<string,T>,key:string,value:T,limit:number):T {
+        map.set(key,value);while(map.size>limit)map.delete(map.keys().next().value!);return value;
+    }
+    private async attestCommit(commitId:string):Promise<Commit> {
+        return this.attestCommits.get(commitId)??this.remember(this.attestCommits,commitId,await this.readCommit(commitId),4096);
+    }
+    private async attestState(stateId:string):Promise<ProtocolAbiAccountState> {
+        return this.attestStates.get(stateId)??this.remember(this.attestStates,stateId,
+            await this.options.store.readAccountState(stateId) as ProtocolAbiAccountState,4096);
+    }
+    /** Accounts whose state differs between two roots, with the state id in the second (null when removed). */
+    private async changedAccounts(before:string|null,after:string|null):Promise<Map<string,string|null>> {
+        const changed=new Map<string,string|null>();if(before===after)return changed;
+        const buckets=async(rootId:string|null):Promise<Record<string,string>>=>rootId===null?{}
+            :this.attestRoots.get(rootId)??this.remember(this.attestRoots,rootId,await this.options.store.planRoot(rootId),1024);
+        const accounts=async(bucketId:string|undefined,key:string):Promise<Record<string,string>>=>bucketId===undefined?{}
+            :this.attestBuckets.get(bucketId)??this.remember(this.attestBuckets,bucketId,await this.options.store.planBucket(bucketId,key),4096);
+        const [left,right]=await Promise.all([buckets(before),buckets(after)]);
+        for(const key of new Set([...Object.keys(left),...Object.keys(right)])){
+            if(left[key]===right[key])continue;
+            const [was,is]=await Promise.all([accounts(left[key],key),accounts(right[key],key)]);
+            for(const account of new Set([...Object.keys(was),...Object.keys(is)]))if(was[account]!==is[account])changed.set(account,is[account]??null);
+        }
+        return changed;
+    }
+    /**
+     * Index this owner's chain of commits from the head down to `from` (inclusive). The walk stops where it meets
+     * the part of the chain it indexed before, so consecutive segments read each commit once. False if the chain
+     * does not reach `from`.
+     */
+    private async indexChain(head:Head,from:number,epoch:number):Promise<boolean> {
+        let commitId:string|null=head.commitId;
+        while(commitId){
+            const commit=await this.attestCommit(commitId);this.assertEpoch(epoch);
+            const at=commit.source.blockNum;
+            if(this.attestChain.get(at)===commitId&&this.attestChain.has(from))break;
+            this.attestChain.set(at,commitId);
+            if(at<=from)break;
+            commitId=commit.previousCommitId;
+        }
+        return this.attestChain.has(from);
+    }
+    /**
+     * Two derivations of the same irreversible blocks must agree before one replaces the other for proofs:
+     * every block id and parent link, every account whose ABI state changes (and nothing else), every action's
+     * ABI, and the last global sequence. False if this owner's commits do not cover the segment.
+     */
+    private async segmentAgrees(segment:DiskAbiHistoryPendingSegment,head:Head,epoch:number):Promise<boolean> {
+        const {startBlock:start,endBlock:end}=segment.link,catalog=this.options.diskAbiHistory!;
+        if(!await this.indexChain(head,start-1,epoch))return false;
+        const disagree=(message:string):never=>{throw new CatalogDisagreement(message);};
+        const decoding=(state:ProtocolAbiAccountState|null)=>state?.present&&state.abiHex?state.abiHex:null;
+        const shape=(state:ProtocolAbiAccountState|null)=>state===null?null:json({present:state.present,abiHex:state.abiHex});
+        let parent=await this.attestCommit(this.attestChain.get(start-1)!);
+        if(parent.source.blockId!==await catalog.blockId(start-1))disagree('block '+(start-1)+' differs from the catalog tip');
+        for(let blockNum=start;blockNum<=end;blockNum++){
+            const commitId=this.attestChain.get(blockNum);if(!commitId)return false;
+            const commit=await this.attestCommit(commitId);this.assertEpoch(epoch);
+            if(commit.status!=='complete')disagree('block '+blockNum+' is incomplete in this owner\'s commits');
+            if(commit.source.blockId!==segment.blockId(blockNum)||commit.source.previousBlockId!==parent.source.blockId
+                ||commit.previousCommitId!==this.attestChain.get(blockNum-1))disagree('block '+blockNum+' id or parent differs');
+            const changed=await this.changedAccounts(parent.stateRootId,commit.stateRootId),recorded=new Set(segment.changedAt(blockNum));
+            for(const account of new Set([...changed.keys(),...recorded])){
+                if(!recorded.has(account))disagree('account '+account+' changes at block '+blockNum+' without a catalog record');
+                if(!changed.has(account))disagree('account '+account+' has a catalog record at block '+blockNum+' but its state does not change');
+                const stateId=changed.get(account)!,frontier=stateId===null?null:await this.attestState(stateId);
+                if(shape(frontier)!==shape(segment.finalState(account,blockNum)))disagree('account '+account+' ends block '+blockNum+' with another ABI');
+            }
+            for(const binding of commit.bindings){
+                const frontier=binding.stateId===null?null:await this.attestState(binding.stateId);
+                const sealed=segment.actionState({transactionId:binding.transactionId,actionOrdinal:binding.actionOrdinal,
+                    inputActionOrdinal:binding.inputActionOrdinal,account:binding.account,receiver:binding.receiver,name:binding.name,
+                    rawHex:'',globalSequence:binding.globalSequence,receiptAbiSequence:binding.receiptAbiSequence},blockNum);
+                if(decoding(frontier)!==decoding(sealed))disagree('action '+binding.globalSequence+' at block '+blockNum+' decodes with another ABI');
+            }
+            parent=commit;
+        }
+        if(parent.lastGlobalSequence!==segment.link.lastGlobalSequence)disagree('last global sequence at block '+end+' differs');
+        return true;
+    }
     async drain():Promise<{committed:number;pending:number}> {
         const result=this.drains.then(()=>this.drainOnce());
         this.drains=result.then(()=>undefined,()=>undefined);
@@ -1040,6 +1200,8 @@ export class ProtocolAbiCoordinator {
                     if(error instanceof ProtocolAbiCoordinatorStaleError)throw error;
                     if(!(error instanceof HistoricalWorkYield))this.noteHistoricalError(error);
                 }
+                // Lowest priority, detached: a sealed segment never delays a drain, and a failed check never fails one.
+                this.scheduleCatalogAttestation(epoch);
                 return {committed,pending:version.value.pending.length};
             });
         } catch(error){if(error instanceof ProtocolAbiCoordinatorStaleError){
