@@ -1,9 +1,10 @@
 /**
  * Startup queue purge policy.
  *
- * A restart without `rewrite` resumes after the highest block already indexed. Messages still
- * waiting in the chain's queues belong to blocks below that point, so deleting them loses their
- * documents for good: nothing reads those blocks again. The purge therefore only deletes queues
+ * A restart without `rewrite` resumes at the first block missing from the block index. Messages
+ * still waiting in the chain's queues can carry the actions and deltas of blocks below that point,
+ * whose block documents are already written, so deleting them loses those documents for good:
+ * nothing reads those blocks again. The purge therefore only deletes queues
  * when that cannot lose work, or when the operator asked for it explicitly.
  */
 
@@ -68,7 +69,7 @@ export async function purgeChainQueues(
         }
     } else if (plan.action === 'keep') {
         io.log(`[WARNING] purge_queues is on, but ${plan.pending} messages are waiting in ${chain} queues and rewrite is off.`);
-        io.log('[WARNING] The queues were kept: this start resumes after the last indexed block, so deleting them would lose that work.');
+        io.log('[WARNING] The queues were kept: they hold work for blocks this start does not read again, so deleting them would lose it.');
         for (const queue of plan.queues) {
             if (queue.messages > 0) io.log(`[WARNING]   ${queue.name}: ${queue.messages} messages kept`);
         }
