@@ -23,6 +23,8 @@ export interface ProtocolAbiCoordinatorControl {
     historical?:{interfaceVersion:1;addressRootId:string;activationCertificateId:string;anchor:Head};
     /** The newest catalog segment this owner checked against its own commits and adopted. Readers follow it. */
     catalog?:DiskAbiHistoryLink;
+    /** Block and action documents through this block are disk-backed: settled from the published catalog. */
+    settled?:number;
 }
 interface Commit {
     schemaVersion:1; kind:'canonical-abi-block'|'disk-abi-baseline'; chainId:string; profile:ProtocolSourceProfile; generation:string;
@@ -248,6 +250,8 @@ export class ProtocolAbiCoordinator {
         if(value.catalog!==undefined&&(!value.catalog||Object.keys(value.catalog).sort().join(',')!=='endBlock,lastBlockId,manifestSha256'
             ||!hex64.test(value.catalog.manifestSha256)||!uint32(value.catalog.endBlock)||value.catalog.endBlock<1||!hex64.test(value.catalog.lastBlockId)))
             throw new Error('Invalid adopted ABI catalog link');
+        if(value.settled!==undefined&&(!uint32(value.settled)||value.settled<1||!value.catalog||value.settled>value.catalog.endBlock))
+            throw new Error('Invalid settled catalog block');
         if(value.historical) {
             this.validateHead(value.historical.anchor);
             if(!value.head||value.historical.anchor.coverageStart!==1||value.historical.anchor.blockNum>value.head.blockNum
@@ -341,7 +345,7 @@ export class ProtocolAbiCoordinator {
         }
         const value:ProtocolAbiCoordinatorControl={schemaVersion:1,chainId:this.options.chainId,profile:this.profile,ownerId:this.options.ownerId,
             generation,revision:(previous?.revision??-1)+1,source:null,head,pending:[],phase:'awaiting-source',gap:reason,replayFromBlock,
-            ...(catalog?{catalog}:{})};
+            ...(catalog?{catalog}:{}),...(catalog&&previous?.settled!==undefined&&previous.settled<=catalog.endBlock?{settled:previous.settled}:{})};
         const receipt=await this.options.store.compareAndSet(stored,value);
         this.known={...receipt,value:this.validateControl(receipt.value)};this.started=true;
     });}
@@ -1054,6 +1058,17 @@ export class ProtocolAbiCoordinator {
             .catch(error=>{if(!(error instanceof ProtocolAbiCoordinatorStaleError))this.noteHistoricalError(error);})
             .finally(()=>{this.catalogAttesting=undefined;});
     }
+    /**
+     * Record that block and action documents through `blockNum` are disk-backed. Monotonic and never past the
+     * published catalog end, so a later reader can rely on it, for example before stored proof records are dropped.
+     */
+    async recordSettled(blockNum:number):Promise<void> {return this.run(async()=>{
+        const version=this.known??await this.owned(),value=version.value;
+        if(!value.catalog||!uint32(blockNum)||blockNum<1||blockNum>value.catalog.endBlock)
+            throw new Error('Settled block is outside the published catalog');
+        if(value.settled!==undefined&&blockNum<=value.settled)return;
+        await this.save(version,{...value,settled:blockNum});
+    });}
     /** Settles once any running attestation pass has finished. Tests and shutdown only. */
     async catalogAttested():Promise<void> {await this.catalogAttesting;}
     private async attestCatalog(epoch:number):Promise<void> {

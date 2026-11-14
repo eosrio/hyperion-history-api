@@ -145,3 +145,24 @@ test('a segment past the settled head waits, and is adopted once the commits rea
     await f.coordinator.admit(selected,(await f.coordinator.inspect()).generation);
     expect((await f.attest()).catalog).toEqual(link);expect(await f.catalog.coverageEnd()).toBe(8);
 });
+
+test('the settled checkpoint is monotonic, bounded by the published catalog, and survives a restart',async()=>{
+    const f=await settled(4);
+    await expect(f.coordinator.recordSettled(6)).rejects.toThrow('outside the published catalog');
+    const link=await segment(f.g.segments,f.g.tip,8,[final('beta',7,'cc')]);await f.attest();
+    await f.coordinator.recordSettled(6);expect((await f.coordinator.inspect()).settled).toBe(6);
+    await f.coordinator.recordSettled(5);expect((await f.coordinator.inspect()).settled).toBe(6);
+    await expect(f.coordinator.recordSettled(9)).rejects.toThrow('outside the published catalog');
+    await f.coordinator.recordSettled(8);expect((await f.coordinator.inspect()).settled).toBe(8);
+    // Later control updates keep it, and a restarted owner carries it with the link it follows.
+    await f.attest();expect((await f.coordinator.inspect())).toMatchObject({catalog:link,settled:8});
+    const fresh=new DiskAbiHistoryCatalog(f.g.config,chainId,profile);catalogs.add(fresh);
+    const next=new ProtocolAbiCoordinator({chainId,profile,ownerId:'settled-restart',bindings:f.bindings,observations:f.observations,store:f.store,
+        diskAbiHistory:fresh,nativeActionInterfaceVersion:1});
+    await next.start();expect(await next.inspect()).toMatchObject({catalog:link,settled:8});
+    // Without the segments the link cannot be followed, so neither it nor the checkpoint is carried.
+    const {segments_dir:_,...pinned}=f.g.config,blind=new DiskAbiHistoryCatalog(pinned,chainId,profile);catalogs.add(blind);
+    const third=new ProtocolAbiCoordinator({chainId,profile,ownerId:'blind-restart',bindings:f.bindings,observations:f.observations,store:f.store,
+        diskAbiHistory:blind,nativeActionInterfaceVersion:1});
+    await third.start();const control=await third.inspect();expect(control.catalog).toBeUndefined();expect(control.settled).toBeUndefined();
+});

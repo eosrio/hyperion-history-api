@@ -18,6 +18,8 @@ export interface DiskAbiHistoryConfiguration {
      * coordinator does after checking it against its own commits. The pinned manifest stays the anchor.
      */
     segments_dir?: string;
+    /** Replace live block and action documents in attested ranges with the range server's disk-backed ones. Indexer only. */
+    settle?: import('./catalog-settle.js').CatalogSettleConfiguration;
 }
 interface Member {name: string; bytes: number; sha256: string}
 interface Manifest {
@@ -236,6 +238,8 @@ export class DiskAbiHistoryCatalog {
     async revalidate():Promise<void> {await this.revalidateLoaded(await this.data());}
     /** The end of coverage: the pinned catalog's end, then the end of the newest adopted segment. */
     async coverageEnd():Promise<number> {return (await this.data()).end;}
+    /** Whether a segment (or the pinned catalog) is part of the adopted chain. */
+    async hasAdopted(manifestSha256:string):Promise<boolean> {return (await this.data()).adopted.has(manifestSha256);}
     /** The newest adopted link: what the next segment names as its base. */
     async tip():Promise<DiskAbiHistoryTip> {return {...(await this.data()).tip};}
     /** Range only, and never authority: false means covers() is false for every source at this height. */

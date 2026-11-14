@@ -48,6 +48,7 @@ import {resolveSourceCreditCapacity, SourceCreditCapacityCoordinator, isSourceCr
 import {loadChainProtocol} from '../protocol/selection.js';
 import {ProtocolAbiCoordinator} from '../protocol/abi-coordinator.js';
 import {DiskAbiHistoryCatalog} from '../protocol/disk-abi-history.js';
+import {CatalogSettler, elasticSettleIO, type SettleStep} from '../protocol/catalog-settle.js';
 import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
 import {ProtocolSourceBindingStore, type ProtocolSourcePosition} from '../protocol/source-bindings.js';
 import {protocolMetadataReadBoundMs} from '../protocol/immutable-bundle-store.js';
@@ -293,6 +294,10 @@ export class HyperionMaster {
     private protocolAbiCoordinator?: ProtocolAbiCoordinator;
     private protocolAbiSource?: {worker: Worker; readerSessionId: string; generation?: string};
     private protocolAbiDrainTimer?: Timeout;
+    private protocolCatalogSettleTimer?: Timeout;
+    private protocolCatalogSettleInFlight = false;
+    private protocolCatalogSettleNote?: string;
+    private protocolCatalogSettleLoggedAt = 0;
     private protocolAbiDrainInFlight = false;
     private protocolAbiDrainAgain = false;
     private protocolAbiFailed = false;
@@ -853,6 +858,21 @@ export class HyperionMaster {
             await coordinator.start();
             this.protocolAbiCoordinator = coordinator;
             this.protocolAbiDrainTimer = setInterval(() => this.requestProtocolAbiDrain(), 1000).unref();
+            const settle = this.conf.settings.protocol_abi_history?.settle;
+            if (settle && diskAbiHistory) {
+                const startBlock = (await diskAbiHistory.baseline()).source.blockNum + 1;
+                const settler = new CatalogSettler(elasticSettleIO({client: this.esClient, chain: this.chain,
+                    indexVersion: this.conf.settings.index_version, partitionSize: this.conf.settings.index_partition_size,
+                    rangeServer: settle.range_server, profileId: this.conf.settings.protocol_abi_history!.producer_profile_id,
+                    position: async () => {const control = await coordinator.inspect();
+                        return {attestedEnd: control.catalog?.endBlock ?? null, settled: control.settled ?? null};},
+                    recordSettled: blockNum => coordinator.recordSettled(blockNum),
+                    catalogBlockId: blockNum => diskAbiHistory.blockId(blockNum),
+                    isAdoptedSegment: manifestSha256 => diskAbiHistory.hasAdopted(manifestSha256)}), startBlock,
+                    {chain: this.chain, indexVersion: this.conf.settings.index_version, partitionSize: this.conf.settings.index_partition_size}, settle);
+                this.protocolCatalogSettleTimer = setInterval(() => this.requestCatalogSettle(settler), settle.interval_ms ?? 5000).unref();
+                hLog(`Catalog settle enabled from block ${startBlock} via ${settle.range_server}`);
+            }
         } catch (error) { this.failProtocolAbiCoordinator(error); throw error; }
     }
 
@@ -939,12 +959,42 @@ export class HyperionMaster {
             .finally(() => { this.protocolAbiDrainInFlight = false; if (this.protocolAbiDrainAgain) this.requestProtocolAbiDrain(); });
     }
 
+    /** One settle step at a time. Refusals and errors are logged and retried; they never stop indexing. */
+    private requestCatalogSettle(settler: CatalogSettler): void {
+        if (this.protocolCatalogSettleInFlight || this.protocolAbiFailed || this.shutdownStarted) return;
+        this.protocolCatalogSettleInFlight = true;
+        const note = (message: string, repeatable = false) => {
+            const now = Date.now();
+            if (message === this.protocolCatalogSettleNote && !(repeatable && now - this.protocolCatalogSettleLoggedAt > 60000)) return;
+            this.protocolCatalogSettleNote = message; this.protocolCatalogSettleLoggedAt = now; hLog(message);
+        };
+        settler.step().then((step: SettleStep) => {
+            if (step.status === 'refused') note(`[WARNING] Catalog settle stopped at blocks ${step.from}-${step.to}: ${step.message}`);
+            else if (step.status === 'waiting') note(`Catalog settle waits for ${step.missing} live documents in blocks ${step.from}-${step.to}`, true);
+            else if (step.status === 'settled') {
+                // Progress is summarized at most once a minute; a later refusal is always reported.
+                this.protocolCatalogSettleNote = undefined;
+                if (Date.now() - this.protocolCatalogSettleLoggedAt > 60000) {
+                    this.protocolCatalogSettleLoggedAt = Date.now();
+                    hLog(`Catalog settled through block ${step.to} (${step.written} written, ${step.repaired} repaired, ${step.unchanged} unchanged)`);
+                }
+                this.requestCatalogSettleSoon(settler);
+            }
+        }).catch(error => note(`Catalog settle failed and will retry: ${error instanceof Error ? error.message : String(error)}`))
+            .finally(() => { this.protocolCatalogSettleInFlight = false; });
+    }
+    /** Keep settling while there is a backlog, instead of one step per interval. */
+    private requestCatalogSettleSoon(settler: CatalogSettler): void {
+        setImmediate(() => { if (!this.protocolCatalogSettleInFlight) this.requestCatalogSettle(settler); });
+    }
+
     private failProtocolAbiCoordinator(error: unknown): void {
         if (this.protocolAbiFailed) return;
         this.protocolAbiFailed = true;
         this.workerAttemptSupervisor?.stop();
         this.shutdownStarted = true;
         if (this.protocolAbiDrainTimer) clearInterval(this.protocolAbiDrainTimer);
+        if (this.protocolCatalogSettleTimer) clearInterval(this.protocolCatalogSettleTimer);
         hLog('Canonical ABI coordinator failed; supervised master restart required:', error);
         messageAllWorkers(cluster, {event: 'stop'});
         setImmediate(() => process.exit(1));
@@ -2403,6 +2453,7 @@ export class HyperionMaster {
         try {
             this.workerAttemptSupervisor?.stop();
             if (this.protocolAbiDrainTimer) clearInterval(this.protocolAbiDrainTimer);
+            if (this.protocolCatalogSettleTimer) clearInterval(this.protocolCatalogSettleTimer);
             if (this.liveReader?.wref) this.revokeProtocolAbiReader(this.liveReader.wref);
             this.shutdownStarted = true;
             this.allowMoreReaders = false;
