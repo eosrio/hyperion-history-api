@@ -64,6 +64,8 @@ export async function checkProtocolNativeJournal(client, chain, report, pipeline
             rows.push({...input, opening, frameSha256: hash(bytes)});
         }
         await client.indices.putSettings({index: store.index, settings: {refresh_interval: '-1'}});
+        // A scheduled refresh already in flight still completes; a manual one waits for it, so later writes stay unsearchable.
+        assert.equal((await client.indices.refresh({index: store.index}))._shards.failed, 0);
         const original = rows[0], derived = session.decodeResult(readFileSync(join(originals, 'block-000033.bin')));
         derived[1].deltas = '00';
         const receiptInput = await retain(Buffer.from(codec.encode('result', derived)));
