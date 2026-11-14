@@ -868,7 +868,8 @@ export class HyperionMaster {
                         return {attestedEnd: control.catalog?.endBlock ?? null, settled: control.settled ?? null};},
                     recordSettled: blockNum => coordinator.recordSettled(blockNum),
                     catalogBlockId: blockNum => diskAbiHistory.blockId(blockNum),
-                    isAdoptedSegment: manifestSha256 => diskAbiHistory.hasAdopted(manifestSha256)}), startBlock, settle);
+                    isAdoptedSegment: manifestSha256 => diskAbiHistory.hasAdopted(manifestSha256)}), startBlock,
+                    {chain: this.chain, indexVersion: this.conf.settings.index_version, partitionSize: this.conf.settings.index_partition_size}, settle);
                 this.protocolCatalogSettleTimer = setInterval(() => this.requestCatalogSettle(settler), settle.interval_ms ?? 5000).unref();
                 hLog(`Catalog settle enabled from block ${startBlock} via ${settle.range_server}`);
             }

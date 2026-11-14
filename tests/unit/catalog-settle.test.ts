@@ -3,6 +3,7 @@ import {CatalogSettler,parseSettleRange,type CatalogSettleIO,type SettleDocument
 
 // Blocks 101..110, two actions each; the live indexer stored them with store metadata, the range server with disk metadata.
 const block=(n:number)=>n.toString(16).padStart(64,'0'),chain='settle',actionIndex=chain+'-action-v1-000001',blockIndex=chain+'-block-v1';
+const names={chain,indexVersion:'v1',partitionSize:10000000};
 const blockDoc=(n:number)=>({block_num:n,block_id:block(n),producer:'p',protocol:{schemaVersion:1,source:{blockNum:n}}});
 const actionDoc=(n:number,i:number,protocol:any)=>({block_num:n,global_sequence:String(n*10+i),act:{account:'a',name:'x',data:{v:i}},protocol});
 const disk=(n:number,i:number)=>({schemaVersion:3,source:{blockNum:n,blockId:block(n)},selectionId:'h45abidiskselection1:'+'0'.repeat(64),input:{i}});
@@ -34,6 +35,7 @@ function fakeIO(overrides:Partial<CatalogSettleIO>&{attestedEnd?:number;settled?
         fetchRange:async(from,to)=>{state.ranges.push([from,to]);return rangeOf(from,to);},
         liveDocuments:async(from,to)=>liveOf(from,to),
         write:async documents=>{state.written.push(...documents);},
+        existing:async()=>0,
         recordSettled:async n=>{state.settled=n;},
         ...overrides,
     };
@@ -41,7 +43,7 @@ function fakeIO(overrides:Partial<CatalogSettleIO>&{attestedEnd?:number;settled?
 }
 
 test('a range whose live documents differ only in protocol metadata is rewritten and checkpointed',async()=>{
-    const f=fakeIO();const settler=new CatalogSettler(f.io,101,{max_blocks:4});
+    const f=fakeIO();const settler=new CatalogSettler(f.io,101,names,{max_blocks:4});
     expect(await settler.step()).toEqual({status:'settled',from:101,to:104,written:8,unchanged:4,repaired:0});
     expect(f.state.settled).toBe(104);expect(f.state.written.every(d=>d.kind==='action'&&d.source.protocol.schemaVersion===3)).toBe(true);
     // Block documents are identical, so they are not rewritten; the next step continues after the checkpoint.
@@ -52,30 +54,34 @@ test('a range whose live documents differ only in protocol metadata is rewritten
 });
 
 test('settling stops short of the attested end and of the indexed tip',async()=>{
-    expect(await new CatalogSettler(fakeIO({attestedEnd:null as any}).io,101).step()).toMatchObject({status:'idle',reason:'no attested catalog segment'});
+    expect(await new CatalogSettler(fakeIO({attestedEnd:null as any}).io,101,names).step()).toMatchObject({status:'idle',reason:'no attested catalog segment'});
     const near=fakeIO({indexed:110+CatalogSettler.tipMargin-3});
-    expect(await new CatalogSettler(near.io,101).step()).toMatchObject({status:'settled',from:101,to:107});
+    expect(await new CatalogSettler(near.io,101,names).step()).toMatchObject({status:'settled',from:101,to:107});
     const nothing=fakeIO({indexed:100+CatalogSettler.tipMargin});
-    expect(await new CatalogSettler(nothing.io,101).step()).toMatchObject({status:'idle'});
+    expect(await new CatalogSettler(nothing.io,101,names).step()).toMatchObject({status:'idle'});
     // Already settled to the attested end.
-    expect(await new CatalogSettler(fakeIO({settled:110}).io,101).step()).toMatchObject({status:'idle'});
+    expect(await new CatalogSettler(fakeIO({settled:110}).io,101,names).step()).toMatchObject({status:'idle'});
 });
 
 test('a live document still missing near the tip waits; an old gap is repaired',async()=>{
     const recent=fakeIO({indexed:300,liveDocuments:async(from,to)=>liveOf(from,to,{drop:['1021']})});
-    expect(await new CatalogSettler(recent.io,101).step()).toEqual({status:'waiting',from:101,to:110,missing:1});
+    expect(await new CatalogSettler(recent.io,101,names).step()).toEqual({status:'waiting',from:101,to:110,missing:1});
     expect(recent.state.settled).toBeNull();expect(recent.state.written).toEqual([]);
     const old=fakeIO({indexed:5000,liveDocuments:async(from,to)=>liveOf(from,to,{drop:['1021']})});
-    expect(await new CatalogSettler(old.io,101).step()).toMatchObject({status:'settled',repaired:1,written:20});
+    expect(await new CatalogSettler(old.io,101,names).step()).toMatchObject({status:'settled',repaired:1,written:20});
     expect(old.state.written.some(d=>d.id==='1021')).toBe(true);
+    // A repair never overwrites an id that some document outside the range already holds.
+    const taken=fakeIO({indexed:5000,liveDocuments:async(from,to)=>liveOf(from,to,{drop:['1021']}),existing:async()=>1});
+    expect(await new CatalogSettler(taken.io,101,names).step()).toMatchObject({status:'refused',message:expect.stringContaining('already used')});
+    expect(taken.state.written).toEqual([]);
 });
 
 test('an undecoded live action is repaired by its disk document; any other body difference refuses',async()=>{
     const undecoded=fakeIO({liveDocuments:async(from,to)=>liveOf(from,to,{mutate:(id,s)=>id==='1050'?{...s,act:{...s.act,data:'0102'},
         protocol:{...s.protocol,status:'incomplete'}}:s})});
-    expect(await new CatalogSettler(undecoded.io,101).step()).toMatchObject({status:'settled',repaired:1});
+    expect(await new CatalogSettler(undecoded.io,101,names).step()).toMatchObject({status:'settled',repaired:1});
     const changed=fakeIO({liveDocuments:async(from,to)=>liveOf(from,to,{mutate:(id,s)=>id==='1050'?{...s,act:{...s.act,data:{v:9}}}:s})});
-    expect(await new CatalogSettler(changed.io,101).step()).toMatchObject({status:'refused',message:expect.stringContaining('beyond protocol metadata')});
+    expect(await new CatalogSettler(changed.io,101,names).step()).toMatchObject({status:'refused',message:expect.stringContaining('beyond protocol metadata')});
     expect(changed.state.settled).toBeNull();expect(changed.state.written).toEqual([]);
 });
 
@@ -87,9 +93,13 @@ test('ranges that do not match the catalog or the live set are refused without w
         ['boundary',{fetchRange:async(from,to)=>({...rangeOf(from,to),manifest:{...rangeOf(from,to).manifest,lastBlockId:block(7)}})},'boundary'],
         ['live without disk',{fetchRange:async(from,to)=>rangeOf(from,to,{omit:'1031'})},'live document settle-action-v1-000001/1031 has no disk document'],
         ['other block',{fetchRange:async(from,to)=>{const r=rangeOf(from,to);(r.blocks[2]!.documents[1]!.source as any).block_num=1;return r;}},'names another block'],
+        ['other index',{fetchRange:async(from,to)=>{const r=rangeOf(from,to);(r.blocks[2]!.documents[1] as any).index='settle-delta-v1';return r;}},'another index or id'],
+        ['other action id',{fetchRange:async(from,to)=>{const r=rangeOf(from,to);(r.blocks[2]!.documents[1] as any).id='1';return r;}},'another index or id'],
+        ['other block id',{fetchRange:async(from,to)=>{const r=rangeOf(from,to);(r.blocks[2]!.documents[0]!.source as any).block_id=block(1);return r;}},'another index, id or block id'],
+        ['other partition',{fetchRange:async(from,to)=>{const r=rangeOf(from,to);(r.blocks[2]!.documents[1] as any).index=chain+'-action-v1-000002';return r;}},'another index or id'],
     ];
     for(const [name,overrides,message] of cases){
-        const f=fakeIO(overrides);const step=await new CatalogSettler(f.io,101).step();
+        const f=fakeIO(overrides);const step=await new CatalogSettler(f.io,101,names).step();
         expect(step.status,name).toBe('refused');expect((step as any).message,name).toContain(message);
         expect(f.state.written,name).toEqual([]);expect(f.state.settled,name).toBeNull();
     }

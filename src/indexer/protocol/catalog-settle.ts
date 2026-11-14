@@ -31,6 +31,8 @@ export interface CatalogSettleIO {
     isAdoptedSegment(manifestSha256: string): Promise<boolean>;
     fetchRange(from: number, to: number): Promise<SettleRange>;
     liveDocuments(from: number, to: number): Promise<Map<string, {index: string; id: string; source: any}>>;
+    /** How many of these targets already hold a document (any block). */
+    existing(documents: readonly SettleDocument[]): Promise<number>;
     write(documents: readonly SettleDocument[]): Promise<void>;
     recordSettled(blockNum: number): Promise<void>;
 }
@@ -46,18 +48,35 @@ const body = (source: any) => {const {protocol: _protocol, ...rest} = source ?? 
 /** A live action stored without decoded data is repaired by its disk document, whatever its body. */
 const incomplete = (source: any) => source?.protocol?.status === 'incomplete' || source?.protocol?.error !== undefined;
 
+/** Where each document must live: the indexer's own index names and ids. */
+export interface SettleIndexNames {chain: string; indexVersion: string; partitionSize: number}
 export class CatalogSettler {
     private readonly maxBlocks: number;
     private readonly repairAfter: number;
     /** Indexing lag margin: live documents near the indexed tip may still be in flight. */
     static readonly tipMargin = 128;
-    constructor(private readonly io: CatalogSettleIO, private readonly startBlock: number,
+    constructor(private readonly io: CatalogSettleIO, private readonly startBlock: number, private readonly names: SettleIndexNames,
                 options: Pick<CatalogSettleConfiguration, 'max_blocks' | 'repair_after_blocks'> = {}) {
         this.maxBlocks = options.max_blocks ?? 512;
         this.repairAfter = options.repair_after_blocks ?? 1024;
         if (!Number.isSafeInteger(this.maxBlocks) || this.maxBlocks < 1 || this.maxBlocks > 100000
             || !Number.isSafeInteger(this.repairAfter) || this.repairAfter < CatalogSettler.tipMargin
-            || !Number.isSafeInteger(startBlock) || startBlock < 1) throw new Error('Invalid catalog settle configuration');
+            || !Number.isSafeInteger(startBlock) || startBlock < 1
+            || !Number.isSafeInteger(names.partitionSize) || names.partitionSize < 1) throw new Error('Invalid catalog settle configuration');
+    }
+    /** The one place a document of this kind and block may be written, and under which id. */
+    private placement(document: SettleDocument, block: number, blockId: string): string | undefined {
+        const {chain, indexVersion, partitionSize} = this.names, source = document.source;
+        if (source?.block_num !== block) return `a ${document.kind} document of block ${block} names another block`;
+        if (document.kind === 'block') {
+            if (document.index !== `${chain}-block-${indexVersion}` || document.id !== String(block) || source.block_id !== blockId)
+                return `block document of ${block} has another index, id or block id`;
+        } else {
+            const partition = String(Math.ceil(block / partitionSize)).padStart(6, '0');
+            if (document.index !== `${chain}-action-${indexVersion}-${partition}` || typeof source.global_sequence !== 'string'
+                || document.id !== source.global_sequence) return `action document ${document.id} of block ${block} has another index or id`;
+        }
+        return undefined;
     }
 
     async step(): Promise<SettleStep> {
@@ -78,8 +97,7 @@ export class CatalogSettler {
         for (const [offset, item] of range.blocks.entries()) {
             if (item.block !== from + offset || item.id !== await this.io.catalogBlockId(item.block))
                 return refuse(`block ${from + offset} differs from the catalog`);
-            for (const document of item.documents)
-                if (document.source?.block_num !== item.block) return refuse(`a ${document.kind} document of block ${item.block} names another block`);
+            for (const document of item.documents) {const misplaced = this.placement(document, item.block, item.id); if (misplaced) return refuse(misplaced);}
         }
         if (m.firstBlockId !== range.blocks[0]!.id || m.lastBlockId !== range.blocks.at(-1)!.id) return refuse('range manifest boundary differs');
 
@@ -104,6 +122,9 @@ export class CatalogSettler {
             if (json(current.source.protocol ?? null) === json(document.source.protocol ?? null)) unchanged++;
             else writes.push(document);
         }
+        // A repair writes where no live document of this range was found: no other document may hold that id.
+        const repairs = writes.filter(document => !live.has(key(document.index, document.id)));
+        if (repairs.length && await this.io.existing(repairs) > 0) return refuse('a repaired document id is already used by a document outside this range');
         if (writes.length) await this.io.write(writes);
         await this.io.recordSettled(to);
         return {status: 'settled', from, to, written: writes.length, unchanged, repaired};
@@ -145,7 +166,9 @@ export function elasticSettleIO(options: {
     catalogBlockId: CatalogSettleIO['catalogBlockId']; isAdoptedSegment: CatalogSettleIO['isAdoptedSegment'];
 }): CatalogSettleIO {
     const url = new URL(options.rangeServer);
-    if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Invalid range server URL');
+    const loopback = ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(url.hostname);
+    if (!(url.protocol === 'https:' || (url.protocol === 'http:' && loopback)))
+        throw new Error('The range server must be on loopback or use https');
     const {client, chain} = options;
     async function all(index: string, from: number, to: number, sort: any[]): Promise<any[]> {
         const hits: any[] = [];let after: any[] | undefined;
@@ -178,6 +201,10 @@ export function elasticSettleIO(options: {
                 ...await all(chain + '-action-*', from, to, [{global_sequence: 'asc'}])])
                 documents.set(key(hit._index, hit._id), {index: hit._index, id: hit._id, source: hit._source});
             return documents;
+        },
+        async existing(documents) {
+            const response: any = await client.mget({docs: documents.map(document => ({_index: document.index, _id: document.id})), _source: false});
+            return response.docs.filter((item: any) => item.found).length;
         },
         async write(documents) {
             const operations = documents.flatMap(document => [{index: {_index: document.index, _id: document.id}}, document.source]);
