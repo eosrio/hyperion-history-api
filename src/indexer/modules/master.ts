@@ -49,6 +49,7 @@ import {loadChainProtocol} from '../protocol/selection.js';
 import {ProtocolAbiCoordinator} from '../protocol/abi-coordinator.js';
 import {DiskAbiHistoryCatalog} from '../protocol/disk-abi-history.js';
 import {CatalogSettler, elasticSettleIO, type SettleStep} from '../protocol/catalog-settle.js';
+import {followProtocolStoreGenerations, protocolStoreGenerationIndices} from '../protocol/immutable-bundle-store.js';
 import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
 import {ProtocolSourceBindingStore, type ProtocolSourcePosition} from '../protocol/source-bindings.js';
 import {protocolMetadataReadBoundMs} from '../protocol/immutable-bundle-store.js';
@@ -298,6 +299,8 @@ export class HyperionMaster {
     private protocolCatalogSettleInFlight = false;
     private protocolCatalogSettleNote?: string;
     private protocolCatalogSettleLoggedAt = 0;
+    private protocolStoreRotationTimer?: Timeout;
+    private protocolStoreRotationInFlight = false;
     private protocolAbiDrainInFlight = false;
     private protocolAbiDrainAgain = false;
     private protocolAbiFailed = false;
@@ -387,6 +390,7 @@ export class HyperionMaster {
         }
 
         this.conf = this.cm.config;
+        if (this.conf.settings?.protocol_abi_history?.rotation) followProtocolStoreGenerations();
         this.sourceCreditConfiguration(); // Capture valid opt-in before clients and keep it fixed for this master lifetime.
 
         if (this.conf.settings.use_global_agent) {
@@ -852,6 +856,7 @@ export class HyperionMaster {
                     maxCommitBytesPerDrain: options.historical_certificates.max_commit_bytes_per_drain,
                     maxMillisecondsPerDrain: options.historical_certificates.max_ms_per_drain},
                 onHistoricalError: error => hLog('Historical state source remains unavailable:', error),
+                onCatalogError: error => hLog('Catalog attestation failed and will retry:', error instanceof Error ? error.message : String(error)),
                 onCatalogRefused: refusal => hLog(`[WARNING] Catalog segment ${refusal.manifestSha256} (blocks ${refusal.startBlock}-${refusal.endBlock})`
                     + ` disagrees with this indexer's ABI commits and is not adopted: ${refusal.message}`),
                 onSettled: head => this.broadcastProtocolAbiSettled(head.blockNum)});
@@ -872,6 +877,13 @@ export class HyperionMaster {
                     {chain: this.chain, indexVersion: this.conf.settings.index_version, partitionSize: this.conf.settings.index_partition_size}, settle);
                 this.protocolCatalogSettleTimer = setInterval(() => this.requestCatalogSettle(settler), settle.interval_ms ?? 5000).unref();
                 hLog(`Catalog settle enabled from block ${startBlock} via ${settle.range_server}`);
+                const rotation = this.conf.settings.protocol_abi_history!.rotation;
+                if (rotation) {
+                    this.protocolStoreRotationTimer = setInterval(() => this.requestStoreRotation(coordinator, rotation),
+                        rotation.check_interval_ms ?? 60000).unref();
+                    hLog(`Proof store rotation enabled at ${rotation.max_bytes ?? 8 * 1024 ** 3} bytes per generation`
+                        + (rotation.drop_previous ? ', dropping retired generations' : ', retired generations are kept for an operator'));
+                }
             }
         } catch (error) { this.failProtocolAbiCoordinator(error); throw error; }
     }
@@ -983,6 +995,40 @@ export class HyperionMaster {
         }).catch(error => note(`Catalog settle failed and will retry: ${error instanceof Error ? error.message : String(error)}`))
             .finally(() => { this.protocolCatalogSettleInFlight = false; });
     }
+    /**
+     * One rotation step at a time: retire a previous generation that nothing can reference any more (and drop it when
+     * configured), or start a rotation once the current generation is large enough. Never stops indexing.
+     */
+    private requestStoreRotation(coordinator: ProtocolAbiCoordinator, rotation: NonNullable<NonNullable<typeof this.conf.settings.protocol_abi_history>['rotation']>): void {
+        if (this.protocolStoreRotationInFlight || this.protocolAbiFailed || this.shutdownStarted) return;
+        this.protocolStoreRotationInFlight = true;
+        (async () => {
+            const control = await coordinator.inspect();
+            if (control.previousStore) {
+                const retired = await coordinator.retirePreviousStore(rotation.retire_margin_blocks ?? 1024, rotation.retire_after_ms ?? 600000);
+                if (retired === undefined) return;
+                const indices = protocolStoreGenerationIndices(this.chain, retired);
+                if (!rotation.drop_previous) {hLog(`Proof store generation ${retired} is retired and no longer read; delete ${indices.join(', ')} to reclaim it`); return;}
+                // Readers learn of the retirement on their next control read; give in-flight reads time to finish.
+                await new Promise(resolve => setTimeout(resolve, 15000));
+                await this.esClient.indices.delete({index: indices, ignore_unavailable: true});
+                hLog(`Dropped retired proof store generation ${retired}: ${indices.join(', ')}`);
+                return;
+            }
+            const indices = protocolStoreGenerationIndices(this.chain, control.storeGeneration ?? 0);
+            const stats: any = await this.esClient.cat.indices({index: indices, bytes: 'b', format: 'json', h: 'index,store.size'} as any);
+            const bytes = (stats as any[]).reduce((total, row) => total + Number(row['store.size'] ?? 0), 0);
+            if (bytes < (rotation.max_bytes ?? 8 * 1024 ** 3)) return;
+            const started = Date.now();
+            if (await coordinator.rotateStores()) {
+                const next = await coordinator.inspect();
+                hLog(`Rotated proof stores to generation ${next.storeGeneration} anchored at block ${next.anchor} in ${Date.now() - started} ms`
+                    + ` (generation ${next.previousStore?.generation} held ${bytes} bytes)`);
+            }
+        })().catch(error => hLog('Proof store rotation step failed and will retry:', error instanceof Error ? error.message : String(error)))
+            .finally(() => { this.protocolStoreRotationInFlight = false; });
+    }
+
     /** Keep settling while there is a backlog, instead of one step per interval. */
     private requestCatalogSettleSoon(settler: CatalogSettler): void {
         setImmediate(() => { if (!this.protocolCatalogSettleInFlight) this.requestCatalogSettle(settler); });
@@ -995,6 +1041,7 @@ export class HyperionMaster {
         this.shutdownStarted = true;
         if (this.protocolAbiDrainTimer) clearInterval(this.protocolAbiDrainTimer);
         if (this.protocolCatalogSettleTimer) clearInterval(this.protocolCatalogSettleTimer);
+        if (this.protocolStoreRotationTimer) clearInterval(this.protocolStoreRotationTimer);
         hLog('Canonical ABI coordinator failed; supervised master restart required:', error);
         messageAllWorkers(cluster, {event: 'stop'});
         setImmediate(() => process.exit(1));
@@ -2454,6 +2501,7 @@ export class HyperionMaster {
             this.workerAttemptSupervisor?.stop();
             if (this.protocolAbiDrainTimer) clearInterval(this.protocolAbiDrainTimer);
             if (this.protocolCatalogSettleTimer) clearInterval(this.protocolCatalogSettleTimer);
+            if (this.protocolStoreRotationTimer) clearInterval(this.protocolStoreRotationTimer);
             if (this.liveReader?.wref) this.revokeProtocolAbiReader(this.liveReader.wref);
             this.shutdownStarted = true;
             this.allowMoreReaders = false;

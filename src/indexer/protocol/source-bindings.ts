@@ -1,7 +1,8 @@
 import {createHash} from 'node:crypto';
 import type {Client} from '@elastic/elasticsearch';
 import type {ProtocolComponent} from '@eosrio/hyperion-sdk/protocol';
-import {ImmutableProtocolBundleStore, ImmutableProtocolBundleReadError, ProtocolImmutableRecordMemo, protocolImmutableJson,
+import {GenerationalProtocolBundleStore, protocolStoreGenerations, protocolStoreIndexSuffix,
+    ImmutableProtocolBundleStore, ImmutableProtocolBundleReadError, ProtocolImmutableRecordMemo, protocolImmutableJson,
     protocolBundleMembershipHintBounds} from './immutable-bundle-store.js';
 import {isProtocolHex} from './hex.js';
 
@@ -154,13 +155,14 @@ export function protocolPublishedSourceId(chainId:string,blockId:string):string 
 
 /** Durable source association only. Neither a stored selection nor a capsule grants progress or ABI authority. */
 export class ProtocolSourceBindingStore {
-    private readonly bundles:ImmutableProtocolBundleStore;
+    private readonly bundles:GenerationalProtocolBundleStore;
     /** Contexts and selections only: their IDs hash their content. An observation link's ID does not, so it is always read. */
     private readonly remembered?:ProtocolImmutableRecordMemo;
     get index():string{return this.bundles.index;}
     constructor(client:Client,chain:string,replicas=0,options:{readOnly?:boolean;metadataReadBoundMs?:number;rememberRecords?:boolean}={}) {
         const {rememberRecords,...bundleOptions}=options;
-        this.bundles=new ImmutableProtocolBundleStore(client,chain,replicas,'protocol-source-bindings','protocol-source-bindings-v1',undefined,bundleOptions);
+        this.bundles=new GenerationalProtocolBundleStore(protocolStoreGenerations(client,chain,replicas),generation=>new ImmutableProtocolBundleStore(client,chain,replicas,
+            'protocol-source-bindings',protocolStoreIndexSuffix('protocol-source-bindings-v1',generation),undefined,bundleOptions));
         if(rememberRecords===true)this.remembered=new ProtocolImmutableRecordMemo(16*1024*1024);
     }
     async prepareContext(input:ProtocolSourceContext):Promise<{id:string}> {

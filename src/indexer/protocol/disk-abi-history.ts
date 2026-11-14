@@ -20,6 +20,18 @@ export interface DiskAbiHistoryConfiguration {
     segments_dir?: string;
     /** Replace live block and action documents in attested ranges with the range server's disk-backed ones. Indexer only. */
     settle?: import('./catalog-settle.js').CatalogSettleConfiguration;
+    /** Rotate the proof stores into a new generation anchored at a settled catalog link end. Needs `settle`. Indexer only. */
+    rotation?: {
+        /** Start a rotation once the current generation's indices hold this many bytes. */
+        max_bytes?: number;
+        /** Retire the previous generation once settling is this many blocks past the switch block... */
+        retire_margin_blocks?: number;
+        /** ...and the switch is at least this old. */
+        retire_after_ms?: number;
+        /** Delete a retired generation's indices. Off: log their names for an operator to delete. */
+        drop_previous?: boolean;
+        check_interval_ms?: number;
+    };
 }
 interface Member {name: string; bytes: number; sha256: string}
 interface Manifest {
@@ -49,6 +61,8 @@ interface Loaded {
     states: Map<string, ProtocolAbiAccountState>;
     /** Coverage: the pinned end, then each adopted segment's end. */
     end: number; tip: DiskAbiHistoryTip; pieces: Piece[]; adopted: Set<string>;
+    /** Every adopted link's end and the last global sequence there: where a chain can be anchored. */
+    boundaries: Map<number, string | null>;
 }
 export interface DiskAbiHistoryBaseline {
     catalogId: string; source: ProtocolSourcePosition; coverageStart: 1; lastGlobalSequence: string | null;
@@ -212,6 +226,7 @@ export class DiskAbiHistoryCatalog {
             for(const entry of entries){const list=epochs.get(entry.epoch.account)??[];list.push(entry);epochs.set(entry.epoch.account,list);states.set(entry.state.source.observationId,entry.state);}
             for(const list of epochs.values())list.sort(compareEntries);
             const loaded:Loaded={manifest:freeze(m),files,ids,epochs,states,end:m.endBlock,pieces:[],adopted:new Set([this.configuration.manifest_sha256]),
+                boundaries:new Map([[m.endBlock,m.lastGlobalSequence]]),
                 tip:{manifestSha256:this.configuration.manifest_sha256,endBlock:m.endBlock,lastBlockId:m.lastBlockId,
                     lastGlobalSequence:m.lastGlobalSequence,totalRecords:m.deployments.records}};
             requireData(await this.idAt(loaded,1)===m.firstBlockId&&await this.idAt(loaded,m.endBlock)===m.lastBlockId,'coverage boundary identity mismatch');
@@ -281,12 +296,16 @@ export class DiskAbiHistoryCatalog {
         const value=await this.data();requireData(uint(blockNum,1)&&blockNum<=value.end,'ABI action is outside covered range');
         return this.resolveAction(value,input,blockNum);
     }
-    /** The anchor: the complete ABI state at the pinned catalog's end. Adopted segments never move it. */
-    async baseline():Promise<DiskAbiHistoryBaseline> {const value=await this.data();await this.revalidateLoaded(value);
-        const end=value.manifest.endBlock;
-        return freeze({catalogId:this.catalogId,source:await this.source(end),coverageStart:1 as const,
-            lastGlobalSequence:value.manifest.lastGlobalSequence,profile:this.profile,
-            states:[...value.epochs.keys()].sort().map(account=>this.select(value,account,end)?.state)
+    /** The pinned anchor: the complete ABI state at the pinned catalog's end. Adopting segments never moves it. */
+    async baseline():Promise<DiskAbiHistoryBaseline> {return this.baselineAt((await this.data()).manifest.endBlock);}
+    /** Adopted link ends, ascending: the blocks a chain may be anchored at. */
+    async boundaries():Promise<number[]> {return [...(await this.data()).boundaries.keys()].sort((a,b)=>a-b);}
+    /** The complete ABI state at an adopted link's end, as a chain anchor. */
+    async baselineAt(blockNum:number):Promise<DiskAbiHistoryBaseline> {const value=await this.data();await this.revalidateLoaded(value);
+        requireData(value.boundaries.has(blockNum),'block '+blockNum+' is not the end of an adopted catalog link');
+        return freeze({catalogId:this.catalogId,source:await this.source(blockNum),coverageStart:1 as const,
+            lastGlobalSequence:value.boundaries.get(blockNum)!,profile:this.profile,
+            states:[...value.epochs.keys()].sort().map(account=>this.select(value,account,blockNum)?.state)
                 .filter((state):state is ProtocolAbiAccountState=>state!==undefined)});}
 
     /** Manifests in the segments directory whose base is `baseSha`. Only new or changed files are read. */
@@ -364,6 +383,7 @@ export class DiskAbiHistoryCatalog {
             for(const account of touched)value.epochs.get(account)!.sort(compareEntries);
             value.pieces.push({start:segment.link.startBlock,end:segment.link.endBlock,ids});
             value.end=segment.link.endBlock;value.adopted.add(segment.link.manifestSha256);
+            value.boundaries.set(segment.link.endBlock,segment.link.lastGlobalSequence);
             value.tip={manifestSha256:segment.link.manifestSha256,endBlock:segment.link.endBlock,lastBlockId:segment.link.lastBlockId,
                 lastGlobalSequence:segment.link.lastGlobalSequence,totalRecords:segment.link.totalRecords};
             return {...value.tip};
