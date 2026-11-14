@@ -2198,20 +2198,22 @@ export default class MainDSWorker extends HyperionWorker {
 
     /**
      * True only when this block's canonical proof keeps an older ABI epoch for the account, with the
-     * same bytes as its row: the reducer saw an ordinary account touch, not a deployment. Without a
-     * proof view for exactly this block the row is recorded, as before. Storage failures redeliver.
+     * same presence and bytes as its row: the reducer saw an ordinary account touch, not a deployment.
+     * That includes accounts without an ABI (empty bytes) and removed accounts, whose epochs the reducer
+     * keeps the same way. Without a proof view for exactly this block the row is recorded, as before.
+     * Storage failures redeliver.
      */
     private async retainsProtocolAbiEpoch(account: string, abiHex: string, blockNum: number, blockId: string | undefined, row: any): Promise<boolean> {
         const view = this.activeProtocolAbiProofView;
-        if (!view || !abiHex || !(row?.present === true || row?.present === 1)
-            || view.source.blockNum !== blockNum || view.source.blockId !== blockId) return false;
+        if (!view || view.source.blockNum !== blockNum || view.source.blockId !== blockId) return false;
+        const present = row?.present === true || row?.present === 1;
         let state;
         try { state = await this.getProtocolAbiProofReader().inspectFinalState(view, account); }
         catch (error) {
             if (error instanceof ProtocolAbiProofUnavailableError) return false;
             throw new ProtocolProofStorageError(error);
         }
-        return state?.account === account && state.present === true && state.abiHex === abiHex
+        return state?.account === account && state.present === present && state.abiHex === abiHex
             && Number.isSafeInteger(state.source?.blockNum) && state.source.blockNum < blockNum;
     }
 

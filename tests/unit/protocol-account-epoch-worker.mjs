@@ -50,8 +50,18 @@ for(const inspect of [()=>state(40,'00'),()=>null,()=>state(40,abiHex,false),()=
     f=worker({inspect});assert.deepEqual(await touch(f),{recorded:true,broadcast:1});
 }
 f=worker({inspect:()=>state(40)});assert.deepEqual(await touch(f,{present:0}),{recorded:true,broadcast:1});
-assert.equal(f.inspected.length,0,'a deleted row never asks the proof');
 f=worker({inspect:()=>state(40)});assert.deepEqual(await touch(f,{hex:''}),{recorded:true,broadcast:1});
+
+// An account that never had an ABI is touched like any other: its empty epoch is kept, so only its first row is recorded.
+f=worker({inspect:()=>state(40,'')});assert.deepEqual(await touch(f,{hex:''}),{recorded:false,broadcast:0});
+assert.equal(f.value.protocolAbiAtBlock.size,0);
+f=worker({inspect:()=>state(blockNum,'')});assert.deepEqual(await touch(f,{hex:''}),{recorded:true,broadcast:1});
+assert.equal(f.published[0].abi_available,false);
+// A row with bytes under an empty epoch is a deployment and is recorded.
+f=worker({inspect:()=>state(40,'')});assert.deepEqual(await touch(f),{recorded:true,broadcast:1});
+// A removed account under a retained removed epoch is a touch too; a removed row with other bytes is recorded.
+f=worker({inspect:()=>state(40,abiHex,false)});assert.deepEqual(await touch(f,{present:0}),{recorded:false,broadcast:0});
+f=worker({inspect:()=>state(40,'',false)});assert.deepEqual(await touch(f,{present:0}),{recorded:true,broadcast:1});
 
 // Only a proof view of exactly this block can retain an epoch.
 for(const view of [undefined,{source:{blockNum:blockNum-1,blockId:block(blockNum-1)}},{source:{blockNum,blockId:block(7)}}]) {
