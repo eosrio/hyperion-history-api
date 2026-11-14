@@ -186,6 +186,10 @@ test('a store rotation rebuilds the chain in a new generation above a settled an
     expect(after.head!.blockNum).toBe(10);expect(after.head!.blockId).toBe(before.head!.blockId);expect(after.head!.commitId).not.toBe(before.head!.commitId);
     expect(f.memory.mappings.has(f.chain+'-protocol-abi-frontier-records-v1-g1')).toBe(true);
     expect(f.store.recordsIndex).toBe(f.chain+'-protocol-abi-frontier-records-v1-g1');
+    // The new generation was fully prepared before control named it: its indices and the head's certificate exist.
+    for(const kind of ['source-bindings','abi-observations'])expect(f.memory.mappings.has(f.chain+'-protocol-'+kind+'-v1-g1'),kind).toBe(true);
+    const switched=await f.coordinator.inspect(),{protocolAbiCertificateForControl}=await import('../../src/indexer/protocol/abi-proof.js');
+    expect(await f.store.readCertificate(f.store.certificateId(protocolAbiCertificateForControl(switched)))).toEqual(protocolAbiCertificateForControl(switched));
     // A second rotation waits for the previous generation to be retired.
     expect(await f.coordinator.rotateStores()).toBe(false);
 

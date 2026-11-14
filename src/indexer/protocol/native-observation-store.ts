@@ -135,6 +135,8 @@ export class ProtocolNativeObservationStore {
         this.abis=new ProtocolAbiObservationStore(client,chain,replicas,undefined,{readOnly:true,metadataReadBoundMs});
         this.index=this.bundles.index;
     }
+    /** Create this store's index for a store generation before control switches to it. */
+    provisionGeneration(generation:number):Promise<void> {return this.bundles.provisionGeneration(generation);}
     /** A detached read handle cannot provision indices or prepare observations. It keeps this handle's read options. */
     asReadOnly():ProtocolNativeObservationStore {
         return new ProtocolNativeObservationStore(this.client,this.chain,this.replicas,this.bounds,{...this.reads,readOnly:true});

@@ -159,6 +159,8 @@ export class ProtocolSourceBindingStore {
     /** Contexts and selections only: their IDs hash their content. An observation link's ID does not, so it is always read. */
     private readonly remembered?:ProtocolImmutableRecordMemo;
     get index():string{return this.bundles.index;}
+    /** Create this store's index for a store generation before control switches to it. */
+    provisionGeneration(generation:number):Promise<void> {return this.bundles.provisionGeneration(generation);}
     constructor(client:Client,chain:string,replicas=0,options:{readOnly?:boolean;metadataReadBoundMs?:number;rememberRecords?:boolean}={}) {
         const {rememberRecords,...bundleOptions}=options;
         this.bundles=new GenerationalProtocolBundleStore(protocolStoreGenerations(client,chain,replicas),generation=>new ImmutableProtocolBundleStore(client,chain,replicas,

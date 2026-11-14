@@ -183,6 +183,12 @@ export class ImmutableProtocolBundleStore {
         }
     }
 
+    /** Create and check this store's index now, before anything reads or writes it. Writable stores only. */
+    async ensureIndex(signal?: AbortSignal): Promise<void> {
+        if (this.options.readOnly) throw new Error('Read-only protocol bundles cannot provision an index');
+        await this.initialize(signal, true);
+    }
+
     private async provision(signal?: AbortSignal) {
         try {
             const created = await checkedIo(signal, () => this.client.indices.create({index: this.index,
@@ -844,6 +850,8 @@ export class GenerationalProtocolBundleStore {
     }
     /** The current generation's index, as last observed. */
     get index(): string {return this.at(this.generations.known().current).index;}
+    /** Create one generation's index ahead of a switch to it, so readers never meet a generation without one. */
+    provisionGeneration(generation: number): Promise<void> {return this.at(generation).ensureIndex();}
     private async writer() {return this.at((await this.generations.resolve()).current);}
     /** Copy records found only in the previous generation forward. A failed copy never fails the read; the next read retries it. */
     private async promote(records: readonly (readonly [string, unknown])[]): Promise<void> {

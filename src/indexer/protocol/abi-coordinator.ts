@@ -89,6 +89,8 @@ export interface ProtocolAbiCoordinatorOptions {
     onCatalogRefused?:(refusal:{manifestSha256:string;startBlock:number;endBlock:number;message:string})=>void;
     /** A catalog check that failed for another reason than a disagreement (unreadable segment, store error); it is retried. */
     onCatalogError?:(error:unknown)=>void;
+    /** Create the other proof store indices of a generation before control switches to it (native actions, for example). */
+    provisionStoreGeneration?:(generation:number)=>Promise<void>;
     /** Catalog attestation is scheduled at most this often. */
     catalogAttestIntervalMs?:number;
 }
@@ -1299,6 +1301,14 @@ export class ProtocolAbiCoordinator {
                 pending.splice(0,batch.blocks.length);
                 const last=batch.blocks.at(-1)!;built=this.head(last.commit,last.id);
             }
+            // Everything a reader of the new generation needs exists before control names it: every store index
+            // and the certificate of the head it will name, so the switch never shows a half-prepared generation.
+            await this.options.bindings.provisionGeneration(generation);await this.options.observations.provisionGeneration(generation);
+            await this.options.provisionStoreGeneration?.(generation);
+            const certificate=protocolAbiCertificateForControl({...live,head:built});
+            const issued=await target.prepareCertificates([certificate]);
+            if(json((await target.readPreparedCertificates(issued))[0])!==json(certificate))throw new Error('Rotated head certificate readback differs');
+            this.assertEpoch(epoch);
             const outcome=await this.run(async()=>{
                 this.assertEpoch(epoch);
                 const version=this.known??await this.owned(),value=version.value;this.assertEpoch(epoch);

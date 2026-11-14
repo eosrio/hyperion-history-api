@@ -48,6 +48,7 @@ import {resolveSourceCreditCapacity, SourceCreditCapacityCoordinator, isSourceCr
 import {loadChainProtocol} from '../protocol/selection.js';
 import {ProtocolAbiCoordinator} from '../protocol/abi-coordinator.js';
 import {DiskAbiHistoryCatalog} from '../protocol/disk-abi-history.js';
+import {ProtocolNativeObservationStore} from '../protocol/native-observation-store.js';
 import {CatalogSettler, elasticSettleIO, type SettleStep} from '../protocol/catalog-settle.js';
 import {followProtocolStoreGenerations, protocolStoreGenerationIndices} from '../protocol/immutable-bundle-store.js';
 import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
@@ -856,6 +857,8 @@ export class HyperionMaster {
                     maxCommitBytesPerDrain: options.historical_certificates.max_commit_bytes_per_drain,
                     maxMillisecondsPerDrain: options.historical_certificates.max_ms_per_drain},
                 onHistoricalError: error => hLog('Historical state source remains unavailable:', error),
+                provisionStoreGeneration: generation => new ProtocolNativeObservationStore(this.esClient, this.chain, replicas, undefined,
+                    metadata).provisionGeneration(generation),
                 onCatalogError: error => hLog('Catalog attestation failed and will retry:', error instanceof Error ? error.message : String(error)),
                 onCatalogRefused: refusal => hLog(`[WARNING] Catalog segment ${refusal.manifestSha256} (blocks ${refusal.startBlock}-${refusal.endBlock})`
                     + ` disagrees with this indexer's ABI commits and is not adopted: ${refusal.message}`),
