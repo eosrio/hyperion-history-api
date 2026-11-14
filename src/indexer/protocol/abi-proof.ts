@@ -240,6 +240,12 @@ export class ProtocolAbiProofReader {
         requireProof(ident('h45srcctx1',value.source.contextId)&&text(value.source.readerSessionId),'Invalid canonical ABI source');
         if(!value.head)unavailable('source_pending','Canonical ABI source has not committed');
         requireProof(validHead(value.head),'Invalid canonical ABI authority head');
+        if(value.catalog!==undefined&&this.options.diskHistory){
+            const link=value.catalog;
+            requireProof(link&&Object.keys(link).sort().join(',')==='endBlock,lastBlockId,manifestSha256'&&hex64.test(link.manifestSha256)
+                &&uint(link.endBlock,1)&&hex64.test(link.lastBlockId),'Invalid adopted ABI catalog link');
+            await this.options.diskHistory.catalog.follow(link);this.assertActive(signal);
+        }
         return protocolAbiCertificateForControl(value);
     }
     private async validateCommit(value:any):Promise<CanonicalCommit> {
@@ -303,8 +309,17 @@ export class ProtocolAbiProofReader {
         this.assertActive(signal);
         if(this.options.diskHistory&&await this.options.diskHistory.catalog.covers(source)){
             this.assertActive(signal);return this.openDisk(source,selectionId,signal);}
-        if(isProtocolDiskSelectionId(selectionId))unavailable('source_not_covered','Disk selection is outside the configured catalog');
+        if(isProtocolDiskSelectionId(selectionId)){
+            // A disk selection never reads the stores: follow the coverage the owner published, then it is covered or refused.
+            try {await this.authority(signal);}catch(error){if(!(error instanceof ProtocolAbiProofUnavailableError))throw error;}
+            if(this.options.diskHistory&&await this.options.diskHistory.catalog.covers(source)){
+                this.assertActive(signal);return this.openDisk(source,selectionId,signal);}
+            unavailable('source_not_covered','Disk selection is outside the configured catalog');
+        }
         const certificate=await this.authority(signal);
+        // Reading authority follows the catalog segments its owner published, which may now cover this source.
+        if(this.options.diskHistory&&await this.options.diskHistory.catalog.covers(source)){
+            this.assertActive(signal);return this.openDisk(source,selectionId,signal);}
         if(certificate.head.blockNum<source.blockNum)unavailable('source_pending','Requested ABI source has not committed');
         if(certificate.head.blockNum-source.blockNum>this.maximumAncestry) {
             if(this.options.historicalCertificates)return this.openHistorical(source.blockNum,{source,selectionId,signal});

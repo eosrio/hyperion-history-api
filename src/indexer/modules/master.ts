@@ -847,6 +847,8 @@ export class HyperionMaster {
                     maxCommitBytesPerDrain: options.historical_certificates.max_commit_bytes_per_drain,
                     maxMillisecondsPerDrain: options.historical_certificates.max_ms_per_drain},
                 onHistoricalError: error => hLog('Historical state source remains unavailable:', error),
+                onCatalogRefused: refusal => hLog(`[WARNING] Catalog segment ${refusal.manifestSha256} (blocks ${refusal.startBlock}-${refusal.endBlock})`
+                    + ` disagrees with this indexer's ABI commits and is not adopted: ${refusal.message}`),
                 onSettled: head => this.broadcastProtocolAbiSettled(head.blockNum)});
             await coordinator.start();
             this.protocolAbiCoordinator = coordinator;

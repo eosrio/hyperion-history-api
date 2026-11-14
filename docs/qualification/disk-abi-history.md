@@ -181,3 +181,61 @@ responses with HTTP 200. One `authority_changed` 503 occurred during root growth
 a retry returned 200. Full-tail coverage, backfill and repair of incomplete
 records remain pending. This observation does not qualify CPU behavior or
 MongoDB/AtomicAssets parity.
+
+## Extending coverage with sealed segments
+
+With `segments_dir`, the pinned catalog is the start of a chain. A sealer (`range-server --seal` in
+hyperion-tools) appends incremental segments (`hyperion-abi-history-segment-v1`) to that directory.
+Each segment holds only the blocks it adds and names its base by manifest digest, end block and
+last block id:
+
+```json
+{
+  "protocol_abi_history": {
+    "interface_version": 1,
+    "manifest": "/absolute/path/wire-abis.ndjson.manifest.json",
+    "manifest_sha256": "<sha256 of exact manifest bytes>",
+    "producer_profile_id": "<producerProfileId>",
+    "node_revision": "<nodeRevision>",
+    "ship_abi_sha256": "<shipAbiSha256>",
+    "segments_dir": "/absolute/path/segments"
+  }
+}
+```
+
+**Verification.** A segment is verified with the sealer's chain rules before anything uses it:
+- it starts right after the adopted tip and names that tip as its base;
+- its chain, node revision, profile and SHiP schema equal the pinned catalog's;
+- its member lengths, digests and counts match its manifest;
+- every record's shape, position, block range and block id check out;
+- its boundary ids match, and its global sequence never goes back.
+
+A directory with several candidates for one base offers none of them.
+
+**Attestation.** A verified segment is not used for proofs until the ABI coordinator adopts it. The
+coordinator does so only after its own settled head has passed the segment's end, and only after its
+commits for those blocks, derived independently from SHiP, agree with the segment on:
+- every block id and parent link;
+- the set of accounts whose ABI state changes at each block, and their final state;
+- the ABI each action decodes with;
+- the last global sequence.
+
+On a match, it adopts the segment and publishes `{manifestSha256, endBlock, lastBlockId}` as
+`catalog` in its control record. On a disagreement, it refuses the segment for that owner and logs
+a warning. The check runs in the background at most every 2 seconds and never delays a drain.
+
+**Readers.** The API and the deserializers follow the published link when they read authority. They
+resolve the chain from their own tip and adopt it only if it ends exactly at the link's digest, so
+a segment that merely reaches the same block cannot be adopted. A restarted coordinator follows the
+previous owner's link again before publishing it.
+
+**What moves and what does not.** The pinned manifest stays the anchor: `catalogId` and the
+coordinator's `disk-abi-baseline` stay where they are, so commits, states and issued views keep
+validating. Only coverage grows. Sources at or below the published end prove from the logs, with no
+store reads; sources above it use the stores as before.
+
+**Limits.**
+- Segment block ids are held in memory, at 32 bytes a block, up to 4,194,304 blocks. Past that, compact
+  the chain into a new pinned catalog, which needs a controlled restart.
+- Adopting segments does not prune the proof stores.
+- Without `segments_dir`, the catalog behaves exactly as before.
