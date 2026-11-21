@@ -20,7 +20,7 @@ export interface DiskAbiHistoryConfiguration {
     segments_dir?: string;
     /** Replace live block and action documents in attested ranges with the range server's disk-backed ones. Indexer only. */
     settle?: import('./catalog-settle.js').CatalogSettleConfiguration;
-    /** Rotate the proof stores into a new generation anchored at a settled catalog link end. Needs `settle`. Indexer only. */
+    /** Rotate the proof stores into a new generation anchored at a settled catalog link end. Needs `settle`. Read by the indexer. */
     rotation?: {
         /** Start a rotation once the current generation's indices hold this many bytes. */
         max_bytes?: number;
@@ -106,6 +106,20 @@ export class DiskAbiHistoryPendingSegment {
         return [...new Set(this.entries.filter(entry=>entry.epoch.blockNum===blockNum).map(entry=>entry.epoch.account))];}
     finalState(account: string, blockNum: number): ProtocolAbiAccountState | null {this.within(blockNum);return this.select(account,blockNum,undefined,this.entries)?.state??null;}
     actionState(input: ProtocolAbiActionInput, blockNum: number): ProtocolAbiAccountState | null {this.within(blockNum);return this.resolveAction(input,blockNum,this.entries);}
+    /**
+     * A deployment raises its account's ABI sequence by exactly one, starting from zero, and an action is matched
+     * to an ABI by that sequence. The first deployment here whose sequence does not follow its account's previous
+     * record (or is not 1 where the account has none), if any.
+     */
+    sequenceBreak(): {account: string; blockNum: number} | undefined {
+        for (const {epoch} of this.entries) {
+            if (epoch.phase !== 'deployment') continue;
+            const prior = this.select(epoch.account, epoch.blockNum, epoch.action!.globalSequence, this.entries);
+            // The sealer counts an account's deployments from zero and never resets the count, so the first is 1.
+            if (BigInt(epoch.abiSequence) !== BigInt(prior?.epoch.abiSequence ?? '0') + 1n) return {account: epoch.account, blockNum: epoch.blockNum};
+        }
+        return undefined;
+    }
 }
 
 /** Immutable sparse ABI epochs and an indexed, irreversible block identity prefix.

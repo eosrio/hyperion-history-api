@@ -11,7 +11,7 @@ import {ProtocolAbiProofReader, ProtocolAbiProofUnavailableError,
 import {ProtocolNativeActionReader, ProtocolNativeActionUnavailableError,
     type ProtocolNativeActionProofMetadata, type ProtocolNativeActionView, type ProtocolNativeActionGrant} from '../../indexer/protocol/native-authorization.js';
 import {ProtocolNativeObservationStore} from '../../indexer/protocol/native-observation-store.js';
-import {protocolImmutableJson, protocolProofReadView} from '../../indexer/protocol/immutable-bundle-store.js';
+import {followProtocolStoreGenerations, protocolImmutableJson, protocolProofReadView} from '../../indexer/protocol/immutable-bundle-store.js';
 import {parseProtocolNativeActionMetadata} from '../../indexer/protocol/native-action-metadata.js';
 import {isProtocolHex} from '../../indexer/protocol/hex.js';
 import {isProtocolDiskSelectionId} from '../../indexer/protocol/disk-source-evidence.js';
@@ -59,6 +59,9 @@ export class ProtocolActionConsumer {
         if (!chainId) throw unavailable('Configured chain identity is unavailable');
         const profile = {id: selected.id, profileId: selected.provider.profileId, components: selected.components ?? []};
         const replicas = host.manager.config.settings.es_replicas ?? 0, view = protocolProofReadView;
+        // A catalog that advances by segments is what lets an indexer move the proof stores to new generations,
+        // and `rotation` itself is only in the indexer's configuration: read control to find the current one.
+        if (host.manager.config.settings.protocol_abi_history?.segments_dir) followProtocolStoreGenerations();
         this.reader = new ProtocolAbiProofReader({chainId, profile,
             diskHistory:diskAbiHistoryOptions(host.manager.config.settings.protocol_abi_history,host.elastic,chain,chainId,
                 profile,selected.provider,host.manager.config.settings.es_replicas??0,view),

@@ -163,15 +163,46 @@ export class ProtocolSourceBindingStore {
     provisionGeneration(generation:number):Promise<void> {return this.bundles.provisionGeneration(generation);}
     constructor(client:Client,chain:string,replicas=0,options:{readOnly?:boolean;metadataReadBoundMs?:number;rememberRecords?:boolean}={}) {
         const {rememberRecords,...bundleOptions}=options;
-        this.bundles=new GenerationalProtocolBundleStore(protocolStoreGenerations(client,chain,replicas),generation=>new ImmutableProtocolBundleStore(client,chain,replicas,
-            'protocol-source-bindings',protocolStoreIndexSuffix('protocol-source-bindings-v1',generation),undefined,bundleOptions),options.readOnly!==true);
+        this.bundles=new GenerationalProtocolBundleStore(protocolStoreGenerations(client,chain,replicas),(generation,readOnly)=>new ImmutableProtocolBundleStore(client,chain,replicas,
+            'protocol-source-bindings',protocolStoreIndexSuffix('protocol-source-bindings-v1',generation),undefined,{...bundleOptions,readOnly:readOnly||bundleOptions.readOnly}),options.readOnly!==true);
         if(rememberRecords===true)this.remembered=new ProtocolImmutableRecordMemo(16*1024*1024);
+    }
+    /**
+     * Before the previous store generation is retired: copy these selections, their contexts and observation links,
+     * and these contexts, into the current generation. `optional` selections may be in no generation and are then
+     * skipped. Returns how many records were copied and the observations the carried links name.
+     */
+    async carryForward(selectionIds:readonly string[],contextIds:readonly string[]=[],optional:readonly string[]=[]):Promise<{copied:number;observationIds:string[]}> {
+        const required=[...new Set(selectionIds)],known=new Set(required),contexts=new Set(contextIds);
+        const first=await this.bundles.carryForward(required);
+        const extra=await this.bundles.carryForward([...new Set(optional)].filter(value=>!known.has(value)),true),absent=new Set(extra.absent);
+        const selections=[...required,...new Set(optional)].filter((value,index,all)=>!absent.has(value)&&all.indexOf(value)===index);
+        for(const recordId of selections)contexts.add((await this.readRecord('selection',recordId)).contextId);
+        const second=await this.bundles.carryForward([...contexts]);
+        // A source whose block was never observed has no link.
+        const links=await this.bundles.carryForward(selections.map(value=>protocolSourceObservationLinkId(value)),true),unlinked=new Set(links.absent);
+        const observationIds=new Set<string>();
+        for(const recordId of selections){
+            if(unlinked.has(protocolSourceObservationLinkId(recordId)))continue;
+            observationIds.add((await this.readRecord('observation-link',protocolSourceObservationLinkId(recordId))).observationId);
+        }
+        return {copied:first.copied+extra.copied+second.copied+links.copied,observationIds:[...observationIds]};
     }
     async prepareContext(input:ProtocolSourceContext):Promise<{id:string}> {
         const value=context(input),recordId=protocolSourceContextId(value);await this.bundles.prepare(recordId,value);return {id:recordId};
     }
-    async prepareSelection(input:ProtocolSourceSelection):Promise<{id:string}> {
-        const value=selection(input),storedContext=await this.readRecord('context',value.contextId);
+    /**
+     * `own` is the caller's context for this selection. A reader session that stayed idle while the store generation
+     * holding its context was retired writes it again here instead of failing on its next block.
+     */
+    async prepareSelection(input:ProtocolSourceSelection,own?:ProtocolSourceContext):Promise<{id:string}> {
+        const value=selection(input);let storedContext:ProtocolSourceContext;
+        try {storedContext=await this.readRecord('context',value.contextId);}
+        catch(error) {
+            if(!own||!(error instanceof ProtocolSourceBindingReadError)||error.code!=='missing')throw error;
+            if((await this.prepareContext(own)).id!==value.contextId)fail();
+            storedContext=await this.readRecord('context',value.contextId);
+        }
         if(storedContext.chainId!==value.source.chainId)fail();
         const recordId=protocolSourceSelectionId(value);await this.bundles.prepare(recordId,value);return {id:recordId};
     }

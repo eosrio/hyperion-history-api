@@ -759,23 +759,30 @@ export class ImmutableProtocolBundleStore {
 export interface ProtocolStoreGenerationState {readonly current: number; readonly previous: number | null}
 let followingGenerations = false;
 /**
- * Indexer processes of a deployment that rotates its proof stores call this once: writes then read control when
- * their known generation is stale. Elsewhere generations change only through control reads a store already makes.
+ * Every process of a deployment that rotates its proof stores calls this once, the API included: it then reads
+ * control when its known generation is stale and before it reports a record missing. Elsewhere generations change
+ * only through control reads a store already makes.
  */
 export function followProtocolStoreGenerations(enabled = true): void {followingGenerations = enabled;}
 const validGeneration = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) >= 0 && Number(value) <= 1_000_000;
 
 /**
  * One per Elasticsearch client and chain. The ABI coordinator's control record names the generations, and every
- * read of it observes them here. A write that has not seen control for `freshnessMs` reads it first, so writes
- * reach a new generation within that bound after a switch; reads use what is known and refresh only on a miss.
- * The previous generation is dropped far later than this bound.
+ * read of it observes them here.
+ *
+ * A process follows generations when its deployment rotates the stores (`followProtocolStoreGenerations`) or once
+ * it has seen a generation above 0. A following process reads control before a write or read when it has not seen
+ * it for `freshnessMs`, so writes reach a new generation within that bound after a switch. And a read that finds
+ * no record reads control again before it reports the record missing, so a record written to a generation this
+ * process has not heard of yet is found. The previous generation is dropped far later than the freshness bound.
+ * A deployment that never rotates reads control for none of this.
  */
 export class ProtocolStoreGenerations {
     static readonly freshnessMs = 1000;
     private state: ProtocolStoreGenerationState = {current: 0, previous: null};
     private observedAt = 0;
     private refreshing?: Promise<void>;
+    private queued?: Promise<void>;
     /** Reads control and observes it. Registered by the frontier store; absent until one exists in this process. */
     refresher?: () => Promise<void>;
     constructor(private readonly fixed?: ProtocolStoreGenerationState) {
@@ -790,19 +797,40 @@ export class ProtocolStoreGenerations {
     }
     /** The last observed state, without I/O. */
     known(): ProtocolStoreGenerationState {return this.fixed ?? this.state;}
+    /** Whether this process acts on generation changes: its deployment rotates, or it has seen that it did. */
+    following(): boolean {return !this.fixed && (followingGenerations || this.state.current > 0 || this.state.previous !== null);}
     /** Whether the known state is older than the freshness bound. */
-    stale(): boolean {return !this.fixed && followingGenerations && Date.now() - this.observedAt > ProtocolStoreGenerations.freshnessMs;}
+    stale(): boolean {return this.following() && Date.now() - this.observedAt > ProtocolStoreGenerations.freshnessMs;}
     /** The known state, read from control first when it is stale. */
     async resolve(): Promise<ProtocolStoreGenerationState> {
         if (this.fixed) return this.fixed;
-        if (this.stale()) {
+        if (this.stale()) await (this.refreshing ?? this.read());
+        return this.state;
+    }
+    private read(): Promise<void> {
+        const reading = (async () => {
             if (!this.refresher) {
                 // Lazily, so this module never imports the frontier store at load time.
                 const {ensureProtocolStoreGenerationSource} = await import('./abi-frontier-store.js');
                 ensureProtocolStoreGenerationSource(this);
             }
-            this.refreshing ??= this.refresher!().finally(() => {this.refreshing = undefined;});
-            await this.refreshing;
+            await this.refresher!();
+        })().finally(() => {if (this.refreshing === reading) this.refreshing = undefined;});
+        this.refreshing = reading;
+        return reading;
+    }
+    /**
+     * The state after a control read that starts after this call, whatever the freshness bound says. A read already
+     * running may have seen control before the caller's miss, so it is awaited and another one follows; callers that
+     * arrive before that one starts share it.
+     */
+    async refreshed(): Promise<ProtocolStoreGenerationState> {
+        if (this.fixed) return this.fixed;
+        if (!this.refreshing) await this.read();
+        else {
+            this.queued ??= this.refreshing.then(() => undefined, () => undefined)
+                .then(() => {this.queued = undefined; return this.read();});
+            await this.queued;
         }
         return this.state;
     }
@@ -835,17 +863,31 @@ const missingRecord = (error: unknown) => (error instanceof ImmutableProtocolBun
  * no record there reads the previous generation; corrupt or incomplete records never fall back. Records are
  * immutable and their ids name their content, so a record found in either generation is the same record.
  *
- * A writable store copies a record it finds only in the previous generation into the current one. Records that
- * outlive a block, such as a reader session's source context, are then carried forward by the pipeline that keeps
- * using them, before the previous generation is retired. Read-only stores never write.
+ * A writable store copies a record it finds only in the previous generation into the current one, and
+ * `carryForward` copies named records on request: the coordinator carries every record its unsettled blocks
+ * reference before it retires the previous generation. Read-only stores never write, and no store ever creates
+ * the index of a generation it only reads.
  */
 export class GenerationalProtocolBundleStore {
     private readonly stores = new Map<number, ImmutableProtocolBundleStore>();
-    constructor(readonly generations: ProtocolStoreGenerations, private readonly make: (generation: number) => ImmutableProtocolBundleStore,
+    private readonly readers = new Map<number, ImmutableProtocolBundleStore>();
+    /** `make(generation, true)` must return a store that never provisions its index; with false it follows its owner's own options. */
+    constructor(readonly generations: ProtocolStoreGenerations,
+                private readonly make: (generation: number, readOnly: boolean) => ImmutableProtocolBundleStore,
                 private readonly writable = false) {}
     at(generation: number): ImmutableProtocolBundleStore {
         let store = this.stores.get(generation);
-        if (!store) {store = this.make(generation); this.stores.set(generation, store);}
+        if (!store) {store = this.make(generation, false); this.stores.set(generation, store);}
+        return store;
+    }
+    /**
+     * A generation that is only read: the previous one. A writable store creates its index on first use, which
+     * would bring back the empty index of a generation that was retired and dropped.
+     */
+    private reading(generation: number): ImmutableProtocolBundleStore {
+        if (!this.writable) return this.at(generation);
+        let store = this.readers.get(generation);
+        if (!store) {store = this.make(generation, true); this.readers.set(generation, store);}
         return store;
     }
     /** The current generation's index, as last observed. */
@@ -873,14 +915,52 @@ export class GenerationalProtocolBundleStore {
         catch (error) {
             if (!missingRecord(error)) throw error;
             if (previous !== null) {
-                try {return {value: await read(this.at(previous)), previous: true};}
+                try {return {value: await read(this.reading(previous)), previous: true};}
                 catch (second) {if (!missingRecord(second)) throw second;}
             }
-            if (refreshed || !this.generations.stale()) throw error;
-            const before = this.generations.known();await this.generations.resolve();const after = this.generations.known();
-            if (after.current === before.current && after.previous === before.previous) throw error;
+            if (refreshed || !this.generations.following()) throw error;
+            // The record may be in a generation this process has not heard of: a writer that saw the switch first
+            // wrote it there. Only a control read that starts after this miss can tell.
+            const after = await this.generations.refreshed();
+            if (after.current === current && after.previous === previous) throw error;
             return this.fallback(read, true);
         }
+    }
+    /**
+     * Make sure each record is in the current generation, copying those found only in the previous one. Returns
+     * how many were copied and which are in neither generation: that fails unless `optional`. Existence is asked
+     * in batches, so records that are already in place, or nowhere, cost no request of their own.
+     */
+    async carryForward(ids: readonly string[], optional = false, signal?: AbortSignal): Promise<{copied: number; absent: string[]}> {
+        if (!this.writable) throw new Error('Read-only protocol store cannot carry records forward');
+        const {current, previous} = await this.generations.resolve(), store = this.at(current);
+        let copied = 0;
+        const absent: string[] = [];
+        const size = protocolBundleMembershipHintBounds.maximumItems;
+        for (let start = 0; start < ids.length; start += size) {
+            let rest = ids.slice(start, start + size);
+            while (rest.length) {
+                let missing: string | null;
+                try {missing = await store.missingManifestHint(rest, signal);}
+                catch (error) {if (!missingRecord(error)) throw error; missing = rest[0]!;}
+                if (missing === null) break;
+                const at = rest.indexOf(missing);
+                if (at < 0) throw new Error('Protocol store membership hint names an unknown record');
+                let value: unknown, found = previous !== null;
+                if (previous !== null) try {value = await this.reading(previous).read(missing, signal);}
+                    catch (error) {if (!missingRecord(error)) throw error; found = false;}
+                if (found) {await store.prepare(missing, value); copied++;}
+                // The hint is not a receipt: a record another writer completed meanwhile is read in full instead.
+                else try {await store.read(missing, signal);}
+                    catch (error) {
+                        if (!missingRecord(error)) throw error;
+                        if (!optional) throw new ImmutableProtocolBundleReadError('missing', missing, 'Record to carry forward is in no store generation');
+                        absent.push(missing);
+                    }
+                rest = rest.slice(at + 1);
+            }
+        }
+        return {copied, absent};
     }
     async prepare(...args: Parameters<ImmutableProtocolBundleStore['prepare']>): Promise<FreshBundlePrepare> {return (await this.writer()).prepare(...args);}
     async prepareMany(...args: Parameters<ImmutableProtocolBundleStore['prepareMany']>): Promise<FreshBundlePrepare[]> {return (await this.writer()).prepareMany(...args);}
@@ -899,7 +979,7 @@ export class GenerationalProtocolBundleStore {
         catch (error) {
             if (!missingRecord(error)) throw error;
             if (previous !== null) {
-                try {const values = await read(this.at(previous), input); await this.promote(input.map((id, index) => [id, values[index]] as const)); return values;}
+                try {const values = await read(this.reading(previous), input); await this.promote(input.map((id, index) => [id, values[index]] as const)); return values;}
                 catch (second) {if (!missingRecord(second)) throw second;}
             }
             // Mixed across generations, or under a stale state: record by record, each with its own fallback.
@@ -918,11 +998,15 @@ export class GenerationalProtocolBundleStore {
     readRecords(input: readonly string[], signal?: AbortSignal): Promise<unknown[]> {
         return this.many(input, (store, ids) => store.readRecords(ids, signal));
     }
-    /** The first id with a manifest in neither generation. */
+    /**
+     * The first id with a manifest in neither generation. A hint: unlike a read, it does not read control before
+     * it names a record missing, because naming one is its ordinary answer. Its callers either write the control
+     * record themselves (the coordinator) or ask again.
+     */
     async missingManifestHint(input: readonly string[], signal?: AbortSignal): Promise<string | null> {
         const {current, previous} = await this.readable();
         const hint = async (generation: number, ids: readonly string[]) => {
-            try {return await this.at(generation).missingManifestHint(ids, signal);}
+            try {return await (generation === current ? this.at(generation) : this.reading(generation)).missingManifestHint(ids, signal);}
             catch (error) {if (missingRecord(error)) return ids[0]!; throw error;}
         };
         const first = await hint(current, input);

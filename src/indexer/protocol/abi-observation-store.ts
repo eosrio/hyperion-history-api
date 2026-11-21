@@ -67,9 +67,12 @@ export class ProtocolAbiObservationStore {
 
     constructor(client:Client,chain:string,replicas=0,
                 bounds={chunkBytes:512*1024,maximumBytes:128*1024*1024,maximumChunks:256},options:{readOnly?:boolean;metadataReadBoundMs?:number}={}) {
-        this.bundles=new GenerationalProtocolBundleStore(protocolStoreGenerations(client,chain,replicas),generation=>new ImmutableProtocolBundleStore(client,chain,replicas,
-            'protocol-abi-observations',protocolStoreIndexSuffix('protocol-abi-observations-v1',generation),bounds,options),options.readOnly!==true);
+        this.bundles=new GenerationalProtocolBundleStore(protocolStoreGenerations(client,chain,replicas),(generation,readOnly)=>new ImmutableProtocolBundleStore(client,chain,replicas,
+            'protocol-abi-observations',protocolStoreIndexSuffix('protocol-abi-observations-v1',generation),bounds,{...options,readOnly:readOnly||options.readOnly}),options.readOnly!==true);
     }
+
+    /** Copy these observations into the current store generation before the previous one is retired. */
+    async carryForward(ids:readonly string[]):Promise<number> {return (await this.bundles.carryForward([...new Set(ids)])).copied;}
 
     async prepare(record:ProtocolAbiObservationRecord):Promise<{id:string;digest:string}> {
         const id=protocolAbiObservationId(record);

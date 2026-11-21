@@ -235,17 +235,19 @@ export class ProtocolAbiProofReader {
         const value=observed.value as ProtocolAbiCoordinatorControl;
         requireProof(value?.schemaVersion===1&&value.chainId===this.options.chainId&&text(value.ownerId)&&text(value.generation)
             &&Number.isSafeInteger(value.revision)&&value.revision>=0&&this.sameProfile(value.profile),'Incompatible canonical ABI authority');
-        if(!['following','incomplete'].includes(value.phase)||value.replayFromBlock!==null||!value.source)
-            unavailable('authority_unavailable','Canonical ABI source is recovering or unavailable');
-        requireProof(ident('h45srcctx1',value.source.contextId)&&text(value.source.readerSessionId),'Invalid canonical ABI source');
-        if(!value.head)unavailable('source_pending','Canonical ABI source has not committed');
-        requireProof(validHead(value.head),'Invalid canonical ABI authority head');
+        // The adopted catalog link is followed before anything about the live source is required: sealed history
+        // is immutable, so it stays provable from disk while its owner restarts or recovers its source.
         if(value.catalog!==undefined&&this.options.diskHistory){
             const link=value.catalog;
             requireProof(link&&Object.keys(link).sort().join(',')==='endBlock,lastBlockId,manifestSha256'&&hex64.test(link.manifestSha256)
                 &&uint(link.endBlock,1)&&hex64.test(link.lastBlockId),'Invalid adopted ABI catalog link');
             await this.options.diskHistory.catalog.follow(link);this.assertActive(signal);
         }
+        if(!['following','incomplete'].includes(value.phase)||value.replayFromBlock!==null||!value.source)
+            unavailable('authority_unavailable','Canonical ABI source is recovering or unavailable');
+        requireProof(ident('h45srcctx1',value.source.contextId)&&text(value.source.readerSessionId),'Invalid canonical ABI source');
+        if(!value.head)unavailable('source_pending','Canonical ABI source has not committed');
+        requireProof(validHead(value.head),'Invalid canonical ABI authority head');
         return protocolAbiCertificateForControl(value);
     }
     private async validateCommit(value:any):Promise<CanonicalCommit> {
@@ -318,7 +320,14 @@ export class ProtocolAbiProofReader {
                 this.assertActive(signal);return this.openDisk(source,selectionId,signal);}
             unavailable('source_not_covered','Disk selection is outside the configured catalog');
         }
-        const certificate=await this.authority(signal);
+        let certificate:ProtocolAbiHeadCertificate;
+        try {certificate=await this.authority(signal);}
+        catch(error){
+            // An owner without a usable source still published the coverage that was just followed.
+            if(!(error instanceof ProtocolAbiProofUnavailableError)||!this.options.diskHistory
+                ||!await this.options.diskHistory.catalog.covers(source))throw error;
+            this.assertActive(signal);return this.openDisk(source,selectionId,signal);
+        }
         // Reading authority follows the catalog segments its owner published, which may now cover this source.
         if(this.options.diskHistory&&await this.options.diskHistory.catalog.covers(source)){
             this.assertActive(signal);return this.openDisk(source,selectionId,signal);}
@@ -368,10 +377,22 @@ export class ProtocolAbiProofReader {
         requireProof(this.options.historicalCertificates===true&&uint(blockNum,1)&&blockNum<=0xffffffff,'Historical ABI source is not enabled or height is invalid');
         if(source)source=copy(source);
         const catalog=this.options.diskHistory?.catalog;
-        if(catalog){const position=await catalog.blockId(blockNum);
-            if(position){if(source&&source.blockId!==position)unavailable('source_not_canonical','Requested source differs from pinned irreversible history');
-                return this.openDisk({chainId:this.options.chainId,blockNum,blockId:position},selectionId,signal);}}
-        const current=await this.authority(signal);
+        const covered=async()=>{
+            const position=await catalog?.blockId(blockNum);if(!position)return undefined;
+            if(source&&source.blockId!==position)unavailable('source_not_canonical','Requested source differs from pinned irreversible history');
+            return this.openDisk({chainId:this.options.chainId,blockNum,blockId:position},selectionId,signal);
+        };
+        const disk=await covered();if(disk)return disk;
+        // Reading authority follows the catalog segments its owner published, which may now cover this block.
+        let current:ProtocolAbiHeadCertificate;
+        try {current=await this.authority(signal);}
+        catch(error){
+            // An owner without a usable source still published the coverage that was just followed.
+            if(!(error instanceof ProtocolAbiProofUnavailableError))throw error;
+            const followed=await covered();if(followed)return followed;
+            throw error;
+        }
+        const followed=await covered();if(followed)return followed;
         if(current.head.blockNum<blockNum)unavailable('source_pending','Requested historical ABI source has not committed');
         const root=await this.activatedHistoricalRoot(current,signal);
         const active=async()=>{

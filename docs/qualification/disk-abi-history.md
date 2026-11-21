@@ -217,8 +217,13 @@ coordinator does so only after its own settled head has passed the segment's end
 commits for those blocks, derived independently from SHiP, agree with the segment on:
 - every block id and parent link;
 - the set of accounts whose ABI state changes at each block, and their final state;
-- the ABI each action decodes with;
+- the ABI each action decodes with, a notification taking the ABI of the action it reports;
 - the last global sequence.
+
+An account that only ever held an empty ABI has no catalog record, whether it appears or is removed. The
+coordinator's commits only see an account's ABI sequence in the receipt of an action that runs on it, so a
+deployment is also checked by the rule itself: its sequence is its account's previous record plus one, and 1
+where the account has no record yet.
 
 On a match, it adopts the segment and publishes `{manifestSha256, endBlock, lastBlockId}` as
 `catalog` in its control record. On a disagreement, it refuses the segment for that owner and logs
@@ -226,8 +231,10 @@ a warning. The check runs in the background at most every 2 seconds and never de
 
 **Readers.** The API and the deserializers follow the published link when they read authority. They
 resolve the chain from their own tip and adopt it only if it ends exactly at the link's digest, so
-a segment that merely reaches the same block cannot be adopted. A restarted coordinator follows the
-previous owner's link again before publishing it.
+a segment that merely reaches the same block cannot be adopted. The link is followed before anything
+about the live source is required, so sealed history stays provable while its owner restarts or
+recovers its source. A restarted coordinator follows the previous owner's link again before it reads
+its own chain or publishes the link.
 
 **What moves and what does not.** The pinned manifest stays the anchor: `catalogId` and the
 coordinator's `disk-abi-baseline` stay where they are, so commits, states and issued views keep
@@ -256,16 +263,34 @@ below the highest indexed block, so documents still being ingested are not overt
 
 **Checks.** A step writes only after all of these hold:
 - the response is the requested range, sealed by an adopted segment;
-- every block id matches the catalog;
+- every block id matches the catalog, and every block comes with exactly one block document;
 - every document sits at the indexer's own index and id;
+- every action document is schema 3 and names the disk selection of its own block;
 - the live documents are the same set the range produced.
 
+A search or statistics answer that does not cover every shard fails the step, which is retried.
+
 **Repairs.** A document missing near the tip means wait. One missing more than `repair_after_blocks` below the
-indexed tip is written, provided no document holds its id. An undecoded live action is replaced. Any other
-body difference refuses the step.
+indexed tip is created, provided no document holds its id; if one appears meanwhile the step fails instead of
+replacing it. An undecoded live action is replaced. Any other body difference refuses the step.
 
 **Checkpoint.** It is recorded as `settled` in the ABI coordinator's control record. A range server that is
 not on loopback must use https.
+
+**Documents written again.** A settled action document can still be written afterwards: by index work queued
+before its block settled, by a repair or bulk reader, by a tool. Settle does not assume a settled range stays
+settled. Before each step it reads which action documents at or below the settled block changed since it last
+looked, and settles again every block where one of them is not schema 3. This is logged as
+`Catalog settle found N settled blocks ... written again`.
+- Changes are found by shard sequence number. Each shard's audited position is kept in a small record beside
+  the coordinator's control record, so a restart continues where the last one stopped.
+- The positions stand for the blocks through the settled block they were taken for. If settling ever moves
+  past blocks that were neither settled nor read (a new pinned catalog that ends ahead, a checkpoint that was
+  reset), they start over. So do the positions of an action index that was deleted and created again.
+- A shard without a started primary fails the step: an answer that leaves a shard out is not an answer.
+- The first run has no positions and reads every action document at or below the settled block once,
+  50,000 a step. This includes blocks below the pinned catalog end, which settle never visits otherwise.
+- The indices that changed are refreshed before they are read, once a step.
 
 ## Rotating the proof stores
 
@@ -282,22 +307,47 @@ original names) once they hold `max_bytes`:
 the settled block into the new generation. It then replays the live chain's own selections above it. The live
 chain keeps serving and advancing meanwhile, and nothing is read again from the node.
 
-**Switching.** Before the switch, the new generation is fully prepared: all four of its indices exist, and the
-certificate of the head the switch will name is stored. When the new chain reaches the live head, one control
-update on the serial lane switches readers and writers to it. Readers may see one `authority_changed` retry;
-no read fails.
+A replay that cannot read one of the live chain's records switches nothing; a later check tries again.
+
+**Switching.** Before the switch, the new generation is fully prepared: all four of its indices exist, the
+certificate of the head the switch will name is stored, and with `historical_certificates` so is the new
+chain's address map through that head. When the new chain reaches the live head, one control update on the
+serial lane switches readers and writers to it. Readers may see one `authority_changed` retry; no read fails.
 
 **Reading across generations.** A record missing in the current generation is read from the previous one, so
-documents written against it still prove. A writable store copies such a record into the current generation,
-so records that outlive a block, such as a reader session's source context, move forward with the pipeline
-that uses them. Indexer processes refresh a state older than one second before they read or write, so they
-observe a switch within that bound, and a fresh process never touches a dropped generation.
+documents written against it still prove. A record found in neither is reported missing only after control was
+read again: a writer that saw the switch first may have written it to a generation the reader has not heard
+of. Every process also refreshes a state older than one second before it reads or writes. No store creates
+the index of a generation it only reads, so a deleted generation stays deleted.
 
-**Retiring.** Once settling is `retire_margin_blocks` past the switch block and the switch is `retire_after_ms`
-old, no document can reference the previous generation, and it is retired.
+Both control reads happen in a process that follows generations: every indexer process when `rotation` is
+configured, the API when `segments_dir` is (its configuration needs no `rotation`), and any process once it
+has seen a generation above 0. A deployment with neither reads control for none of this. Once the stores are
+past generation 0 the indexer refuses to start without `rotation`, before it takes ownership; to stop
+rotating, keep it and raise `max_bytes`.
+
+**Retiring.** The previous generation is retired once all of these hold:
+- settling is `retire_margin_blocks` past the switch block, and the switch is `retire_after_ms` old;
+- every action document at or below the settled block is known to be schema 3 right now (see "Documents
+  written again");
+- every record the unsettled blocks reference has been copied into the current generation: their selections,
+  source contexts, observation links, observations and native observations, and the live source's context.
+  Unsettled means above the block the documents were just verified through, even if settling has moved on
+  since. Besides the selections the commits name, this covers those admitted and not committed yet, and those
+  the action documents above that block name (a repair or bulk reader captures a block under its own).
+
+The copy is by record identity, so it does not matter which generation a writer that had not seen the switch
+yet wrote to. It is skipped, and retirement waits, while more than 50,000 blocks are unsettled. A reader
+session that stayed idle through a retirement writes its source context again with its next block.
+
+**Projections.** `rotation` cannot be enabled together with `features.stateful_owner_v2`: projections read
+every source from the proof stores, whatever the catalog covers, and the indexer refuses to start.
 
 **Deleting.** With `drop_previous`, the indexer then deletes its four indices, and each check also deletes the
 indices of any older generation that control no longer reads (left behind by a restart after retirement).
 Without it, it logs their names for an operator to delete.
 
-**Restarts.** A restart keeps the rotated chain: its anchor validates against the catalog at that link end.
+**Restarts.** A restart keeps the rotated chain: its anchor validates against the catalog at that link end,
+including when the head is the anchor itself. If the segments that reach the anchor cannot be read, the
+start fails and the chain is kept. A new pinned catalog that ends ahead of the retained head replaces the
+chain as before, and then no rotation anchor is carried.
