@@ -136,8 +136,9 @@ export class DiskAbiHistoryCatalog {
     private unreachable?: {link: string; until: number};
     /** Manifests already looked at in the segments directory, by path and file identity. */
     private readonly peeked=new Map<string,{identity:string;sha?:string;base?:string}>();
-    /** Follows run one at a time: callers that arrive together share one walk of the chain. */
+    /** Follows run one at a time, and there is one for a link however many callers wait for it. */
     private following: Promise<unknown>=Promise.resolve();
+    private readonly followed=new Map<string,Promise<boolean>>();
     private readonly profile: ProtocolSourceProfile;
     constructor(private readonly configuration: DiskAbiHistoryConfiguration, private readonly chainId: string,
                 profile: ProtocolSourceProfile) {
@@ -328,6 +329,7 @@ export class DiskAbiHistoryCatalog {
      * The manifests in the segments directory that are not adopted yet, by the base each one names. The directory is
      * listed once, however long the chain is. Only new or changed files are read, and a manifest whose link is already
      * adopted is not looked at again: every candidate names the tip or a later link as its base, never an adopted one.
+     * The sealer names a file after its block range and writes it once, so an adopted file is not expected to change.
      */
     private async unadopted(value:Loaded):Promise<Map<string,{path:string;sha:string}[]>> {
         const found=new Map<string,{path:string;sha:string}[]>(),directory=this.configuration.segments_dir;if(!directory)return found;
@@ -352,7 +354,9 @@ export class DiskAbiHistoryCatalog {
             if(!entry.base||!entry.sha)continue;
             const list=found.get(entry.base);if(list)list.push({path,sha:entry.sha});else found.set(entry.base,[{path,sha:entry.sha}]);
         }
-        if(this.peeked.size>listed.size)for(const path of [...this.peeked.keys()])if(!listed.has(path))this.peeked.delete(path);
+        // A file that is gone is forgotten, so its name starts over if it is ever used again. Comparing sizes is not
+        // enough: a listed file that was never remembered (too large, not a regular file) hides one that was removed.
+        for(const path of this.peeked.keys())if(!listed.has(path))this.peeked.delete(path);
         return found;
     }
     /** Verify one segment against the tip it names, without adopting it. */
@@ -394,22 +398,36 @@ export class DiskAbiHistoryCatalog {
         return this.verifySegment(value,tip,candidates[0].path,candidates[0].sha,value.end-value.manifest.endBlock);
     }
     /** Extend coverage by a verified segment of the adopted tip. Serialized; adopting the tip again is a no-op. */
-    adopt(segment:DiskAbiHistoryPendingSegment):Promise<DiskAbiHistoryTip> {
+    adopt(segment:DiskAbiHistoryPendingSegment):Promise<DiskAbiHistoryTip> {return this.adoptChain([segment]);}
+    /**
+     * Extend coverage by verified segments, each the next after the one before. The whole chain is checked against
+     * the adopted tip first and then becomes visible at once: no reader sees coverage that ends part of the way.
+     */
+    private adoptChain(chain:readonly DiskAbiHistoryPendingSegment[]):Promise<DiskAbiHistoryTip> {
         const run=this.adopting.then(async()=>{
-            const value=await this.data();
-            if(value.adopted.has(segment.link.manifestSha256)){
-                requireData(await this.idAt(value,segment.link.endBlock)===segment.link.lastBlockId,'adopted segment differs from coverage');return {...value.tip};}
-            requireData(segment.link.baseSha256===value.tip.manifestSha256&&segment.link.startBlock===value.end+1,'segment does not extend the adopted tip');
-            const ids=segment.blockIds();
+            const value=await this.data(),fresh:DiskAbiHistoryPendingSegment[]=[];
+            let tip=value.tip.manifestSha256,end=value.end;
+            for(const segment of chain){
+                const link=segment.link;
+                // Another caller may have adopted the first links meanwhile; those only have to agree with coverage.
+                if(!fresh.length&&value.adopted.has(link.manifestSha256)){
+                    requireData(await this.idAt(value,link.endBlock)===link.lastBlockId,'adopted segment differs from coverage');continue;}
+                requireData(link.baseSha256===tip&&link.startBlock===end+1,'segment does not extend the adopted tip');
+                tip=link.manifestSha256;end=link.endBlock;fresh.push(segment);
+            }
+            // Nothing awaits from here on, so the chain is adopted in one turn.
             const touched=new Set<string>();
-            for(const entry of segment.entries){const list=value.epochs.get(entry.epoch.account)??[];list.push(entry);value.epochs.set(entry.epoch.account,list);
-                value.states.set(entry.state.source.observationId,entry.state);touched.add(entry.epoch.account);}
+            for(const segment of fresh){
+                const link=segment.link;
+                for(const entry of segment.entries){const list=value.epochs.get(entry.epoch.account)??[];list.push(entry);value.epochs.set(entry.epoch.account,list);
+                    value.states.set(entry.state.source.observationId,entry.state);touched.add(entry.epoch.account);}
+                value.pieces.push({start:link.startBlock,end:link.endBlock,ids:segment.blockIds()});
+                value.end=link.endBlock;value.adopted.add(link.manifestSha256);
+                value.boundaries.set(link.endBlock,link.lastGlobalSequence);
+                value.tip={manifestSha256:link.manifestSha256,endBlock:link.endBlock,lastBlockId:link.lastBlockId,
+                    lastGlobalSequence:link.lastGlobalSequence,totalRecords:link.totalRecords};
+            }
             for(const account of touched)value.epochs.get(account)!.sort(compareEntries);
-            value.pieces.push({start:segment.link.startBlock,end:segment.link.endBlock,ids});
-            value.end=segment.link.endBlock;value.adopted.add(segment.link.manifestSha256);
-            value.boundaries.set(segment.link.endBlock,segment.link.lastGlobalSequence);
-            value.tip={manifestSha256:segment.link.manifestSha256,endBlock:segment.link.endBlock,lastBlockId:segment.link.lastBlockId,
-                lastGlobalSequence:segment.link.lastGlobalSequence,totalRecords:segment.link.totalRecords};
             return {...value.tip};
         });
         this.adopting=run.catch(()=>undefined);
@@ -422,12 +440,14 @@ export class DiskAbiHistoryCatalog {
      * be one of the adopted links. A link the directory cannot reach yet is not covered.
      *
      * A process that starts late walks every segment since the pinned catalog, so the walk is linear in the chain: one
-     * listing of the directory, then one verification a segment. Callers that arrive together wait for one walk and
-     * then find the link covered. The walk belongs to the catalog, not to a caller: a caller may stop waiting.
+     * listing of the directory, then one verification a segment. Callers that ask for the same link while it is being
+     * followed share that one follow and its outcome, so a walk that fails is not walked again for each of them. The
+     * walk belongs to the catalog, not to a caller: a caller may stop waiting.
      */
     follow(link:DiskAbiHistoryLink):Promise<boolean> {
-        const run=this.following.then(()=>this.followOnce(link));
-        this.following=run.catch(()=>undefined);
+        const key=json(link),shared=this.followed.get(key);if(shared)return shared;
+        const run=this.following.then(()=>this.followOnce(link)).finally(()=>{this.followed.delete(key);});
+        this.followed.set(key,run);this.following=run.catch(()=>undefined);
         return run;
     }
     private async followOnce(link:DiskAbiHistoryLink):Promise<boolean> {
@@ -440,11 +460,15 @@ export class DiskAbiHistoryCatalog {
         }
         const key=json(link);if(this.unreachable?.link===key&&Date.now()<this.unreachable.until)return false;
         // Each segment starts after its base, so the walk ends; verifySegment bounds what the chain may hold in memory.
-        const chain:DiskAbiHistoryPendingSegment[]=[],unadopted=await this.unadopted(value);
+        const chain:DiskAbiHistoryPendingSegment[]=[];let unadopted=await this.unadopted(value),listedAgain=false;
         let tip={...value.tip},blocks=value.end-value.manifest.endBlock;
+        const select=()=>{const candidates=unadopted.get(tip.manifestSha256)??[];
+            return candidates.find(candidate=>candidate.sha===link.manifestSha256)??(candidates.length===1?candidates[0]:undefined);};
         while(tip.endBlock<link.endBlock){
-            const candidates=unadopted.get(tip.manifestSha256)??[];
-            const selected=candidates.find(candidate=>candidate.sha===link.manifestSha256)??(candidates.length===1?candidates[0]:undefined);
+            let selected=select();
+            // A long walk outlives its listing: the link's own segment may have been written since. List once more
+            // and go on from here, keeping what is verified.
+            if(!selected&&!listedAgain){listedAgain=true;unadopted=await this.unadopted(value);selected=select();}
             if(!selected){this.unreachable={link:key,until:Date.now()+1000};return false;}
             const next=await this.verifySegment(value,tip,selected.path,selected.sha,blocks);
             chain.push(next);blocks+=next.link.endBlock-next.link.startBlock+1;
@@ -453,7 +477,7 @@ export class DiskAbiHistoryCatalog {
         }
         if(tip.manifestSha256!==link.manifestSha256||tip.endBlock!==link.endBlock||tip.lastBlockId!==link.lastBlockId){
             this.unreachable={link:key,until:Date.now()+1000};return false;}
-        for(const segment of chain)await this.adopt(segment);
+        await this.adoptChain(chain);
         return true;
     }
 }

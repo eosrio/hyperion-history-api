@@ -1,6 +1,6 @@
 import {test,expect,afterAll} from 'bun:test';
 import {createHash} from 'node:crypto';
-import {mkdtemp,mkdir,writeFile} from 'node:fs/promises';
+import {mkdtemp,mkdir,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {DiskAbiHistoryCatalog,type DiskAbiHistoryConfiguration,type DiskAbiHistoryTip} from '../../src/indexer/protocol/disk-abi-history.js';
@@ -152,6 +152,67 @@ test('a reader that starts late follows a long chain in one pass, and readers th
     await expect(reader.follow({manifestSha256:'e'.repeat(64),endBlock:next.endBlock,lastBlockId:next.lastBlockId})).rejects.toThrow('differs from coverage');
     expect(await reader.follow({manifestSha256:next.manifestSha256,endBlock:next.endBlock,lastBlockId:next.lastBlockId})).toBe(true);
 },60000);
+
+test('a walk that fails is walked once for everyone waiting on its link, and again only when asked again',async()=>{
+    const g=await genesis([final('alpha',1,'aa')],4),links=40,broken=30;let tip=g.tip;const paths:string[]=[];
+    for(let i=0;i<links;i++){
+        paths.push(join(g.segments,`abi-history.${String(tip.endBlock+1).padStart(10,'0')}-${String(tip.endBlock+1).padStart(10,'0')}.ndjson.blocks.bin`));
+        tip=await segment(g.segments,tip,tip.endBlock+1,[]);}
+    const link={manifestSha256:tip.manifestSha256,endBlock:tip.endBlock,lastBlockId:tip.lastBlockId};
+    await writeFile(paths[broken],Buffer.from(block(999),'hex'));
+    const reader=open(g.config),internals=reader as any;let verified=0;
+    const verifySegment=internals.verifySegment.bind(reader);
+    internals.verifySegment=(...args:unknown[])=>{verified++;return verifySegment(...args);};
+    const outcomes=await Promise.all(Array.from({length:8},()=>reader.follow(link).then(()=>'followed',()=>'failed')));
+    expect(outcomes).toEqual(Array(8).fill('failed'));
+    // The eight shared one walk up to the unreadable segment. Nothing of it was adopted.
+    expect(verified).toBe(broken+1);expect(await reader.coverageEnd()).toBe(4);expect(internals.followed.size).toBe(0);
+    // Another link asked for at the same time has its own follow, after the first.
+    const other={...link,manifestSha256:'e'.repeat(64)};
+    const both=await Promise.all([reader.follow(link),reader.follow(other),reader.follow(link)].map(run=>run.then(()=>'followed',()=>'failed')));
+    expect(both).toEqual(['failed','failed','failed']);expect(verified).toBe(3*(broken+1));
+    // Once the segment is readable, the next caller walks the chain and adopts it.
+    await writeFile(paths[broken],Buffer.from(block(4+broken+1),'hex'));
+    expect(await reader.follow(link)).toBe(true);expect(await reader.coverageEnd()).toBe(4+links);
+});
+
+test('one walk reaches a link whose segment was sealed after the walk listed the directory',async()=>{
+    const g=await genesis([final('alpha',1,'aa')],4),links=20;let tip=g.tip;
+    for(let i=0;i<links-1;i++)tip=await segment(g.segments,tip,tip.endBlock+1,[]);
+    // The last segment is built elsewhere to learn its link, and appears in the directory during the walk.
+    const staged=await genesis([final('alpha',1,'aa')],4);let stagedTip=staged.tip;
+    for(let i=0;i<links-1;i++)stagedTip=await segment(staged.segments,stagedTip,stagedTip.endBlock+1,[]);
+    expect(stagedTip.manifestSha256).toBe(tip.manifestSha256);
+    const last=await segment(staged.segments,stagedTip,stagedTip.endBlock+1,[final('alpha',stagedTip.endBlock+1,'bb')]);
+    const reader=open(g.config),internals=reader as any;let listings=0,verified=0;
+    const unadopted=internals.unadopted.bind(reader),verifySegment=internals.verifySegment.bind(reader);
+    internals.unadopted=(...args:unknown[])=>{listings++;return unadopted(...args);};
+    internals.verifySegment=async(...args:unknown[])=>{if(++verified===1)await segment(g.segments,tip,tip.endBlock+1,[final('alpha',tip.endBlock+1,'bb')]);return verifySegment(...args);};
+    expect(await reader.follow({manifestSha256:last.manifestSha256,endBlock:last.endBlock,lastBlockId:last.lastBlockId})).toBe(true);
+    expect({listings,verified}).toEqual({listings:2,verified:links});
+    expect((await reader.finalState('alpha',4+links))?.abiHex).toBe('bb');
+    // A link the directory cannot reach has it listed twice and stays out of reach; nothing more is adopted.
+    expect(await reader.follow({manifestSha256:'e'.repeat(64),endBlock:4+links+5,lastBlockId:block(4+links+5)})).toBe(false);
+    expect({listings,verified}).toEqual({listings:4,verified:links});expect(await reader.coverageEnd()).toBe(4+links);
+});
+
+test('a followed chain becomes visible at once, and a removed file is forgotten',async()=>{
+    const g=await genesis([final('alpha',1,'aa')],4),links=300;let tip=g.tip;
+    for(let i=0;i<links;i++)tip=await segment(g.segments,tip,tip.endBlock+1,[final('alpha',tip.endBlock+1,'b'+i.toString(16).padStart(3,'0'))]);
+    const reader=open(g.config),internals=reader as any,seen=new Set<number>();await reader.coverageEnd();
+    let done=false;const sampling=(async()=>{while(!done){seen.add(internals.loaded.end);await new Promise(yes=>setImmediate(yes));}})();
+    expect(await reader.follow({manifestSha256:tip.manifestSha256,endBlock:tip.endBlock,lastBlockId:tip.lastBlockId})).toBe(true);
+    done=true;await sampling;seen.add(internals.loaded.end);
+    expect([...seen].sort((left,right)=>left-right)).toEqual([4,4+links]);
+    expect((await reader.finalState('alpha',4+links))?.abiHex).toBe('b12b');expect((await reader.finalState('alpha',5))?.abiHex).toBe('b000');
+    // A removed manifest is forgotten even when something that is not a manifest file took a place in the listing.
+    const name=`abi-history.${String(5).padStart(10,'0')}-${String(5).padStart(10,'0')}.ndjson.manifest.json`,removed=join(g.segments,name);
+    expect(internals.peeked.has(removed)).toBe(true);
+    await rm(removed);await mkdir(join(g.segments,'not-a-file.manifest.json'));
+    const next=await segment(g.segments,tip,tip.endBlock+1,[]);
+    expect(await reader.follow({manifestSha256:next.manifestSha256,endBlock:next.endBlock,lastBlockId:next.lastBlockId})).toBe(true);
+    expect(internals.peeked.has(removed)).toBe(false);
+});
 
 test('follow never adopts a planted segment that reaches the published end through another digest',async()=>{
     const g=await genesis([final('alpha',1,'aa')],4);

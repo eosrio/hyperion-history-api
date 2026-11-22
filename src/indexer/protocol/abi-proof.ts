@@ -256,6 +256,8 @@ export class ProtocolAbiProofReader {
      * cancelled read leaves it running and ends here instead of holding its worker attempt open.
      */
     private async followCatalog(link:Parameters<NonNullable<ReturnType<typeof diskAbiHistoryOptions>>['catalog']['follow']>[0],signal?:AbortSignal):Promise<void> {
+        // A read that is already cancelled asks for nothing.
+        this.assertActive(signal);
         const followed=this.options.diskHistory!.catalog.follow(link);
         if(!signal){await followed;return;}
         void followed.catch(()=>{});
