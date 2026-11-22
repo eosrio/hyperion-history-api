@@ -585,3 +585,23 @@ test('a chain rotated onto its own head queues no address for the baseline',asyn
     await extend(f,9);for(let i=0;i<4;i++)await f.coordinator.drain();
     expect((await f.coordinator.inspect()).historical).toMatchObject({anchor:{blockNum:9}});
 });
+
+test('a cancelled read stops waiting for a catalog that is still following, and the next read finds it covered',async()=>{
+    const f=await settled(4);
+    await segment(f.g.segments,f.g.tip,8,[final('beta',7,'cc')]);await f.attest();
+    // A reader that starts late has the whole chain to verify: hold that walk open as a long chain would.
+    const own=new DiskAbiHistoryCatalog(f.g.config,chainId,profile);catalogs.add(own);
+    let release!:()=>void,walks=0;const held=new Promise<void>(yes=>{release=yes;}),follow=own.follow.bind(own);
+    own.follow=link=>{walks++;return held.then(()=>follow(link));};
+    const reader=new ProtocolAbiProofReader({chainId,profile,store:f.store.asReadOnly(),diskHistory:readerOptions(f,own)});
+    const controller=new AbortController(),read=reader.open(f.sources[6].source,f.sources[6].selected,{signal:controller.signal});
+    const outcome=read.then(()=>'opened',error=>error.code);
+    await new Promise(yes=>setTimeout(yes,20));expect(walks).toBe(1);
+    controller.abort();
+    expect(await Promise.race([outcome,new Promise(yes=>setTimeout(()=>yes('still waiting'),1000))])).toBe('proof_cancelled');
+    expect(await own.coverageEnd()).toBe(4);
+    // The walk was not the read's: it finishes, and the catalog covers the block for whoever reads next.
+    release();
+    const view=await reader.open(f.sources[6].source,f.sources[6].selected);
+    expect(await own.coverageEnd()).toBe(8);expect(view.certificateId).toBe(own.catalogId);
+});
