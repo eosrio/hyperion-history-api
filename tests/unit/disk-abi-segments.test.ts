@@ -130,6 +130,29 @@ test('follow adopts a chain up to a published link and refuses a link that diffe
     expect(await pinned.coverageEnd()).toBe(4);
 });
 
+test('a reader that starts late follows a long chain in one pass, and readers that arrive together share it',async()=>{
+    // More links than the old walk allowed, so a late reader could never have reached the published link.
+    const g=await genesis([final('alpha',1,'aa')],4),links=4100;let tip=g.tip;
+    for(let i=0;i<links;i++)tip=await segment(g.segments,tip,tip.endBlock+1,i===links-1?[final('alpha',tip.endBlock+1,'bb')]:[]);
+    const link={manifestSha256:tip.manifestSha256,endBlock:tip.endBlock,lastBlockId:tip.lastBlockId};
+    const reader=open(g.config),internals=reader as any;let listings=0,verified=0;
+    const unadopted=internals.unadopted.bind(reader),verifySegment=internals.verifySegment.bind(reader);
+    internals.unadopted=(...args:unknown[])=>{listings++;return unadopted(...args);};
+    internals.verifySegment=(...args:unknown[])=>{verified++;return verifySegment(...args);};
+    expect(await Promise.all(Array.from({length:8},()=>reader.follow(link)))).toEqual(Array(8).fill(true));
+    // One listing of the directory and one verification a segment, whatever the chain's length and however many wait.
+    expect({listings,verified}).toEqual({listings:1,verified:links});
+    expect(await reader.coverageEnd()).toBe(4+links);expect((await reader.finalState('alpha',4+links))?.abiHex).toBe('bb');
+    // A later link costs its own segment: adopted manifests are not looked at again.
+    const next=await segment(g.segments,tip,tip.endBlock+2,[]);
+    const before=internals.peeked.size;
+    expect(await reader.follow({manifestSha256:next.manifestSha256,endBlock:next.endBlock,lastBlockId:next.lastBlockId})).toBe(true);
+    expect({listings,verified,peeked:internals.peeked.size}).toEqual({listings:2,verified:links+1,peeked:before+1});
+    // A failed follow does not hold up the next one.
+    await expect(reader.follow({manifestSha256:'e'.repeat(64),endBlock:next.endBlock,lastBlockId:next.lastBlockId})).rejects.toThrow('differs from coverage');
+    expect(await reader.follow({manifestSha256:next.manifestSha256,endBlock:next.endBlock,lastBlockId:next.lastBlockId})).toBe(true);
+},60000);
+
 test('follow never adopts a planted segment that reaches the published end through another digest',async()=>{
     const g=await genesis([final('alpha',1,'aa')],4);
     const genuine=await segment(g.segments,g.tip,6,[final('alpha',6,'bb')]);

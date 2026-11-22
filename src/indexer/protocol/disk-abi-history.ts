@@ -136,6 +136,8 @@ export class DiskAbiHistoryCatalog {
     private unreachable?: {link: string; until: number};
     /** Manifests already looked at in the segments directory, by path and file identity. */
     private readonly peeked=new Map<string,{identity:string;sha?:string;base?:string}>();
+    /** Follows run one at a time: callers that arrive together share one walk of the chain. */
+    private following: Promise<unknown>=Promise.resolve();
     private readonly profile: ProtocolSourceProfile;
     constructor(private readonly configuration: DiskAbiHistoryConfiguration, private readonly chainId: string,
                 profile: ProtocolSourceProfile) {
@@ -322,18 +324,24 @@ export class DiskAbiHistoryCatalog {
             states:[...value.epochs.keys()].sort().map(account=>this.select(value,account,blockNum)?.state)
                 .filter((state):state is ProtocolAbiAccountState=>state!==undefined)});}
 
-    /** Manifests in the segments directory whose base is `baseSha`. Only new or changed files are read. */
-    private async children(baseSha:string):Promise<{path:string;sha:string}[]> {
-        const directory=this.configuration.segments_dir;if(!directory)return [];
-        let names:string[];
-        try {names=(await readdir(resolve(directory))).filter(name=>name.endsWith('.manifest.json')).sort();}
-        catch(error:any){if(error?.code==='ENOENT')return [];throw new DiskAbiHistoryUnavailableError('segments directory is unreadable');}
-        const found:{path:string;sha:string}[]=[];
+    /**
+     * The manifests in the segments directory that are not adopted yet, by the base each one names. The directory is
+     * listed once, however long the chain is. Only new or changed files are read, and a manifest whose link is already
+     * adopted is not looked at again: every candidate names the tip or a later link as its base, never an adopted one.
+     */
+    private async unadopted(value:Loaded):Promise<Map<string,{path:string;sha:string}[]>> {
+        const found=new Map<string,{path:string;sha:string}[]>(),directory=this.configuration.segments_dir;if(!directory)return found;
+        const root=resolve(directory);let names:string[];
+        try {names=(await readdir(root)).filter(name=>name.endsWith('.manifest.json')).sort();}
+        catch(error:any){if(error?.code==='ENOENT'){this.peeked.clear();return found;}throw new DiskAbiHistoryUnavailableError('segments directory is unreadable');}
+        const listed=new Set<string>();
         for(const name of names){
-            const path=join(resolve(directory),name);let stat:Awaited<ReturnType<typeof lstat>>;
+            const path=join(root,name),known=this.peeked.get(path);listed.add(path);
+            if(known?.sha&&value.adopted.has(known.sha))continue;
+            let stat:Awaited<ReturnType<typeof lstat>>;
             try {stat=await lstat(path);}catch{continue;}
             if(!stat.isFile()||stat.isSymbolicLink()||stat.size===0||stat.size>MAX_MANIFEST)continue;
-            const id=identity(stat),known=this.peeked.get(path);let entry=known?.identity===id?known:undefined;
+            const id=identity(stat);let entry=known?.identity===id?known:undefined;
             if(!entry){
                 entry={identity:id};
                 try {const raw=await readFile(path),m=JSON.parse(raw.toString('utf8'));
@@ -341,8 +349,10 @@ export class DiskAbiHistoryCatalog {
                 catch{/* Not a manifest yet, or not one at all: it is looked at again once it changes. */}
                 this.peeked.set(path,entry);
             }
-            if(entry.base===baseSha&&entry.sha)found.push({path,sha:entry.sha});
+            if(!entry.base||!entry.sha)continue;
+            const list=found.get(entry.base);if(list)list.push({path,sha:entry.sha});else found.set(entry.base,[{path,sha:entry.sha}]);
         }
+        if(this.peeked.size>listed.size)for(const path of [...this.peeked.keys()])if(!listed.has(path))this.peeked.delete(path);
         return found;
     }
     /** Verify one segment against the tip it names, without adopting it. */
@@ -379,7 +389,7 @@ export class DiskAbiHistoryCatalog {
      * base is ambiguous and none is offered. Nothing is adopted; a coordinator adopts after checking it.
      */
     async nextSegment():Promise<DiskAbiHistoryPendingSegment|undefined> {
-        const value=await this.data(),tip={...value.tip},candidates=await this.children(tip.manifestSha256);
+        const value=await this.data(),tip={...value.tip},candidates=(await this.unadopted(value)).get(tip.manifestSha256)??[];
         if(candidates.length!==1)return undefined;
         return this.verifySegment(value,tip,candidates[0].path,candidates[0].sha,value.end-value.manifest.endBlock);
     }
@@ -410,8 +420,17 @@ export class DiskAbiHistoryCatalog {
      * chain that ends exactly at the link's digest, end and id is adopted, whole and in order. Nothing else is adopted:
      * not a partial chain, not a different segment that happens to reach the same block. A link already covered must
      * be one of the adopted links. A link the directory cannot reach yet is not covered.
+     *
+     * A process that starts late walks every segment since the pinned catalog, so the walk is linear in the chain: one
+     * listing of the directory, then one verification a segment. Callers that arrive together wait for one walk and
+     * then find the link covered. The walk belongs to the catalog, not to a caller: a caller may stop waiting.
      */
-    async follow(link:DiskAbiHistoryLink):Promise<boolean> {
+    follow(link:DiskAbiHistoryLink):Promise<boolean> {
+        const run=this.following.then(()=>this.followOnce(link));
+        this.following=run.catch(()=>undefined);
+        return run;
+    }
+    private async followOnce(link:DiskAbiHistoryLink):Promise<boolean> {
         requireData(link&&hex.test(link.manifestSha256)&&uint(link.endBlock,1)&&hex.test(link.lastBlockId),'invalid catalog link');
         const value=await this.data();
         if(value.end>=link.endBlock){
@@ -420,9 +439,11 @@ export class DiskAbiHistoryCatalog {
             return true;
         }
         const key=json(link);if(this.unreachable?.link===key&&Date.now()<this.unreachable.until)return false;
-        const chain:DiskAbiHistoryPendingSegment[]=[];let tip={...value.tip},blocks=value.end-value.manifest.endBlock;
-        while(tip.endBlock<link.endBlock&&chain.length<4096){
-            const candidates=await this.children(tip.manifestSha256);
+        // Each segment starts after its base, so the walk ends; verifySegment bounds what the chain may hold in memory.
+        const chain:DiskAbiHistoryPendingSegment[]=[],unadopted=await this.unadopted(value);
+        let tip={...value.tip},blocks=value.end-value.manifest.endBlock;
+        while(tip.endBlock<link.endBlock){
+            const candidates=unadopted.get(tip.manifestSha256)??[];
             const selected=candidates.find(candidate=>candidate.sha===link.manifestSha256)??(candidates.length===1?candidates[0]:undefined);
             if(!selected){this.unreachable={link:key,until:Date.now()+1000};return false;}
             const next=await this.verifySegment(value,tip,selected.path,selected.sha,blocks);

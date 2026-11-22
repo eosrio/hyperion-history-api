@@ -241,7 +241,7 @@ export class ProtocolAbiProofReader {
             const link=value.catalog;
             requireProof(link&&Object.keys(link).sort().join(',')==='endBlock,lastBlockId,manifestSha256'&&hex64.test(link.manifestSha256)
                 &&uint(link.endBlock,1)&&hex64.test(link.lastBlockId),'Invalid adopted ABI catalog link');
-            await this.options.diskHistory.catalog.follow(link);this.assertActive(signal);
+            await this.followCatalog(link,signal);this.assertActive(signal);
         }
         if(!['following','incomplete'].includes(value.phase)||value.replayFromBlock!==null||!value.source)
             unavailable('authority_unavailable','Canonical ABI source is recovering or unavailable');
@@ -249,6 +249,23 @@ export class ProtocolAbiProofReader {
         if(!value.head)unavailable('source_pending','Canonical ABI source has not committed');
         requireProof(validHead(value.head),'Invalid canonical ABI authority head');
         return protocolAbiCertificateForControl(value);
+    }
+    /**
+     * Wait for the catalog to reach a published link, but no longer than the caller may wait. A reader that starts late
+     * has every segment since the pinned catalog to verify. That walk is the catalog's and every read shares it, so a
+     * cancelled read leaves it running and ends here instead of holding its worker attempt open.
+     */
+    private async followCatalog(link:Parameters<NonNullable<ReturnType<typeof diskAbiHistoryOptions>>['catalog']['follow']>[0],signal?:AbortSignal):Promise<void> {
+        const followed=this.options.diskHistory!.catalog.follow(link);
+        if(!signal){await followed;return;}
+        void followed.catch(()=>{});
+        let stop!:()=>void;
+        const stopped=new Promise<never>((_resolve,reject)=>{stop=()=>reject(signal.reason);});
+        void stopped.catch(()=>{});
+        if(signal.aborted)stop();else signal.addEventListener('abort',stop,{once:true});
+        try {await Promise.race([followed,stopped]);}
+        catch(error){if(signal.aborted)this.assertActive(signal);throw error;}
+        finally {signal.removeEventListener('abort',stop);}
     }
     private async validateCommit(value:any):Promise<CanonicalCommit> {
         if(value?.kind==='disk-abi-baseline'){
