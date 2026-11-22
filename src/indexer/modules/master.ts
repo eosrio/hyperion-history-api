@@ -49,7 +49,7 @@ import {loadChainProtocol} from '../protocol/selection.js';
 import {ProtocolAbiCoordinator} from '../protocol/abi-coordinator.js';
 import {DiskAbiHistoryCatalog} from '../protocol/disk-abi-history.js';
 import {ProtocolNativeObservationStore} from '../protocol/native-observation-store.js';
-import {CatalogSettler, elasticSettleIO, type SettleStep} from '../protocol/catalog-settle.js';
+import {CatalogSettler, elasticSettleIO, type SettleAudit, type SettleStep} from '../protocol/catalog-settle.js';
 import {followProtocolStoreGenerations, protocolStoreGenerationIndices} from '../protocol/immutable-bundle-store.js';
 import {ProtocolAbiFrontierStore} from '../protocol/abi-frontier-store.js';
 import {ProtocolSourceBindingStore, type ProtocolSourcePosition} from '../protocol/source-bindings.js';
@@ -859,10 +859,18 @@ export class HyperionMaster {
                 onHistoricalError: error => hLog('Historical state source remains unavailable:', error),
                 provisionStoreGeneration: generation => new ProtocolNativeObservationStore(this.esClient, this.chain, replicas, undefined,
                     metadata).provisionGeneration(generation),
+                carryForwardStoreRecords: selectionIds => new ProtocolNativeObservationStore(this.esClient, this.chain, replicas, undefined,
+                    metadata).carryForward(selectionIds),
                 onCatalogError: error => hLog('Catalog attestation failed and will retry:', error instanceof Error ? error.message : String(error)),
                 onCatalogRefused: refusal => hLog(`[WARNING] Catalog segment ${refusal.manifestSha256} (blocks ${refusal.startBlock}-${refusal.endBlock})`
                     + ` disagrees with this indexer's ABI commits and is not adopted: ${refusal.message}`),
                 onSettled: head => this.broadcastProtocolAbiSettled(head.blockNum)});
+            // Every indexer process finds the current generation by following control, which only one configured to
+            // rotate does. Checked before this owner takes control, so a misconfigured start disturbs nothing.
+            // To stop rotating, keep `rotation` and raise `max_bytes`.
+            const generations: any = (await store.readControl())?.value;
+            if (((generations?.storeGeneration ?? 0) > 0 || generations?.previousStore) && !this.conf.settings.protocol_abi_history?.rotation)
+                throw new Error(`The proof stores are at generation ${generations.storeGeneration ?? 0}: settings.protocol_abi_history.rotation must stay configured`);
             await coordinator.start();
             this.protocolAbiCoordinator = coordinator;
             this.protocolAbiDrainTimer = setInterval(() => this.requestProtocolAbiDrain(), 1000).unref();
@@ -875,14 +883,20 @@ export class HyperionMaster {
                     position: async () => {const control = await coordinator.inspect();
                         return {attestedEnd: control.catalog?.endBlock ?? null, settled: control.settled ?? null};},
                     recordSettled: blockNum => coordinator.recordSettled(blockNum),
-                    catalogBlockId: blockNum => diskAbiHistory.blockId(blockNum),
-                    isAdoptedSegment: manifestSha256 => diskAbiHistory.hasAdopted(manifestSha256)}), startBlock,
+                    catalogSource: async blockNum => await diskAbiHistory.blockId(blockNum) === null ? null : diskAbiHistory.source(blockNum),
+                    isAdoptedSegment: manifestSha256 => diskAbiHistory.hasAdopted(manifestSha256),
+                    readAudit: async () => await store.readSidecar('settle-audit') as SettleAudit | null,
+                    writeAudit: value => store.writeSidecar('settle-audit', value)}), startBlock,
                     {chain: this.chain, indexVersion: this.conf.settings.index_version, partitionSize: this.conf.settings.index_partition_size}, settle);
                 this.protocolCatalogSettleTimer = setInterval(() => this.requestCatalogSettle(settler), settle.interval_ms ?? 5000).unref();
                 hLog(`Catalog settle enabled from block ${startBlock} via ${settle.range_server}`);
                 const rotation = this.conf.settings.protocol_abi_history!.rotation;
                 if (rotation) {
-                    this.protocolStoreRotationTimer = setInterval(() => this.requestStoreRotation(coordinator, rotation),
+                    // Projections read every source from the proof stores, whatever the catalog covers, and their
+                    // progress is not part of what retiring a store generation checks.
+                    if (resolveStatefulOwnerConfigurationV2(this.conf.features.stateful_owner_v2))
+                        throw new Error('protocol_abi_history.rotation cannot be enabled together with features.stateful_owner_v2');
+                    this.protocolStoreRotationTimer = setInterval(() => this.requestStoreRotation(coordinator, settler, rotation),
                         rotation.check_interval_ms ?? 60000).unref();
                     hLog(`Proof store rotation enabled at ${rotation.max_bytes ?? 8 * 1024 ** 3} bytes per generation`
                         + (rotation.drop_previous ? ', dropping retired generations' : ', retired generations are kept for an operator'));
@@ -986,6 +1000,10 @@ export class HyperionMaster {
         settler.step().then((step: SettleStep) => {
             if (step.status === 'refused') note(`[WARNING] Catalog settle stopped at blocks ${step.from}-${step.to}: ${step.message}`);
             else if (step.status === 'waiting') note(`Catalog settle waits for ${step.missing} live documents in blocks ${step.from}-${step.to}`, true);
+            else if (step.status === 'resettled') {
+                hLog(`Catalog settle found ${step.blocks} settled blocks in ${step.from}-${step.to} written again and made them disk-backed again (${step.written} written)`);
+                this.requestCatalogSettleSoon(settler);
+            }
             else if (step.status === 'settled') {
                 // Progress is summarized at most once a minute; a later refusal is always reported.
                 this.protocolCatalogSettleNote = undefined;
@@ -995,6 +1013,8 @@ export class HyperionMaster {
                 }
                 this.requestCatalogSettleSoon(settler);
             }
+            // The audit of changed documents reads a bounded number per step; keep going while it is behind.
+            if (step.status === 'idle' && settler.auditPending) this.requestCatalogSettleSoon(settler);
         }).catch(error => note(`Catalog settle failed and will retry: ${error instanceof Error ? error.message : String(error)}`))
             .finally(() => { this.protocolCatalogSettleInFlight = false; });
     }
@@ -1002,14 +1022,20 @@ export class HyperionMaster {
      * One rotation step at a time: retire a previous generation that nothing can reference any more (and drop it when
      * configured), or start a rotation once the current generation is large enough. Never stops indexing.
      */
-    private requestStoreRotation(coordinator: ProtocolAbiCoordinator, rotation: NonNullable<NonNullable<typeof this.conf.settings.protocol_abi_history>['rotation']>): void {
+    private requestStoreRotation(coordinator: ProtocolAbiCoordinator, settler: CatalogSettler,
+                                 rotation: NonNullable<NonNullable<typeof this.conf.settings.protocol_abi_history>['rotation']>): void {
         if (this.protocolStoreRotationInFlight || this.protocolAbiFailed || this.shutdownStarted) return;
         this.protocolStoreRotationInFlight = true;
         (async () => {
             const control = await coordinator.inspect();
             if (rotation.drop_previous) await this.dropOrphanedStoreGenerations(control);
             if (control.previousStore) {
-                const retired = await coordinator.retirePreviousStore(rotation.retire_margin_blocks ?? 1024, rotation.retire_after_ms ?? 600000);
+                // Only once every document at or below the settled block is known to be disk-backed right now: one
+                // that was written again since it settled may reference the generation about to be retired.
+                const verified = await settler.verify();
+                if (!verified) return;
+                const retired = await coordinator.retirePreviousStore(rotation.retire_margin_blocks ?? 1024, rotation.retire_after_ms ?? 600000,
+                    Date.now(), verified);
                 if (retired === undefined) return;
                 const indices = protocolStoreGenerationIndices(this.chain, retired);
                 if (!rotation.drop_previous) {hLog(`Proof store generation ${retired} is retired and no longer read; delete ${indices.join(', ')} to reclaim it`); return;}
@@ -1020,8 +1046,10 @@ export class HyperionMaster {
                 return;
             }
             const indices = protocolStoreGenerationIndices(this.chain, control.storeGeneration ?? 0);
-            const stats: any = await this.esClient.cat.indices({index: indices, bytes: 'b', format: 'json', h: 'index,store.size'} as any);
-            const bytes = (stats as any[]).reduce((total, row) => total + Number(row['store.size'] ?? 0), 0);
+            // A store without records yet has no index: it holds no bytes.
+            const stats: any = await this.esClient.indices.stats({index: indices, metric: 'store', ignore_unavailable: true} as any);
+            const bytes = stats?._all?.primaries?.store?.size_in_bytes ?? 0;
+            if (!stats?._shards || stats._shards.failed !== 0 || !Number.isSafeInteger(bytes)) throw new Error('Incomplete proof store size statistics');
             if (bytes < (rotation.max_bytes ?? 8 * 1024 ** 3)) return;
             const started = Date.now();
             if (await coordinator.rotateStores()) {

@@ -102,10 +102,10 @@ export class ProtocolAbiFrontierStore {
         this.controlIndex=chain+'-protocol-abi-frontier-v1';
         this.generations=options.generation!==undefined?new ProtocolStoreGenerations({current:options.generation,previous:null})
             :protocolStoreGenerations(client,chain,replicas);
-        this.bundles=new GenerationalProtocolBundleStore(this.generations,generation=>new ImmutableProtocolBundleStore(client,chain,replicas,
+        this.bundles=new GenerationalProtocolBundleStore(this.generations,(generation,readOnly)=>new ImmutableProtocolBundleStore(client,chain,replicas,
             'protocol-abi-frontier-records',protocolStoreIndexSuffix('protocol-abi-frontier-records-v1',generation),undefined,
-            {readOnly:options.readOnly,rejectLifecycle:true,metadataReadBoundMs:options.metadataReadBoundMs}),options.readOnly!==true&&options.generation===undefined);
-        if(options.generation===undefined)this.generations.refresher??=async()=>{await this.readControl();};
+            {readOnly:readOnly||options.readOnly,rejectLifecycle:true,metadataReadBoundMs:options.metadataReadBoundMs}),options.readOnly!==true&&options.generation===undefined);
+        if(options.generation===undefined)this.generations.refresher??=()=>observeControl(this);
         this.metadata=new ProtocolMetadataFreshness(options.metadataReadBoundMs);
     }
 
@@ -209,6 +209,37 @@ export class ProtocolAbiFrontierStore {
         if(!Buffer.from(copy.json).equals(bytes))throw new Error('Noncanonical ABI frontier control bytes');
         this.observeGenerations(copy.value);
         return {value:copy.value,seqNo:response._seq_no,primaryTerm:response._primary_term};
+    }
+
+    /**
+     * A small record beside control that one writer keeps for itself, such as the settle audit positions. It is
+     * never authority: nothing but its writer reads it, and losing it only repeats that writer's work.
+     */
+    async readSidecar(name:string,signal?:AbortSignal):Promise<unknown|null> {
+        if(!/^[a-z][a-z-]{0,39}$/.test(name))throw new Error('Invalid ABI frontier sidecar name');
+        await this.initialize(false,signal);
+        const id='sidecar-'+name;let response:any;
+        try {response=await this.client.get({index:this.controlIndex,id,realtime:true,_source:true},{signal});signal?.throwIfAborted();} catch(error:any) {
+            if(error?.meta?.statusCode===404&&error?.meta?.body?.found===false&&error?.meta?.body?._index===this.controlIndex
+                &&error?.meta?.body?._id===id)return null;
+            throw error;
+        }
+        const doc=response?._source;
+        if(response?._index!==this.controlIndex||response._id!==id||response.found!==true||!recordKeys(doc,['schemaVersion','kind','digest','payload'])
+            ||doc.schemaVersion!==1||doc.kind!=='sidecar'||typeof doc.digest!=='string'||typeof doc.payload!=='string'
+            ||doc.payload.length>Math.ceil(limits.control.bytes/3)*4)throw new Error('Invalid ABI frontier sidecar source');
+        const bytes=Buffer.from(doc.payload,'base64');
+        if(bytes.toString('base64')!==doc.payload||hash(bytes)!==doc.digest)throw new Error('ABI frontier sidecar integrity mismatch');
+        return JSON.parse(bytes.toString('utf8'));
+    }
+    async writeSidecar(name:string,value:unknown):Promise<void> {
+        if(this.options.readOnly)throw new Error('Read-only ABI frontier cannot write a sidecar');
+        if(!/^[a-z][a-z-]{0,39}$/.test(name))throw new Error('Invalid ABI frontier sidecar name');
+        await this.initialize(true);
+        const id='sidecar-'+name,document={...this.document(value).document,kind:'sidecar'};
+        const receipt:any=await this.client.index({index:this.controlIndex,id,document,refresh:false,wait_for_active_shards:'all',pipeline:'_none'});
+        if(receipt?._index!==this.controlIndex||receipt._id!==id||!['created','updated'].includes(receipt.result)
+            ||receipt._shards?.successful!==this.replicas+1||receipt._shards?.failed!==0)throw new Error('Incomplete ABI frontier sidecar receipt');
     }
 
     private writeToken(response:any,result:'created'|'updated',value:unknown):ProtocolAbiFrontierControl {
@@ -731,11 +762,16 @@ export class ProtocolAbiStatePlan {
 function recordKeysMap(value:any,maximum:number,valid:(entry:[string,unknown])=>boolean):boolean {
     return value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length<=maximum&&Object.entries(value).every(valid);
 }
+/** Read control for the generations it names. Without a control index nothing was ever rotated: there is nothing to observe. */
+async function observeControl(store:ProtocolAbiFrontierStore):Promise<void> {
+    try {await store.readControl();}
+    catch(error:any) {if(error?.meta?.statusCode!==404||error?.meta?.body?.error?.type!=='index_not_found_exception')throw error;}
+}
 /** Give a store-less process's generation registry a control reader of its own. */
 export function ensureProtocolStoreGenerationSource(generations:ProtocolStoreGenerations):void {
     if(generations.refresher)return;
     const source=protocolStoreGenerationSource(generations);
     if(!source)throw new Error('Protocol store generations have no control source');
     const reader=new ProtocolAbiFrontierStore(source.client,source.chain,source.replicas,{readOnly:true});
-    generations.refresher??=async()=>{await reader.readControl();};
+    generations.refresher??=()=>observeControl(reader);
 }

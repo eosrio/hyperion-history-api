@@ -91,6 +91,11 @@ export interface ProtocolAbiCoordinatorOptions {
     onCatalogError?:(error:unknown)=>void;
     /** Create the other proof store indices of a generation before control switches to it (native actions, for example). */
     provisionStoreGeneration?:(generation:number)=>Promise<void>;
+    /**
+     * Copy the records of these selections that live in stores the coordinator does not read (native observations)
+     * into the current store generation, before the previous one is retired.
+     */
+    carryForwardStoreRecords?:(selectionIds:readonly string[])=>Promise<unknown>;
     /** Catalog attestation is scheduled at most this often. */
     catalogAttestIntervalMs?:number;
 }
@@ -131,6 +136,8 @@ interface PreparedBatch {
 /** Soft bounds per batch, checked after each block, so one block alone always fits. Each batch is one ordered
  * PREPARE of every record (split into bounded bulk requests), one readback and one control CAS. */
 const batchBlocks=64,batchCommitBytes=8*1024*1024,batchRecords=4096;
+/** A previous store generation is retired only once the unsettled tail whose records are carried forward is this short. */
+const maximumCarriedBlocks=50000;
 
 /** One runtime owner, immutable prepared inputs, and a CAS-published canonical ABI cursor.
  * Source topology and per-account/input knowledge are separate: incomplete input advances no ABI coverage. */
@@ -327,6 +334,16 @@ export class ProtocolAbiCoordinator {
             :this.options.qualificationGenesisStart?1:null;
         let reason=previous?.gap??null;
         if(previous&&!this.sameProfile(previous.profile))reason=gap('protocol_profile_changed','ABI knowledge requires initialization under the installed profile',null);
+        // Coverage a previous owner checked and published is followed again from the segments directory before
+        // anything else reads the catalog: a chain that a store rotation anchored at a later link's end is only
+        // valid once the catalog reaches that end. A link this catalog cannot reach (another pinned lineage,
+        // missing segments) is dropped.
+        let catalog:DiskAbiHistoryLink|undefined,unfollowed:unknown;
+        if(previous?.catalog&&this.options.diskAbiHistory?.follow){
+            try {if(await this.options.diskAbiHistory.follow(previous.catalog))catalog=previous.catalog;}
+            // Whether this matters depends on whether the previous chain is kept, which is decided below.
+            catch(error){unfollowed=error;}
+        }
         // Progress bound to an earlier catalog is replaced only by a configured catalog that ends strictly
         // ahead of it and agrees on its block identity (both checked below). The newer catalog then supplies
         // the complete ABI state at its own boundary, so none of the earlier commits is carried forward.
@@ -341,6 +358,8 @@ export class ProtocolAbiCoordinator {
             }
         }
         const generation=randomUUID();
+        // Whether the head is this start's own import of the configured catalog's baseline, replacing earlier progress.
+        let imported=false;
         if(disk){
             const catalog=this.options.diskAbiHistory!,boundary=disk.value.source;
             const retained=head??(previous&&this.sameProfile(previous.profile)?previous.head:null);
@@ -356,23 +375,25 @@ export class ProtocolAbiCoordinator {
                     ...(this.options.nativeActionInterfaceVersion===1?{nativeActionInterfaceVersion:1 as const}:{})};
                 const prepared=await this.options.store.prepareCommit(commit);
                 if(json(await this.readCommit(prepared.id,prepared.digest))!==json(commit))throw new Error('Disk ABI baseline readback differs');
-                await catalog.revalidate();head=this.head(commit,prepared.id);reason=null;replayFromBlock=null;
+                await catalog.revalidate();head=this.head(commit,prepared.id);reason=null;replayFromBlock=null;imported=true;
             }
             await catalog.revalidate();
         }
-        // Coverage a previous owner checked and published is followed again from the segments directory before it is
-        // published again. A link this catalog cannot reach (another pinned lineage, missing segments) is dropped.
-        let catalog:DiskAbiHistoryLink|undefined;
-        if(previous?.catalog&&this.options.diskAbiHistory?.follow){
-            try {if(await this.options.diskAbiHistory.follow(previous.catalog))catalog=previous.catalog;}
-            catch(error){this.noteHistoricalError(error);}
-        }
+        // A retained chain keeps the anchor a rotation gave it, and that anchor must still be a followed link end.
+        // A chain this start began at the configured baseline has no rotation anchor.
+        const anchor=!imported&&head&&previous?.anchor!==undefined&&previous.anchor<=head.blockNum?previous.anchor:undefined;
+        // A kept rotated chain cannot be validated without its anchor: fail this start instead of discarding it. A
+        // chain that a new pinned catalog or profile replaced no longer needs the link it used to follow.
+        if(anchor!==undefined&&unfollowed!==undefined)throw unfollowed;
+        if(unfollowed!==undefined)this.noteHistoricalError(unfollowed);
+        if(anchor!==undefined&&!(await this.options.diskAbiHistory?.boundaries?.())?.includes(anchor))
+            throw new Error('Retained ABI progress is anchored at catalog block '+anchor+', which the configured catalog segments do not reach');
         const value:ProtocolAbiCoordinatorControl={schemaVersion:1,chainId:this.options.chainId,profile:this.profile,ownerId:this.options.ownerId,
             generation,revision:(previous?.revision??-1)+1,source:null,head,pending:[],phase:'awaiting-source',gap:reason,replayFromBlock,
             ...(catalog?{catalog}:{}),...(catalog&&previous?.settled!==undefined&&previous.settled<=catalog.endBlock?{settled:previous.settled}:{}),
             ...(previous?.storeGeneration!==undefined?{storeGeneration:previous.storeGeneration}:{}),
             ...(previous?.previousStore!==undefined?{previousStore:previous.previousStore}:{}),
-            ...(head&&previous?.anchor!==undefined&&previous.anchor<=head.blockNum?{anchor:previous.anchor}:{})};
+            ...(anchor!==undefined?{anchor}:{})};
         const receipt=await this.options.store.compareAndSet(stored,value);
         this.known={...receipt,value:this.validateControl(receipt.value)};this.started=true;
     });}
@@ -728,7 +749,8 @@ export class ProtocolAbiCoordinator {
         const walked=this.historicalCertificates?.allowPendingWork;
         if(walked)this.resetHistoricalQueue(certificate);
         const disk=this.options.diskAbiHistory&&await this.preparedDiskBaseline();this.assertEpoch(epoch);
-        const covered=(head:Head|null)=>!!(disk&&head&&head.blockNum<=disk.value.source.blockNum);
+        // The catalog answers for everything through this chain's baseline, which a rotation moved to its anchor.
+        const covered=(head:Head|null)=>!!(disk&&head&&head.blockNum<=Math.max(disk.value.source.blockNum,control.anchor??0));
         if(this.historicalCertificates&&walked&&batch&&control.phase==='following'&&control.gap===null&&control.replayFromBlock===null)
             this.extendSettledCoverage(control,batch.head,heads.filter(head=>!covered(head)),certificates.filter((_,index)=>!covered(heads[index]!)));
         // Each head is queued with the phase and gap it settled under, as when every block had its own CAS.
@@ -1193,6 +1215,10 @@ export class ProtocolAbiCoordinator {
         const disagree=(message:string):never=>{throw new CatalogDisagreement(message);};
         const decoding=(state:ProtocolAbiAccountState|null)=>state?.present&&state.abiHex?state.abiHex:null;
         const shape=(state:ProtocolAbiAccountState|null)=>state===null?null:json({present:state.present,abiHex:state.abiHex});
+        // An action's ABI is selected by the sequence in its receipt, which this owner's commits only see where an
+        // action runs. A deployment no action follows inside the segment is checked by the rule itself.
+        const broken=segment.sequenceBreak();
+        if(broken)disagree('account '+broken.account+' deploys at block '+broken.blockNum+' with an ABI sequence that does not follow its previous record');
         let parent=await this.attestCommit(this.attestChain.get(start-1)!);
         if(parent.source.blockId!==await catalog.blockId(start-1))disagree('block '+(start-1)+' differs from the catalog tip');
         for(let blockNum=start;blockNum<=end;blockNum++){
@@ -1207,17 +1233,27 @@ export class ProtocolAbiCoordinator {
                 const {was,is}=changed.get(account)!,frontier=is===null?null:await this.attestState(is),sealed=segment.finalState(account,blockNum);
                 if(!recorded.has(account)){
                     // The sealer records no account that only ever held an empty ABI, while the reducer gives such an
-                    // account an empty state on its first touch. Both mean the same: nothing to decode with.
-                    if(was===null&&sealed===null&&frontier?.present===true&&frontier.abiHex==='')continue;
+                    // account an empty state on its first touch and another when it is removed. Each of them means
+                    // the same as no record: nothing to decode with, before and after.
+                    if(sealed===null&&decoding(frontier)===null&&decoding(was===null?null:await this.attestState(was))===null)continue;
                     disagree('account '+account+' changes at block '+blockNum+' without a catalog record');
                 }
                 if(shape(frontier)!==shape(sealed))disagree('account '+account+' ends block '+blockNum+' with another ABI');
             }
+            // A notification decodes with the ABI its original action ran under, in both derivations, even when
+            // that account's ABI changes between the two receipts.
+            const origins=new Map<string,ProtocolAbiAccountState|null>();
             for(const binding of commit.bindings){
                 const frontier=binding.stateId===null?null:await this.attestState(binding.stateId);
-                const sealed=segment.actionState({transactionId:binding.transactionId,actionOrdinal:binding.actionOrdinal,
-                    inputActionOrdinal:binding.inputActionOrdinal,account:binding.account,receiver:binding.receiver,name:binding.name,
-                    rawHex:'',globalSequence:binding.globalSequence,receiptAbiSequence:binding.receiptAbiSequence},blockNum);
+                const origin=binding.transactionId+':'+binding.inputActionOrdinal;
+                let sealed:ProtocolAbiAccountState|null;
+                if(binding.actionOrdinal!==binding.inputActionOrdinal&&origins.has(origin))sealed=origins.get(origin)!;
+                else {
+                    sealed=segment.actionState({transactionId:binding.transactionId,actionOrdinal:binding.actionOrdinal,
+                        inputActionOrdinal:binding.inputActionOrdinal,account:binding.account,receiver:binding.receiver,name:binding.name,
+                        rawHex:'',globalSequence:binding.globalSequence,receiptAbiSequence:binding.receiptAbiSequence},blockNum);
+                    if(binding.actionOrdinal===binding.inputActionOrdinal)origins.set(origin,sealed);
+                }
                 if(decoding(frontier)!==decoding(sealed))disagree('action '+binding.globalSequence+' at block '+blockNum+' decodes with another ABI');
             }
             parent=commit;
@@ -1289,6 +1325,9 @@ export class ProtocolAbiCoordinator {
         if(json(await target.readCommit(prepared.id,undefined,prepared.digest))!==json(base))throw new Error('Rotated anchor readback differs');
         this.assertEpoch(epoch);
         let built=this.head(base,prepared.id);
+        // The new chain's historical address map is built with it, so a block past bounded ancestry opens through
+        // the switch exactly as before it. Addresses name the owner and generation, which a rotation never changes.
+        let historicalRoot:string|null=null;
         for(let round=0;round<64;round++){
             const live=this.known?.value;
             if(!live?.head||live.generation!==control.generation||(live.storeGeneration??0)!==(control.storeGeneration??0))return false;
@@ -1298,6 +1337,19 @@ export class ProtocolAbiCoordinator {
                 // A batch may stop early at its byte bounds: only the blocks it built leave the queue.
                 const batch=await this.prepareBatch({...live,head:built,pending:pending.slice(0,batchBlocks)},epoch,batchBlocks,{store:target,reader});
                 if(!batch)return false;
+                // The live chain is complete from genesis, so its replay must be too. A record this replay could
+                // not read makes an incomplete commit: nothing is switched, and a later rotation tries again.
+                if(batch.blocks.some(block=>block.commit.status!=='complete'||block.commit.coverageStart!==1))return false;
+                if(this.historicalCertificates){
+                    const certificates=batch.blocks.map(block=>protocolAbiCertificateForControl({...live,head:this.head(block.commit,block.id)}));
+                    const issued=await target.prepareCertificates(certificates),stored=await target.readPreparedCertificates(issued);
+                    if(stored.some((value,index)=>json(value)!==json(certificates[index])))throw new Error('Rotated chain certificate readback differs');
+                    await target.prepareHistoricalCertificateAddresses(certificates);
+                    historicalRoot=await target.prepareHistoricalAddressRoot(historicalRoot,certificates.map(certificate=>({schemaVersion:1 as const,
+                        kind:'historical-abi-certificate-address' as const,identity:historicalAddressIdentity(certificate),
+                        certificateId:target.certificateId(certificate)})),()=>catalog.revalidate());
+                    this.assertEpoch(epoch);
+                }
                 pending.splice(0,batch.blocks.length);
                 const last=batch.blocks.at(-1)!;built=this.head(last.commit,last.id);
             }
@@ -1308,21 +1360,31 @@ export class ProtocolAbiCoordinator {
             const certificate=protocolAbiCertificateForControl({...live,head:built});
             const issued=await target.prepareCertificates([certificate]);
             if(json((await target.readPreparedCertificates(issued))[0])!==json(certificate))throw new Error('Rotated head certificate readback differs');
+            let historical:ProtocolAbiCoordinatorControl['historical'];
+            if(historicalRoot!==null){
+                const activation=historicalRootCertificate(certificate,historicalRoot),activated=await target.prepareCertificate(activation);
+                if(json(await target.readCertificate(activated.id,undefined,activated.digest))!==json(activation))throw new Error('Rotated historical root certificate readback differs');
+                historical={interfaceVersion:1,addressRootId:historicalRoot,activationCertificateId:target.certificateId(activation),anchor:copy(built)};
+            }
             this.assertEpoch(epoch);
             const outcome=await this.run(async()=>{
                 this.assertEpoch(epoch);
                 const version=this.known??await this.owned(),value=version.value;this.assertEpoch(epoch);
                 if(!value.head||value.generation!==control.generation||(value.storeGeneration??0)!==(control.storeGeneration??0)
-                    ||value.phase!=='following'||value.replayFromBlock!==null)return 'abort';
+                    ||value.phase!=='following'||value.gap!==null||value.replayFromBlock!==null)return 'abort';
                 if(value.head.blockNum>built.blockNum)return 'behind';
                 if(value.head.blockNum!==built.blockNum||value.head.blockId!==built.blockId)return 'abort';
                 const next:ProtocolAbiCoordinatorControl={...value,head:built,storeGeneration:generation,anchor:anchorAt,
                     previousStore:{generation:value.storeGeneration??0,switchedAtBlock:built.blockNum,switchedAt:Date.now()}};
-                // The historical address map lives in the previous generation; the new chain starts without one.
-                delete next.historical;
+                // The previous chain's historical address map names its commits; the new chain brings its own.
+                delete next.historical;if(historical)next.historical=historical;
                 await this.save(version,next);this.assertEpoch(epoch);
-                this.certifiedId=undefined;this.historicalActivation=undefined;this.historicalWalk=undefined;this.clearHistoricalFresh();
-                this.historicalCompleted=undefined;this.historicalQueue.clear();
+                this.certifiedId=undefined;this.historicalActivation=undefined;this.clearHistoricalFresh();this.historicalQueue.clear();
+                // The map covers the new chain through its head: the walk is complete there and later heads extend it.
+                this.historicalWalk=historical?{ownerId:value.ownerId,generation:value.generation,anchor:copy(built),nextCommitId:null,child:null}:undefined;
+                this.historicalCompleted=historical?{ownerId:value.ownerId,generation:value.generation,head:copy(built)}:undefined;
+                this.historicalAuthorityId=historical?.activationCertificateId;
+                this.historicalPublishedHead=historical?target.certificateId(certificate):undefined;
                 for(const blockNum of [...this.attestChain.keys()])if(blockNum>anchorAt)this.attestChain.delete(blockNum);
                 await this.certify(this.known!.value,epoch);this.settledHint(this.known!.value);
                 return 'switched';
@@ -1335,17 +1397,49 @@ export class ProtocolAbiCoordinator {
     /** Settles once a running rotation has finished. Tests and shutdown only. */
     async storesRotated():Promise<void> {await this.rotating?.catch(()=>undefined);}
     /**
-     * Stop reading the previous store generation once nothing can reference it: settled documents are disk-backed,
-     * so settling `marginBlocks` past the switch block covers every document written against it, and `minimumAgeMs`
-     * covers writers that had not observed the switch yet. Returns the generation the caller may now drop.
+     * Stop reading the previous store generation once nothing references it. Settled documents are disk-backed and
+     * need no store. Every record the unsettled blocks reference is first copied into the current generation, by
+     * identity rather than by assumption: their selections, contexts, observation links, observations and native
+     * observations, wherever a writer that had not seen the switch yet put them. `minimumAgeMs` covers writers
+     * still unaware of the switch, and `marginBlocks` keeps the previous generation while settling is close to
+     * the switch. Returns the generation the caller may now drop, or nothing while a condition does not hold.
      */
-    async retirePreviousStore(marginBlocks:number,minimumAgeMs:number,now=Date.now()):Promise<number|undefined> {return this.run(async()=>{
-        const version=this.known??await this.owned(),value=version.value,previous=value.previousStore;
-        if(!previous||value.settled===undefined||value.settled<previous.switchedAtBlock+marginBlocks||now-previous.switchedAt<minimumAgeMs)return undefined;
-        const next:ProtocolAbiCoordinatorControl={...value};delete next.previousStore;
-        await this.save(version,next);
-        return previous.generation;
-    });}
+    async retirePreviousStore(marginBlocks:number,minimumAgeMs:number,now=Date.now(),
+                              verified?:{through:number;selections:readonly string[]}):Promise<number|undefined> {
+        const ready=(value:ProtocolAbiCoordinatorControl)=>!!value.previousStore&&!!value.head&&value.settled!==undefined
+            &&value.settled>=value.previousStore.switchedAtBlock+marginBlocks&&now-value.previousStore.switchedAt>=minimumAgeMs;
+        const control=await this.run(async()=>(this.known??await this.owned()).value);
+        if(!ready(control))return undefined;
+        // `verified` is what the caller checked the documents for: through which block they are disk-backed, and
+        // which selections the documents above it name. Blocks settled since that check count as unsettled here.
+        const floor=Math.max(Math.min(control.settled!,verified?.through??control.settled!),control.anchor??0);
+        // A long unsettled tail is settled first; the previous generation is cheap to keep meanwhile.
+        if(control.head!.blockNum-floor>maximumCarriedBlocks)return undefined;
+        const selections:string[]=[],observations:string[]=[];
+        let commitId:string|null=control.head!.commitId;
+        while(commitId){
+            const commit=await this.attestCommit(commitId);
+            if(commit.source.blockNum<=floor||commit.kind==='disk-abi-baseline')break;
+            if(commit.selectionId)selections.push(commit.selectionId);
+            if(commit.observationId)observations.push(commit.observationId);
+            commitId=commit.previousCommitId;
+        }
+        // Besides the chain's own selections: those admitted and not committed yet, and those the documents name,
+        // which a repair or bulk reader may have captured for itself. Either may have been written to the previous
+        // generation by a writer that had not seen the switch.
+        const others=[...control.pending,...(verified?.selections??[])];
+        const carried=await this.options.bindings.carryForward(selections,control.source?[control.source.contextId]:[],others);
+        await this.options.observations.carryForward([...observations,...carried.observationIds]);
+        await this.options.carryForwardStoreRecords?.([...new Set([...selections,...others])]);
+        return this.run(async()=>{
+            const version=this.known??await this.owned(),value=version.value;
+            // Blocks committed since were written by writers that had seen the switch for `minimumAgeMs`.
+            if(!ready(value)||json(value.previousStore)!==json(control.previousStore)||value.generation!==control.generation)return undefined;
+            const next:ProtocolAbiCoordinatorControl={...value};delete next.previousStore;
+            await this.save(version,next);
+            return control.previousStore!.generation;
+        });
+    }
     async drain():Promise<{committed:number;pending:number}> {
         const result=this.drains.then(()=>this.drainOnce());
         this.drains=result.then(()=>undefined,()=>undefined);

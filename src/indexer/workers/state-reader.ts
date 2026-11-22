@@ -1185,7 +1185,9 @@ export default class StateReader extends HyperionWorker {
                 readerSessionId: context.readerSessionId, readerRole: this.isLiveReader ? 'live' : this.repairMode ? 'repair' : 'bulk',
                 assignmentId: this.assignmentId ?? null, source: capture.source,
                 frameSha256: createHash('sha256').update(frame).digest('hex'), captureSha256: capture.captureSha256,
-                head: position(result.head), irreversible: position(result.last_irreversible)});
+                head: position(result.head), irreversible: position(result.last_irreversible)},
+                {schemaVersion: 1, chainId: this.chainId, schemaJson: context.schemaJson,
+                    protocol: {id: this.protocolId, profileId: this.protocol.profileId, components: this.protocolComponents ?? []}});
             this.assertCurrentIngress(context.generation);
             if (this.isLiveReader) {
                 const catalog=DiskAbiHistoryCatalog.fromConfiguration(this.diskAbiHistoryConfiguration,this.chainId,
