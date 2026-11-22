@@ -242,10 +242,60 @@ validating. Only coverage grows. Sources at or below the published end prove fro
 store reads; sources above it use the stores as before.
 
 **Limits.**
-- Segment block ids are held in memory, at 32 bytes a block, up to 4,194,304 blocks. Past that, compact
-  the chain into a new pinned catalog, which needs a controlled restart.
+- Segment block ids are held in memory, at 32 bytes a block, up to 4,194,304 blocks, and a process that
+  starts verifies every segment since the pinned catalog. Before the chain gets that long, pin a compaction
+  of it (next section).
 - Adopting segments does not prune the proof stores.
 - Without `segments_dir`, the catalog behaves exactly as before.
+
+## Compacting the chain
+
+A compaction is the chain through one of its links as a single complete catalog: the same records and block
+ids, byte for byte. `abi-scanner --compact` (hyperion-tools) writes it from the verified chain, without
+reading the node's logs. Its manifest is a complete catalog's and adds two entries:
+
+- `compacts`: the digest, end block and last block id of the link it stands in for. The segments after that
+  link name it as their base, so they continue the compaction unchanged.
+- `lineage`: the manifest digest of the complete catalog the chain's consumers first pinned.
+
+To move a deployment onto it, pin the compaction and name the lineage:
+
+```json
+"protocol_abi_history": {
+    "manifest": "/absolute/path/compacted/abi-history.ndjson.manifest.json",
+    "manifest_sha256": "<the compaction's manifest sha256>",
+    "lineage_sha256": "<the manifest sha256 pinned before the first compaction>",
+    "segments_dir": "/absolute/path/segments"
+}
+```
+
+**What stays the same.** The catalog's identity is its lineage, not the pinned file. Record identities, the
+complete state at every link end the catalog still knows, the commits in the proof stores, the control
+document and the action documents all name the lineage, so they keep validating. The proof stores are not
+replaced, no block is indexed again, and the old pin stays valid: a process on the old manifest and a
+process on the compaction give the same answers, so the API and the indexer can be restarted one after the
+other, and the old configuration is the rollback. A manifest that does not name the configured lineage is
+refused.
+
+**What changes.** A process reads one catalog in place of the old one and every segment up to the compacted
+link, then follows only the segments after it. The links folded into the compaction are no longer known one
+by one: the compaction's end is the only link end at or below it.
+
+**Where to compact.** The chain in the proof stores starts at a link end: the pinned catalog's end, or the
+anchor a store rotation gave it (`Rotated proof stores to generation N anchored at block A` in the indexer
+log, `anchor` in the control document). The compaction must end at or below that block, so compact through
+the anchor or an earlier link (`--end <anchor>`), after the previous generation is retired. An indexer whose
+chain is anchored below the compaction's end refuses to start and replaces nothing. A deployment that never
+rotated is anchored at its pinned catalog's end and cannot move onto a compaction of a later link without
+replacing the stores.
+
+**The sealer.** `range-server` accepts the compaction's digest as `--genesis-catalog-sha256` and then opens
+that catalog and the links after it. Restart it on the compaction together with the indexer: the settler
+accepts a range only when the catalog that seals it is one the indexer's catalog holds, and the two agree on
+blocks at or below the compaction's end only when both read the compaction. Segments at or below the
+compacted link can be archived once no process is configured with the old manifest.
+
+Without `lineage_sha256` a pinned compaction is its own lineage, which suits a new deployment.
 
 ## Settling attested ranges
 
