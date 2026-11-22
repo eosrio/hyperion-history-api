@@ -230,3 +230,65 @@ test('follow never adopts a planted segment that reaches the published end throu
     expect(await reader.follow({manifestSha256:genuine.manifestSha256,endBlock:6,lastBlockId:block(6)})).toBe(true);
     expect((await reader.finalState('alpha',6))?.abiHex).toBe('bb');
 });
+
+/** The chain through `through` as one complete catalog that stands in for that link, as `abi-scanner --compact` writes it. */
+async function compaction(rows:any[],through:DiskAbiHistoryTip,segments:string,lineage:string,change:(manifest:any)=>void=()=>{}) {
+    const directory=await mkdtemp(join(tmpdir(),'h45-abi-compaction-')),end=through.endBlock;
+    const rowBytes=lines(rows),idBytes=Buffer.from(Array.from({length:end},(_,i)=>block(i+1)).join(''),'hex');
+    await writeFile(join(directory,'abi.ndjson'),rowBytes);await writeFile(join(directory,'blocks.bin'),idBytes);
+    const manifest:any={format:'hyperion-wire-abi-history-v1',complete:true,chainId,nodeRevision,producerProfileId:'producer-profile',
+        shipAbiSha256:hash(schemaJson),startBlock:1,endBlock:end,firstBlockId:block(1),lastBlockId:block(end),irreversibleBoundary:{blockNum:end,blockId:block(end)},
+        lastGlobalSequence:through.lastGlobalSequence,deployments:{name:'abi.ndjson',bytes:Buffer.byteLength(rowBytes),sha256:hash(rowBytes),records:rows.length},
+        blockIds:{name:'blocks.bin',bytes:idBytes.length,sha256:hash(idBytes),count:end},
+        compacts:{manifestSha256:through.manifestSha256,endBlock:end,lastBlockId:through.lastBlockId},lineage:{manifestSha256:lineage}};
+    change(manifest);
+    const bytes=JSON.stringify(manifest)+'\n',path=join(directory,'manifest.json');await writeFile(path,bytes);
+    return {interface_version:1,manifest:path,manifest_sha256:hash(bytes),lineage_sha256:lineage,producer_profile_id:'producer-profile',
+        node_revision:nodeRevision,ship_abi_sha256:hash(schemaJson),segments_dir:segments} as DiskAbiHistoryConfiguration;
+}
+
+test('a compaction pinned in place of the chain start keeps the lineage and is continued by the same segments',async()=>{
+    const start=[final('alpha',1,'aa')],added=[deploy('alpha',6,'150','bb','1'),final('beta',6,'cc')];
+    const g=await genesis(start,4),link=(tip:DiskAbiHistoryTip)=>({manifestSha256:tip.manifestSha256,endBlock:tip.endBlock,lastBlockId:tip.lastBlockId});
+    const first=await segment(g.segments,g.tip,6,added),second=await segment(g.segments,first,9,[],{lastGlobalSequence:'300'});
+    const third=await segment(g.segments,second,12,[final('alpha',11,'dd')],{lastGlobalSequence:'400'});
+    const whole=open(g.config);expect(await whole.follow(link(third))).toBe(true);
+    // The chain through its second link, as one catalog in a directory of its own.
+    const config=await compaction([...start,...added],second,g.segments,g.config.manifest_sha256),compact=open(config);
+    expect(compact.catalogId).toBe(whole.catalogId);
+    expect(await compact.coverageEnd()).toBe(9);expect(await compact.boundaries()).toEqual([9]);
+    // It stands in for the link it ends at: that link is the tip the next segment names, and both digests are adopted.
+    expect(await compact.tip()).toEqual(second);
+    expect(await compact.hasAdopted(second.manifestSha256)).toBe(true);expect(await compact.hasAdopted(config.manifest_sha256)).toBe(true);
+    expect(await compact.hasAdopted(first.manifestSha256)).toBe(false);
+    expect(await compact.baseline()).toEqual(await whole.baselineAt(9));
+    expect(await compact.follow(link(second))).toBe(true);
+    // The links it folded in are not known one by one, so a link inside it cannot be followed.
+    await expect(compact.follow(link(first))).rejects.toThrow('inside the pinned compaction');
+    await expect(compact.baselineAt(6)).rejects.toThrow('not the end of an adopted catalog link');
+    // The segment after the compacted link continues it unchanged.
+    expect((await compact.nextSegment())?.link).toMatchObject({startBlock:10,endBlock:12,baseSha256:second.manifestSha256,totalRecords:4});
+    expect(await compact.follow(link(third))).toBe(true);
+    expect(await compact.boundaries()).toEqual([9,12]);expect(await compact.tip()).toEqual(await whole.tip());
+    // Every answer is the one the whole chain gives, state identity included.
+    expect(await compact.baselineAt(12)).toEqual(await whole.baselineAt(12));
+    for(let n=1;n<=12;n++){
+        expect(await compact.source(n)).toEqual(await whole.source(n));
+        for(const account of ['alpha','beta'])expect(await compact.finalState(account,n)).toEqual(await whole.finalState(account,n));
+    }
+    for(const [sequence,receipt] of [['149','0'],['151','1']])
+        expect(await compact.actionState(input('alpha',sequence,receipt),6)).toEqual(await whole.actionState(input('alpha',sequence,receipt),6));
+    expect(compact.matchesState((await whole.finalState('alpha',12))!)).toBe(true);expect(whole.matchesState((await compact.finalState('beta',7))!)).toBe(true);
+
+    // Without a configured lineage the compaction is its own: a new deployment may start on it.
+    const {lineage_sha256:_,...alone}=config,own=open(alone);
+    expect(own.catalogId).toBe('h45abihistory1:'+config.manifest_sha256);expect(await own.coverageEnd()).toBe(9);
+    // A lineage the manifest does not name, a catalog that is no compaction, and a compaction that ends elsewhere than its link.
+    await expect(open({...config,lineage_sha256:'e'.repeat(64)}).coverageEnd()).rejects.toThrow('not a compaction of the configured lineage');
+    await expect(open({...g.config,lineage_sha256:'e'.repeat(64)}).coverageEnd()).rejects.toThrow('not a compaction of the configured lineage');
+    expect(await open({...g.config,lineage_sha256:g.config.manifest_sha256}).coverageEnd()).toBe(4);
+    for(const change of [(m:any)=>{m.compacts.endBlock=8;},(m:any)=>{m.compacts.lastBlockId=block(8);},(m:any)=>{m.compacts.manifestSha256='x';},
+        (m:any)=>{m.base={manifestSha256:second.manifestSha256,endBlock:9,lastBlockId:block(9)};}])
+        await expect(open(await compaction([...start,...added],second,g.segments,g.config.manifest_sha256,change)).coverageEnd()).rejects.toThrow('invalid compaction');
+    expect(()=>open({...config,lineage_sha256:'nope'})).toThrow('invalid source configuration');
+});

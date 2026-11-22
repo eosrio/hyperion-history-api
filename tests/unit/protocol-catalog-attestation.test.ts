@@ -605,3 +605,58 @@ test('a cancelled read stops waiting for a catalog that is still following, and 
     const view=await reader.open(f.sources[6].source,f.sources[6].selected);
     expect(await own.coverageEnd()).toBe(8);expect(view.certificateId).toBe(own.catalogId);
 });
+
+/** The chain through `link` as one complete catalog that stands in for it, in a directory of its own. */
+async function compaction(f:Fixture,rows:any[],link:{manifestSha256:string;endBlock:number;lastBlockId:string}) {
+    const directory=await mkdtemp(join(tmpdir(),'h45-catalog-compact-')),end=link.endBlock,rowBytes=lines(rows);
+    const idBytes=Buffer.from(Array.from({length:end},(_,i)=>block(i+1)).join(''),'hex');
+    await writeFile(join(directory,'abi.ndjson'),rowBytes);await writeFile(join(directory,'blocks.bin'),idBytes);
+    const manifest={format:'hyperion-wire-abi-history-v1',complete:true,chainId,nodeRevision,producerProfileId:'producer-profile',
+        shipAbiSha256:hash(schemaJson),startBlock:1,endBlock:end,firstBlockId:block(1),lastBlockId:block(end),irreversibleBoundary:{blockNum:end,blockId:block(end)},
+        lastGlobalSequence:sequenceAt(end),deployments:{name:'abi.ndjson',bytes:Buffer.byteLength(rowBytes),sha256:hash(rowBytes),records:rows.length},
+        blockIds:{name:'blocks.bin',bytes:idBytes.length,sha256:hash(idBytes),count:end},compacts:link,lineage:{manifestSha256:f.g.config.manifest_sha256}};
+    const bytes=JSON.stringify(manifest)+'\n',path=join(directory,'manifest.json');await writeFile(path,bytes);
+    return {...f.g.config,manifest:path,manifest_sha256:hash(bytes),lineage_sha256:f.g.config.manifest_sha256} as DiskAbiHistoryConfiguration;
+}
+
+test('a compaction pinned at or below the rotation anchor keeps the rotated chain, and one past the anchor is refused',async()=>{
+    // Generation 1 is anchored at block 8, generation 0 is gone, links end at 8 and 11, the head is at 13.
+    const f=await rotating(6);
+    expect(await f.coordinator.rotateStores()).toBe(true);
+    await extend(f,11);
+    const later=await segment(f.g.segments,{...f.link,lastGlobalSequence:sequenceAt(8),totalRecords:3},11,[],{lastGlobalSequence:sequenceAt(11)});
+    expect((await f.attest()).catalog).toEqual(later);await f.coordinator.recordSettled(11);
+    expect(await f.coordinator.retirePreviousStore(0,0)).toBe(0);dropGeneration(f,0);
+    await extend(f,12);await extend(f,13);
+    const before=await f.coordinator.inspect();
+    expect(before).toMatchObject({storeGeneration:1,anchor:8,head:{blockNum:13},catalog:later,settled:11});
+    const rows=[final('alpha',1,'aa'),deploy(2,'9007199254740993','bb','1'),final('beta',7,'cc')];
+
+    const config=await compaction(f,rows,f.link);
+    // An API process moves to the compaction first, while the indexer still runs on the old pin: it proves a
+    // live block from the same stores and reads a sealed one from the catalog.
+    const own=new DiskAbiHistoryCatalog(config,chainId,profile);catalogs.add(own);
+    const reader=new ProtocolAbiProofReader({chainId,profile,store:new ProtocolAbiFrontierStore(separate(f.memory.client) as any,f.chain,0,{readOnly:true}),
+        diskHistory:readerOptions({memory:{client:separate(f.memory.client)},chain:f.chain},own)});
+    const view=await reader.open(f.sources[13].source,f.sources[13].selected);
+    expect((await reader.action(view,f.sources[13].action)).state.abiHex).toBe('bb');expect((await reader.finalState(view,'beta')).abiHex).toBe('cc');
+    expect(await own.coverageEnd()).toBe(11);expect((await own.finalState('beta',9))?.abiHex).toBe('cc');
+
+    // A compaction past the anchor cannot validate the chain's baseline: the start fails and nothing is replaced.
+    const past=new DiskAbiHistoryCatalog(await compaction(f,rows,later),chainId,profile);catalogs.add(past);
+    expect(past.catalogId).toBe(f.catalog.catalogId);
+    const refused=new ProtocolAbiCoordinator({chainId,profile,ownerId:'past-anchor',bindings:f.bindings,observations:f.observations,store:f.store,
+        diskAbiHistory:past,nativeActionInterfaceVersion:1});
+    await expect(refused.start()).rejects.toThrow('a pinned compaction must end at or below the anchor');
+    expect((await f.store.readControl())!.value).toMatchObject({ownerId:'attesting-owner',anchor:8,storeGeneration:1,head:before.head});
+
+    // A compaction that ends at the anchor: the same lineage, so the commits, the anchor, the link and the
+    // checkpoint are all kept, and the segment after the compacted link is followed from it.
+    const pinned=new DiskAbiHistoryCatalog(config,chainId,profile);catalogs.add(pinned);
+    const next=new ProtocolAbiCoordinator({chainId,profile,ownerId:'compacted-restart',bindings:f.bindings,observations:f.observations,store:f.store,
+        diskAbiHistory:pinned,nativeActionInterfaceVersion:1});
+    await next.start();
+    expect(await next.inspect()).toMatchObject({storeGeneration:1,anchor:8,head:before.head,catalog:later,settled:11,gap:null});
+    expect(await pinned.coverageEnd()).toBe(11);expect(await pinned.boundaries()).toEqual([8,11]);
+    expect((await next.openSource(f.contextId,'compacted-session')).resumeFromBlock).toBe(14);
+});

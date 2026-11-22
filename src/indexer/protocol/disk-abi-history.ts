@@ -9,6 +9,13 @@ import {protocolImmutableJson} from './immutable-bundle-store.js';
 /** Operator-pinned data only; this configuration never selects executable plugin code. */
 export interface DiskAbiHistoryConfiguration {
     interface_version: 1; manifest: string; manifest_sha256: string;
+    /**
+     * The manifest digest of the complete catalog the proof stores were started on, when `manifest` is a
+     * compaction of that catalog's chain (`abi-scanner --compact`). The catalog keeps that identity, so the
+     * stores, their commits and the documents that name it stay valid, and the manifest must name the same
+     * lineage. Without it, the pinned manifest is its own lineage.
+     */
+    lineage_sha256?: string;
     producer_profile_id: string; node_revision: string; ship_abi_sha256: string;
     /** The node's logs the catalog covers: proofs then recompute each source from them instead of stored copies. */
     capture?: import('./disk-capture-source.js').DiskCaptureConfiguration;
@@ -40,6 +47,10 @@ interface Manifest {
     firstBlockId: string; lastBlockId: string; irreversibleBoundary: {blockNum: number; blockId: string};
     lastGlobalSequence: string | null; complete: true;
     deployments: Member & {records: number}; blockIds: Member & {count: number};
+    /** A compaction: the chain link this complete catalog stands in for, which the next segment names as its base. */
+    compacts?: {manifestSha256: string; endBlock: number; lastBlockId: string};
+    /** A compaction: the complete catalog its lineage started at. */
+    lineage?: {manifestSha256: string};
 }
 interface Epoch {
     account: string; blockNum: number; blockId: string; phase: 'deployment' | 'block-final';
@@ -144,14 +155,16 @@ export class DiskAbiHistoryCatalog {
                 profile: ProtocolSourceProfile) {
         requireData(configuration?.interface_version===1 && typeof configuration.manifest==='string' && configuration.manifest.length>0
             && hex.test(configuration.manifest_sha256) && hex.test(configuration.ship_abi_sha256)
+            && (configuration.lineage_sha256===undefined||hex.test(configuration.lineage_sha256))
             && /^[0-9a-f]{40}$/.test(configuration.node_revision) && typeof configuration.producer_profile_id==='string'
             && configuration.producer_profile_id.length>0 && hex.test(chainId)
             && (configuration.segments_dir===undefined||(typeof configuration.segments_dir==='string'&&configuration.segments_dir.length>0)),
             'invalid source configuration');
         this.configuration=freeze(snapshot(configuration));
         this.profile=freeze(snapshot({...profile,components:[...profile.components].sort((a,b)=>(a.runtime+':'+a.id).localeCompare(b.runtime+':'+b.id))}));
-        // The pinned catalog names the lineage: adopted segments extend its coverage, never its identity.
-        this.catalogId='h45abihistory1:'+configuration.manifest_sha256;
+        // The lineage names the catalog: adopted segments extend its coverage, and a compaction pinned in place
+        // of the catalog the lineage started at replaces its files, never its identity.
+        this.catalogId='h45abihistory1:'+(configuration.lineage_sha256??configuration.manifest_sha256);
     }
     static fromConfiguration(configuration: DiskAbiHistoryConfiguration | undefined, chainId: string,
                              profile: ProtocolSourceProfile): DiskAbiHistoryCatalog | undefined {
@@ -235,6 +248,14 @@ export class DiskAbiHistoryCatalog {
                 &&(m.lastGlobalSequence===null||decimal(m.lastGlobalSequence)),'invalid irreversible coverage');
             requireData(m.blockIds?.count===m.endBlock&&m.blockIds.bytes===m.endBlock*32
                 &&uint(m.deployments?.records)&&m.deployments.records<=MAX_RECORDS,'invalid coverage/member count');
+            // A compaction is the chain through one of its links as one complete catalog. It ends where that link
+            // ends, and the segments after it name that link, not this manifest, as their base.
+            const compacts=m.compacts;
+            if(compacts!==undefined)requireData(hex.test(compacts.manifestSha256)&&compacts.endBlock===m.endBlock&&compacts.lastBlockId===m.lastBlockId
+                &&(m as {base?:unknown}).base===undefined,'invalid compaction');
+            const lineage=this.configuration.lineage_sha256;
+            if(lineage!==undefined&&lineage!==this.configuration.manifest_sha256)
+                requireData(compacts!==undefined&&m.lineage?.manifestSha256===lineage,'the pinned catalog is not a compaction of the configured lineage');
             const ids=await this.pin(this.member(manifestPath,m.blockIds,128*1024*1024*1024),m.blockIds.bytes,m.blockIds.sha256);files.push(ids);
             const rows=await this.pin(this.member(manifestPath,m.deployments,MAX_DEPLOYMENTS),m.deployments.bytes,m.deployments.sha256);files.push(rows);
             const entries=this.rows(await rows.handle.readFile('utf8'),1,m.endBlock,this.catalogId);
@@ -242,9 +263,10 @@ export class DiskAbiHistoryCatalog {
             const epochs=new Map<string,Entry[]>(),states=new Map<string,ProtocolAbiAccountState>();
             for(const entry of entries){const list=epochs.get(entry.epoch.account)??[];list.push(entry);epochs.set(entry.epoch.account,list);states.set(entry.state.source.observationId,entry.state);}
             for(const list of epochs.values())list.sort(compareEntries);
-            const loaded:Loaded={manifest:freeze(m),files,ids,epochs,states,end:m.endBlock,pieces:[],adopted:new Set([this.configuration.manifest_sha256]),
+            const loaded:Loaded={manifest:freeze(m),files,ids,epochs,states,end:m.endBlock,pieces:[],
+                adopted:new Set([this.configuration.manifest_sha256,...(compacts?[compacts.manifestSha256]:[])]),
                 boundaries:new Map([[m.endBlock,m.lastGlobalSequence]]),
-                tip:{manifestSha256:this.configuration.manifest_sha256,endBlock:m.endBlock,lastBlockId:m.lastBlockId,
+                tip:{manifestSha256:compacts?.manifestSha256??this.configuration.manifest_sha256,endBlock:m.endBlock,lastBlockId:m.lastBlockId,
                     lastGlobalSequence:m.lastGlobalSequence,totalRecords:m.deployments.records}};
             requireData(await this.idAt(loaded,1)===m.firstBlockId&&await this.idAt(loaded,m.endBlock)===m.lastBlockId,'coverage boundary identity mismatch');
             for(const list of epochs.values())for(const item of list)requireData(await this.idAt(loaded,item.epoch.blockNum)===item.epoch.blockId,'ABI row differs from covered block identity');
@@ -454,6 +476,9 @@ export class DiskAbiHistoryCatalog {
         requireData(link&&hex.test(link.manifestSha256)&&uint(link.endBlock,1)&&hex.test(link.lastBlockId),'invalid catalog link');
         const value=await this.data();
         if(value.end>=link.endBlock){
+            // The links a compaction folded in are not known one by one: only the one it stands in for is.
+            requireData(link.endBlock>=value.manifest.endBlock||value.manifest.compacts===undefined,
+                'followed catalog link is inside the pinned compaction, which ends at block '+value.manifest.endBlock);
             requireData(value.adopted.has(link.manifestSha256)&&await this.idAt(value,link.endBlock)===link.lastBlockId,
                 'followed catalog link differs from coverage');
             return true;

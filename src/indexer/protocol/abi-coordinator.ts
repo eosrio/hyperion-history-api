@@ -387,7 +387,8 @@ export class ProtocolAbiCoordinator {
         if(anchor!==undefined&&unfollowed!==undefined)throw unfollowed;
         if(unfollowed!==undefined)this.noteHistoricalError(unfollowed);
         if(anchor!==undefined&&!(await this.options.diskAbiHistory?.boundaries?.())?.includes(anchor))
-            throw new Error('Retained ABI progress is anchored at catalog block '+anchor+', which the configured catalog segments do not reach');
+            throw new Error('Retained ABI progress is anchored at catalog block '+anchor+', which is not the end of a link the configured catalog holds'
+                +' or its segments reach (a pinned compaction must end at or below the anchor)');
         const value:ProtocolAbiCoordinatorControl={schemaVersion:1,chainId:this.options.chainId,profile:this.profile,ownerId:this.options.ownerId,
             generation,revision:(previous?.revision??-1)+1,source:null,head,pending:[],phase:'awaiting-source',gap:reason,replayFromBlock,
             ...(catalog?{catalog}:{}),...(catalog&&previous?.settled!==undefined&&previous.settled<=catalog.endBlock?{settled:previous.settled}:{}),
